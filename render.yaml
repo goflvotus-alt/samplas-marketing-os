@@ -2,7 +2,7 @@ services:
   - type: web
     name: samplas-marketing-os
     runtime: node
-    plan: free
+    plan: starter
     region: oregon
     buildCommand: npm install
     startCommand: npm start
