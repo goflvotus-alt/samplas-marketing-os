@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: samplas-meta-dashboard
+    name: samplas-marketing-os
     runtime: node
-    plan: starter
-    region: singapore
+    plan: free
+    region: oregon
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/status
