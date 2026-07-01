@@ -1,0 +1,12 @@
+{
+  "name": "samplas-marketing-os",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check server.mjs && node --check outputs/samplas-marketing-os.js",
+    "render:check": "node scripts/check-render-deployment.mjs",
+    "render:upload-cafe24": "node scripts/upload-cafe24-csv-to-render.mjs"
+  }
+}

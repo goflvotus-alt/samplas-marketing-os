@@ -1,0 +1,44 @@
+SAMPLAS Instagram Marketing OS - Live Sync
+
+1. .env 파일에 Meta 토큰 입력
+   위치: 프로젝트 루트의 .env
+   넣을 값: META_ACCESS_TOKEN
+
+2. 이미 확인된 값
+   FACEBOOK_PAGE_ID=361113897317760
+   INSTAGRAM_BUSINESS_ACCOUNT_ID=17841400194524814
+   SAMPLAS_INSTAGRAM_USERNAME=samplaskr
+
+3. 서버 실행
+   npm start
+
+4. 브라우저에서 열기
+   http://localhost:8787
+
+5. 현재 Instagram API 기준
+   게시물 목록: 성공 확인
+   인사이트 metric: reach, views, saved, shares, total_interactions
+   v22 이상에서는 impressions 대신 views 사용
+
+6. 토큰 주의
+   토큰은 채팅, 문서, HTML, JS에 붙여넣지 말고 .env에만 저장하세요.
+
+7. Cafe24 토큰 자동 갱신
+   주문 API 호출 중 access token이 만료되면 refresh token으로 자동 갱신을 시도합니다.
+   수동 테스트: http://127.0.0.1:8787/api/cafe24/refresh-token
+   refresh token까지 만료되면 Cafe24 OAuth 재인증이 필요합니다.
+
+8. Cafe24 OAuth 재인증
+   Cafe24 Developers 앱 설정의 Redirect URI:
+   http://127.0.0.1:8787/api/cafe24/oauth/callback
+
+   서버 실행 후 아래 주소 열기:
+   http://127.0.0.1:8787/api/cafe24/oauth/start
+
+   승인 완료 시 .env의 CAFE24_ACCESS_TOKEN과 CAFE24_REFRESH_TOKEN이 자동 갱신됩니다.
+
+9. 로컬과 Render를 같이 쓸 때 권장 방식
+   Cafe24 토큰은 Render 한 곳에서만 갱신하고, 로컬은 Render API를 프록시로 읽는 방식이 가장 편합니다.
+   로컬 .env:
+   CAFE24_PROXY_BASE_URL=https://samplas-meta-dashboard.onrender.com
+   CAFE24_PROXY_ORDERS_PATH=/api/cafe24/orders

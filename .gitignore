@@ -1,0 +1,18 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Local runtime cache and private business data
+work/
+baselines/**/work-samples/
+*.csv
+*.log
+
+# Dependencies and system files
+node_modules/
+.DS_Store
+
+# Local backup/debug artifacts
+*.broken-*
+outputs/samplas-api-env-template.txt

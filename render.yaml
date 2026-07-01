@@ -1,0 +1,62 @@
+services:
+  - type: web
+    name: samplas-meta-dashboard
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/status
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: HOST
+        value: 0.0.0.0
+      - key: REPORT_TIMEZONE
+        value: Asia/Seoul
+      - key: WORK_DIR
+        value: /var/data/samplas-dashboard/work
+      - key: GRAPH_VERSION
+        value: v25.0
+      - key: SAMPLAS_INSTAGRAM_USERNAME
+        value: samplaskr
+      - key: FACEBOOK_PAGE_ID
+        sync: false
+      - key: INSTAGRAM_BUSINESS_ACCOUNT_ID
+        sync: false
+      - key: META_ACCESS_TOKEN
+        sync: false
+      - key: META_AD_ACCOUNT_ID
+        sync: false
+      - key: CAFE24_MALL_ID
+        sync: false
+      - key: CAFE24_CLIENT_ID
+        sync: false
+      - key: CAFE24_CLIENT_SECRET
+        sync: false
+      - key: CAFE24_ACCESS_TOKEN
+        sync: false
+      - key: CAFE24_REFRESH_TOKEN
+        sync: false
+      - key: CAFE24_ACCESS_TOKEN_EXPIRES_AT
+        sync: false
+      - key: CAFE24_REDIRECT_URI
+        sync: false
+      - key: CAFE24_SCOPES
+        sync: false
+      - key: CAFE24_PROXY_SECRET
+        sync: false
+      - key: CAFE24_PROXY_BASIC_AUTH
+        sync: false
+      - key: NAVER_ADS_API_KEY
+        sync: false
+      - key: NAVER_ADS_SECRET_KEY
+        sync: false
+      - key: NAVER_ADS_CUSTOMER_ID
+        sync: false
+      - key: NAVER_ADS_BASE_URL
+        value: https://api.searchad.naver.com
+    disks:
+      - name: samplas-dashboard-data
+        mountPath: /var/data/samplas-dashboard
+        sizeGB: 1
