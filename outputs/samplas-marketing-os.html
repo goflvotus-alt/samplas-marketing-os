@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SAMPLAS Instagram Marketing OS</title>
-  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-content-tabs-v1" />
+  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-sales-v1" />
 </head>
 <body>
   <div class="app-shell">
@@ -149,12 +149,14 @@
         <div class="section-title">
           <div>
             <p class="eyebrow">Advertising</p>
-            <h3>광고 성과와 실제 매출 비교</h3>
+            <h3>광고 성과 분석</h3>
           </div>
         </div>
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Ad + Organic Comparison</p><h3>광고와 유기적 콘텐츠 비교</h3></div></div>
-          <div id="adComparison" class="cards"></div>
+          <div class="section-title compact"><div><p class="eyebrow">Meta Ads</p><h3>캠페인 기준 광고 성과</h3></div></div>
+          <div class="cards">
+            <article class="action-item"><strong>광고 상세 정리 예정</strong><p>현재 Meta 구매값과 Cafe24 실제 매출 비교는 Sales 화면에서 확인합니다.</p></article>
+          </div>
         </div>
       </section>
 
@@ -166,8 +168,12 @@
           </div>
         </div>
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Cafe24 Sales Impact</p><h3>Cafe24 실제 주문 기준 매출 영향</h3></div></div>
+          <div class="section-title compact"><div><p class="eyebrow">Cafe24 Sales</p><h3>Cafe24 실제 주문 기준 매출</h3></div></div>
           <div id="salesImpact" class="cards"></div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Meta / Cafe24</p><h3>Meta 구매값과 Cafe24 실제 매출 차이</h3></div></div>
+          <div id="adComparison" class="cards"></div>
         </div>
       </section>
 
@@ -213,6 +219,6 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260703-content-tabs-v1"></script>
+  <script src="./samplas-marketing-os.js?v=20260703-sales-v1"></script>
 </body>
 </html>

@@ -654,19 +654,18 @@ async function renderCafe24Sales(data) {
   target.classList.add("cards");
   target.classList.remove("instagram-feed");
   target.innerHTML = [
-    `<article class="action-item"><strong>Cafe24 실제 결제금액</strong><span>${apiWon(totals.orderAmount)}</span><p>${source}</p></article>`,
-    `<article class="action-item"><strong>정상 주문 수</strong><span>${apiNum(totals.orderCount)}건</span><p>취소/환불 제외 · ${esc(sales.startDate || startDate)} ~ ${esc(sales.endDate || endDate)}</p></article>`,
+    `<article class="action-item"><strong>Cafe24 실제 매출 요약</strong><span>${apiWon(totals.orderAmount)}</span><p>${source} · ${esc(sales.startDate || startDate)} ~ ${esc(sales.endDate || endDate)}</p></article>`,
+    `<article class="action-item"><strong>정상 주문 수</strong><span>${apiNum(totals.orderCount)}건</span><p>취소/환불 주문 제외 기준</p></article>`,
+    `<article class="action-item"><strong>제외 주문 수</strong><span>${apiNum(totals.excludedOrderCount)}건</span><p>취소/환불로 매출 집계에서 제외</p></article>`,
     `<article class="action-item"><strong>평균 객단가</strong><span>${apiWon(totals.averageOrderAmount)}</span><p>Cafe24 실제 결제 기준</p></article>`,
-    `<article class="action-item"><strong>상품 판매가 합계</strong><span>${apiWon(totals.itemAmount)}</span><p>품목 ${apiNum(totals.itemCount)}개 · 수량 ${apiNum(totals.quantity)}개</p></article>`,
-    `<article class="action-item"><strong>결제수단별 매출</strong><span>${esc(payments[0]?.paymentMethod || "-")}</span><p>${payments.slice(0, 3).map((item) => `${esc(item.paymentMethod || "-")} ${apiWon(item.orderAmount)}`).join("<br>") || "데이터 없음"}</p></article>`,
-    `<article class="action-item"><strong>판매 상품 TOP</strong><span>${esc(topProducts[0]?.productName || "-")}</span><p>${topProducts.slice(0, 3).map((item) => `${esc(item.productName || "-")} · ${apiNum(item.quantity)}개 · ${apiWon(item.itemAmount)}`).join("<br>") || "상품 상세 응답 없음"}</p></article>`
+    `<article class="action-item"><strong>결제수단별 매출</strong><span>${esc(payments[0]?.paymentMethod || "-")}</span><p>${payments.slice(0, 5).map((item) => `${esc(item.paymentMethod || "-")} · ${apiNum(item.orderCount)}건 · ${apiWon(item.orderAmount)}`).join("<br>") || "데이터 없음"}</p></article>`,
+    `<article class="action-item"><strong>판매 상품 TOP</strong><span>${esc(topProducts[0]?.productName || "-")}</span><p>${topProducts.slice(0, 5).map((item) => `${esc(item.productName || "-")} · ${apiNum(item.quantity)}개 · ${apiWon(item.itemAmount)}`).join("<br>") || "상품 상세 응답 없음"}</p></article>`
   ].join("");
 }
 
 async function renderAdComparison(data) {
   const target = $("#adComparison");
   if (!target) return;
-  const posts = data.posts || [];
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
   const [meta, cafe] = await Promise.all([
@@ -679,10 +678,9 @@ async function renderAdComparison(data) {
   const cafeOrderAmount = hasApiValue(cafeTotals.orderAmount) ? Number(cafeTotals.orderAmount) : null;
   const unmatchedValue = meta.error || cafe.error || metaPurchaseValue === null || cafeOrderAmount === null ? null : Math.max(0, metaPurchaseValue - cafeOrderAmount);
   target.innerHTML = [
-    `<article class="action-item"><strong>Meta 기준 추정 구매값</strong><span>${meta.error ? "확인 필요" : apiWon(metaTotals.purchaseValue)}</span><p>${esc(meta.error || meta.source || "Meta Ads API")}</p></article>`,
+    `<article class="action-item"><strong>Meta 기준 추정 구매값</strong><span>${meta.error ? "확인 필요" : apiWon(metaTotals.purchaseValue)}</span><p>${esc(meta.error || meta.source || "Meta Ads API")} · 캠페인 ${apiNum((meta.campaigns || []).length)}개</p></article>`,
     `<article class="action-item"><strong>Cafe24 실제 주문 매출</strong><span>${cafe.error ? "확인 필요" : apiWon(cafeTotals.orderAmount)}</span><p>${esc(cafe.error || cafe24SourceLabel(cafe))} · 정상 주문 ${apiNum(cafeTotals.orderCount)}건</p></article>`,
-    `<article class="action-item"><strong>Meta 구매값과 Cafe24 실제 매출 차이</strong><span>${unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue)}</span><p>현재 Meta 데이터는 캠페인 단위입니다. 제품 단위 매칭은 Meta Catalog / Pixel content_id / Cafe24 product_no 연결 이후 가능합니다.</p></article>`,
-    `<article class="action-item"><strong>광고 집행 콘텐츠</strong><span>${num(posts.filter((post) => Number(post.adSpend || 0)).length)}개</span><p>유기적 콘텐츠 ${num(posts.filter((post) => !Number(post.adSpend || 0)).length)}개</p></article>`
+    `<article class="action-item"><strong>Meta 구매값과 Cafe24 실제 매출 차이</strong><span>${unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue)}</span><p>현재 Meta 데이터는 캠페인 단위입니다. 제품 단위 매칭은 Meta Catalog / Pixel content_id / Cafe24 product_no 연결 이후 가능합니다.</p></article>`
   ].join("");
 }
 
