@@ -1403,31 +1403,53 @@ async function buildInstagramMonthlyData(month) {
   const account = await graphGet(igId, {
     fields: "id,username,name,followers_count,media_count"
   });
-  const accountInsights = await fetchInstagramAccountInsights(igId, month);
-  const media = await fetchMedia(igId);
+  const media = await fetchMedia(igId, { maxPages: 2 });
   const monthMedia = media.filter((item) => String(item.timestamp || "").startsWith(month));
-  const posts = [];
-  for (const item of monthMedia) {
+  const postMedia = monthMedia.length ? monthMedia : isCurrentMonth(month) ? media.slice(0, 12) : monthMedia;
+  const errors = [];
+  const posts = await mapWithConcurrency(postMedia, 6, async (item) => {
     const insights = await fetchMediaInsights(item.id);
-    posts.push(normalizePost(item, insights));
+    if (insights.unavailableReason) {
+      errors.push({ source: "instagram_media_insights", mediaId: item.id, message: insights.unavailableReason });
+    }
+    return normalizePost(item, insights);
+  });
+  const accountInsights = await fetchInstagramAccountInsights(igId, month);
+  if (accountInsights.unavailableReason) {
+    errors.push({ source: "instagram_account_insights", message: accountInsights.unavailableReason });
   }
 
   const result = {
     month,
     source: "instagram_graph_api",
     syncedAt: new Date().toISOString(),
+    graphVersion,
+    apiStatus: errors.length ? "partial" : "ok",
+    apiErrors: errors,
+    accountIdentity: {
+      id: account.id,
+      username: account.username || env.SAMPLAS_INSTAGRAM_USERNAME || "",
+      name: account.name || "",
+      followerCount: account.followers_count ?? null,
+      mediaCount: account.media_count ?? null
+    },
+    mediaFetched: media.length,
+    monthMediaCount: monthMedia.length,
+    postsScope: monthMedia.length ? "selected_month" : isCurrentMonth(month) ? "recent_media_fallback" : "selected_month",
     account: {
-      followers: account.followers_count || 0,
+      username: account.username || env.SAMPLAS_INSTAGRAM_USERNAME || "",
+      mediaCount: account.media_count ?? null,
+      followers: account.followers_count ?? null,
       followerDelta: 0,
-      reach: Number(accountInsights.reach || 0) || sum(posts, "reach"),
+      reach: hasMetric(accountInsights.reach) ? Number(accountInsights.reach) : sumMetricOrNull(posts, "reach"),
       reachDelta: 0,
-      views: Number(accountInsights.views || 0) || sum(posts, "views"),
+      views: hasMetric(accountInsights.views) ? Number(accountInsights.views) : sumMetricOrNull(posts, "views"),
       viewsDelta: 0,
-      profileVisits: Number(accountInsights.profile_views || 0),
+      profileVisits: hasMetric(accountInsights.profile_views) ? Number(accountInsights.profile_views) : null,
       profileVisitDelta: 0,
-      websiteClicks: Number(accountInsights.website_clicks || 0),
+      websiteClicks: hasMetric(accountInsights.website_clicks) ? Number(accountInsights.website_clicks) : null,
       websiteClickDelta: 0,
-      accountEngagement: posts.reduce((total, post) => total + (post.totalInteractions || post.likes + post.comments + post.saves + post.shares), 0),
+      accountEngagement: sumPostInteractionsOrNull(posts),
       growthRate: 0
     },
     previous: {},
@@ -1437,6 +1459,24 @@ async function buildInstagramMonthlyData(month) {
   await mkdir(workDir, { recursive: true });
   await writeFile(join(workDir, `instagram-${month}.json`), JSON.stringify(result, null, 2));
   return result;
+}
+
+function hasMetric(value) {
+  return value !== null && value !== undefined && value !== "";
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 async function buildInstagramMonthlyDataWithCache(month, options = {}) {
@@ -1479,15 +1519,17 @@ async function readCachedInstagramMonth(month) {
 
 function emptyInstagramAccount() {
   return {
-    followers: 0,
+    username: env.SAMPLAS_INSTAGRAM_USERNAME || "",
+    mediaCount: null,
+    followers: null,
     followerDelta: 0,
-    reach: 0,
+    reach: null,
     reachDelta: 0,
-    views: 0,
+    views: null,
     viewsDelta: 0,
-    profileVisits: 0,
+    profileVisits: null,
     profileVisitDelta: 0,
-    websiteClicks: 0,
+    websiteClicks: null,
     websiteClickDelta: 0,
     accountEngagement: 0,
     growthRate: 0
@@ -1607,7 +1649,7 @@ function summarizeStories(stories) {
   };
 }
 
-async function fetchMedia(igId) {
+async function fetchMedia(igId, options = {}) {
   const fields = [
     "id",
     "caption",
@@ -1622,7 +1664,8 @@ async function fetchMedia(igId) {
   ].join(",");
   const items = [];
   let after = "";
-  for (let page = 0; page < 10; page += 1) {
+  const maxPages = Number(options.maxPages || 10);
+  for (let page = 0; page < maxPages; page += 1) {
     const body = await graphGet(`${igId}/media`, { fields, limit: 100, after });
     items.push(...(body.data || []));
     after = body.paging?.cursors?.after || "";
@@ -1633,9 +1676,11 @@ async function fetchMedia(igId) {
 
 async function fetchMediaInsights(mediaId) {
   const normal = await fetchInsightGroup(`${mediaId}/insights`, "instagram_media_insights", { mediaId }, [
+    { metric: "reach,saved,shares,total_interactions,likes,comments" },
     { metric: "reach,saved,shares,total_interactions" },
     { metric: "reach,saved,total_interactions" },
-    { metric: "reach,total_interactions" }
+    { metric: "reach,total_interactions" },
+    { metric: "reach" }
   ]);
   const totalValue = await fetchInsightGroup(`${mediaId}/insights`, "instagram_media_insights_total_value", { mediaId }, [
     { metric: "views", metric_type: "total_value" }
@@ -1654,7 +1699,8 @@ async function fetchInstagramAccountInsights(igId, month) {
     { metric: "profile_views,website_clicks", metric_type: "total_value", period: "day", since, until },
     { metric: "views", metric_type: "total_value", period: "day", since, until }
   ], { sumSeries: true });
-  return { ...reach, ...totals };
+  const unavailableReason = [reach.unavailableReason, totals.unavailableReason].filter(Boolean).join(" / ");
+  return { ...reach, ...totals, unavailableReason: unavailableReason || "" };
 }
 
 async function fetchInsightGroup(path, source, context, attempts, options = {}) {
@@ -1714,14 +1760,14 @@ function normalizePost(item, insights) {
     permalink: item.permalink,
     mediaUrl: item.media_url || "",
     thumbnailUrl: item.thumbnail_url || item.media_url || "",
-    reach: insights.reach || 0,
-    views: insights.views || 0,
-    likes: item.like_count || 0,
-    comments: item.comments_count || 0,
-    saves: insights.saved || 0,
-    shares: insights.shares || 0,
-    totalInteractions: insights.total_interactions || 0,
-    plays: item.media_product_type === "REELS" ? insights.views || 0 : 0,
+    reach: metricOrNull(insights.reach),
+    views: metricOrNull(insights.views),
+    likes: metricOrNull(item.like_count),
+    comments: metricOrNull(item.comments_count),
+    saves: metricOrNull(insights.saved),
+    shares: metricOrNull(insights.shares),
+    totalInteractions: metricOrNull(insights.total_interactions),
+    plays: item.media_product_type === "REELS" ? metricOrNull(insights.views) : null,
     profileVisits: 0,
     follows: 0,
     websiteClicks: 0,
@@ -1732,6 +1778,24 @@ function normalizePost(item, insights) {
     salesLift7d: 0,
     unavailableReason: insights.unavailableReason
   };
+}
+
+function metricOrNull(value) {
+  return hasMetric(value) ? Number(value) : null;
+}
+
+function sumMetricOrNull(items, key) {
+  const values = items.map((item) => item[key]).filter(hasMetric);
+  return values.length ? values.reduce((total, value) => total + Number(value), 0) : null;
+}
+
+function sumPostInteractionsOrNull(posts) {
+  const values = posts.map((post) => {
+    if (hasMetric(post.totalInteractions)) return post.totalInteractions;
+    const metrics = [post.likes, post.comments, post.saves, post.shares].filter(hasMetric);
+    return metrics.length ? metrics.reduce((total, value) => total + Number(value), 0) : null;
+  }).filter(hasMetric);
+  return values.length ? values.reduce((total, value) => total + Number(value), 0) : null;
 }
 
 function contentType(item) {

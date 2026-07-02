@@ -47,6 +47,16 @@ function apiWon(value) {
   return hasApiValue(value) ? `${nf.format(Math.round(Number(value)))}원` : "-";
 }
 
+function instagramApiErrors(data = {}) {
+  const errors = data.apiErrors || [];
+  const account = errors.find((item) => item.source === "instagram_account_insights")?.message || "";
+  const media = errors.find((item) => item.source === "instagram_media_insights")?.message || "";
+  return {
+    account: account ? `API 오류: ${account}` : "",
+    media: media ? `API 오류: ${media}` : ""
+  };
+}
+
 function pct(value) {
   const n = Number(value);
   return Number.isFinite(n) ? `${n.toFixed(1)}%` : "-";
@@ -227,14 +237,18 @@ function renderKpis(data) {
   const a = data.account || {};
   const postCount = (data.posts || []).length;
   const adSpend = (data.posts || []).reduce((sum, post) => sum + Number(post.adSpend || 0), 0);
+  const instagramErrors = instagramApiErrors(data);
+  const postsScopeNote = data.postsScope === "recent_media_fallback"
+    ? "월 게시물 0개 · 최근 미디어 표시"
+    : `최근 미디어 ${apiNum(data.mediaFetched)}개 · 월 필터 ${apiNum(data.monthMediaCount)}개`;
   const items = [
-    ["팔로워", num(a.followers), `순증 +${num(a.followerDelta)} / 성장률 ${pct(a.growthRate)}`],
-    ["도달", num(a.reach), `전월 대비 ${pct(a.reachDelta)}`],
-    ["조회", num(a.views), `전월 대비 ${pct(a.viewsDelta)}`],
-    ["프로필 방문", num(a.profileVisits), `전월 대비 ${pct(a.profileVisitDelta)}`],
-    ["웹사이트 클릭", num(a.websiteClicks), `전월 대비 ${pct(a.websiteClickDelta)}`],
-    ["계정 참여", num(a.accountEngagement), "CSV / API 인사이트 기준"],
-    ["월간 콘텐츠", `${num(postCount)}개`, "게시물별 캐시 유지"],
+    ["팔로워", apiNum(a.followers), `@${a.username || data.accountIdentity?.username || "samplaskr"} · media_count ${apiNum(a.mediaCount ?? data.accountIdentity?.mediaCount)}`],
+    ["도달", apiNum(a.reach), instagramErrors.account || `전월 대비 ${pct(a.reachDelta)}`],
+    ["조회", apiNum(a.views), instagramErrors.account || `전월 대비 ${pct(a.viewsDelta)}`],
+    ["프로필 방문", apiNum(a.profileVisits), instagramErrors.account || `전월 대비 ${pct(a.profileVisitDelta)}`],
+    ["웹사이트 클릭", apiNum(a.websiteClicks), instagramErrors.account || `전월 대비 ${pct(a.websiteClickDelta)}`],
+    ["계정 참여", apiNum(a.accountEngagement), instagramErrors.media || "게시물별 인사이트 기준"],
+    ["월간 콘텐츠", `${apiNum(postCount)}개`, postsScopeNote],
     ["광고비", krw(adSpend), "게시물 매핑 기준"]
   ];
   $("#kpiGrid").innerHTML = items.map(([label, value, delta]) => (
@@ -265,9 +279,13 @@ async function renderOverviewLiveData(data) {
     ? `IG Business ${status.instagramBusinessAccountId || "-"}`
     : `누락: ${(missing.instagram?.missing || []).join(", ") || "확인 필요"}`;
   const instagramBlocked = isPermissionBlocked(data);
+  const instagramErrors = instagramApiErrors(data);
+  const instagramMessage = instagramBlocked
+    ? data.error
+    : instagramErrors.account || instagramErrors.media || instagramDetail;
 
   target.innerHTML = [
-    `<article class="action-item"><strong>Instagram API</strong><span>${instagramBlocked ? "권한 차단" : status.instagram ? "연결됨" : "환경변수 필요"}</span><p>${esc(instagramBlocked ? data.error : instagramDetail)} · 도달 ${num(a.reach)} / 조회 ${num(a.views)}</p></article>`,
+    `<article class="action-item"><strong>Instagram API</strong><span>${instagramBlocked ? "권한 차단" : status.instagram ? (data.apiStatus === "partial" ? "부분 연결" : "연결됨") : "환경변수 필요"}</span><p>${esc(instagramMessage)} · 도달 ${apiNum(a.reach)} / 조회 ${apiNum(a.views)} / 게시물 ${apiNum((data.posts || []).length)}개</p></article>`,
     `<article class="action-item"><strong>Meta Ads</strong><span>${isPermissionBlocked(meta) ? "권한 차단" : meta.error ? "확인 필요" : krw(metaTotals.spend)}</span><p>${esc(metaSource)} · 캠페인 ${num((meta.campaigns || []).length)}개</p></article>`,
     `<article class="action-item"><strong>Cafe24 매출</strong><span>${cafe.error ? "확인 필요" : apiWon(cafeTotals.orderAmount)}</span><p>${esc(cafeSource)} · totals.orderAmount</p></article>`,
     `<article class="action-item"><strong>Cafe24 주문 수</strong><span>${cafe.error ? "확인 필요" : `${apiNum(cafeTotals.orderCount)}건`}</span><p>totals.orderCount${hasApiValue(cafeTotals.excludedOrderCount) ? ` · 제외 ${apiNum(cafeTotals.excludedOrderCount)}건` : ""}</p></article>`,
@@ -277,6 +295,12 @@ async function renderOverviewLiveData(data) {
 
 function interaction(post) {
   return Number(post.totalInteractions || 0) || Number(post.likes || 0) + Number(post.comments || 0) + Number(post.saves || 0) + Number(post.shares || 0);
+}
+
+function postInteractionValue(post) {
+  if (hasApiValue(post.totalInteractions)) return post.totalInteractions;
+  const values = [post.likes, post.comments, post.saves, post.shares].filter(hasApiValue);
+  return values.length ? values.reduce((total, value) => total + Number(value), 0) : null;
 }
 
 function sum(items, key) {
@@ -391,8 +415,8 @@ function renderContentTable(posts, filter = "All") {
       <td><strong>${esc(post.tag || "-")}</strong><br>${esc(post.title || "-")}</td>
       <td>${esc(post.type || "-")}</td>
       <td>${esc(post.objective || "-")}</td>
-      <td>좋아요 ${num(post.likes)}<br>댓글 ${num(post.comments)}<br>저장 ${num(post.saves)} / 공유 ${num(post.shares)}</td>
-      <td>${esc(explainPost(post))}</td>
+      <td>좋아요 ${apiNum(post.likes)}<br>댓글 ${apiNum(post.comments)}<br>저장 ${apiNum(post.saves)} / 공유 ${apiNum(post.shares)}</td>
+      <td>${esc(post.unavailableReason ? `API 오류: ${post.unavailableReason}` : explainPost(post))}</td>
     </tr>`
   )).join("") || `<tr><td colspan="6">게시물별 데이터가 없습니다.</td></tr>`;
 }
@@ -402,11 +426,12 @@ function metricCard(post) {
     <h4>${esc(post.title || "Untitled")}</h4>
     <p>${esc(post.date || "-")} · ${esc(post.tag || post.type || "-")}</p>
     <div class="report-metrics">
-      <span>도달 <strong>${num(post.reach)}</strong></span>
-      <span>조회 <strong>${num(post.views)}</strong></span>
-      <span>상호작용 <strong>${num(interaction(post))}</strong></span>
-      <span>클릭 <strong>${num(post.websiteClicks)}</strong></span>
+      <span>도달 <strong>${apiNum(post.reach)}</strong></span>
+      <span>조회 <strong>${apiNum(post.views)}</strong></span>
+      <span>상호작용 <strong>${apiNum(postInteractionValue(post))}</strong></span>
+      <span>클릭 <strong>${apiNum(post.websiteClicks)}</strong></span>
     </div>
+    ${post.unavailableReason ? `<p class="delta">API 오류: ${esc(post.unavailableReason)}</p>` : ""}
   </article>`;
 }
 
@@ -421,16 +446,16 @@ function feedCard(post, options = {}) {
   const statMode = options.statMode || "default";
   const stats = statMode === "cardnews"
     ? [
-        ["좋아요", num(post.likes)],
-        ["댓글", num(post.comments)],
-        ["공유", num(post.shares)],
-        ["저장", num(post.saves)]
+        ["좋아요", apiNum(post.likes)],
+        ["댓글", apiNum(post.comments)],
+        ["공유", apiNum(post.shares)],
+        ["저장", apiNum(post.saves)]
       ]
     : [
-        ["도달", num(post.reach)],
-        ["조회", num(post.views)],
-        ["저장", num(post.saves)],
-        ["공유", num(post.shares)]
+        ["도달", apiNum(post.reach)],
+        ["조회", apiNum(post.views)],
+        ["저장", apiNum(post.saves)],
+        ["공유", apiNum(post.shares)]
       ];
   return `<article class="feed-card">
     <a class="feed-media ${imageUrl ? "has-image" : ""}"${mediaStyle} href="${esc(post.permalink || "#")}" target="_blank" rel="noreferrer">
@@ -443,6 +468,7 @@ function feedCard(post, options = {}) {
         <span class="chip">${esc(post.date || "-")}</span>
       </div>
       <p class="feed-caption">${esc(post.caption || "캡션 없음")}</p>
+      ${post.unavailableReason ? `<p class="delta">API 오류: ${esc(post.unavailableReason)}</p>` : ""}
       <div class="feed-stats">${stats.map(([label, value]) => feedStat(label, value)).join("")}</div>
       <div class="chip-row">
         <span class="chip">저장률 ${pct(m.saveRate)}</span>
@@ -707,7 +733,7 @@ function renderAll() {
 async function loadMonths() {
   monthlyData = [];
   for (const month of months) {
-    const data = await getJson(`/api/instagram/monthly?month=${month}`, 8000);
+    const data = await getJson(`/api/instagram/monthly?month=${month}`, 20000);
     monthlyData.push(data.error ? errorMonth(month, data.error) : data);
   }
   monthlyData.sort((a, b) => b.month.localeCompare(a.month));
