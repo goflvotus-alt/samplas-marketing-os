@@ -295,6 +295,18 @@ select,
   font-size: 24px;
 }
 
+.section-block {
+  margin-top: 22px;
+}
+
+.section-block:first-child {
+  margin-top: 0;
+}
+
+.section-title.compact h3 {
+  font-size: 19px;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

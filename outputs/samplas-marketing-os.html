@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SAMPLAS Instagram Marketing OS</title>
-  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260702-render-env-v1" />
+  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-ia-v1" />
 </head>
 <body>
   <div class="app-shell">
@@ -65,115 +65,147 @@
             <div id="insightList" class="insight-list"></div>
           </div>
         </div>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Action Items</p>
+              <h3>오늘 확인할 실행 체크리스트</h3>
+            </div>
+          </div>
+          <div id="actions" class="action-list"></div>
+        </div>
       </section>
 
-      <section id="Monthly Report" class="view">
+      <section id="Content" class="view">
         <div class="section-title">
           <div>
-            <p class="eyebrow">Monthly Report</p>
+            <p class="eyebrow">Content</p>
+            <h3>콘텐츠 성과 분석</h3>
+          </div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Content Performance</p>
+              <h3>콘텐츠별 KPI 평가</h3>
+            </div>
+            <div class="segmented" role="group" aria-label="콘텐츠 필터">
+              <button class="segment active" data-filter="All">All</button>
+              <button class="segment" data-filter="Brand Discovery">Brand Discovery</button>
+              <button class="segment" data-filter="Product Focus">Product Focus</button>
+              <button class="segment" data-filter="Editorial Cardnews">Cardnews</button>
+              <button class="segment" data-filter="Reels">Reels</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>게시일</th>
+                  <th>태그</th>
+                  <th>포맷</th>
+                  <th>목적</th>
+                  <th>핵심 KPI</th>
+                  <th>성과 해석</th>
+                </tr>
+              </thead>
+              <tbody id="contentRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Reels Report</p><h3>릴스 유입 분석</h3></div></div>
+          <div id="reelsReport" class="cards"></div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Cardnews Report</p><h3>카드뉴스 저장/공유 분석</h3></div></div>
+          <div id="cardnewsReport" class="cards"></div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Story Insights</p>
+              <h3>스토리 도달/이탈/답장 분석</h3>
+            </div>
+            <button id="refreshStoriesBtn" class="button secondary" type="button">스토리 새로 수집</button>
+          </div>
+          <div id="storyStatus" class="cards"></div>
+          <div id="storyBoard" class="instagram-feed"></div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Website Click / Conversion</p><h3>유입 및 전환 신호</h3></div></div>
+          <div id="conversionGrid" class="cards"></div>
+        </div>
+      </section>
+
+      <section id="Advertising" class="view">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Advertising</p>
+            <h3>광고 성과와 실제 매출 비교</h3>
+          </div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Ad + Organic Comparison</p><h3>광고와 유기적 콘텐츠 비교</h3></div></div>
+          <div id="adComparison" class="cards"></div>
+        </div>
+      </section>
+
+      <section id="Sales" class="view">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Sales</p>
+            <h3>Cafe24 실제 매출 분석</h3>
+          </div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Cafe24 Sales Impact</p><h3>Cafe24 실제 주문 기준 매출 영향</h3></div></div>
+          <div id="salesImpact" class="cards"></div>
+        </div>
+      </section>
+
+      <section id="Reports" class="view">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Reports</p>
             <h3>대표 보고용 월간 대시보드</h3>
           </div>
         </div>
-        <div id="monthRail" class="month-rail" aria-label="월별 리포트 선택"></div>
-        <div id="monthlyDashboard" class="monthly-dashboard"></div>
-        <textarea id="reportText" class="report-box collapsed" hidden readonly></textarea>
+        <div class="section-block">
+          <div id="monthRail" class="month-rail" aria-label="월별 리포트 선택"></div>
+          <div id="monthlyDashboard" class="monthly-dashboard"></div>
+          <textarea id="reportText" class="report-box collapsed" hidden readonly></textarea>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Follower Growth</p><h3>팔로워 성장 흐름</h3></div></div>
+          <div class="panel"><div id="growthChart" class="bar-chart"></div></div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Content Calendar</p><h3>다음 달 콘텐츠 제안</h3></div></div>
+          <div id="calendarGrid" class="calendar-grid"></div>
+        </div>
       </section>
 
-      <section id="Content Performance" class="view">
+      <section id="Settings" class="view">
         <div class="section-title">
           <div>
-            <p class="eyebrow">Content Performance</p>
-            <h3>콘텐츠별 KPI 평가</h3>
-          </div>
-          <div class="segmented" role="group" aria-label="콘텐츠 필터">
-            <button class="segment active" data-filter="All">All</button>
-            <button class="segment" data-filter="Brand Discovery">Brand Discovery</button>
-            <button class="segment" data-filter="Product Focus">Product Focus</button>
-            <button class="segment" data-filter="Editorial Cardnews">Cardnews</button>
-            <button class="segment" data-filter="Reels">Reels</button>
+            <p class="eyebrow">Settings</p>
+            <h3>연동 상태와 API 설정</h3>
           </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>게시일</th>
-                <th>태그</th>
-                <th>포맷</th>
-                <th>목적</th>
-                <th>핵심 KPI</th>
-                <th>성과 해석</th>
-              </tr>
-            </thead>
-            <tbody id="contentRows"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="Reels Report" class="view">
-        <div class="section-title"><div><p class="eyebrow">Reels Report</p><h3>릴스 유입 분석</h3></div></div>
-        <div id="reelsReport" class="cards"></div>
-      </section>
-
-      <section id="Cardnews Report" class="view">
-        <div class="section-title"><div><p class="eyebrow">Cardnews Report</p><h3>카드뉴스 저장/공유 분석</h3></div></div>
-        <div id="cardnewsReport" class="cards"></div>
-      </section>
-
-      <section id="Story Insights" class="view">
-        <div class="section-title">
-          <div>
-            <p class="eyebrow">Story Insights</p>
-            <h3>스토리 도달/이탈/답장 분석</h3>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">API Setup</p>
+              <h3>실제 연동을 위해 지금 세팅할 것</h3>
+            </div>
           </div>
-          <button id="refreshStoriesBtn" class="button secondary" type="button">스토리 새로 수집</button>
+          <div id="apiSetup" class="cards"></div>
         </div>
-        <div id="storyStatus" class="cards"></div>
-        <div id="storyBoard" class="instagram-feed"></div>
-      </section>
-
-      <section id="Follower Growth" class="view">
-        <div class="section-title"><div><p class="eyebrow">Follower Growth</p><h3>팔로워 성장 흐름</h3></div></div>
-        <div class="panel"><div id="growthChart" class="bar-chart"></div></div>
-      </section>
-
-      <section id="Website Click / Conversion" class="view">
-        <div class="section-title"><div><p class="eyebrow">Website Click / Conversion</p><h3>유입 및 전환 신호</h3></div></div>
-        <div id="conversionGrid" class="cards"></div>
-      </section>
-
-      <section id="Ad + Organic Comparison" class="view">
-        <div class="section-title"><div><p class="eyebrow">Ad + Organic Comparison</p><h3>광고와 유기적 콘텐츠 비교</h3></div></div>
-        <div id="adComparison" class="cards"></div>
-      </section>
-
-      <section id="Cafe24 Sales Impact" class="view">
-        <div class="section-title"><div><p class="eyebrow">Cafe24 Sales Impact</p><h3>Cafe24 실제 주문 기준 매출 영향</h3></div></div>
-        <div id="salesImpact" class="cards"></div>
-      </section>
-
-      <section id="Content Calendar" class="view">
-        <div class="section-title"><div><p class="eyebrow">Content Calendar</p><h3>다음 달 콘텐츠 제안</h3></div></div>
-        <div id="calendarGrid" class="calendar-grid"></div>
-      </section>
-
-      <section id="API Setup" class="view">
-        <div class="section-title">
-          <div>
-            <p class="eyebrow">API Setup</p>
-            <h3>실제 연동을 위해 지금 세팅할 것</h3>
-          </div>
-        </div>
-        <div id="apiSetup" class="cards"></div>
-      </section>
-
-      <section id="Action Items" class="view">
-        <div class="section-title"><div><p class="eyebrow">Action Items</p><h3>실행 체크리스트</h3></div></div>
-        <div id="actions" class="action-list"></div>
       </section>
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260702-render-env-v1"></script>
+  <script src="./samplas-marketing-os.js?v=20260703-ia-v1"></script>
 </body>
 </html>

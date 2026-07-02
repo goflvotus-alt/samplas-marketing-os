@@ -1,17 +1,10 @@
 const navItems = [
   "Overview",
-  "Monthly Report",
-  "Content Performance",
-  "Reels Report",
-  "Cardnews Report",
-  "Story Insights",
-  "Follower Growth",
-  "Website Click / Conversion",
-  "Ad + Organic Comparison",
-  "Cafe24 Sales Impact",
-  "Content Calendar",
-  "API Setup",
-  "Action Items"
+  "Content",
+  "Advertising",
+  "Sales",
+  "Reports",
+  "Settings"
 ];
 
 const months = ["2026-07", "2026-06", "2026-05", "2026-04", "2026-03", "2026-02", "2026-01"];
@@ -747,7 +740,7 @@ function bind() {
     await loadMonths();
     await renderStoryInsights();
   });
-  $("#monthlyReportBtn")?.addEventListener("click", () => document.querySelector('[data-view="Monthly Report"]')?.click());
+  $("#monthlyReportBtn")?.addEventListener("click", () => document.querySelector('[data-view="Reports"]')?.click());
   $("#refreshStoriesBtn")?.addEventListener("click", renderStoryInsights);
   $("#syncFixBtn")?.addEventListener("click", () => toast("Cafe24 오류는 Render Cafe24 재인증이 필요합니다."));
   $$(".segment[data-filter]").forEach((button) => {
