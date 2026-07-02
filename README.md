@@ -105,6 +105,10 @@ Meta token permission recovery is documented here:
 
 `META_ACCESS_TOKEN_RECOVERY.md`
 
+Cafe24 OAuth token recovery is documented here:
+
+`CAFE24_OAUTH_RECOVERY.md`
+
 ## GitHub Private Repo Setup
 
 Use a private GitHub repository named:

@@ -95,10 +95,8 @@ createServer(async (req, res) => {
       return redirect(res, buildCafe24AuthorizeUrl());
     }
     if (url.pathname === "/api/cafe24/oauth/callback") {
-      await handleCafe24OAuthCallback(url);
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(`<!doctype html><meta charset="utf-8"><title>Cafe24 Connected</title><body style="font-family:system-ui;padding:32px"><h1>Cafe24 연결 완료</h1><p>새 Cafe24 토큰을 .env에 저장했습니다.</p><p><a href="/">대시보드로 돌아가기</a></p></body>`);
-      return;
+      const data = await handleCafe24OAuthCallback(url);
+      return html(res, cafe24OAuthSuccessHtml(data));
     }
     if (url.pathname === "/api/diagnostics/logs") {
       const data = await readApiErrorLog(Number(url.searchParams.get("limit") || 50));
@@ -833,9 +831,13 @@ function buildCafe24AuthorizeUrl() {
 
 async function handleCafe24OAuthCallback(callbackUrl) {
   const code = callbackUrl.searchParams.get("code");
+  const state = callbackUrl.searchParams.get("state");
   const error = callbackUrl.searchParams.get("error");
   if (error) throw new Error(`Cafe24 OAuth error: ${error}`);
   if (!code) throw new Error("Cafe24 OAuth callback에 code가 없습니다.");
+  if (env.CAFE24_OAUTH_STATE && state !== env.CAFE24_OAUTH_STATE) {
+    throw new Error("Cafe24 OAuth state가 일치하지 않습니다. 재인증을 다시 시작하세요.");
+  }
 
   const required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID", "CAFE24_CLIENT_SECRET"];
   const missing = required.filter((key) => !env[key]);
@@ -878,10 +880,58 @@ async function handleCafe24OAuthCallback(callbackUrl) {
 
   return {
     ok: true,
+    accessToken: env.CAFE24_ACCESS_TOKEN,
+    refreshToken: env.CAFE24_REFRESH_TOKEN,
     accessTokenLength: env.CAFE24_ACCESS_TOKEN.length,
     refreshTokenLength: env.CAFE24_REFRESH_TOKEN.length,
     expiresAt: env.CAFE24_ACCESS_TOKEN_EXPIRES_AT || null
   };
+}
+
+function cafe24OAuthSuccessHtml(data) {
+  const envText = [
+    `CAFE24_ACCESS_TOKEN=${data.accessToken}`,
+    `CAFE24_REFRESH_TOKEN=${data.refreshToken}`,
+    `CAFE24_ACCESS_TOKEN_EXPIRES_AT=${data.expiresAt || ""}`
+  ].join("\n");
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cafe24 Connected</title>
+  <style>
+    body { margin:0; padding:32px; font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif; background:#f7f7f4; color:#14282d; }
+    main { max-width:900px; margin:0 auto; }
+    h1 { margin:0 0 12px; font-size:32px; }
+    p { color:#58666b; line-height:1.6; }
+    textarea { width:100%; min-height:180px; padding:16px; font:14px ui-monospace,SFMono-Regular,Menlo,monospace; border:1px solid #cdd6d9; background:white; color:#14282d; }
+    .warning { padding:16px; border:1px solid #ffb84d; background:#fff7e8; margin:20px 0; }
+    a { color:#0f3b45; font-weight:800; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Cafe24 연결 완료</h1>
+    <p>새 Cafe24 토큰이 발급되었습니다. 아래 3개 값을 Render Environment Variables에 그대로 업데이트하세요.</p>
+    <div class="warning">
+      이 화면에는 실제 토큰이 표시됩니다. 다른 사람에게 공유하지 말고, Render에 저장한 뒤 이 탭을 닫으세요.
+    </div>
+    <textarea readonly>${escapeHtml(envText)}</textarea>
+    <p>Render에 저장 후 서비스를 재시작하거나 재배포한 다음 <a href="/api/cafe24/health">/api/cafe24/health</a>와 <a href="/api/cafe24/orders">/api/cafe24/orders</a>를 확인하세요.</p>
+    <p><a href="/">대시보드로 돌아가기</a></p>
+  </main>
+</body>
+</html>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function cafe24RedirectUri() {

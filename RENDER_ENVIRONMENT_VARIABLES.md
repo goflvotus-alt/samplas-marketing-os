@@ -246,6 +246,12 @@ Official Cafe24 docs:
 - https://developers.cafe24.com
 - https://developers.cafe24.com/docs/api/admin
 
+Cafe24 expired-token recovery:
+
+```txt
+CAFE24_OAUTH_RECOVERY.md
+```
+
 ## Verify After Input
 
 After all environment variables are saved and the Render service is redeployed:

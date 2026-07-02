@@ -581,8 +581,9 @@ function renderOtherSections(data) {
   $("#apiSetup").innerHTML = [
     ["Instagram", "1-6월은 CSV 고정 데이터, 현재 월은 API/캐시 확인"],
     ["Meta Ads", "API 차단 시 저장된 광고 캐시로 업무 지속"],
-    ["Cafe24", "왼쪽 상태는 실제 health 체크 기준으로 표시"]
-  ].map(([title, note]) => `<article class="action-item"><strong>${title}</strong><p>${note}</p></article>`).join("");
+    ["Cafe24", "왼쪽 상태는 실제 health 체크 기준으로 표시"],
+    ["Cafe24 재인증", "access_token / refresh_token이 모두 만료되면 OAuth 재승인이 필요합니다.", "/api/cafe24/oauth/start"]
+  ].map(([title, note, href]) => `<article class="action-item"><strong>${title}</strong><p>${note}</p>${href ? `<a class="button secondary" href="${href}" target="_blank" rel="noreferrer">재인증 시작</a>` : ""}</article>`).join("");
   $("#actions").innerHTML = [
     "월말 CSV로 과거 월 확정",
     "현재 월 API/캐시 점검",
