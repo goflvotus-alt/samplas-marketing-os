@@ -337,6 +337,36 @@ select,
   box-shadow: var(--shadow);
 }
 
+.action-item.good {
+  border-color: rgba(32, 111, 84, 0.35);
+  background: #f3faf6;
+}
+
+.action-item.warn {
+  border-color: rgba(215, 166, 66, 0.45);
+  background: #fff9e8;
+}
+
+.action-item.urgent {
+  border-color: rgba(169, 66, 61, 0.45);
+  background: #fff3f1;
+}
+
+.action-item.good span,
+.action-item.good strong {
+  color: var(--green);
+}
+
+.action-item.warn span,
+.action-item.warn strong {
+  color: #8a650f;
+}
+
+.action-item.urgent span,
+.action-item.urgent strong {
+  color: var(--red);
+}
+
 .kpi {
   padding: 16px;
   min-height: 126px;

@@ -45,8 +45,8 @@ function instagramApiErrors(data = {}) {
   const account = errors.find((item) => item.source === "instagram_account_insights")?.message || "";
   const media = errors.find((item) => item.source === "instagram_media_insights")?.message || "";
   return {
-    account: account ? `API 오류: ${account}` : "",
-    media: media ? `API 오류: ${media}` : ""
+    account: account ? `데이터 오류: ${account}` : "",
+    media: media ? `데이터 오류: ${media}` : ""
   };
 }
 
@@ -134,10 +134,10 @@ function errorMonth(month, error) {
 
 function sourceLabel(data) {
   if (!data) return "-";
-  if (data.source === "csv_required") return "CSV 필요";
-  if (String(data.source || "").startsWith("csv_import")) return "CSV";
-  if (String(data.source || "").includes("_cached")) return "캐시";
-  if (String(data.source || "").includes("graph_api")) return "API";
+  if (data.source === "csv_required") return "업로드 필요";
+  if (String(data.source || "").startsWith("csv_import")) return "저장 데이터";
+  if (String(data.source || "").includes("_cached")) return "저장 데이터";
+  if (String(data.source || "").includes("graph_api")) return "자동 갱신";
   return data.source || "-";
 }
 
@@ -233,8 +233,8 @@ function renderKpis(data) {
   if (data.error) {
     const status = statusTextForError(data);
     $("#kpiGrid").innerHTML = [
-      ["API 오류", status, data.error],
-      ["월", data.month || "-", "Render API 로그를 확인하세요"],
+      ["데이터 오류", status, data.error],
+      ["월", data.month || "-", "연결 상태를 확인하세요"],
       ["표시 상태", "0으로 대체 안 함", "실제 데이터가 없으면 원인을 표시합니다."]
     ].map(([label, value, delta]) => (
       `<article class="kpi"><span>${esc(label)}</span><strong>${esc(value)}</strong><p class="delta">${esc(delta)}</p></article>`
@@ -265,7 +265,8 @@ async function renderOverviewLiveData(data) {
   if (!target) return;
   target.innerHTML = `<article class="action-item"><strong>이번 달 변화 확인 중</strong><p>전월 대비 증감 신호를 확인합니다.</p></article>`;
   $("#actions").innerHTML = `<article class="action-item"><strong>Action Center 확인 중</strong><p>오늘 확인할 일을 정리합니다.</p></article>`;
-  $("#insightList").innerHTML = `<article class="action-item"><strong>Quick Summary 확인 중</strong><p>Top 콘텐츠, 브랜드, 캠페인, 상품을 확인합니다.</p></article>`;
+  $("#insightList").innerHTML = `<article class="action-item"><strong>이번 달 인사이트 확인 중</strong><p>성과 변화와 판매 신호를 정리합니다.</p></article>`;
+  $("#nextActions").innerHTML = `<article class="action-item"><strong>다음 추천 행동 확인 중</strong><p>이번 주 실행할 일을 정리합니다.</p></article>`;
 
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
@@ -276,19 +277,9 @@ async function renderOverviewLiveData(data) {
   ]);
 
   const a = data.account || {};
-  const missing = status.environment || {};
   const metaTotals = meta.totals || {};
   const cafeTotals = cafe.totals || {};
-  const cafeSource = cafe.error ? cafe.error : cafe24SourceLabel(cafe);
-  const metaSource = isPermissionBlocked(meta) ? "권한 차단: Meta 앱 권한 또는 토큰 권한 확인 필요" : meta.error ? meta.error : meta.source || "Meta Ads 연결";
-  const instagramDetail = status.instagram
-    ? `IG Business ${status.instagramBusinessAccountId || "-"}`
-    : `누락: ${(missing.instagram?.missing || []).join(", ") || "확인 필요"}`;
-  const instagramBlocked = isPermissionBlocked(data);
   const instagramErrors = instagramApiErrors(data);
-  const instagramMessage = instagramBlocked
-    ? data.error
-    : instagramErrors.account || instagramErrors.media || instagramDetail;
   const posts = data.posts || [];
   const postCount = posts.length;
   const topContent = topPosts(posts, purposeScore, 1)[0];
@@ -296,6 +287,7 @@ async function renderOverviewLiveData(data) {
   const topCampaign = [...(meta.campaigns || [])].sort((left, right) => Number(right.purchaseValue || 0) - Number(left.purchaseValue || 0))[0];
   const topProduct = (cafe.topProducts || [])[0];
   const roas = Number(metaTotals.spend || 0) ? Number(metaTotals.purchaseValue || 0) / Number(metaTotals.spend || 0) : null;
+  const avgSaveRate = avg(posts.map((post) => postMetrics(post).saveRate));
 
   $("#kpiGrid").innerHTML = [
     ["Followers", apiNum(a.followers), `@${a.username || data.accountIdentity?.username || "samplaskr"}`],
@@ -318,33 +310,71 @@ async function renderOverviewLiveData(data) {
     changeCard("Website Click", a.websiteClickDelta)
   ].filter(Boolean).join("") || `<article class="action-item"><strong>이번 달 변화</strong><p>전월 대비 증감 데이터가 아직 없습니다. 월간 확정 데이터가 쌓이면 변화가 표시됩니다.</p></article>`;
 
-  const actionItems = [
-    meta.error ? `Meta Ads 확인 필요: ${meta.error}` : "",
-    cafe.error ? `Cafe24 확인 필요: ${cafe.error}` : "",
-    instagramBlocked ? `Instagram 권한 확인 필요: ${data.error}` : "",
-    Number(a.reachDelta) < 0 ? `Reach가 ${pct(Math.abs(Number(a.reachDelta)))} 감소했습니다. Content에서 도달 TOP 콘텐츠를 확인하세요.` : "",
-    topSaved ? `저장률이 가장 높은 콘텐츠는 "${topSaved.title || "Untitled"}"입니다.` : "",
-    data.source === "csv_required" ? "지난 월 데이터는 CSV 업로드가 필요합니다." : ""
-  ].filter(Boolean);
-  $("#actions").innerHTML = (actionItems.length ? actionItems : [
-    "오늘은 API 연결 상태가 정상입니다.",
-    "Content에서 저장률 높은 콘텐츠를 확인하고 다음 게시물에 반영하세요.",
-    "Sales에서 Cafe24 실제 매출을 확인하세요."
-  ]).map((item) => `<article class="action-item"><strong>${esc(item)}</strong></article>`).join("");
+  const actions = buildOverviewActions({ data, meta, cafe, account: a, topSaved, roas });
+  $("#actions").innerHTML = actions.map((item) => actionCard(item)).join("");
 
   $("#insightList").innerHTML = [
-    `<article class="action-item"><strong>Top 콘텐츠</strong><span>${esc(topContent?.title || "-")}</span><p>${topContent ? `Reach ${apiNum(topContent.reach)} · Views ${apiNum(topContent.views)}` : "콘텐츠 데이터 없음"}</p></article>`,
-    `<article class="action-item"><strong>Top 판매 브랜드</strong><span>${esc(topProduct ? brandFromProduct(topProduct.productName) : "-")}</span><p>${topProduct ? `${esc(topProduct.productName || "-")} · ${apiNum(topProduct.quantity)}개` : "Cafe24 상품 데이터 없음"}</p></article>`,
-    `<article class="action-item"><strong>Top 광고 캠페인</strong><span>${esc(topCampaign?.campaignName || "-")}</span><p>${topCampaign ? `광고비 ${apiWon(topCampaign.spend)} · ROAS ${topCampaign.roas === null ? "-" : multiple(topCampaign.roas)}` : "Meta 캠페인 데이터 없음"}</p></article>`,
-    `<article class="action-item"><strong>Top 상품</strong><span>${esc(topProduct?.productName || "-")}</span><p>${topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "Cafe24 상품 데이터 없음"}</p></article>`
+    insightCard("Reach", Number(a.reachDelta) < 0 ? `이번 달 Reach는 전월보다 ${pct(Math.abs(Number(a.reachDelta)))} 감소했습니다.` : Number(a.reachDelta) > 0 ? `이번 달 Reach는 전월보다 ${pct(Number(a.reachDelta))} 증가했습니다.` : "이번 달 Reach 변화 데이터가 아직 없습니다.", Number(a.reachDelta) < 0 ? "warn" : "good"),
+    insightCard("저장률", topSaved ? `저장률이 가장 높은 콘텐츠는 "${topSaved.title || "Untitled"}"입니다. 평균 저장률은 ${pct(avgSaveRate)}입니다.` : "저장률을 판단할 콘텐츠 데이터가 아직 부족합니다.", topSaved ? "good" : "warn"),
+    insightCard("광고 효율", roas === null ? "광고 효율을 판단할 구매값이 아직 없습니다." : `이번 달 ROAS는 ${multiple(roas)}입니다. 광고비 대비 구매 신호를 유지하고 있습니다.`, roas !== null && roas >= 2 ? "good" : "warn"),
+    insightCard("판매 상품", topProduct ? `이번 달 가장 많이 판매된 상품은 "${topProduct.productName}"입니다.` : "이번 달 판매 상품 데이터가 아직 없습니다.", topProduct ? "good" : "warn")
   ].join("");
+
+  $("#nextActions").innerHTML = buildNextActions({ account: a, topSaved, topCampaign, roas }).map((item) => actionCard(item)).join("");
+}
+
+function buildOverviewActions({ data, meta, cafe, account, topSaved, roas }) {
+  const urgent = [
+    meta.error ? { level: "urgent", label: "긴급", title: "광고 연결 확인 필요", text: "광고 성과를 불러오지 못했습니다. Settings에서 연결 상태를 확인하세요." } : null,
+    cafe.error ? { level: "urgent", label: "긴급", title: "주문 데이터 확인 필요", text: "실제 매출을 불러오지 못했습니다. Sales에서 상태를 확인하세요." } : null,
+    data.error ? { level: "urgent", label: "긴급", title: "인스타그램 데이터 확인 필요", text: "콘텐츠와 계정 성과를 불러오지 못했습니다." } : null
+  ].filter(Boolean);
+  const watch = [
+    Number(account.reachDelta) < 0 ? { level: "warn", label: "확인", title: "Reach 감소", text: `Reach가 ${pct(Math.abs(Number(account.reachDelta)))} 감소했습니다. 도달 TOP 콘텐츠를 확인하세요.` } : null,
+    roas !== null && roas < 1 ? { level: "warn", label: "확인", title: "광고 효율 확인", text: "광고비 대비 구매 신호가 약합니다. 캠페인별 성과를 확인하세요." } : null
+  ].filter(Boolean);
+  const good = [
+    Number(account.followerDelta) > 0 ? { level: "good", label: "좋음", title: "팔로워 증가", text: `팔로워가 ${apiNum(account.followerDelta)}명 증가했습니다.` } : null,
+    topSaved ? { level: "good", label: "좋음", title: "저장 반응 확인", text: `"${topSaved.title || "Untitled"}"의 저장률이 가장 좋습니다.` } : null,
+    !urgent.length && !watch.length ? { level: "good", label: "좋음", title: "오늘 상태 정상", text: "큰 오류 없이 운영 데이터를 확인할 수 있습니다." } : null
+  ].filter(Boolean);
+  return [...urgent, ...watch, ...good].slice(0, 6);
+}
+
+function buildNextActions({ account, topSaved, topCampaign, roas }) {
+  const items = [
+    Number(account.reachDelta) < 0
+      ? { level: "warn", label: "다음 행동", title: "릴스 업로드 늘리기", text: "Reach가 줄었습니다. 이번 주에는 릴스 업로드를 늘려 신규 도달을 회복하세요." }
+      : null,
+    topSaved
+      ? { level: "good", label: "다음 행동", title: "저장률 높은 포맷 반복", text: `"${topSaved.title || "저장률 높은 콘텐츠"}"와 비슷한 카드뉴스를 2회 더 게시해보세요.` }
+      : null,
+    roas !== null && roas >= 2 && topCampaign
+      ? { level: "good", label: "다음 행동", title: "효율 좋은 캠페인 확인", text: `"${topCampaign.campaignName || "성과 좋은 캠페인"}"의 예산 확대를 검토하세요.` }
+      : null,
+    roas !== null && roas < 1
+      ? { level: "warn", label: "다음 행동", title: "광고 효율 점검", text: "구매 신호가 약한 캠페인은 소재나 예산을 조정하세요." }
+      : null
+  ].filter(Boolean);
+  return (items.length ? items : [
+    { level: "good", label: "다음 행동", title: "성과 좋은 콘텐츠 반복", text: "이번 주에는 저장 반응이 좋은 콘텐츠 포맷을 한 번 더 게시하세요." }
+  ]).slice(0, 4);
+}
+
+function actionCard(item) {
+  return `<article class="action-item ${esc(item.level)}"><span>${esc(item.label)}</span><strong>${esc(item.title)}</strong><p>${esc(item.text)}</p></article>`;
+}
+
+function insightCard(title, text, level = "good") {
+  return `<article class="action-item ${esc(level)}"><strong>${esc(title)}</strong><p>${esc(text)}</p></article>`;
 }
 
 function changeCard(label, delta) {
   if (!hasApiValue(delta) || Number(delta) === 0) return "";
   const value = Number(delta);
   const direction = value > 0 ? "▲" : "▼";
-  return `<article class="action-item"><strong>${esc(label)}</strong><span>${direction} ${pct(Math.abs(value))}</span><p>전월 대비</p></article>`;
+  const level = value > 0 ? "good" : "warn";
+  return `<article class="action-item ${level}"><strong>${esc(label)}</strong><span>${direction} ${pct(Math.abs(value))}</span><p>전월 대비</p></article>`;
 }
 
 function brandFromProduct(productName = "") {
