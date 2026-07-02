@@ -243,7 +243,6 @@ function renderKpis(data) {
   }
   const a = data.account || {};
   const postCount = (data.posts || []).length;
-  const adSpend = (data.posts || []).reduce((sum, post) => sum + Number(post.adSpend || 0), 0);
   const instagramErrors = instagramApiErrors(data);
   const postsScopeNote = data.postsScope === "recent_media_fallback"
     ? "월 게시물 0개 · 최근 미디어 표시"
@@ -251,12 +250,8 @@ function renderKpis(data) {
   const items = [
     ["팔로워", apiNum(a.followers), `@${a.username || data.accountIdentity?.username || "samplaskr"} · media_count ${apiNum(a.mediaCount ?? data.accountIdentity?.mediaCount)}`],
     ["도달", apiNum(a.reach), instagramErrors.account || `전월 대비 ${pct(a.reachDelta)}`],
-    ["조회", apiNum(a.views), instagramErrors.account || `전월 대비 ${pct(a.viewsDelta)}`],
     ["프로필 방문", apiNum(a.profileVisits), instagramErrors.account || `전월 대비 ${pct(a.profileVisitDelta)}`],
-    ["웹사이트 클릭", apiNum(a.websiteClicks), instagramErrors.account || `전월 대비 ${pct(a.websiteClickDelta)}`],
-    ["계정 참여", apiNum(a.accountEngagement), instagramErrors.media || "게시물별 인사이트 기준"],
-    ["월간 콘텐츠", `${apiNum(postCount)}개`, postsScopeNote],
-    ["광고비", krw(adSpend), "게시물 매핑 기준"]
+    ["웹사이트 클릭", apiNum(a.websiteClicks), instagramErrors.account || `콘텐츠 ${apiNum(postCount)}개 · ${postsScopeNote}`]
   ];
   $("#kpiGrid").innerHTML = items.map(([label, value, delta]) => (
     `<article class="kpi"><span>${label}</span><strong>${value}</strong><p class="delta">${delta}</p></article>`
@@ -278,8 +273,6 @@ async function renderOverviewLiveData(data) {
 
   const a = data.account || {};
   const missing = status.environment || {};
-  const metaTotals = meta.totals || {};
-  const cafeTotals = cafe.totals || {};
   const cafeSource = cafe.error ? cafe.error : cafe24SourceLabel(cafe);
   const metaSource = isPermissionBlocked(meta) ? "권한 차단: Meta 앱 권한 또는 토큰 권한 확인 필요" : meta.error ? meta.error : meta.source || "Meta Ads 연결";
   const instagramDetail = status.instagram
@@ -293,10 +286,8 @@ async function renderOverviewLiveData(data) {
 
   target.innerHTML = [
     `<article class="action-item"><strong>Instagram API</strong><span>${instagramBlocked ? "권한 차단" : status.instagram ? (data.apiStatus === "partial" ? "부분 연결" : "연결됨") : "환경변수 필요"}</span><p>${esc(instagramMessage)} · 도달 ${apiNum(a.reach)} / 조회 ${apiNum(a.views)} / 게시물 ${apiNum((data.posts || []).length)}개</p></article>`,
-    `<article class="action-item"><strong>Meta Ads</strong><span>${isPermissionBlocked(meta) ? "권한 차단" : meta.error ? "확인 필요" : krw(metaTotals.spend)}</span><p>${esc(metaSource)} · 캠페인 ${num((meta.campaigns || []).length)}개</p></article>`,
-    `<article class="action-item"><strong>Cafe24 실제 결제금액</strong><span>${cafe.error ? "확인 필요" : apiWon(cafeTotals.orderAmount)}</span><p>${esc(cafeSource)}</p></article>`,
-    `<article class="action-item"><strong>정상 주문 수</strong><span>${cafe.error ? "확인 필요" : `${apiNum(cafeTotals.orderCount)}건`}</span><p>취소/환불 제외${hasApiValue(cafeTotals.excludedOrderCount) ? ` · 제외 ${apiNum(cafeTotals.excludedOrderCount)}건` : ""}</p></article>`,
-    `<article class="action-item"><strong>평균 객단가</strong><span>${cafe.error ? "확인 필요" : apiWon(cafeTotals.averageOrderAmount)}</span><p>Cafe24 실제 결제 기준</p></article>`
+    `<article class="action-item"><strong>Meta Ads</strong><span>${isPermissionBlocked(meta) ? "권한 차단" : meta.error ? "확인 필요" : "연결됨"}</span><p>${esc(metaSource)} · 상세 광고 성과는 Advertising에서 확인</p></article>`,
+    `<article class="action-item"><strong>Cafe24</strong><span>${cafe.error ? "확인 필요" : "연결됨"}</span><p>${esc(cafeSource)} · 실제 매출은 Sales에서 확인</p></article>`
   ].join("");
 }
 
