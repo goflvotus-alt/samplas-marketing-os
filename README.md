@@ -65,7 +65,7 @@ Current deployment status:
 - `npm run check` passes.
 - GitHub repo is connected:
   `goflvotus-alt/samplas-marketing-os`
-- GitHub `main` currently contains the Starter plan + Disk config.
+- GitHub `main` currently uses the Render Free deploy config.
 - `https://samplas-marketing-os.onrender.com/` currently returns Render `Not Found` with `x-render-routing: no-server`.
 - That means the request is not reaching this Node app yet. The most likely cause is that the new Render Web Service has not actually been created inside the `samplas-marketing-os` project.
 
@@ -80,11 +80,16 @@ Do not upload Cafe24 CSV to Render until the latest code is deployed and `/api/c
 Important Render requirements:
 
 - `HOST=0.0.0.0`
-- `WORK_DIR=/var/data/samplas-dashboard/work`
-- Render Disk mounted at `/var/data/samplas-dashboard`
+- `WORK_DIR=/tmp/samplas-dashboard/work`
+- Free plan has no Persistent Disk in the current setup.
 - Instagram / Meta / Cafe24 / future Naver credentials set as Render environment variables
 
-`WORK_DIR` is important. Without it, uploaded CSV/cache files can disappear on redeploy.
+Free plan storage warning:
+
+- Cafe24 CSV/cache data written under `/tmp/samplas-dashboard/work` can disappear when Render restarts, sleeps, or redeploys the service.
+- This is acceptable for the current phase because the priority is `/api/status` deployment success and basic dashboard launch.
+- Do not treat Cafe24 CSV uploads on the Free service as permanent storage.
+- Persistent Cafe24 CSV history requires switching back to a paid plan with Render Disk, for example `WORK_DIR=/var/data/samplas-dashboard/work`.
 
 Required endpoint after deployment:
 
@@ -164,15 +169,12 @@ git ls-files
    - Name: `samplas-marketing-os`
    - Runtime: `Node`
    - Region: `Oregon`
-   - Plan: `Starter`
+   - Plan: `Free`
    - Build Command: `npm install`
    - Start Command: `npm start`
    - Health Check Path: `/api/status`
-8. Add Disk:
-   - Name: `samplas-dashboard-data`
-   - Mount Path: `/var/data/samplas-dashboard`
-   - Size: `1 GB`
-9. Confirm `WORK_DIR=/var/data/samplas-dashboard/work`.
+8. Do not add Disk for the current Free test service.
+9. Confirm `WORK_DIR=/tmp/samplas-dashboard/work`.
 10. Add secret environment values in Render only. Do not put real values in GitHub.
 11. Deploy latest commit.
 12. After deploy finishes, run:
@@ -196,7 +198,7 @@ Core:
 ```txt
 HOST=0.0.0.0
 REPORT_TIMEZONE=Asia/Seoul
-WORK_DIR=/var/data/samplas-dashboard/work
+WORK_DIR=/tmp/samplas-dashboard/work
 GRAPH_VERSION=v25.0
 SAMPLAS_INSTAGRAM_USERNAME=samplaskr
 ```

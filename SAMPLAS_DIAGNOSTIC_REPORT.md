@@ -115,31 +115,37 @@ Dashboard labels must keep these separated.
 
 ## Render Deployment Requirement
 
-To make Render show CSV data:
+Current Free-plan deployment goal:
 
 1. Deploy the local dashboard source to Render.
 2. Use `render.yaml`.
-3. Attach Render Disk at `/var/data/samplas-dashboard`.
-4. Set `WORK_DIR=/var/data/samplas-dashboard/work`.
-5. Confirm Render has `POST /api/cafe24/csv/import`.
-6. Upload the Cafe24 CSV through that endpoint:
+3. Do not attach Render Disk for the current Free test service.
+4. Set `WORK_DIR=/tmp/samplas-dashboard/work`.
+5. Confirm `/api/status` returns 200.
+6. Confirm the basic dashboard opens.
+7. Only after that, test whether Render has `POST /api/cafe24/csv/import`.
+8. Upload the Cafe24 CSV through that endpoint only for a temporary test:
 
 ```sh
 npm run render:upload-cafe24 -- "/Users/binggu/Downloads/scause_20260701_1306_710a.csv"
 ```
 
-7. Confirm `/api/cafe24/orders?start_date=2026-06-01&end_date=2026-06-30` returns `cafe24_csv_import_cached`.
+9. Confirm `/api/cafe24/orders?start_date=2026-06-01&end_date=2026-06-30` returns `cafe24_csv_import_cached`.
 
 ```sh
 npm run render:check
 ```
 
-Until this is done, Render will keep showing zero if the Cafe24 API token is invalid.
+Free plan warning:
+
+- CSV/cache files stored in `/tmp/samplas-dashboard/work` can disappear after restart, sleep, or redeploy.
+- This is acceptable for the current deployment smoke test.
+- Long-term Cafe24 CSV history requires a paid Render plan with Persistent Disk.
 
 Current deployment blocker found on 2026-07-02:
 
 - GitHub repo `goflvotus-alt/samplas-marketing-os` is connected and contains the latest source.
-- GitHub `main` points to the Starter plan + Persistent Disk configuration.
+- GitHub `main` should point to the Free plan configuration while payment setup is pending.
 - `https://samplas-marketing-os.onrender.com/api/status` returns Render `Not Found` with `x-render-routing: no-server`.
 - The Render project `samplas-marketing-os` appears to have no Web Service yet.
 - Uploading the Cafe24 CSV should wait until the new Render Web Service exists and `/api/status` returns 200.
@@ -151,10 +157,10 @@ Required Render Dashboard path:
 3. Connect repo `goflvotus-alt/samplas-marketing-os`.
 4. Use branch `main`.
 5. Set service name `samplas-marketing-os`.
-6. Use Region `Oregon`, Plan `Starter`, Build `npm install`, Start `npm start`.
+6. Use Region `Oregon`, Plan `Free`, Build `npm install`, Start `npm start`.
 7. Set Health Check Path `/api/status`.
-8. Add Disk `samplas-dashboard-data` mounted at `/var/data/samplas-dashboard`.
-9. Set `WORK_DIR=/var/data/samplas-dashboard/work`.
+8. Do not add Disk for the current Free test service.
+9. Set `WORK_DIR=/tmp/samplas-dashboard/work`.
 10. Add API credentials only in Render environment variables.
 11. Deploy and confirm `/api/status` returns 200.
 

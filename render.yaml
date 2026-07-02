@@ -2,7 +2,7 @@ services:
   - type: web
     name: samplas-marketing-os
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     buildCommand: npm install
     startCommand: npm start
@@ -15,7 +15,7 @@ services:
       - key: REPORT_TIMEZONE
         value: Asia/Seoul
       - key: WORK_DIR
-        value: /var/data/samplas-dashboard/work
+        value: /tmp/samplas-dashboard/work
       - key: GRAPH_VERSION
         value: v25.0
       - key: SAMPLAS_INSTAGRAM_USERNAME
@@ -56,7 +56,3 @@ services:
         sync: false
       - key: NAVER_ADS_BASE_URL
         value: https://api.searchad.naver.com
-    disks:
-      - name: samplas-dashboard-data
-        mountPath: /var/data/samplas-dashboard
-        sizeGB: 1
