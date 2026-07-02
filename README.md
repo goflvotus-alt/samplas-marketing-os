@@ -101,6 +101,10 @@ Render environment variable setup is documented here:
 
 `RENDER_ENVIRONMENT_VARIABLES.md`
 
+Meta token permission recovery is documented here:
+
+`META_ACCESS_TOKEN_RECOVERY.md`
+
 ## GitHub Private Repo Setup
 
 Use a private GitHub repository named:

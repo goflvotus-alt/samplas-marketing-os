@@ -145,8 +145,10 @@ function safeErrorMessage(error) {
 }
 
 function apiErrorPayload(error) {
+  const category = classifyApiError(error);
   return {
     error: safeErrorMessage(error),
+    category,
     status: error?.status || null,
     code: error?.code || error?.body?.error?.code || error?.body?.error_code || null,
     type: error?.type || error?.body?.error?.type || null,
@@ -159,6 +161,7 @@ async function logApiError(source, error, context = {}) {
     time: new Date().toISOString(),
     source,
     message: safeErrorMessage(error),
+    category: classifyApiError(error),
     status: error?.status || null,
     code: error?.code || error?.body?.error?.code || error?.body?.error_code || null,
     type: error?.type || error?.body?.error?.type || null,
@@ -175,6 +178,15 @@ async function logApiError(source, error, context = {}) {
   } catch (logError) {
     console.error(`[SAMPLAS_API_LOG_WRITE_FAILED] ${safeErrorMessage(logError)}`);
   }
+}
+
+function classifyApiError(error) {
+  const message = safeErrorMessage(error).toLowerCase();
+  const code = String(error?.code || error?.body?.error?.code || error?.body?.error_code || "").toLowerCase();
+  if (message.includes("api access blocked") || code === "200") return "permission_blocked";
+  if (message.includes("invalid refresh_token") || message.includes("refresh token")) return "expired_refresh_token";
+  if (message.includes("invalid_token") || message.includes("access_token")) return "invalid_access_token";
+  return "api_error";
 }
 
 async function readApiErrorLog(limit = 50) {

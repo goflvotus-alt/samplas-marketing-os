@@ -122,6 +122,7 @@ function sourceLabel(data) {
 }
 
 function sourceText(data) {
+  if (isPermissionBlocked(data)) return "Meta 권한 차단: 토큰 권한 또는 앱 권한 확인 필요";
   if (data.source === "csv_required") return data.message || "지난 달은 CSV 업로드 후 표시";
   if (String(data.source || "").startsWith("csv_import")) return "CSV 고정 월간 데이터";
   if (String(data.source || "").includes("_cached")) return "저장된 API 캐시 데이터";
@@ -129,15 +130,26 @@ function sourceText(data) {
   return "연결 확인 필요";
 }
 
+function isPermissionBlocked(data) {
+  const text = `${data?.error || ""} ${data?.category || ""}`.toLowerCase();
+  return text.includes("api access blocked") || text.includes("permission_blocked");
+}
+
+function statusTextForError(data) {
+  if (isPermissionBlocked(data)) return "권한 차단";
+  if (String(data?.error || "").toLowerCase().includes("refresh_token")) return "토큰 만료";
+  return "오류";
+}
+
 function setSyncRow(id, ok, label, detail, status = "정상") {
   const row = $(`#${id}`);
   if (!row) return;
-  const isError = ok === false || status === "오류";
+  const isError = ok === false || ["오류", "권한 차단", "토큰 만료"].includes(status);
   row.classList.toggle("good", ok === true && !isError && status !== "캐시");
   row.classList.toggle("warn", ok === true && status === "캐시");
   row.classList.toggle("error", isError);
   row.classList.remove("loading");
-  const badge = isError ? "오류" : status === "CSV" ? "CSV" : status === "캐시" ? "캐시" : "100%";
+  const badge = isError ? status : status === "CSV" ? "CSV" : status === "캐시" ? "캐시" : "100%";
   row.innerHTML = `<span></span><strong>${esc(label)}</strong><small title="${esc(detail)}">${esc(detail)}</small><em>${badge}</em>`;
 }
 
@@ -190,8 +202,9 @@ function renderMonthRail(data) {
 
 function renderKpis(data) {
   if (data.error) {
+    const status = statusTextForError(data);
     $("#kpiGrid").innerHTML = [
-      ["API 오류", "확인 필요", data.error],
+      ["API 오류", status, data.error],
       ["월", data.month || "-", "Render API 로그를 확인하세요"],
       ["표시 상태", "0으로 대체 안 함", "실제 데이터가 없으면 원인을 표시합니다."]
     ].map(([label, value, delta]) => (
@@ -235,14 +248,15 @@ async function renderOverviewLiveData(data) {
   const metaTotals = meta.totals || {};
   const cafeTotals = cafe.totals || {};
   const cafeSource = cafe.error ? cafe.error : (cafe.source === "csv_required" ? "CSV 업로드 필요" : cafe.source || "Cafe24 연결");
-  const metaSource = meta.error ? meta.error : meta.source || "Meta Ads 연결";
+  const metaSource = isPermissionBlocked(meta) ? "권한 차단: Meta 앱 권한 또는 토큰 권한 확인 필요" : meta.error ? meta.error : meta.source || "Meta Ads 연결";
   const instagramDetail = status.instagram
     ? `IG Business ${status.instagramBusinessAccountId || "-"}`
     : `누락: ${(missing.instagram?.missing || []).join(", ") || "확인 필요"}`;
+  const instagramBlocked = isPermissionBlocked(data);
 
   target.innerHTML = [
-    `<article class="action-item"><strong>Instagram API</strong><span>${status.instagram ? "연결됨" : "환경변수 필요"}</span><p>${esc(instagramDetail)} · 도달 ${num(a.reach)} / 조회 ${num(a.views)}</p></article>`,
-    `<article class="action-item"><strong>Meta Ads</strong><span>${meta.error ? "확인 필요" : krw(metaTotals.spend)}</span><p>${esc(metaSource)} · 캠페인 ${num((meta.campaigns || []).length)}개</p></article>`,
+    `<article class="action-item"><strong>Instagram API</strong><span>${instagramBlocked ? "권한 차단" : status.instagram ? "연결됨" : "환경변수 필요"}</span><p>${esc(instagramBlocked ? data.error : instagramDetail)} · 도달 ${num(a.reach)} / 조회 ${num(a.views)}</p></article>`,
+    `<article class="action-item"><strong>Meta Ads</strong><span>${isPermissionBlocked(meta) ? "권한 차단" : meta.error ? "확인 필요" : krw(metaTotals.spend)}</span><p>${esc(metaSource)} · 캠페인 ${num((meta.campaigns || []).length)}개</p></article>`,
     `<article class="action-item"><strong>Cafe24 실제 주문</strong><span>${cafe.error ? "확인 필요" : won(cafeTotals.orderAmount)}</span><p>${esc(cafeSource)} · 주문 ${num(cafeTotals.orderCount)}건</p></article>`
   ].join("");
 }
@@ -620,10 +634,11 @@ async function renderStoryInsights() {
 
 async function updateSync(data) {
   const instagramStatus = sourceLabel(data);
-  setSyncRow("instagramSyncRow", true, "Instagram", sourceText(data), instagramStatus === "CSV" ? "CSV" : "캐시");
+  const instagramOk = !data.error;
+  setSyncRow("instagramSyncRow", instagramOk, "Instagram", sourceText(data), data.error ? statusTextForError(data) : instagramStatus === "CSV" ? "CSV" : "캐시");
 
   const meta = await getJson(`/api/meta-ads/summary?since=${data.month}-01&until=${monthEnd(data.month)}`, 5000);
-  setSyncRow("metaAdsSyncRow", !meta.error, "Meta Ads", meta.error || (String(meta.source || "").includes("_cached") ? "저장된 광고 데이터 기준" : "연결 확인"), meta.error ? "오류" : (String(meta.source || "").includes("_cached") ? "캐시" : "정상"));
+  setSyncRow("metaAdsSyncRow", !meta.error, "Meta Ads", meta.error || (String(meta.source || "").includes("_cached") ? "저장된 광고 데이터 기준" : "연결 확인"), meta.error ? statusTextForError(meta) : (String(meta.source || "").includes("_cached") ? "캐시" : "정상"));
 
   const cafe = await getJson("/api/cafe24/health", 5000);
   const cafeOk = cafe.ok === true && !cafe.error;
