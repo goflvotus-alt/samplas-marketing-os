@@ -33,10 +33,12 @@ createServer(async (req, res) => {
       return;
     }
     if (url.pathname === "/api/status") {
+      const integrations = integrationStatus();
       return json(res, {
-        instagram: Boolean(env.META_ACCESS_TOKEN && env.INSTAGRAM_BUSINESS_ACCOUNT_ID),
-        metaAds: Boolean(env.META_ACCESS_TOKEN && cleanAdAccountId()),
-        cafe24: Boolean((env.CAFE24_PROXY_BASE_URL && env.CAFE24_PROXY_ORDERS_PATH) || (env.CAFE24_MALL_ID && env.CAFE24_ACCESS_TOKEN)),
+        instagram: integrations.instagram.ok,
+        metaAds: integrations.metaAds.ok,
+        cafe24: integrations.cafe24.ok,
+        environment: integrations,
         pageId: env.FACEBOOK_PAGE_ID || null,
         instagramBusinessAccountId: env.INSTAGRAM_BUSINESS_ACCOUNT_ID || null,
         metaAdAccountId: cleanAdAccountId() || null,
@@ -764,6 +766,39 @@ function isCafe24InvalidToken(error) {
 function cleanAdAccountId() {
   const id = env.META_AD_ACCOUNT_ID || "";
   return id && id !== "act_" ? id : "";
+}
+
+function missingEnv(keys) {
+  return keys.filter((key) => !env[key] || (key === "META_AD_ACCOUNT_ID" && !cleanAdAccountId()));
+}
+
+function integrationStatus() {
+  const instagramRequired = ["META_ACCESS_TOKEN", "FACEBOOK_PAGE_ID", "INSTAGRAM_BUSINESS_ACCOUNT_ID"];
+  const metaAdsRequired = ["META_ACCESS_TOKEN", "META_AD_ACCOUNT_ID"];
+  const cafe24Required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID", "CAFE24_CLIENT_SECRET", "CAFE24_ACCESS_TOKEN", "CAFE24_REFRESH_TOKEN"];
+  const cafe24ProxyRequired = ["CAFE24_PROXY_BASE_URL", "CAFE24_PROXY_ORDERS_PATH"];
+  const cafe24DirectMissing = missingEnv(cafe24Required);
+  const cafe24ProxyMissing = missingEnv(cafe24ProxyRequired);
+  const cafe24Mode = cafe24DirectMissing.length === 0 ? "local_oauth" : cafe24ProxyMissing.length === 0 ? "proxy" : "not_configured";
+
+  return {
+    instagram: {
+      ok: missingEnv(instagramRequired).length === 0,
+      required: instagramRequired,
+      missing: missingEnv(instagramRequired)
+    },
+    metaAds: {
+      ok: missingEnv(metaAdsRequired).length === 0,
+      required: metaAdsRequired,
+      missing: missingEnv(metaAdsRequired)
+    },
+    cafe24: {
+      ok: cafe24Mode !== "not_configured",
+      mode: cafe24Mode,
+      required: cafe24Mode === "proxy" ? cafe24ProxyRequired : cafe24Required,
+      missing: cafe24Mode === "proxy" ? [] : cafe24DirectMissing
+    }
+  };
 }
 
 function actionValue(items = [], type) {

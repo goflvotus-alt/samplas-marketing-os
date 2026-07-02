@@ -97,6 +97,10 @@ Required endpoint after deployment:
 
 Until that endpoint is deployed and CSV is uploaded, Render may show zero Cafe24 sales if the Cafe24 API token is invalid.
 
+Render environment variable setup is documented here:
+
+`RENDER_ENVIRONMENT_VARIABLES.md`
+
 ## GitHub Private Repo Setup
 
 Use a private GitHub repository named:
@@ -121,6 +125,7 @@ Safe to commit:
 - `render.yaml`
 - `.env.example`
 - `README.md`
+- `RENDER_ENVIRONMENT_VARIABLES.md`
 - `SAMPLAS_DIAGNOSTIC_REPORT.md`
 - `SAMPLAS_DASHBOARD_BASELINE.md`
 - `outputs/samplas-marketing-os.html`

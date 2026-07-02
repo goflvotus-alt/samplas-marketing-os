@@ -198,6 +198,36 @@ function renderKpis(data) {
   )).join("");
 }
 
+async function renderOverviewLiveData(data) {
+  const target = $("#overviewLiveData");
+  if (!target) return;
+  target.innerHTML = `<article class="action-item"><strong>실시간 데이터 확인 중</strong><p>Render API 연결 상태와 이번 달 요약을 확인합니다.</p></article>`;
+
+  const startDate = `${data.month}-01`;
+  const endDate = monthEnd(data.month);
+  const [status, meta, cafe] = await Promise.all([
+    getJson("/api/status", 6000),
+    getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
+    getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=500`, 7000)
+  ]);
+
+  const a = data.account || {};
+  const missing = status.environment || {};
+  const metaTotals = meta.totals || {};
+  const cafeTotals = cafe.totals || {};
+  const cafeSource = cafe.error ? cafe.error : (cafe.source === "csv_required" ? "CSV 업로드 필요" : cafe.source || "Cafe24 연결");
+  const metaSource = meta.error ? meta.error : meta.source || "Meta Ads 연결";
+  const instagramDetail = status.instagram
+    ? `IG Business ${status.instagramBusinessAccountId || "-"}`
+    : `누락: ${(missing.instagram?.missing || []).join(", ") || "확인 필요"}`;
+
+  target.innerHTML = [
+    `<article class="action-item"><strong>Instagram API</strong><span>${status.instagram ? "연결됨" : "환경변수 필요"}</span><p>${esc(instagramDetail)} · 도달 ${num(a.reach)} / 조회 ${num(a.views)}</p></article>`,
+    `<article class="action-item"><strong>Meta Ads</strong><span>${meta.error ? "확인 필요" : krw(metaTotals.spend)}</span><p>${esc(metaSource)} · 캠페인 ${num((meta.campaigns || []).length)}개</p></article>`,
+    `<article class="action-item"><strong>Cafe24 실제 주문</strong><span>${cafe.error ? "확인 필요" : won(cafeTotals.orderAmount)}</span><p>${esc(cafeSource)} · 주문 ${num(cafeTotals.orderCount)}건</p></article>`
+  ].join("");
+}
+
 function interaction(post) {
   return Number(post.totalInteractions || 0) || Number(post.likes || 0) + Number(post.comments || 0) + Number(post.saves || 0) + Number(post.shares || 0);
 }
@@ -586,6 +616,7 @@ function renderAll() {
   $("#dataModeBadge").textContent = sourceLabel(data);
   renderMonthRail(data);
   renderKpis(data);
+  renderOverviewLiveData(data);
   renderPurposeRadar(data.posts || []);
   renderInsights(data);
   renderMonthlyDashboard(data);
