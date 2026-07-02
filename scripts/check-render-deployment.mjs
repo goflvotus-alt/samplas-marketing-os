@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const env = await loadEnv();
-const baseUrl = (env.RENDER_DASHBOARD_URL || env.CAFE24_PROXY_BASE_URL || "https://samplas-meta-dashboard.onrender.com").replace(/\/$/, "");
+const baseUrl = (env.RENDER_DASHBOARD_URL || "https://samplas-marketing-os.onrender.com").replace(/\/$/, "");
 const headers = {};
 
 if (env.CAFE24_PROXY_BASIC_AUTH) {

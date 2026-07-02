@@ -10,7 +10,7 @@ if (!csvPath) {
   process.exit(1);
 }
 
-const baseUrl = (env.RENDER_DASHBOARD_URL || env.CAFE24_PROXY_BASE_URL || "https://samplas-meta-dashboard.onrender.com").replace(/\/$/, "");
+const baseUrl = (env.RENDER_DASHBOARD_URL || "https://samplas-marketing-os.onrender.com").replace(/\/$/, "");
 const csvText = await readFile(csvPath, "utf8");
 const headers = { "content-type": "application/json" };
 

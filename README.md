@@ -49,6 +49,12 @@ June 2026 local CSV status:
 
 Render URL:
 
+New Render service:
+
+`https://samplas-marketing-os.onrender.com/`
+
+Existing Render service to keep untouched for now:
+
 `https://samplas-meta-dashboard.onrender.com/`
 
 Render must use this same source folder and `render.yaml`.
@@ -57,9 +63,11 @@ Current deployment status:
 
 - Local source is ready.
 - `npm run check` passes.
-- Current Render service is still running the old Cafe24 API flow.
-- Current Render June Cafe24 response is still `samplas_meta_dashboard_cafe24` with `Invalid refresh_token`.
-- Actual deployment is blocked until a Render deployment method is available.
+- GitHub repo is connected:
+  `goflvotus-alt/samplas-marketing-os`
+- GitHub `main` currently contains the Starter plan + Disk config.
+- `https://samplas-marketing-os.onrender.com/` currently returns Render `Not Found` with `x-render-routing: no-server`.
+- That means the request is not reaching this Node app yet. The most likely cause is that the new Render Web Service has not actually been created inside the `samplas-marketing-os` project.
 
 Needed to deploy from this machine:
 
@@ -149,13 +157,25 @@ git ls-files
 1. Open Render Dashboard.
 2. Connect GitHub if it is not connected yet.
 3. Make sure Render has access to the private repo `samplas-marketing-os`.
-4. Create or sync a Blueprint from the repo root so Render reads `render.yaml`.
-5. Confirm the service name is `samplas-meta-dashboard`.
-6. Confirm the disk mount is `/var/data/samplas-dashboard`.
-7. Confirm `WORK_DIR=/var/data/samplas-dashboard/work`.
-8. Add secret environment values in Render only. Do not put real values in GitHub.
-9. Deploy latest commit.
-10. After deploy finishes, run:
+4. In the Render project `samplas-marketing-os`, create a new Web Service.
+5. Connect repo `goflvotus-alt/samplas-marketing-os`.
+6. Select branch `main`.
+7. Use these service settings:
+   - Name: `samplas-marketing-os`
+   - Runtime: `Node`
+   - Region: `Oregon`
+   - Plan: `Starter`
+   - Build Command: `npm install`
+   - Start Command: `npm start`
+   - Health Check Path: `/api/status`
+8. Add Disk:
+   - Name: `samplas-dashboard-data`
+   - Mount Path: `/var/data/samplas-dashboard`
+   - Size: `1 GB`
+9. Confirm `WORK_DIR=/var/data/samplas-dashboard/work`.
+10. Add secret environment values in Render only. Do not put real values in GitHub.
+11. Deploy latest commit.
+12. After deploy finishes, run:
 
 ```sh
 npm run render:check
@@ -199,7 +219,7 @@ CAFE24_CLIENT_SECRET=
 CAFE24_ACCESS_TOKEN=
 CAFE24_REFRESH_TOKEN=
 CAFE24_ACCESS_TOKEN_EXPIRES_AT=
-CAFE24_REDIRECT_URI=https://samplas-meta-dashboard.onrender.com/api/cafe24/oauth/callback
+CAFE24_REDIRECT_URI=https://samplas-marketing-os.onrender.com/api/cafe24/oauth/callback
 CAFE24_SCOPES=
 CAFE24_PROXY_SECRET=
 CAFE24_PROXY_BASIC_AUTH=

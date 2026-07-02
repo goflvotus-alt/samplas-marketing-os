@@ -1,6 +1,6 @@
 # SAMPLAS Dashboard Diagnostic Report
 
-Date: 2026-07-01
+Date: 2026-07-02
 
 ## Latest App Paths
 
@@ -25,6 +25,12 @@ Card video maker:
 `http://127.0.0.1:8772/`
 
 Render dashboard:
+
+New target service:
+
+`https://samplas-marketing-os.onrender.com/`
+
+Existing service to keep untouched for now:
 
 `https://samplas-meta-dashboard.onrender.com/`
 
@@ -61,7 +67,15 @@ Render dashboard:
 
 ## Still Broken / Not Yet Deployed
 
-Render does not show June Cafe24 data because Render does not have the CSV cache files and does not yet have the new CSV import endpoint deployed.
+The new Render URL currently returns `Not Found` for both `/` and `/api/status`.
+
+The response includes:
+
+`x-render-routing: no-server`
+
+This indicates the request is not reaching the Node server. The local code has `/`, `/api/status`, and `/api/cafe24/csv/import`, so the current blocker is Render service creation/routing, not an app route bug.
+
+The existing Render service does not show June Cafe24 data because it does not have the CSV cache files and does not yet have the new CSV import endpoint deployed.
 
 Current Render Cafe24 orders response still fails with:
 
@@ -122,20 +136,27 @@ npm run render:check
 
 Until this is done, Render will keep showing zero if the Cafe24 API token is invalid.
 
-Current deployment blocker found on 2026-07-01:
+Current deployment blocker found on 2026-07-02:
 
-- This local folder is not a Git repository.
-- Render CLI is not installed on this machine.
-- `.env` does not contain `RENDER_API_KEY`.
-- `.env` does not contain `RENDER_SERVICE_ID`.
-- Current Render service still returns Cafe24 source `samplas_meta_dashboard_cafe24` and `Invalid refresh_token`.
-- Uploading the Cafe24 CSV should wait until the latest code is deployed because the current Render service does not expose `/api/cafe24/csv/import`.
+- GitHub repo `goflvotus-alt/samplas-marketing-os` is connected and contains the latest source.
+- GitHub `main` points to the Starter plan + Persistent Disk configuration.
+- `https://samplas-marketing-os.onrender.com/api/status` returns Render `Not Found` with `x-render-routing: no-server`.
+- The Render project `samplas-marketing-os` appears to have no Web Service yet.
+- Uploading the Cafe24 CSV should wait until the new Render Web Service exists and `/api/status` returns 200.
 
-Required user-provided deployment path:
+Required Render Dashboard path:
 
-1. Provide Render API key and service id, or
-2. Connect this source to a Git repository used by Render, or
-3. Deploy `render.yaml` manually in the Render dashboard.
+1. Open Render project `samplas-marketing-os`.
+2. Create a new Web Service.
+3. Connect repo `goflvotus-alt/samplas-marketing-os`.
+4. Use branch `main`.
+5. Set service name `samplas-marketing-os`.
+6. Use Region `Oregon`, Plan `Starter`, Build `npm install`, Start `npm start`.
+7. Set Health Check Path `/api/status`.
+8. Add Disk `samplas-dashboard-data` mounted at `/var/data/samplas-dashboard`.
+9. Set `WORK_DIR=/var/data/samplas-dashboard/work`.
+10. Add API credentials only in Render environment variables.
+11. Deploy and confirm `/api/status` returns 200.
 
 Cafe24 CSV upload warning:
 
