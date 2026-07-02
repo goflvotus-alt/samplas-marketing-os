@@ -187,6 +187,22 @@ Actual success is confirmed only when the Instagram and Meta Ads endpoints retur
 API access blocked.
 ```
 
+## Graph API v25 Insights Notes
+
+The dashboard uses Graph API v25 for Instagram Insights.
+
+Implementation rules:
+
+- Instagram `impressions` is not requested.
+- `reach` is requested as a normal metric.
+- `profile_views`, `website_clicks`, and `views` are requested with:
+
+```txt
+metric_type=total_value
+```
+
+- Story insight errors containing `Not enough viewers for the media to show insights` are treated as empty/unavailable insight data, not as application failure.
+
 Official Meta docs:
 
 - https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login

@@ -1202,7 +1202,7 @@ async function buildInstagramMonthlyData(month) {
       followerDelta: 0,
       reach: Number(accountInsights.reach || 0) || sum(posts, "reach"),
       reachDelta: 0,
-      views: Number(accountInsights.views || accountInsights.impressions || 0) || sum(posts, "views"),
+      views: Number(accountInsights.views || 0) || sum(posts, "views"),
       viewsDelta: 0,
       profileVisits: Number(accountInsights.profile_views || 0),
       profileVisitDelta: 0,
@@ -1341,21 +1341,12 @@ async function buildInstagramStoriesData() {
 }
 
 async function fetchStoryInsights(storyId) {
-  const attempts = [
-    "impressions,reach,replies,taps_forward,taps_back,exits",
-    "impressions,reach,replies,exits",
-    "reach,replies"
-  ];
-  for (const metric of attempts) {
-    try {
-      const body = await graphGet(`${storyId}/insights`, { metric });
-      return parseInsights(body.data || []);
-    } catch (error) {
-      await logApiError("instagram_story_insights", error, { storyId, metric });
-      if (metric === attempts.at(-1)) return { unavailableReason: error.message };
-    }
-  }
-  return {};
+  const normal = await fetchInsightGroup(`${storyId}/insights`, "instagram_story_insights", { storyId }, [
+    { metric: "reach,replies,taps_forward,taps_back,exits" },
+    { metric: "reach,replies,exits" },
+    { metric: "reach,replies" }
+  ], { emptyOnNotEnoughViewers: true });
+  return normal;
 }
 
 function normalizeStory(item, insights) {
@@ -1368,7 +1359,6 @@ function normalizeStory(item, insights) {
     mediaUrl: item.media_url || "",
     thumbnailUrl: item.thumbnail_url || item.media_url || "",
     permalink: item.permalink || "",
-    impressions: insights.impressions || 0,
     reach: insights.reach || 0,
     replies: insights.replies || 0,
     tapsForward: insights.taps_forward || 0,
@@ -1379,13 +1369,12 @@ function normalizeStory(item, insights) {
 }
 
 function emptyStoryTotals() {
-  return { count: 0, impressions: 0, reach: 0, replies: 0, tapsForward: 0, tapsBack: 0, exits: 0, exitRate: 0, replyRate: 0 };
+  return { count: 0, reach: 0, replies: 0, tapsForward: 0, tapsBack: 0, exits: 0, exitRate: 0, replyRate: 0 };
 }
 
 function summarizeStories(stories) {
   const totals = {
     count: stories.length,
-    impressions: sum(stories, "impressions"),
     reach: sum(stories, "reach"),
     replies: sum(stories, "replies"),
     tapsForward: sum(stories, "tapsForward"),
@@ -1394,7 +1383,7 @@ function summarizeStories(stories) {
   };
   return {
     ...totals,
-    exitRate: totals.impressions ? (totals.exits / totals.impressions) * 100 : 0,
+    exitRate: totals.reach ? (totals.exits / totals.reach) * 100 : 0,
     replyRate: totals.reach ? (totals.replies / totals.reach) * 100 : 0
   };
 }
@@ -1424,54 +1413,55 @@ async function fetchMedia(igId) {
 }
 
 async function fetchMediaInsights(mediaId) {
-  const attempts = [
-    "reach,views,saved,shares,total_interactions",
-    "reach,views,saved,total_interactions",
-    "reach,views,total_interactions"
-  ];
-  for (const metric of attempts) {
-    try {
-      const body = await graphGet(`${mediaId}/insights`, { metric });
-      return parseInsights(body.data || []);
-    } catch (error) {
-      await logApiError("instagram_media_insights", error, { mediaId, metric });
-      if (metric === attempts.at(-1)) {
-        return { unavailableReason: error.message };
-      }
-    }
-  }
-  return {};
+  const normal = await fetchInsightGroup(`${mediaId}/insights`, "instagram_media_insights", { mediaId }, [
+    { metric: "reach,saved,shares,total_interactions" },
+    { metric: "reach,saved,total_interactions" },
+    { metric: "reach,total_interactions" }
+  ]);
+  const totalValue = await fetchInsightGroup(`${mediaId}/insights`, "instagram_media_insights_total_value", { mediaId }, [
+    { metric: "views", metric_type: "total_value" }
+  ]);
+  return { ...normal, ...totalValue };
 }
 
 async function fetchInstagramAccountInsights(igId, month) {
   const since = `${month}-01`;
   const until = monthEndKey(month);
-  const attempts = [
-    "reach,profile_views,website_clicks,views",
-    "reach,profile_views,website_clicks,impressions",
-    "reach,profile_views"
-  ];
-  for (const metric of attempts) {
+  const reach = await fetchInsightGroup(`${igId}/insights`, "instagram_account_insights", { month }, [
+    { metric: "reach", period: "day", since, until }
+  ], { sumSeries: true });
+  const totals = await fetchInsightGroup(`${igId}/insights`, "instagram_account_insights_total_value", { month }, [
+    { metric: "profile_views,website_clicks,views", metric_type: "total_value", period: "day", since, until },
+    { metric: "profile_views,website_clicks", metric_type: "total_value", period: "day", since, until },
+    { metric: "views", metric_type: "total_value", period: "day", since, until }
+  ], { sumSeries: true });
+  return { ...reach, ...totals };
+}
+
+async function fetchInsightGroup(path, source, context, attempts, options = {}) {
+  for (const params of attempts) {
     try {
-      const body = await graphGet(`${igId}/insights`, {
-        metric,
-        period: "day",
-        since,
-        until
-      });
-      return sumInsightSeries(body.data || []);
+      const body = await graphGet(path, params);
+      return options.sumSeries ? sumInsightSeries(body.data || []) : parseInsights(body.data || []);
     } catch (error) {
-      await logApiError("instagram_account_insights", error, { month, metric });
-      if (metric === attempts.at(-1)) return { unavailableReason: error.message };
+      if (options.emptyOnNotEnoughViewers && isNotEnoughViewersError(error)) {
+        return { unavailableReason: safeErrorMessage(error) };
+      }
+      await logApiError(source, error, { ...context, params });
+      if (params === attempts.at(-1)) return { unavailableReason: safeErrorMessage(error) };
     }
   }
   return {};
 }
 
+function isNotEnoughViewersError(error) {
+  return safeErrorMessage(error).toLowerCase().includes("not enough viewers");
+}
+
 function parseInsights(items) {
   const result = {};
   for (const item of items) {
-    const value = item.values?.[0]?.value;
+    const value = item.total_value?.value ?? item.values?.[0]?.value;
     result[item.name] = typeof value === "number" ? value : Number(value || 0);
   }
   return result;
@@ -1480,7 +1470,11 @@ function parseInsights(items) {
 function sumInsightSeries(items) {
   const result = {};
   for (const item of items) {
-    result[item.name] = (item.values || []).reduce((total, value) => total + Number(value.value || 0), 0);
+    if (item.total_value && Object.prototype.hasOwnProperty.call(item.total_value, "value")) {
+      result[item.name] = Number(item.total_value.value || 0);
+    } else {
+      result[item.name] = (item.values || []).reduce((total, value) => total + Number(value.value || 0), 0);
+    }
   }
   return result;
 }
