@@ -247,6 +247,14 @@ NAVER_ADS_BASE_URL=https://api.searchad.naver.com
 npm run render:check
 ```
 
+### API Diagnostics
+
+Environment status only confirms that required variables exist. Actual API data can still fail if Meta blocks the token or Cafe24 refresh tokens are expired.
+
+Recent API errors are available at:
+
+`/api/diagnostics/logs`
+
 ### Upload Cafe24 CSV To Render
 
 After the latest code is deployed to Render:

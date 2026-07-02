@@ -103,6 +103,15 @@ function emptyMonth(month) {
   };
 }
 
+function errorMonth(month, error) {
+  return {
+    ...emptyMonth(month),
+    source: "api_error",
+    error: error || "API 오류",
+    cacheWarning: error || "API 오류"
+  };
+}
+
 function sourceLabel(data) {
   if (!data) return "-";
   if (data.source === "csv_required") return "CSV 필요";
@@ -180,6 +189,16 @@ function renderMonthRail(data) {
 }
 
 function renderKpis(data) {
+  if (data.error) {
+    $("#kpiGrid").innerHTML = [
+      ["API 오류", "확인 필요", data.error],
+      ["월", data.month || "-", "Render API 로그를 확인하세요"],
+      ["표시 상태", "0으로 대체 안 함", "실제 데이터가 없으면 원인을 표시합니다."]
+    ].map(([label, value, delta]) => (
+      `<article class="kpi"><span>${esc(label)}</span><strong>${esc(value)}</strong><p class="delta">${esc(delta)}</p></article>`
+    )).join("");
+    return;
+  }
   const a = data.account || {};
   const postCount = (data.posts || []).length;
   const adSpend = (data.posts || []).reduce((sum, post) => sum + Number(post.adSpend || 0), 0);
@@ -630,7 +649,7 @@ async function loadMonths() {
   monthlyData = [];
   for (const month of months) {
     const data = await getJson(`/api/instagram/monthly?month=${month}`, 8000);
-    monthlyData.push(data.error ? emptyMonth(month) : data);
+    monthlyData.push(data.error ? errorMonth(month, data.error) : data);
   }
   monthlyData.sort((a, b) => b.month.localeCompare(a.month));
   renderMonthSelect();

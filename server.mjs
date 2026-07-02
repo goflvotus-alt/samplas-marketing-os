@@ -100,12 +100,17 @@ createServer(async (req, res) => {
       res.end(`<!doctype html><meta charset="utf-8"><title>Cafe24 Connected</title><body style="font-family:system-ui;padding:32px"><h1>Cafe24 연결 완료</h1><p>새 Cafe24 토큰을 .env에 저장했습니다.</p><p><a href="/">대시보드로 돌아가기</a></p></body>`);
       return;
     }
+    if (url.pathname === "/api/diagnostics/logs") {
+      const data = await readApiErrorLog(Number(url.searchParams.get("limit") || 50));
+      return json(res, data);
+    }
     if (url.pathname.startsWith("/outputs/")) {
       return serveFile(res, join(root, url.pathname));
     }
     return serveFile(res, join(outputDir, url.pathname.replace(/^\//, "")));
   } catch (error) {
-    return json(res, { error: error.message }, 500);
+    await logApiError("http_request", error, { path: req.url });
+    return json(res, apiErrorPayload(error), error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
   }
 }).listen(port, host, () => {
   console.log(`SAMPLAS Marketing OS running at http://${host}:${port}`);
@@ -127,6 +132,66 @@ async function loadEnv() {
     parsed[key] = value;
   }
   return parsed;
+}
+
+function safeErrorMessage(error) {
+  return String(error?.message || "Unknown error")
+    .replaceAll(env.META_ACCESS_TOKEN || "__NO_META_TOKEN__", "[META_ACCESS_TOKEN]")
+    .replaceAll(env.CAFE24_ACCESS_TOKEN || "__NO_CAFE24_ACCESS__", "[CAFE24_ACCESS_TOKEN]")
+    .replaceAll(env.CAFE24_REFRESH_TOKEN || "__NO_CAFE24_REFRESH__", "[CAFE24_REFRESH_TOKEN]")
+    .replaceAll(env.CAFE24_CLIENT_SECRET || "__NO_CAFE24_SECRET__", "[CAFE24_CLIENT_SECRET]")
+    .replaceAll(env.CAFE24_PROXY_BASIC_AUTH || "__NO_PROXY_AUTH__", "[CAFE24_PROXY_BASIC_AUTH]")
+    .replaceAll(env.CAFE24_PROXY_SECRET || "__NO_PROXY_SECRET__", "[CAFE24_PROXY_SECRET]");
+}
+
+function apiErrorPayload(error) {
+  return {
+    error: safeErrorMessage(error),
+    status: error?.status || null,
+    code: error?.code || error?.body?.error?.code || error?.body?.error_code || null,
+    type: error?.type || error?.body?.error?.type || null,
+    loggedAt: new Date().toISOString()
+  };
+}
+
+async function logApiError(source, error, context = {}) {
+  const entry = {
+    time: new Date().toISOString(),
+    source,
+    message: safeErrorMessage(error),
+    status: error?.status || null,
+    code: error?.code || error?.body?.error?.code || error?.body?.error_code || null,
+    type: error?.type || error?.body?.error?.type || null,
+    context
+  };
+  console.error(`[SAMPLAS_API_ERROR] ${JSON.stringify(entry)}`);
+  try {
+    await mkdir(workDir, { recursive: true });
+    const file = join(workDir, "samplas-api-errors.ndjson");
+    const existing = existsSync(file) ? await readFile(file, "utf8") : "";
+    const lines = existing.split(/\r?\n/).filter(Boolean).slice(-199);
+    lines.push(JSON.stringify(entry));
+    await writeFile(file, `${lines.join("\n")}\n`);
+  } catch (logError) {
+    console.error(`[SAMPLAS_API_LOG_WRITE_FAILED] ${safeErrorMessage(logError)}`);
+  }
+}
+
+async function readApiErrorLog(limit = 50) {
+  const file = join(workDir, "samplas-api-errors.ndjson");
+  if (!existsSync(file)) return { source: "samplas_api_errors", logs: [] };
+  const text = await readFile(file, "utf8");
+  const logs = text.split(/\r?\n/)
+    .filter(Boolean)
+    .slice(-Math.min(Math.max(limit, 1), 200))
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return { raw: line };
+      }
+    });
+  return { source: "samplas_api_errors", logs };
 }
 
 async function buildMetaAdsSummary(since, until) {
@@ -193,6 +258,7 @@ async function buildMetaAdsSummaryWithCache(since, until, options = {}) {
   try {
     return await buildMetaAdsSummary(since, until);
   } catch (error) {
+    await logApiError("meta_ads", error, { since, until });
     const cached = await readCachedMetaAdsSummary(since, until);
     if (cached) {
       return {
@@ -272,22 +338,26 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
   }
   let body;
   try {
-    body = await cafe24GetOrders(startDate, endDate);
+    body = await cafe24GetOrders(startDate, endDate, options);
   } catch (error) {
+    await logApiError("cafe24_orders", error, { startDate, endDate, stage: "orders" });
     if (!isCafe24InvalidToken(error)) throw error;
-    await refreshCafe24Token();
-    body = await cafe24GetOrders(startDate, endDate);
+    try {
+      await refreshCafe24Token();
+    } catch (refreshError) {
+      await logApiError("cafe24_refresh", refreshError, { startDate, endDate, stage: "refresh" });
+      throw refreshError;
+    }
+    body = await cafe24GetOrders(startDate, endDate, options);
   }
   const orders = body.orders || [];
+  const summary = summarizeCafe24Orders(orders);
   const result = {
     source: "cafe24_admin_api",
     startDate,
     endDate,
     orders,
-    totals: {
-      orderCount: orders.length,
-      orderAmount: orders.reduce((total, order) => total + Number(order.order_price_amount || order.actual_payment_amount || 0), 0)
-    }
+    ...summary
   };
   await mkdir(workDir, { recursive: true });
   await writeFile(join(workDir, `cafe24-orders-${startDate}_${endDate}.json`), JSON.stringify(result, null, 2));
@@ -362,6 +432,65 @@ async function readCachedCafe24Orders(startDate, endDate) {
     requestedEndDate: endDate,
     cacheFile: latest
   };
+}
+
+function summarizeCafe24Orders(orders = []) {
+  const productMap = new Map();
+  const paymentMap = new Map();
+  let itemCount = 0;
+  let quantity = 0;
+  let itemAmount = 0;
+
+  for (const order of orders) {
+    const paymentMethod = order.payment_method || order.payment_methods?.[0]?.payment_method || order.payment_method_name || "미확인";
+    const orderAmount = cafe24OrderAmount(order);
+    const payment = paymentMap.get(paymentMethod) || { paymentMethod, orderCount: 0, orderAmount: 0 };
+    payment.orderCount += 1;
+    payment.orderAmount += orderAmount;
+    paymentMap.set(paymentMethod, payment);
+
+    const items = order.items || order.order_items || order.products || [];
+    for (const item of items) {
+      const productName = item.product_name || item.productName || item.product_name_default || item.name || "상품명 없음";
+      const productNo = item.product_no || item.productNo || item.product_code || "";
+      const qty = Number(item.quantity || item.qty || 1);
+      const amount = Number(item.product_price || item.price || item.order_price_amount || item.actual_payment_amount || 0) * qty;
+      itemCount += 1;
+      quantity += qty;
+      itemAmount += amount;
+      const key = productName || productNo || "상품명 없음";
+      const product = productMap.get(key) || { productName: key, productNo, quantity: 0, itemAmount: 0, itemCount: 0 };
+      product.quantity += qty;
+      product.itemAmount += amount;
+      product.itemCount += 1;
+      productMap.set(key, product);
+    }
+  }
+
+  const orderAmount = orders.reduce((total, order) => total + cafe24OrderAmount(order), 0);
+  return {
+    totals: {
+      orderCount: orders.length,
+      itemCount,
+      quantity,
+      orderAmount,
+      itemAmount,
+      averageOrderAmount: orders.length ? Math.round(orderAmount / orders.length) : 0
+    },
+    topProducts: [...productMap.values()].sort((left, right) => right.itemAmount - left.itemAmount).slice(0, 50),
+    paymentMethods: [...paymentMap.values()].sort((left, right) => right.orderAmount - left.orderAmount)
+  };
+}
+
+function cafe24OrderAmount(order = {}) {
+  return Number(
+    order.actual_payment_amount
+    || order.order_price_amount
+    || order.payment_amount
+    || order.order_amount
+    || order.total_price
+    || 0
+  );
 }
 
 async function importCafe24Csv(csvText, csvFile = "cafe24-upload.csv") {
@@ -593,26 +722,35 @@ function cafe24ProxyHeaders() {
   return headers;
 }
 
-async function cafe24GetOrders(startDate, endDate) {
+async function cafe24GetOrders(startDate, endDate, options = {}) {
   const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/orders`);
   url.searchParams.set("start_date", startDate);
   url.searchParams.set("end_date", endDate);
-  url.searchParams.set("limit", "100");
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
-      "Content-Type": "application/json"
+  const requestedLimit = Math.min(Number(options.limit || 500) || 500, 1000);
+  const pageSize = Math.min(100, requestedLimit);
+  const orders = [];
+  for (let offset = 0; offset < requestedLimit; offset += pageSize) {
+    url.searchParams.set("limit", String(pageSize));
+    url.searchParams.set("offset", String(offset));
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
+        "Content-Type": "application/json"
+      }
+    });
+    const body = await response.json();
+    if (!response.ok || body.error) {
+      const message = body.error?.message || body.error_description || body.message || `Cafe24 API error ${response.status}`;
+      const error = new Error(message);
+      error.status = response.status;
+      error.body = body;
+      throw error;
     }
-  });
-  const body = await response.json();
-  if (!response.ok || body.error) {
-    const message = body.error?.message || body.error_description || body.message || `Cafe24 API error ${response.status}`;
-    const error = new Error(message);
-    error.status = response.status;
-    error.body = body;
-    throw error;
+    const pageOrders = body.orders || [];
+    orders.push(...pageOrders);
+    if (pageOrders.length < pageSize) break;
   }
-  return body;
+  return { orders };
 }
 
 async function refreshCafe24Token() {
@@ -1017,7 +1155,12 @@ async function graphGet(path, params = {}) {
   const response = await fetch(url);
   const body = await response.json();
   if (!response.ok || body.error) {
-    throw new Error(body.error?.message || `Graph API error ${response.status}`);
+    const error = new Error(body.error?.message || `Graph API error ${response.status}`);
+    error.status = response.status;
+    error.body = body;
+    error.code = body.error?.code;
+    error.type = body.error?.type;
+    throw error;
   }
   return body;
 }
@@ -1029,6 +1172,7 @@ async function buildInstagramMonthlyData(month) {
   const account = await graphGet(igId, {
     fields: "id,username,name,followers_count,media_count"
   });
+  const accountInsights = await fetchInstagramAccountInsights(igId, month);
   const media = await fetchMedia(igId);
   const monthMedia = media.filter((item) => String(item.timestamp || "").startsWith(month));
   const posts = [];
@@ -1044,13 +1188,13 @@ async function buildInstagramMonthlyData(month) {
     account: {
       followers: account.followers_count || 0,
       followerDelta: 0,
-      reach: sum(posts, "reach"),
+      reach: Number(accountInsights.reach || 0) || sum(posts, "reach"),
       reachDelta: 0,
-      views: sum(posts, "views"),
+      views: Number(accountInsights.views || accountInsights.impressions || 0) || sum(posts, "views"),
       viewsDelta: 0,
-      profileVisits: 0,
+      profileVisits: Number(accountInsights.profile_views || 0),
       profileVisitDelta: 0,
-      websiteClicks: 0,
+      websiteClicks: Number(accountInsights.website_clicks || 0),
       websiteClickDelta: 0,
       accountEngagement: posts.reduce((total, post) => total + (post.totalInteractions || post.likes + post.comments + post.saves + post.shares), 0),
       growthRate: 0
@@ -1085,6 +1229,7 @@ async function buildInstagramMonthlyDataWithCache(month, options = {}) {
   try {
     return await buildInstagramMonthlyData(month);
   } catch (error) {
+    await logApiError("instagram_monthly", error, { month });
     const cached = await readCachedInstagramMonth(month);
     if (cached) {
       cached.source = `${cached.source || "instagram_graph_api"}_cached`;
@@ -1194,6 +1339,7 @@ async function fetchStoryInsights(storyId) {
       const body = await graphGet(`${storyId}/insights`, { metric });
       return parseInsights(body.data || []);
     } catch (error) {
+      await logApiError("instagram_story_insights", error, { storyId, metric });
       if (metric === attempts.at(-1)) return { unavailableReason: error.message };
     }
   }
@@ -1276,9 +1422,35 @@ async function fetchMediaInsights(mediaId) {
       const body = await graphGet(`${mediaId}/insights`, { metric });
       return parseInsights(body.data || []);
     } catch (error) {
+      await logApiError("instagram_media_insights", error, { mediaId, metric });
       if (metric === attempts.at(-1)) {
         return { unavailableReason: error.message };
       }
+    }
+  }
+  return {};
+}
+
+async function fetchInstagramAccountInsights(igId, month) {
+  const since = `${month}-01`;
+  const until = monthEndKey(month);
+  const attempts = [
+    "reach,profile_views,website_clicks,views",
+    "reach,profile_views,website_clicks,impressions",
+    "reach,profile_views"
+  ];
+  for (const metric of attempts) {
+    try {
+      const body = await graphGet(`${igId}/insights`, {
+        metric,
+        period: "day",
+        since,
+        until
+      });
+      return sumInsightSeries(body.data || []);
+    } catch (error) {
+      await logApiError("instagram_account_insights", error, { month, metric });
+      if (metric === attempts.at(-1)) return { unavailableReason: error.message };
     }
   }
   return {};
@@ -1289,6 +1461,14 @@ function parseInsights(items) {
   for (const item of items) {
     const value = item.values?.[0]?.value;
     result[item.name] = typeof value === "number" ? value : Number(value || 0);
+  }
+  return result;
+}
+
+function sumInsightSeries(items) {
+  const result = {};
+  for (const item of items) {
+    result[item.name] = (item.values || []).reduce((total, value) => total + Number(value.value || 0), 0);
   }
   return result;
 }
@@ -1357,6 +1537,12 @@ function objectiveFor(tag, type) {
 
 function sum(items, key) {
   return items.reduce((total, item) => total + Number(item[key] || 0), 0);
+}
+
+function monthEndKey(month) {
+  const [year, m] = String(month).split("-").map(Number);
+  const day = new Date(Date.UTC(year, m, 0)).getUTCDate();
+  return `${month}-${String(day).padStart(2, "0")}`;
 }
 
 function currentMonth() {

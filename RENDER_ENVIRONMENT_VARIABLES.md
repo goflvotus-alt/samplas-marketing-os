@@ -272,6 +272,30 @@ environment.cafe24.missing
 
 If one section is still false, check the matching `missing` list first.
 
+Important:
+
+- `instagram=true`, `metaAds=true`, and `cafe24=true` mean the required environment variables exist.
+- They do not guarantee Meta permissions are approved or Cafe24 refresh tokens are still valid.
+- Actual API validity is confirmed by these endpoints:
+
+```txt
+https://samplas-marketing-os.onrender.com/api/instagram/monthly?month=2026-07&refresh=1
+https://samplas-marketing-os.onrender.com/api/meta-ads/summary?since=2026-07-01&until=2026-07-02&refresh=1
+https://samplas-marketing-os.onrender.com/api/cafe24/orders?start_date=2026-07-01&end_date=2026-07-02&limit=20
+```
+
+API errors are logged to Render logs and this endpoint:
+
+```txt
+https://samplas-marketing-os.onrender.com/api/diagnostics/logs
+```
+
+Common results:
+
+- `API access blocked.` means Meta token/app permissions are blocked. The dashboard cannot invent Meta data until Meta access is fixed.
+- `Invalid refresh_token` means the existing Cafe24 refresh token is expired. Cafe24 OAuth reauthorization is required.
+- On the Free plan, logs and caches are temporary because `WORK_DIR` is under `/tmp`.
+
 ## CSV Upload Timing
 
 Do not upload Cafe24 CSV until:
