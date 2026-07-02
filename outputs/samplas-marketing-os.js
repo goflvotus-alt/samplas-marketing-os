@@ -244,14 +244,16 @@ function renderKpis(data) {
   const a = data.account || {};
   const postCount = (data.posts || []).length;
   const instagramErrors = instagramApiErrors(data);
-  const postsScopeNote = data.postsScope === "recent_media_fallback"
-    ? "월 게시물 0개 · 최근 미디어 표시"
-    : `최근 미디어 ${apiNum(data.mediaFetched)}개 · 월 필터 ${apiNum(data.monthMediaCount)}개`;
   const items = [
-    ["팔로워", apiNum(a.followers), `@${a.username || data.accountIdentity?.username || "samplaskr"} · media_count ${apiNum(a.mediaCount ?? data.accountIdentity?.mediaCount)}`],
-    ["도달", apiNum(a.reach), instagramErrors.account || `전월 대비 ${pct(a.reachDelta)}`],
-    ["프로필 방문", apiNum(a.profileVisits), instagramErrors.account || `전월 대비 ${pct(a.profileVisitDelta)}`],
-    ["웹사이트 클릭", apiNum(a.websiteClicks), instagramErrors.account || `콘텐츠 ${apiNum(postCount)}개 · ${postsScopeNote}`]
+    ["Followers", apiNum(a.followers), `@${a.username || data.accountIdentity?.username || "samplaskr"}`],
+    ["Reach", apiNum(a.reach), instagramErrors.account || "Instagram 기준"],
+    ["Views", apiNum(a.views), instagramErrors.account || "Instagram 기준"],
+    ["Profile Visit", apiNum(a.profileVisits), instagramErrors.account || "Instagram 기준"],
+    ["Website Click", apiNum(a.websiteClicks), instagramErrors.account || "Instagram 기준"],
+    ["게시물 수", `${apiNum(postCount)}개`, "선택 월 콘텐츠"],
+    ["광고비", "확인 중", "Meta Ads 확인 중"],
+    ["Cafe24 실제 매출", "확인 중", "Cafe24 확인 중"],
+    ["ROAS", "확인 중", "Meta 기준"]
   ];
   $("#kpiGrid").innerHTML = items.map(([label, value, delta]) => (
     `<article class="kpi"><span>${label}</span><strong>${value}</strong><p class="delta">${delta}</p></article>`
@@ -261,7 +263,9 @@ function renderKpis(data) {
 async function renderOverviewLiveData(data) {
   const target = $("#overviewLiveData");
   if (!target) return;
-  target.innerHTML = `<article class="action-item"><strong>실시간 데이터 확인 중</strong><p>Render API 연결 상태와 이번 달 요약을 확인합니다.</p></article>`;
+  target.innerHTML = `<article class="action-item"><strong>이번 달 변화 확인 중</strong><p>전월 대비 증감 신호를 확인합니다.</p></article>`;
+  $("#actions").innerHTML = `<article class="action-item"><strong>Action Center 확인 중</strong><p>오늘 확인할 일을 정리합니다.</p></article>`;
+  $("#insightList").innerHTML = `<article class="action-item"><strong>Quick Summary 확인 중</strong><p>Top 콘텐츠, 브랜드, 캠페인, 상품을 확인합니다.</p></article>`;
 
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
@@ -273,6 +277,8 @@ async function renderOverviewLiveData(data) {
 
   const a = data.account || {};
   const missing = status.environment || {};
+  const metaTotals = meta.totals || {};
+  const cafeTotals = cafe.totals || {};
   const cafeSource = cafe.error ? cafe.error : cafe24SourceLabel(cafe);
   const metaSource = isPermissionBlocked(meta) ? "권한 차단: Meta 앱 권한 또는 토큰 권한 확인 필요" : meta.error ? meta.error : meta.source || "Meta Ads 연결";
   const instagramDetail = status.instagram
@@ -283,12 +289,68 @@ async function renderOverviewLiveData(data) {
   const instagramMessage = instagramBlocked
     ? data.error
     : instagramErrors.account || instagramErrors.media || instagramDetail;
+  const posts = data.posts || [];
+  const postCount = posts.length;
+  const topContent = topPosts(posts, purposeScore, 1)[0];
+  const topSaved = topPosts(posts, (post) => postMetrics(post).saveRate, 1)[0];
+  const topCampaign = [...(meta.campaigns || [])].sort((left, right) => Number(right.purchaseValue || 0) - Number(left.purchaseValue || 0))[0];
+  const topProduct = (cafe.topProducts || [])[0];
+  const roas = Number(metaTotals.spend || 0) ? Number(metaTotals.purchaseValue || 0) / Number(metaTotals.spend || 0) : null;
+
+  $("#kpiGrid").innerHTML = [
+    ["Followers", apiNum(a.followers), `@${a.username || data.accountIdentity?.username || "samplaskr"}`],
+    ["Reach", apiNum(a.reach), "Instagram"],
+    ["Views", apiNum(a.views), "Instagram"],
+    ["Profile Visit", apiNum(a.profileVisits), "Instagram"],
+    ["Website Click", apiNum(a.websiteClicks), "Instagram"],
+    ["게시물 수", `${apiNum(postCount)}개`, data.postsScope === "recent_media_fallback" ? "최근 미디어 기준" : "선택 월 기준"],
+    ["광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), "Meta Ads"],
+    ["Cafe24 실제 매출", cafe.error ? "확인 필요" : apiWon(cafeTotals.orderAmount), "Cafe24"],
+    ["ROAS", roas === null ? "-" : multiple(roas), "Meta 기준 추정 구매값 / 광고비"]
+  ].map(([label, value, delta]) => (
+    `<article class="kpi"><span>${esc(label)}</span><strong>${esc(value)}</strong><p class="delta">${esc(delta)}</p></article>`
+  )).join("");
 
   target.innerHTML = [
-    `<article class="action-item"><strong>Instagram API</strong><span>${instagramBlocked ? "권한 차단" : status.instagram ? (data.apiStatus === "partial" ? "부분 연결" : "연결됨") : "환경변수 필요"}</span><p>${esc(instagramMessage)} · 도달 ${apiNum(a.reach)} / 조회 ${apiNum(a.views)} / 게시물 ${apiNum((data.posts || []).length)}개</p></article>`,
-    `<article class="action-item"><strong>Meta Ads</strong><span>${isPermissionBlocked(meta) ? "권한 차단" : meta.error ? "확인 필요" : "연결됨"}</span><p>${esc(metaSource)} · 상세 광고 성과는 Advertising에서 확인</p></article>`,
-    `<article class="action-item"><strong>Cafe24</strong><span>${cafe.error ? "확인 필요" : "연결됨"}</span><p>${esc(cafeSource)} · 실제 매출은 Sales에서 확인</p></article>`
+    changeCard("Reach", a.reachDelta),
+    changeCard("Views", a.viewsDelta),
+    changeCard("Profile Visit", a.profileVisitDelta),
+    changeCard("Website Click", a.websiteClickDelta)
+  ].filter(Boolean).join("") || `<article class="action-item"><strong>이번 달 변화</strong><p>전월 대비 증감 데이터가 아직 없습니다. 월간 확정 데이터가 쌓이면 변화가 표시됩니다.</p></article>`;
+
+  const actionItems = [
+    meta.error ? `Meta Ads 확인 필요: ${meta.error}` : "",
+    cafe.error ? `Cafe24 확인 필요: ${cafe.error}` : "",
+    instagramBlocked ? `Instagram 권한 확인 필요: ${data.error}` : "",
+    Number(a.reachDelta) < 0 ? `Reach가 ${pct(Math.abs(Number(a.reachDelta)))} 감소했습니다. Content에서 도달 TOP 콘텐츠를 확인하세요.` : "",
+    topSaved ? `저장률이 가장 높은 콘텐츠는 "${topSaved.title || "Untitled"}"입니다.` : "",
+    data.source === "csv_required" ? "지난 월 데이터는 CSV 업로드가 필요합니다." : ""
+  ].filter(Boolean);
+  $("#actions").innerHTML = (actionItems.length ? actionItems : [
+    "오늘은 API 연결 상태가 정상입니다.",
+    "Content에서 저장률 높은 콘텐츠를 확인하고 다음 게시물에 반영하세요.",
+    "Sales에서 Cafe24 실제 매출을 확인하세요."
+  ]).map((item) => `<article class="action-item"><strong>${esc(item)}</strong></article>`).join("");
+
+  $("#insightList").innerHTML = [
+    `<article class="action-item"><strong>Top 콘텐츠</strong><span>${esc(topContent?.title || "-")}</span><p>${topContent ? `Reach ${apiNum(topContent.reach)} · Views ${apiNum(topContent.views)}` : "콘텐츠 데이터 없음"}</p></article>`,
+    `<article class="action-item"><strong>Top 판매 브랜드</strong><span>${esc(topProduct ? brandFromProduct(topProduct.productName) : "-")}</span><p>${topProduct ? `${esc(topProduct.productName || "-")} · ${apiNum(topProduct.quantity)}개` : "Cafe24 상품 데이터 없음"}</p></article>`,
+    `<article class="action-item"><strong>Top 광고 캠페인</strong><span>${esc(topCampaign?.campaignName || "-")}</span><p>${topCampaign ? `광고비 ${apiWon(topCampaign.spend)} · ROAS ${topCampaign.roas === null ? "-" : multiple(topCampaign.roas)}` : "Meta 캠페인 데이터 없음"}</p></article>`,
+    `<article class="action-item"><strong>Top 상품</strong><span>${esc(topProduct?.productName || "-")}</span><p>${topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "Cafe24 상품 데이터 없음"}</p></article>`
   ].join("");
+}
+
+function changeCard(label, delta) {
+  if (!hasApiValue(delta) || Number(delta) === 0) return "";
+  const value = Number(delta);
+  const direction = value > 0 ? "▲" : "▼";
+  return `<article class="action-item"><strong>${esc(label)}</strong><span>${direction} ${pct(Math.abs(value))}</span><p>전월 대비</p></article>`;
+}
+
+function brandFromProduct(productName = "") {
+  const cleaned = String(productName || "").trim();
+  if (!cleaned) return "-";
+  return cleaned.split(/\s+/)[0] || cleaned;
 }
 
 function interaction(post) {
@@ -391,6 +453,7 @@ function renderInsights(data) {
 
 function renderPurposeRadar(posts) {
   const target = $("#purposeRadar");
+  if (!target) return;
   const groups = new Map();
   for (const post of posts || []) {
     const key = post.tag || post.type || "기타";
@@ -627,12 +690,6 @@ function renderOtherSections(data) {
     ["Cafe24", "왼쪽 상태는 실제 health 체크 기준으로 표시"],
     ["Cafe24 재인증", "access_token / refresh_token이 모두 만료되면 OAuth 재승인이 필요합니다.", "/api/cafe24/oauth/start"]
   ].map(([title, note, href]) => `<article class="action-item"><strong>${title}</strong><p>${note}</p>${href ? `<a class="button secondary" href="${href}" target="_blank" rel="noreferrer">재인증 시작</a>` : ""}</article>`).join("");
-  $("#actions").innerHTML = [
-    "월말 CSV로 과거 월 확정",
-    "현재 월 API/캐시 점검",
-    "Cafe24 invalid refresh_token 발생 시 Render Cafe24 재인증",
-    "Meta API access blocked는 토큰/권한 별도 점검"
-  ].map((item) => `<label class="action-item"><input type="checkbox" /> ${esc(item)}</label>`).join("");
 }
 
 async function renderAdvertising(data) {
@@ -802,8 +859,6 @@ function renderAll() {
   renderMonthRail(data);
   renderKpis(data);
   renderOverviewLiveData(data);
-  renderPurposeRadar(data.posts || []);
-  renderInsights(data);
   renderMonthlyDashboard(data);
   renderContentTabs();
   renderContentTable(data.posts || []);

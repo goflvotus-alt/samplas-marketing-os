@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SAMPLAS Instagram Marketing OS</title>
-  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-reports-v1" />
+  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-overview-home-v1" />
 </head>
 <body>
   <div class="app-shell">
@@ -48,31 +48,32 @@
           <span id="dataModeBadge" class="badge">연결 확인 중</span>
         </div>
         <div id="kpiGrid" class="kpi-grid"></div>
-        <div id="overviewLiveData" class="cards"></div>
-        <div class="layout two">
-          <div class="panel">
-            <div class="panel-head">
-              <h4>목적별 성과 레이더</h4>
-              <span>좋아요 중심 평가 제외</span>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">This Month</p>
+              <h3>이번 달 변화</h3>
             </div>
-            <div id="purposeRadar" class="radar"></div>
           </div>
-          <div class="panel">
-            <div class="panel-head">
-              <h4>마케팅 직원 코멘트</h4>
-              <span>자동 해석</span>
-            </div>
-            <div id="insightList" class="insight-list"></div>
-          </div>
+          <div id="overviewLiveData" class="cards"></div>
         </div>
         <div class="section-block">
           <div class="section-title compact">
             <div>
-              <p class="eyebrow">Action Items</p>
-              <h3>오늘 확인할 실행 체크리스트</h3>
+              <p class="eyebrow">Action Center</p>
+              <h3>오늘 확인할 일</h3>
             </div>
           </div>
           <div id="actions" class="action-list"></div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Quick Summary</p>
+              <h3>이번 달 빠른 요약</h3>
+            </div>
+          </div>
+          <div id="insightList" class="cards"></div>
         </div>
       </section>
 
@@ -233,6 +234,6 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260703-reports-v1"></script>
+  <script src="./samplas-marketing-os.js?v=20260703-overview-home-v1"></script>
 </body>
 </html>
