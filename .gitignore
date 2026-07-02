@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+*.private.env
+RENDER_ENV_FROM_EXISTING.private.env
 
 # Local runtime cache and private business data
 work/

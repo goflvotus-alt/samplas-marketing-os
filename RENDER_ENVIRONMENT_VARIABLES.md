@@ -41,6 +41,30 @@ GRAPH_VERSION=v25.0
 SAMPLAS_INSTAGRAM_USERNAME=samplaskr
 ```
 
+## Reuse Existing Local Values
+
+Existing SAMPLAS local connection values were collected into:
+
+```txt
+RENDER_ENV_FROM_EXISTING.private.env
+```
+
+This file contains real secrets and is gitignored.
+
+A safe redacted summary is here:
+
+```txt
+RENDER_ENV_FROM_EXISTING.redacted.md
+```
+
+Use the private file as the copy source for Render Environment Variables. Do not upload it to GitHub, Slack, email, or Notion.
+
+Important:
+
+- No new Meta or Cafe24 token was created while generating this file.
+- Existing Cafe24 access/refresh token values were reused if present.
+- If Cafe24 still returns `invalid_refresh_token` after these values are entered, the existing token is expired and Cafe24 OAuth reauthorization is required.
+
 ## Meta / Instagram Variables
 
 Required:
