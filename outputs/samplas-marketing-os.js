@@ -257,7 +257,7 @@ async function renderOverviewLiveData(data) {
   target.innerHTML = [
     `<article class="action-item"><strong>Instagram API</strong><span>${instagramBlocked ? "권한 차단" : status.instagram ? "연결됨" : "환경변수 필요"}</span><p>${esc(instagramBlocked ? data.error : instagramDetail)} · 도달 ${num(a.reach)} / 조회 ${num(a.views)}</p></article>`,
     `<article class="action-item"><strong>Meta Ads</strong><span>${isPermissionBlocked(meta) ? "권한 차단" : meta.error ? "확인 필요" : krw(metaTotals.spend)}</span><p>${esc(metaSource)} · 캠페인 ${num((meta.campaigns || []).length)}개</p></article>`,
-    `<article class="action-item"><strong>Cafe24 실제 주문</strong><span>${cafe.error ? "확인 필요" : won(cafeTotals.orderAmount)}</span><p>${esc(cafeSource)} · 주문 ${num(cafeTotals.orderCount)}건</p></article>`
+    `<article class="action-item"><strong>Cafe24 실제 주문</strong><span>${cafe.error ? "확인 필요" : won(cafeTotals.orderAmount)}</span><p>${esc(cafeSource)} · 정상 주문 ${num(cafeTotals.orderCount)}건${Number(cafeTotals.excludedOrderCount || 0) ? ` · 제외 ${num(cafeTotals.excludedOrderCount)}건` : ""}</p></article>`
   ].join("");
 }
 
@@ -570,11 +570,8 @@ function renderOtherSections(data) {
   $("#salesImpact").classList.remove("instagram-feed");
   $("#salesImpact").innerHTML = `<article class="action-item"><strong>Cafe24 주문 데이터 확인 중</strong><p>CSV 또는 저장 캐시를 읽고 있습니다.</p></article>`;
   renderCafe24Sales(data);
-  $("#adComparison").innerHTML = [
-    ["광고 집행 콘텐츠", `${num(posts.filter((post) => Number(post.adSpend || 0)).length)}개`, "Meta 광고 캐시 기준"],
-    ["유기적 콘텐츠", `${num(posts.filter((post) => !Number(post.adSpend || 0)).length)}개`, "게시물별 인사이트 기준"],
-    ["판단 원칙", "Actual 중심", "최종 매출 판단은 Cafe24 실제 주문 기준"]
-  ].map(([title, value, note]) => `<article class="action-item"><strong>${title}</strong><span>${value}</span><p>${note}</p></article>`).join("");
+  $("#adComparison").innerHTML = `<article class="action-item"><strong>Meta / Cafe24 비교 확인 중</strong><p>광고 구매값과 실제 주문 매출을 비교합니다.</p></article>`;
+  renderAdComparison(data);
   $("#calendarGrid").innerHTML = ["Brand Discovery", "Product Focus", "Editorial Cardnews", "Event / Sale"].map((title, index) => (
     `<article class="action-item"><strong>${index + 1}주차</strong><span>${title}</span><p>상위 성과 콘텐츠 톤을 다음 달에 확장합니다.</p></article>`
   )).join("");
@@ -601,23 +598,55 @@ async function renderCafe24Sales(data) {
   if (sales.error) {
     target.classList.add("cards");
     target.classList.remove("instagram-feed");
-    target.innerHTML = `<article class="action-item"><strong>Cafe24 데이터 오류</strong><p>${esc(sales.error)}</p></article>`;
+    target.innerHTML = `<article class="action-item"><strong>Cafe24 데이터 오류</strong><p>${esc(sales.error)}</p><small>API가 실패했고 저장된 CSV/캐시도 없으면 이 영역은 비어 있습니다. 과거 월은 CSV 업로드, 현재 월은 Cafe24 재인증 또는 Render 환경변수 확인이 필요합니다.</small></article>`;
     return;
   }
   const totals = sales.totals || {};
   const topProducts = sales.topProducts || [];
   const payments = sales.paymentMethods || [];
-  const source = sales.source === "csv_required" ? "CSV 필요" : String(sales.source || "").includes("csv") ? "Cafe24 CSV" : "Cafe24 캐시";
+  const source = cafe24SourceLabel(sales);
   target.classList.add("cards");
   target.classList.remove("instagram-feed");
   target.innerHTML = [
-    `<article class="action-item"><strong>총 결제금액</strong><span>${won(totals.orderAmount)}</span><p>${source} · ${esc(sales.startDate || startDate)} ~ ${esc(sales.endDate || endDate)}</p></article>`,
-    `<article class="action-item"><strong>주문 수</strong><span>${num(totals.orderCount)}건</span><p>품목 ${num(totals.itemCount)}개 · 수량 ${num(totals.quantity)}</p></article>`,
-    `<article class="action-item"><strong>객단가</strong><span>${won(totals.averageOrderAmount)}</span><p>주문번호 기준 중복 제거</p></article>`,
-    `<article class="action-item"><strong>상품 판매가 합계</strong><span>${won(totals.itemAmount)}</span><p>품목 판매가 x 수량 기준</p></article>`,
+    `<article class="action-item"><strong>실제 결제금액</strong><span>${won(totals.orderAmount)}</span><p>${source} · ${esc(sales.startDate || startDate)} ~ ${esc(sales.endDate || endDate)}</p></article>`,
+    `<article class="action-item"><strong>정상 주문 수</strong><span>${num(totals.orderCount)}건</span><p>취소/환불 제외 ${num(totals.excludedOrderCount)}건 · 전체 ${num(totals.rawOrderCount || totals.orderCount)}건</p></article>`,
+    `<article class="action-item"><strong>객단가</strong><span>${won(totals.averageOrderAmount)}</span><p>actual_order_amount.payment_amount 우선</p></article>`,
+    `<article class="action-item"><strong>상품 판매가 합계</strong><span>${won(totals.itemAmount || totals.grossOrderAmount)}</span><p>품목 ${num(totals.itemCount)}개 · 수량 ${num(totals.quantity)}</p></article>`,
     `<article class="action-item"><strong>상위 결제수단</strong><span>${esc(payments[0]?.paymentMethod || "-")}</span><p>${payments.slice(0, 3).map((item) => `${esc(item.paymentMethod)} ${won(item.orderAmount)}`).join("<br>") || "데이터 없음"}</p></article>`,
-    `<article class="action-item"><strong>상위 판매 상품</strong><span>${esc(topProducts[0]?.productName || "-")}</span><p>${topProducts.slice(0, 3).map((item) => `${esc(item.productName)} · ${num(item.quantity)}개 · ${won(item.itemAmount)}`).join("<br>") || "데이터 없음"}</p></article>`
+    `<article class="action-item"><strong>상위 판매 상품</strong><span>${esc(topProducts[0]?.productName || "-")}</span><p>${topProducts.slice(0, 3).map((item) => `${esc(item.productName)} · ${num(item.quantity)}개 · ${won(item.itemAmount)}`).join("<br>") || "상품 상세 응답 없음"}</p></article>`
   ].join("");
+}
+
+async function renderAdComparison(data) {
+  const target = $("#adComparison");
+  if (!target) return;
+  const posts = data.posts || [];
+  const startDate = `${data.month}-01`;
+  const endDate = monthEnd(data.month);
+  const [meta, cafe] = await Promise.all([
+    getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
+    getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=500`, 8000)
+  ]);
+  const metaTotals = meta.totals || {};
+  const cafeTotals = cafe.totals || {};
+  const metaPurchaseValue = Number(metaTotals.purchaseValue || 0);
+  const actualSales = Number(cafeTotals.orderAmount || 0);
+  const unmatchedValue = meta.error || cafe.error ? null : Math.max(0, metaPurchaseValue - actualSales);
+  target.innerHTML = [
+    `<article class="action-item"><strong>Meta 구매값</strong><span>${meta.error ? "확인 필요" : won(metaPurchaseValue)}</span><p>${esc(meta.error || meta.source || "Meta Ads API")}</p></article>`,
+    `<article class="action-item"><strong>Cafe24 실제 결제</strong><span>${cafe.error ? "확인 필요" : won(actualSales)}</span><p>${esc(cafe.error || cafe24SourceLabel(cafe))} · 정상 주문 ${num(cafeTotals.orderCount)}건</p></article>`,
+    `<article class="action-item"><strong>미매칭 Meta 구매</strong><span>${unmatchedValue === null ? "확인 필요" : won(unmatchedValue)}</span><p>상품 ID 매칭 전 비교값입니다. 실제 확정 매출은 Cafe24 기준입니다.</p></article>`,
+    `<article class="action-item"><strong>광고 집행 콘텐츠</strong><span>${num(posts.filter((post) => Number(post.adSpend || 0)).length)}개</span><p>유기적 콘텐츠 ${num(posts.filter((post) => !Number(post.adSpend || 0)).length)}개</p></article>`
+  ].join("");
+}
+
+function cafe24SourceLabel(data = {}) {
+  if (data.source === "csv_required") return "CSV 필요";
+  if (data.cacheMode === "fallback_after_error") return `Cafe24 캐시 대체${data.cacheWarning ? ` · ${data.cacheWarning}` : ""}`;
+  if (String(data.source || "").includes("csv")) return "Cafe24 CSV";
+  if (String(data.source || "").includes("admin_api")) return "Cafe24 주문 API";
+  if (String(data.source || "").includes("cached")) return "Cafe24 캐시";
+  return data.source || "Cafe24";
 }
 
 async function renderStoryInsights() {

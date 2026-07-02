@@ -351,14 +351,19 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
     body = await cafe24GetOrders(startDate, endDate, options);
   } catch (error) {
     await logApiError("cafe24_orders", error, { startDate, endDate, stage: "orders" });
-    if (!isCafe24InvalidToken(error)) throw error;
+    if (!isCafe24InvalidToken(error)) return await fallbackCafe24OrdersAfterError(startDate, endDate, error);
     try {
       await refreshCafe24Token();
     } catch (refreshError) {
       await logApiError("cafe24_refresh", refreshError, { startDate, endDate, stage: "refresh" });
-      throw refreshError;
+      return await fallbackCafe24OrdersAfterError(startDate, endDate, refreshError);
     }
-    body = await cafe24GetOrders(startDate, endDate, options);
+    try {
+      body = await cafe24GetOrders(startDate, endDate, options);
+    } catch (retryError) {
+      await logApiError("cafe24_orders", retryError, { startDate, endDate, stage: "orders_after_refresh" });
+      return await fallbackCafe24OrdersAfterError(startDate, endDate, retryError);
+    }
   }
   const orders = body.orders || [];
   const summary = summarizeCafe24Orders(orders);
@@ -372,6 +377,17 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
   await mkdir(workDir, { recursive: true });
   await writeFile(join(workDir, `cafe24-orders-${startDate}_${endDate}.json`), JSON.stringify(result, null, 2));
   return result;
+}
+
+async function fallbackCafe24OrdersAfterError(startDate, endDate, error) {
+  const cached = await readCachedCafe24Orders(startDate, endDate);
+  if (cached) {
+    return {
+      ...decorateCachedSource(cached, "cafe24_orders", "fallback_after_error"),
+      cacheWarning: error.message
+    };
+  }
+  throw error;
 }
 
 async function fetchCafe24OrdersFromProxy(startDate, endDate, options = {}) {
@@ -450,21 +466,33 @@ function summarizeCafe24Orders(orders = []) {
   let itemCount = 0;
   let quantity = 0;
   let itemAmount = 0;
+  let grossOrderAmount = 0;
+  let initialOrderAmount = 0;
+  let excludedOrderCount = 0;
+  const activeOrders = [];
 
   for (const order of orders) {
-    const paymentMethod = order.payment_method || order.payment_methods?.[0]?.payment_method || order.payment_method_name || "미확인";
+    if (isCafe24CanceledOrRefunded(order)) {
+      excludedOrderCount += 1;
+      continue;
+    }
+
+    activeOrders.push(order);
+    const paymentMethod = normalizeCafe24PaymentMethod(order);
     const orderAmount = cafe24OrderAmount(order);
+    grossOrderAmount += cafe24GrossOrderAmount(order);
+    initialOrderAmount += cafe24InitialOrderAmount(order);
     const payment = paymentMap.get(paymentMethod) || { paymentMethod, orderCount: 0, orderAmount: 0 };
     payment.orderCount += 1;
     payment.orderAmount += orderAmount;
     paymentMap.set(paymentMethod, payment);
 
-    const items = order.items || order.order_items || order.products || [];
+    const items = cafe24OrderItems(order);
     for (const item of items) {
       const productName = item.product_name || item.productName || item.product_name_default || item.name || "상품명 없음";
       const productNo = item.product_no || item.productNo || item.product_code || "";
-      const qty = Number(item.quantity || item.qty || 1);
-      const amount = Number(item.product_price || item.price || item.order_price_amount || item.actual_payment_amount || 0) * qty;
+      const qty = cafe24ItemQuantity(item);
+      const amount = cafe24ItemAmount(item, qty);
       itemCount += 1;
       quantity += qty;
       itemAmount += amount;
@@ -477,15 +505,19 @@ function summarizeCafe24Orders(orders = []) {
     }
   }
 
-  const orderAmount = orders.reduce((total, order) => total + cafe24OrderAmount(order), 0);
+  const orderAmount = activeOrders.reduce((total, order) => total + cafe24OrderAmount(order), 0);
   return {
     totals: {
-      orderCount: orders.length,
+      orderCount: activeOrders.length,
+      rawOrderCount: orders.length,
+      excludedOrderCount,
       itemCount,
       quantity,
       orderAmount,
+      grossOrderAmount,
+      initialOrderAmount,
       itemAmount,
-      averageOrderAmount: orders.length ? Math.round(orderAmount / orders.length) : 0
+      averageOrderAmount: activeOrders.length ? Math.round(orderAmount / activeOrders.length) : 0
     },
     topProducts: [...productMap.values()].sort((left, right) => right.itemAmount - left.itemAmount).slice(0, 50),
     paymentMethods: [...paymentMap.values()].sort((left, right) => right.orderAmount - left.orderAmount)
@@ -493,14 +525,99 @@ function summarizeCafe24Orders(orders = []) {
 }
 
 function cafe24OrderAmount(order = {}) {
-  return Number(
-    order.actual_payment_amount
-    || order.order_price_amount
-    || order.payment_amount
-    || order.order_amount
-    || order.total_price
-    || 0
-  );
+  if (isCafe24CanceledOrRefunded(order)) return 0;
+  return firstCafe24Money([
+    order.actual_order_amount?.payment_amount,
+    order.actual_payment_amount,
+    order.payment_amount,
+    order.actual_order_amount?.order_price_amount,
+    order.order_price_amount,
+    order.initial_order_amount?.payment_amount,
+    order.initial_order_amount?.order_price_amount,
+    order.order_amount,
+    order.total_price
+  ]);
+}
+
+function cafe24GrossOrderAmount(order = {}) {
+  if (isCafe24CanceledOrRefunded(order)) return 0;
+  return firstCafe24Money([
+    order.actual_order_amount?.order_price_amount,
+    order.order_price_amount,
+    order.initial_order_amount?.order_price_amount,
+    order.initial_order_amount?.payment_amount,
+    order.payment_amount
+  ]);
+}
+
+function cafe24InitialOrderAmount(order = {}) {
+  if (isCafe24CanceledOrRefunded(order)) return 0;
+  return firstCafe24Money([
+    order.initial_order_amount?.order_price_amount,
+    order.initial_order_amount?.payment_amount,
+    order.order_price_amount,
+    order.payment_amount
+  ]);
+}
+
+function firstCafe24Money(values = []) {
+  for (const value of values) {
+    const parsed = parseCafe24Money(value);
+    if (parsed !== null) return parsed;
+  }
+  return 0;
+}
+
+function parseCafe24Money(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "object") return null;
+  const parsed = Number(String(value).replace(/,/g, ""));
+  return Number.isFinite(parsed) ? Math.round(parsed) : null;
+}
+
+function isCafe24CanceledOrRefunded(order = {}) {
+  const flags = [
+    order.canceled,
+    order.cancelled,
+    order.refunded,
+    order.returned,
+    order.cancel_status,
+    order.return_status,
+    order.refund_status
+  ].map((value) => String(value || "").toLowerCase());
+  if (flags.some((value) => ["t", "true", "y", "yes", "cancel", "canceled", "cancelled", "refund", "refunded", "return", "returned"].includes(value))) return true;
+  return Boolean(order.cancel_date || order.return_confirmed_date || order.refund_date);
+}
+
+function normalizeCafe24PaymentMethod(order = {}) {
+  const raw = order.payment_method_name || order.payment_method || order.payment_methods?.[0]?.payment_method || "미확인";
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list.map((value) => String(value || "").trim()).filter(Boolean).join(" + ") || "미확인";
+}
+
+function cafe24OrderItems(order = {}) {
+  const candidates = [order.items, order.order_items, order.products, order.order_item];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
+function cafe24ItemQuantity(item = {}) {
+  const quantity = Number(item.quantity || item.qty || item.product_quantity || item.order_quantity || 1);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+}
+
+function cafe24ItemAmount(item = {}, quantity = 1) {
+  const amount = firstCafe24Money([
+    item.actual_payment_amount,
+    item.order_price_amount,
+    item.product_price,
+    item.price,
+    item.sale_price,
+    item.supply_price
+  ]);
+  return amount * quantity;
 }
 
 async function importCafe24Csv(csvText, csvFile = "cafe24-upload.csv") {
@@ -736,31 +853,83 @@ async function cafe24GetOrders(startDate, endDate, options = {}) {
   const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/orders`);
   url.searchParams.set("start_date", startDate);
   url.searchParams.set("end_date", endDate);
+  url.searchParams.set("embed", "items");
   const requestedLimit = Math.min(Number(options.limit || 500) || 500, 1000);
   const pageSize = Math.min(100, requestedLimit);
   const orders = [];
   for (let offset = 0; offset < requestedLimit; offset += pageSize) {
     url.searchParams.set("limit", String(pageSize));
     url.searchParams.set("offset", String(offset));
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    });
-    const body = await response.json();
-    if (!response.ok || body.error) {
-      const message = body.error?.message || body.error_description || body.message || `Cafe24 API error ${response.status}`;
-      const error = new Error(message);
-      error.status = response.status;
-      error.body = body;
-      throw error;
-    }
+    const body = await cafe24FetchOrdersPage(url);
     const pageOrders = body.orders || [];
     orders.push(...pageOrders);
     if (pageOrders.length < pageSize) break;
   }
+  await attachCafe24OrderItems(orders);
   return { orders };
+}
+
+async function cafe24FetchOrdersPage(url) {
+  const body = await cafe24FetchJson(url);
+  if (!body.error) return body;
+  if (url.searchParams.has("embed")) {
+    url.searchParams.delete("embed");
+    const fallbackBody = await cafe24FetchJson(url);
+    if (!fallbackBody.error) return fallbackBody;
+    throw fallbackBody.error;
+  }
+  throw body.error;
+}
+
+async function cafe24FetchJson(url) {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
+      "Content-Type": "application/json"
+    }
+  });
+  const body = await response.json();
+  if (!response.ok || body.error) {
+    const message = body.error?.message || body.error_description || body.message || `Cafe24 API error ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.body = body;
+    return { error };
+  }
+  return body;
+}
+
+async function attachCafe24OrderItems(orders = []) {
+  const activeOrders = orders.filter((order) => !isCafe24CanceledOrRefunded(order));
+  const ordersNeedingItems = activeOrders.filter((order) => cafe24OrderItems(order).length === 0 && order.order_id);
+  for (const order of ordersNeedingItems) {
+    try {
+      order.items = await cafe24GetOrderItems(order.order_id);
+    } catch (error) {
+      await logApiError("cafe24_order_items", error, { orderId: order.order_id });
+      order.items = [];
+      order.itemFetchError = error.message;
+    }
+  }
+}
+
+async function cafe24GetOrderItems(orderId) {
+  const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/orders/${encodeURIComponent(orderId)}/items`);
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
+      "Content-Type": "application/json"
+    }
+  });
+  const body = await response.json();
+  if (!response.ok || body.error) {
+    const message = body.error?.message || body.error_description || body.message || `Cafe24 order item API error ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+  return body.items || body.order_items || [];
 }
 
 async function refreshCafe24Token() {
