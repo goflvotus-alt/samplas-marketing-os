@@ -10,7 +10,7 @@ const navItems = [
 const months = ["2026-07", "2026-06", "2026-05", "2026-04", "2026-03", "2026-02", "2026-01"];
 let monthlyData = [];
 let storyData = { stories: [], totals: {} };
-let activeContentFilter = "All";
+let activeContentTab = "All";
 
 const nf = new Intl.NumberFormat("ko-KR");
 const $ = (selector) => document.querySelector(selector);
@@ -188,6 +188,15 @@ function renderNav() {
     $$(".nav button").forEach((node) => node.classList.toggle("active", node === button));
     $$(".view").forEach((view) => view.classList.toggle("active", view.id === button.dataset.view));
     window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
+function renderContentTabs() {
+  $$("[data-content-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.contentTab === activeContentTab);
+  });
+  $$("[data-content-panel]").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.contentPanel === activeContentTab);
   });
 }
 
@@ -400,29 +409,39 @@ function renderPurposeRadar(posts) {
   )).join("") : `<div class="insight">게시물별 데이터가 없습니다.</div>`;
 }
 
-function renderContentTable(posts, filter = "All") {
-  const filtered = filter === "All" ? posts : (posts || []).filter((post) => post.tag === filter || post.type === filter || (filter === "Reels" && post.type === "릴스"));
-  $("#contentRows").innerHTML = filtered.slice(0, 80).map((post) => (
+function renderContentTable(posts) {
+  $("#contentRows").innerHTML = (posts || []).slice(0, 80).map((post) => {
+    const metrics = postMetrics(post);
+    return (
     `<tr>
       <td>${esc(post.date || "-")}</td>
-      <td><strong>${esc(post.tag || "-")}</strong><br>${esc(post.title || "-")}</td>
+      <td><strong>${esc(post.title || "-")}</strong><br>${esc(post.tag || "-")}</td>
       <td>${esc(post.type || "-")}</td>
-      <td>${esc(post.objective || "-")}</td>
-      <td>좋아요 ${apiNum(post.likes)}<br>댓글 ${apiNum(post.comments)}<br>저장 ${apiNum(post.saves)} / 공유 ${apiNum(post.shares)}</td>
-      <td>${esc(post.unavailableReason ? `API 오류: ${post.unavailableReason}` : explainPost(post))}</td>
+      <td>${apiNum(post.reach)}</td>
+      <td>${apiNum(post.views)}</td>
+      <td>${apiNum(post.likes)}</td>
+      <td>${apiNum(post.comments)}</td>
+      <td>${apiNum(post.saves)}</td>
+      <td>${apiNum(post.shares)}</td>
+      <td>${pct(metrics.engagementRate)}</td>
     </tr>`
-  )).join("") || `<tr><td colspan="6">게시물별 데이터가 없습니다.</td></tr>`;
+    );
+  }).join("") || `<tr><td colspan="10">게시물별 데이터가 없습니다.</td></tr>`;
 }
 
 function metricCard(post) {
+  const metrics = postMetrics(post);
   return `<article class="report-panel">
     <h4>${esc(post.title || "Untitled")}</h4>
     <p>${esc(post.date || "-")} · ${esc(post.tag || post.type || "-")}</p>
     <div class="report-metrics">
-      <span>도달 <strong>${apiNum(post.reach)}</strong></span>
-      <span>조회 <strong>${apiNum(post.views)}</strong></span>
-      <span>상호작용 <strong>${apiNum(postInteractionValue(post))}</strong></span>
-      <span>클릭 <strong>${apiNum(post.websiteClicks)}</strong></span>
+      <span>Reach <strong>${apiNum(post.reach)}</strong></span>
+      <span>Views <strong>${apiNum(post.views)}</strong></span>
+      <span>Likes <strong>${apiNum(post.likes)}</strong></span>
+      <span>Comments <strong>${apiNum(post.comments)}</strong></span>
+      <span>Saves <strong>${apiNum(post.saves)}</strong></span>
+      <span>Shares <strong>${apiNum(post.shares)}</strong></span>
+      <span>Engagement Rate <strong>${pct(metrics.engagementRate)}</strong></span>
     </div>
     ${post.unavailableReason ? `<p class="delta">API 오류: ${esc(post.unavailableReason)}</p>` : ""}
   </article>`;
@@ -436,20 +455,14 @@ function feedCard(post, options = {}) {
   const m = postMetrics(post);
   const imageUrl = post.thumbnailUrl || post.mediaUrl || "";
   const mediaStyle = imageUrl ? ` style="background-image: linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.58)), url('${esc(imageUrl)}')"` : "";
-  const statMode = options.statMode || "default";
-  const stats = statMode === "cardnews"
-    ? [
-        ["좋아요", apiNum(post.likes)],
-        ["댓글", apiNum(post.comments)],
-        ["공유", apiNum(post.shares)],
-        ["저장", apiNum(post.saves)]
-      ]
-    : [
-        ["도달", apiNum(post.reach)],
-        ["조회", apiNum(post.views)],
-        ["저장", apiNum(post.saves)],
-        ["공유", apiNum(post.shares)]
-      ];
+  const stats = [
+    ["Reach", apiNum(post.reach)],
+    ["Views", apiNum(post.views)],
+    ["Likes", apiNum(post.likes)],
+    ["Comments", apiNum(post.comments)],
+    ["Saves", apiNum(post.saves)],
+    ["Shares", apiNum(post.shares)]
+  ];
   return `<article class="feed-card">
     <a class="feed-media ${imageUrl ? "has-image" : ""}"${mediaStyle} href="${esc(post.permalink || "#")}" target="_blank" rel="noreferrer">
       <span class="feed-type">${esc(post.type || "POST")}</span>
@@ -464,8 +477,8 @@ function feedCard(post, options = {}) {
       ${post.unavailableReason ? `<p class="delta">API 오류: ${esc(post.unavailableReason)}</p>` : ""}
       <div class="feed-stats">${stats.map(([label, value]) => feedStat(label, value)).join("")}</div>
       <div class="chip-row">
+        <span class="chip">Engagement Rate ${pct(m.engagementRate)}</span>
         <span class="chip">저장률 ${pct(m.saveRate)}</span>
-        <span class="chip">공유율 ${pct(m.shareRate)}</span>
       </div>
     </div>
   </article>`;
@@ -476,7 +489,7 @@ function renderCards(id, posts, mode = "metric") {
   if (mode === "feed" || mode === "cardnews") {
     target.classList.add("instagram-feed");
     target.classList.remove("cards");
-    target.innerHTML = posts.length ? posts.map((post) => feedCard(post, { statMode: mode === "cardnews" ? "cardnews" : "default" })).join("") : `<article class="feed-card"><div class="feed-body"><h4>데이터 없음</h4><p class="feed-caption">해당 월에 표시할 콘텐츠가 없습니다.</p></div></article>`;
+    target.innerHTML = posts.length ? posts.map((post) => feedCard(post)).join("") : `<article class="feed-card"><div class="feed-body"><h4>데이터 없음</h4><p class="feed-caption">해당 월에 표시할 콘텐츠가 없습니다.</p></div></article>`;
     return;
   }
   target.classList.add("cards");
@@ -685,13 +698,26 @@ function cafe24SourceLabel(data = {}) {
 async function renderStoryInsights() {
   storyData = await getJson("/api/instagram/stories", 6000);
   const stories = storyData.stories || [];
+  const totals = storyData.totals || {};
+  const replyRate = hasApiValue(totals.replyRate) ? totals.replyRate : 0;
   $("#storyStatus").innerHTML = [
-    ["스토리", `${num(stories.length)}개`, storyData.source || "-"],
-    ["도달", num(storyData.totals?.reach), storyData.cacheWarning || "저장 데이터 기준"],
-    ["답장", num(storyData.totals?.replies), "스토리 인사이트"]
+    ["Stories", `${num(stories.length)}개`, storyData.source || "-"],
+    ["Reach", num(totals.reach), storyData.cacheWarning || "스토리 인사이트 기준"],
+    ["Engagement Rate", pct(replyRate), "답장 / 도달 기준"]
   ].map(([title, value, note]) => `<article class="action-item"><strong>${title}</strong><span>${value}</span><p>${esc(note)}</p></article>`).join("");
   $("#storyBoard").innerHTML = stories.slice(0, 12).map((story) => (
-    `<article class="report-panel"><h4>${esc(story.date || "-")}</h4><p>도달 ${num(story.reach)} / 답장 ${num(story.replies)} / 이탈 ${num(story.exits)}</p></article>`
+    `<article class="report-panel">
+      <h4>${esc(story.date || "-")}</h4>
+      <div class="report-metrics">
+        <span>Reach <strong>${apiNum(story.reach)}</strong></span>
+        <span>Views <strong>-</strong></span>
+        <span>Likes <strong>-</strong></span>
+        <span>Comments <strong>${apiNum(story.replies)}</strong></span>
+        <span>Saves <strong>-</strong></span>
+        <span>Shares <strong>-</strong></span>
+        <span>Engagement Rate <strong>${pct(rate(story.replies, story.reach))}</strong></span>
+      </div>
+    </article>`
   )).join("") || `<div class="action-item">스토리 데이터가 없습니다.</div>`;
 }
 
@@ -717,7 +743,8 @@ function renderAll() {
   renderPurposeRadar(data.posts || []);
   renderInsights(data);
   renderMonthlyDashboard(data);
-  renderContentTable(data.posts || [], activeContentFilter);
+  renderContentTabs();
+  renderContentTable(data.posts || []);
   renderGrowthChart();
   renderOtherSections(data);
   updateSync(data);
@@ -743,11 +770,10 @@ function bind() {
   $("#monthlyReportBtn")?.addEventListener("click", () => document.querySelector('[data-view="Reports"]')?.click());
   $("#refreshStoriesBtn")?.addEventListener("click", renderStoryInsights);
   $("#syncFixBtn")?.addEventListener("click", () => toast("Cafe24 오류는 Render Cafe24 재인증이 필요합니다."));
-  $$(".segment[data-filter]").forEach((button) => {
+  $$("[data-content-tab]").forEach((button) => {
     button.addEventListener("click", () => {
-      activeContentFilter = button.dataset.filter || "All";
-      $$(".segment[data-filter]").forEach((node) => node.classList.toggle("active", node === button));
-      renderContentTable(selectedMonth().posts || [], activeContentFilter);
+      activeContentTab = button.dataset.contentTab || "All";
+      renderContentTabs();
     });
   });
 }

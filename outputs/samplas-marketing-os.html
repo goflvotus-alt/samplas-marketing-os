@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SAMPLAS Instagram Marketing OS</title>
-  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-ia-v1" />
+  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-content-tabs-v1" />
 </head>
 <body>
   <div class="app-shell">
@@ -82,59 +82,66 @@
             <p class="eyebrow">Content</p>
             <h3>콘텐츠 성과 분석</h3>
           </div>
+          <div class="segmented" role="tablist" aria-label="콘텐츠 보기">
+            <button class="segment active" data-content-tab="All" type="button">All</button>
+            <button class="segment" data-content-tab="Reels" type="button">Reels</button>
+            <button class="segment" data-content-tab="Cardnews" type="button">Cardnews</button>
+            <button class="segment" data-content-tab="Stories" type="button">Stories</button>
+          </div>
         </div>
-        <div class="section-block">
+        <div class="content-panel active" data-content-panel="All">
+          <div class="section-block">
+            <div class="section-title compact">
+              <div>
+                <p class="eyebrow">All Content</p>
+                <h3>전체 콘텐츠 KPI</h3>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>게시일</th>
+                    <th>콘텐츠</th>
+                    <th>포맷</th>
+                    <th>Reach</th>
+                    <th>Views</th>
+                    <th>Likes</th>
+                    <th>Comments</th>
+                    <th>Saves</th>
+                    <th>Shares</th>
+                    <th>Engagement Rate</th>
+                  </tr>
+                </thead>
+                <tbody id="contentRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Content Clicks</p><h3>유입 TOP 콘텐츠</h3></div></div>
+            <div id="conversionGrid" class="cards"></div>
+          </div>
+        </div>
+        <div class="content-panel" data-content-panel="Reels">
           <div class="section-title compact">
-            <div>
-              <p class="eyebrow">Content Performance</p>
-              <h3>콘텐츠별 KPI 평가</h3>
-            </div>
-            <div class="segmented" role="group" aria-label="콘텐츠 필터">
-              <button class="segment active" data-filter="All">All</button>
-              <button class="segment" data-filter="Brand Discovery">Brand Discovery</button>
-              <button class="segment" data-filter="Product Focus">Product Focus</button>
-              <button class="segment" data-filter="Editorial Cardnews">Cardnews</button>
-              <button class="segment" data-filter="Reels">Reels</button>
-            </div>
+            <div><p class="eyebrow">Reels</p><h3>릴스 콘텐츠 KPI</h3></div>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>게시일</th>
-                  <th>태그</th>
-                  <th>포맷</th>
-                  <th>목적</th>
-                  <th>핵심 KPI</th>
-                  <th>성과 해석</th>
-                </tr>
-              </thead>
-              <tbody id="contentRows"></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Reels Report</p><h3>릴스 유입 분석</h3></div></div>
           <div id="reelsReport" class="cards"></div>
         </div>
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Cardnews Report</p><h3>카드뉴스 저장/공유 분석</h3></div></div>
+        <div class="content-panel" data-content-panel="Cardnews">
+          <div class="section-title compact"><div><p class="eyebrow">Cardnews</p><h3>카드뉴스 콘텐츠 KPI</h3></div></div>
           <div id="cardnewsReport" class="cards"></div>
         </div>
-        <div class="section-block">
+        <div class="content-panel" data-content-panel="Stories">
           <div class="section-title compact">
             <div>
-              <p class="eyebrow">Story Insights</p>
-              <h3>스토리 도달/이탈/답장 분석</h3>
+              <p class="eyebrow">Stories</p>
+              <h3>스토리 콘텐츠 KPI</h3>
             </div>
             <button id="refreshStoriesBtn" class="button secondary" type="button">스토리 새로 수집</button>
           </div>
           <div id="storyStatus" class="cards"></div>
           <div id="storyBoard" class="instagram-feed"></div>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Website Click / Conversion</p><h3>유입 및 전환 신호</h3></div></div>
-          <div id="conversionGrid" class="cards"></div>
         </div>
       </section>
 
@@ -206,6 +213,6 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260703-ia-v1"></script>
+  <script src="./samplas-marketing-os.js?v=20260703-content-tabs-v1"></script>
 </body>
 </html>
