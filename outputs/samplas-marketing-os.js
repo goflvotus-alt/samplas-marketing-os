@@ -55,6 +55,11 @@ function pct(value) {
   return Number.isFinite(n) ? `${n.toFixed(1)}%` : "-";
 }
 
+function multiple(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? `${n.toFixed(2)}x` : "-";
+}
+
 function esc(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -612,6 +617,10 @@ function renderOtherSections(data) {
   renderCards("reelsReport", posts.filter((post) => post.type === "릴스"), "feed");
   renderCards("cardnewsReport", posts.filter((post) => post.type === "카드뉴스"), "cardnews");
   renderCards("conversionGrid", [...posts].sort((a, b) => Number(b.websiteClicks || 0) - Number(a.websiteClicks || 0)).slice(0, 6));
+  $("#advertisingSummary").innerHTML = `<article class="action-item"><strong>Meta 광고 데이터 확인 중</strong><p>광고비, 도달, 클릭, 구매값, ROAS를 확인합니다.</p></article>`;
+  $("#campaignPerformance").innerHTML = `<article class="action-item"><strong>캠페인 성과 확인 중</strong><p>Meta 캠페인 기준으로 불러옵니다.</p></article>`;
+  $("#adOrganicContent").innerHTML = `<article class="action-item"><strong>광고 / 유기 콘텐츠 비교 확인 중</strong><p>콘텐츠의 광고 집행 여부를 기준으로 비교합니다.</p></article>`;
+  renderAdvertising(data);
   $("#salesImpact").classList.add("cards");
   $("#salesImpact").classList.remove("instagram-feed");
   $("#salesImpact").innerHTML = `<article class="action-item"><strong>Cafe24 주문 데이터 확인 중</strong><p>CSV 또는 저장 캐시를 읽고 있습니다.</p></article>`;
@@ -633,6 +642,70 @@ function renderOtherSections(data) {
     "Cafe24 invalid refresh_token 발생 시 Render Cafe24 재인증",
     "Meta API access blocked는 토큰/권한 별도 점검"
   ].map((item) => `<label class="action-item"><input type="checkbox" /> ${esc(item)}</label>`).join("");
+}
+
+async function renderAdvertising(data) {
+  const summaryTarget = $("#advertisingSummary");
+  const campaignTarget = $("#campaignPerformance");
+  const contentTarget = $("#adOrganicContent");
+  if (!summaryTarget || !campaignTarget || !contentTarget) return;
+
+  const startDate = `${data.month}-01`;
+  const endDate = monthEnd(data.month);
+  const meta = await getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000);
+  const posts = data.posts || [];
+  const adPosts = posts.filter((post) => Number(post.adSpend || 0));
+  const organicPosts = posts.filter((post) => !Number(post.adSpend || 0));
+
+  if (meta.error) {
+    const status = statusTextForError(meta);
+    summaryTarget.innerHTML = [
+      `<article class="action-item"><strong>Meta API 상태</strong><span>${esc(status)}</span><p>${esc(meta.error)}</p></article>`,
+      `<article class="action-item"><strong>권한 오류 안내</strong><p>Meta API 권한 또는 토큰 권한이 막히면 광고 성과를 불러올 수 없습니다. Settings의 Meta Ads 연결 상태를 확인하세요.</p></article>`
+    ].join("");
+    campaignTarget.innerHTML = `<article class="action-item"><strong>캠페인별 성과</strong><p>Meta API 오류가 해결되면 캠페인 기준 성과가 표시됩니다.</p></article>`;
+    contentTarget.innerHTML = renderAdOrganicCards(adPosts, organicPosts);
+    return;
+  }
+
+  const totals = meta.totals || {};
+  const spend = Number(totals.spend || 0);
+  const purchaseValue = Number(totals.purchaseValue || 0);
+  const roas = spend ? purchaseValue / spend : null;
+  const source = String(meta.source || "").includes("_cached") ? "저장된 Meta 광고 데이터" : "Meta Ads API";
+
+  summaryTarget.innerHTML = [
+    `<article class="action-item"><strong>Meta API 상태</strong><span>정상</span><p>${esc(source)} · ${esc(startDate)} ~ ${esc(endDate)}</p></article>`,
+    `<article class="action-item"><strong>광고비</strong><span>${apiWon(totals.spend)}</span><p>Meta 캠페인 기준 집행 금액</p></article>`,
+    `<article class="action-item"><strong>도달</strong><span>${apiNum(totals.reach)}</span><p>Meta 캠페인 기준</p></article>`,
+    `<article class="action-item"><strong>클릭</strong><span>${apiNum(totals.clicks)}</span><p>Meta 캠페인 클릭 합계</p></article>`,
+    `<article class="action-item"><strong>Meta 기준 추정 구매값</strong><span>${apiWon(totals.purchaseValue)}</span><p>실제 매출이 아닌 Meta 어트리뷰션 기준 값입니다.</p></article>`,
+    `<article class="action-item"><strong>ROAS</strong><span>${roas === null ? "-" : multiple(roas)}</span><p>Meta 기준 추정 구매값 / 광고비</p></article>`
+  ].join("");
+
+  const campaigns = [...(meta.campaigns || [])]
+    .sort((left, right) => Number(right.spend || 0) - Number(left.spend || 0))
+    .slice(0, 6);
+  campaignTarget.innerHTML = campaigns.length ? campaigns.map((campaign) => (
+    `<article class="action-item">
+      <strong>${esc(campaign.campaignName || campaign.campaignId || "캠페인")}</strong>
+      <span>${apiWon(campaign.spend)}</span>
+      <p>도달 ${apiNum(campaign.reach)} · 클릭 ${apiNum(campaign.clicks)} · Meta 기준 추정 구매값 ${apiWon(campaign.purchaseValue)} · ROAS ${campaign.roas === null ? "-" : multiple(campaign.roas)}</p>
+    </article>`
+  )).join("") : `<article class="action-item"><strong>캠페인 데이터 없음</strong><p>선택 월에 표시할 Meta 캠페인 데이터가 없습니다.</p></article>`;
+
+  contentTarget.innerHTML = renderAdOrganicCards(adPosts, organicPosts);
+}
+
+function renderAdOrganicCards(adPosts, organicPosts) {
+  const adReach = sum(adPosts, "reach");
+  const organicReach = sum(organicPosts, "reach");
+  const adClicks = sum(adPosts, "websiteClicks");
+  const organicClicks = sum(organicPosts, "websiteClicks");
+  return [
+    `<article class="action-item"><strong>광고 집행 콘텐츠</strong><span>${apiNum(adPosts.length)}개</span><p>도달 ${apiNum(adReach)} · 클릭 ${apiNum(adClicks)}</p></article>`,
+    `<article class="action-item"><strong>유기 콘텐츠</strong><span>${apiNum(organicPosts.length)}개</span><p>도달 ${apiNum(organicReach)} · 클릭 ${apiNum(organicClicks)}</p></article>`
+  ].join("");
 }
 
 async function renderCafe24Sales(data) {
@@ -680,7 +753,7 @@ async function renderAdComparison(data) {
   target.innerHTML = [
     `<article class="action-item"><strong>Meta 기준 추정 구매값</strong><span>${meta.error ? "확인 필요" : apiWon(metaTotals.purchaseValue)}</span><p>${esc(meta.error || meta.source || "Meta Ads API")} · 캠페인 ${apiNum((meta.campaigns || []).length)}개</p></article>`,
     `<article class="action-item"><strong>Cafe24 실제 주문 매출</strong><span>${cafe.error ? "확인 필요" : apiWon(cafeTotals.orderAmount)}</span><p>${esc(cafe.error || cafe24SourceLabel(cafe))} · 정상 주문 ${apiNum(cafeTotals.orderCount)}건</p></article>`,
-    `<article class="action-item"><strong>Meta 구매값과 Cafe24 실제 매출 차이</strong><span>${unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue)}</span><p>현재 Meta 데이터는 캠페인 단위입니다. 제품 단위 매칭은 Meta Catalog / Pixel content_id / Cafe24 product_no 연결 이후 가능합니다.</p></article>`
+    `<article class="action-item"><strong>Meta 구매값과 Cafe24 실제 매출 차이</strong><span>${unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue)}</span><p>현재 Meta 데이터는 캠페인 단위이므로 상품별 구매 분석으로 해석하지 않습니다.</p></article>`
   ].join("");
 }
 
