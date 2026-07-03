@@ -18,6 +18,13 @@ let currentTodayBriefingItems = [];
 const nf = new Intl.NumberFormat("ko-KR");
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+const defaultProjectLinks = {
+  cafe24: "",
+  advertising: "",
+  content: "",
+  editorial: "",
+  overview: ""
+};
 
 function num(value) {
   return nf.format(Number(value || 0));
@@ -331,8 +338,12 @@ function buildTodayBriefing({ data, meta, cafe, account, topSaved, topCampaign, 
       title: "Cafe24 연결 확인",
       why: "실제 매출과 주문 데이터를 불러오지 못했습니다.",
       evidence: cafe.error || "Cafe24 주문 API 확인 필요",
+      score: 98,
+      basis: ["Cafe24 오류", "매출 카드 연결 필요", "주문 데이터 확인 불가"],
+      expected: { reach: "-", saves: "-", shares: "-" },
       view: "Sales",
-      cta: "Sales 보기"
+      cta: "Sales 보기",
+      projectKey: "cafe24"
     });
   }
   if (meta.error) {
@@ -342,8 +353,12 @@ function buildTodayBriefing({ data, meta, cafe, account, topSaved, topCampaign, 
       title: "Meta API 오류 확인",
       why: "광고비와 구매값을 확인할 수 없어 ROAS 판단이 막힙니다.",
       evidence: meta.error || "Meta Ads API 확인 필요",
+      score: 95,
+      basis: ["Meta API 오류", "광고비 확인 불가", "ROAS 판단 불가"],
+      expected: { reach: "-", saves: "-", shares: "-" },
       view: "Advertising",
-      cta: "광고 보기"
+      cta: "광고 보기",
+      projectKey: "advertising"
     });
   }
   if (roas !== null && roas < 1) {
@@ -353,29 +368,50 @@ function buildTodayBriefing({ data, meta, cafe, account, topSaved, topCampaign, 
       title: "ROAS 낮은 광고 점검",
       why: "광고비 대비 Meta 기준 구매값이 낮습니다.",
       evidence: `ROAS ${multiple(roas)} · 광고비 ${apiWon(meta.totals?.spend)} · 구매값 ${apiWon(meta.totals?.purchaseValue)}`,
+      score: recommendationScore(86, roas < 0.5 ? 10 : 0),
+      basis: [`ROAS ${multiple(roas)}`, `광고비 ${apiWon(meta.totals?.spend)}`, `구매값 ${apiWon(meta.totals?.purchaseValue)}`],
+      expected: { reach: apiNum(meta.totals?.reach), saves: "-", shares: "-" },
       view: "Advertising",
-      cta: "광고 점검"
+      cta: "광고 점검",
+      projectKey: "advertising"
     });
   }
   if (topSaved) {
+    const m = postMetrics(topSaved);
     items.push({
       level: "opportunity",
       icon: "+",
       title: "저장률 높은 콘텐츠 재활용",
       why: "저장률이 높은 콘텐츠는 다시 볼 이유가 있어 다음 카드뉴스 소재로 확장하기 좋습니다.",
-      evidence: `${topSaved.title || "성과 좋은 콘텐츠"} · 저장률 ${pct(postMetrics(topSaved).saveRate)} · 저장 ${apiNum(topSaved.saves)}`,
+      evidence: `${topSaved.title || "성과 좋은 콘텐츠"} · 저장률 ${pct(m.saveRate)} · 저장 ${apiNum(topSaved.saves)}`,
+      score: recommendationScore(72, m.saveRate * 3),
+      basis: [`저장률 ${pct(m.saveRate)}`, `Reach ${apiNum(topSaved.reach)}`, `최근 게시 ${topSaved.date || "-"}`],
+      expected: {
+        reach: apiNum(Math.round(Number(topSaved.reach || topSaved.views || 0) * 0.85)),
+        saves: apiNum(Math.round(Number(topSaved.saves || 0) * 0.9)),
+        shares: apiNum(Math.round(Number(topSaved.shares || 0) * 0.9))
+      },
       view: "Content",
-      cta: "콘텐츠 보기"
+      cta: "콘텐츠 보기",
+      projectKey: "content"
     });
   }
+  const editorialBrand = editorialBriefBrand(data);
+  const avgReach = Math.round(avg((data.posts || []).map((post) => Number(post.reach || post.views || 0))));
+  const avgSaves = Math.round(avg((data.posts || []).map((post) => Number(post.saves || 0))));
+  const avgShares = Math.round(avg((data.posts || []).map((post) => Number(post.shares || 0))));
   items.push({
     level: "idea",
     icon: "i",
-    title: `${editorialBriefBrand(data)} 카드뉴스 제작 추천`,
+    title: `${editorialBrand} 카드뉴스 제작 추천`,
     why: "브랜드 히스토리와 제품 디테일은 저장/공유를 만들기 좋은 정보형 소재입니다.",
     evidence: topProduct ? `인기상품 ${topProduct.productName} · ${apiNum(topProduct.quantity)}개 판매` : `팔로워 변화 ${apiNum(account.followerDelta)}명 · 콘텐츠 ${apiNum((data.posts || []).length)}개`,
+    score: recommendationScore(78, topProduct ? 8 : 0),
+    basis: [`추천 브랜드 ${editorialBrand}`, `평균 Reach ${apiNum(avgReach)}`, `최근 콘텐츠 ${(data.posts || []).length}개`],
+    expected: { reach: apiNum(Math.round(avgReach * 1.12)), saves: apiNum(Math.round(avgSaves * 1.18)), shares: apiNum(Math.round(avgShares * 1.12)) },
     view: "Editorial AI",
-    cta: "전략 보기"
+    cta: "전략 보기",
+    projectKey: "editorial"
   });
   if (!items.some((item) => item.level === "critical") && !items.some((item) => item.level === "warning")) {
     items.unshift({
@@ -384,8 +420,12 @@ function buildTodayBriefing({ data, meta, cafe, account, topSaved, topCampaign, 
       title: "오늘은 반복 가능한 성과 찾기",
       why: "큰 연결 오류가 없으니 성과가 좋은 콘텐츠와 상품을 반복할 수 있습니다.",
       evidence: topCampaign ? `상위 캠페인 ${topCampaign.campaignName || topCampaign.name || "성과 좋은 캠페인"}` : "운영 데이터 정상 확인",
+      score: 74,
+      basis: ["연결 오류 없음", topCampaign ? "상위 캠페인 확인" : "운영 데이터 정상", "반복 소재 탐색"],
+      expected: { reach: apiNum(avgReach), saves: apiNum(avgSaves), shares: apiNum(avgShares) },
       view: "Overview",
-      cta: "홈 보기"
+      cta: "홈 보기",
+      projectKey: "overview"
     });
   }
   return items.slice(0, 4).map((item) => ({
@@ -399,6 +439,10 @@ function todayBriefId(item) {
     .toLowerCase()
     .replace(/[^a-z0-9가-힣]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function recommendationScore(base, bonus = 0) {
+  return Math.max(0, Math.min(100, Math.round(Number(base || 0) + Number(bonus || 0))));
 }
 
 function editorialBriefBrand(data) {
@@ -476,11 +520,35 @@ function todayBriefCard(item) {
       <div class="today-brief-head"><span>${done ? "✓" : esc(item.icon)}</span><strong>${esc(item.title)}</strong></div>
       <button class="today-status-button" type="button" data-brief-status="${esc(item.id)}">${todayStatusIcon(state.status)} ${todayStatusLabel(state.status)}</button>
     </div>
+    <div class="today-score-row"><span>Recommendation Score</span><strong>${apiNum(item.score)}/100</strong></div>
     <p>${esc(item.why)}</p>
     <small>${esc(item.evidence)}</small>
+    <div class="today-brief-basis">
+      ${(item.basis || []).slice(0, 3).map((value) => `<span>${esc(value)}</span>`).join("")}
+    </div>
+    <div class="today-expected">
+      <span>예상 Reach <strong>${esc(item.expected?.reach || "-")}</strong></span>
+      <span>예상 저장 <strong>${esc(item.expected?.saves || "-")}</strong></span>
+      <span>예상 공유 <strong>${esc(item.expected?.shares || "-")}</strong></span>
+    </div>
     ${done ? `<time>완료 시간 ${esc(state.doneAt)}</time>` : ""}
-    <button class="today-jump-button" type="button" data-jump-view="${esc(item.view)}">${esc(item.cta)}</button>
+    <div class="today-brief-buttons">
+      <button class="today-jump-button" type="button" data-jump-view="${esc(item.view)}">${esc(item.cta)}</button>
+      <button class="today-project-button" type="button" data-project-key="${esc(item.projectKey || "")}">프로젝트 열기</button>
+    </div>
   </article>`;
+}
+
+function readProjectLinks() {
+  try {
+    return { ...defaultProjectLinks, ...JSON.parse(localStorage.getItem("samplas.projectLinks") || "{}") };
+  } catch {
+    return { ...defaultProjectLinks };
+  }
+}
+
+function projectLinkFor(key) {
+  return readProjectLinks()[key] || "";
 }
 
 function buildOverviewActions({ data, meta, cafe, account, topSaved, roas }) {
@@ -1753,6 +1821,16 @@ function bind() {
     const button = event.target.closest("[data-jump-view]");
     if (!button) return;
     document.querySelector(`[data-view="${button.dataset.jumpView}"]`)?.click();
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-project-key]");
+    if (!button) return;
+    const url = projectLinkFor(button.dataset.projectKey);
+    if (!url) {
+      toast("프로젝트 경로가 아직 설정되지 않았습니다. samplas.projectLinks 설정값에 연결할 수 있습니다.");
+      return;
+    }
+    window.open(url, "_blank", "noopener");
   });
   $$("[data-content-tab]").forEach((button) => {
     button.addEventListener("click", () => {
