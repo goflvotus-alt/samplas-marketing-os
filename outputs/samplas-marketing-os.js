@@ -766,33 +766,54 @@ async function renderAdvertising(data) {
   const source = String(meta.source || "").includes("_cached") ? "저장된 Meta 광고 데이터" : "Meta Ads API";
 
   summaryTarget.innerHTML = [
-    `<article class="action-item"><strong>Meta API 상태</strong><span>정상</span><p>${esc(source)} · ${esc(startDate)} ~ ${esc(endDate)}</p></article>`,
-    `<article class="action-item"><strong>광고비</strong><span>${apiWon(totals.spend)}</span><p>Meta 캠페인 기준 집행 금액</p></article>`,
-    `<article class="action-item"><strong>노출</strong><span>${apiNum(totals.impressions)}</span><p>선택 레벨 합계</p></article>`,
-    `<article class="action-item"><strong>도달</strong><span>${apiNum(totals.reach)}</span><p>Meta 캠페인 기준</p></article>`,
-    `<article class="action-item"><strong>클릭</strong><span>${apiNum(totals.clicks)}</span><p>Meta 캠페인 클릭 합계</p></article>`,
-    `<article class="action-item"><strong>CTR</strong><span>${pct(Number(totals.ctr || 0) * 100)}</span><p>클릭 / 노출</p></article>`,
-    `<article class="action-item"><strong>CPC</strong><span>${apiWon(totals.cpc)}</span><p>광고비 / 클릭</p></article>`,
-    `<article class="action-item"><strong>CPM</strong><span>${apiWon(totals.cpm)}</span><p>1,000회 노출 비용</p></article>`,
-    `<article class="action-item"><strong>Meta 구매수</strong><span>${apiNum(totals.purchases || totals.metaPurchases)}</span><p>Meta 기준 구매 이벤트</p></article>`,
-    `<article class="action-item"><strong>Meta 기준 추정 구매값</strong><span>${apiWon(totals.purchaseValue)}</span><p>실제 매출이 아닌 Meta 어트리뷰션 기준 값입니다.</p></article>`,
-    `<article class="action-item"><strong>Meta ROAS</strong><span>${roas === null ? "-" : multiple(roas)}</span><p>Meta 기준 추정 구매값 / 광고비</p></article>`
+    metaAdsSummaryCard("상태", "정상", `${source} · ${startDate} ~ ${endDate}`),
+    metaAdsSummaryCard("광고비", apiWon(totals.spend), "선택 기간 집행 금액"),
+    metaAdsSummaryCard("노출", apiNum(totals.impressions), "광고가 표시된 횟수"),
+    metaAdsSummaryCard("도달", apiNum(totals.reach), "광고를 본 계정 수"),
+    metaAdsSummaryCard("클릭", apiNum(totals.clicks), "Meta 클릭 합계"),
+    metaAdsSummaryCard("CTR", pct(Number(totals.ctr || 0) * 100), "클릭 / 노출"),
+    metaAdsSummaryCard("CPC", apiWon(totals.cpc), "광고비 / 클릭"),
+    metaAdsSummaryCard("CPM", apiWon(totals.cpm), "1,000회 노출 비용"),
+    metaAdsSummaryCard("Meta 구매수", apiNum(totals.purchases || totals.metaPurchases), "Meta 기준 구매 이벤트"),
+    metaAdsSummaryCard("Meta 구매값", apiWon(totals.purchaseValue), "Meta 기준 추정 구매값"),
+    metaAdsSummaryCard("Meta ROAS", roas === null ? "-" : multiple(roas), "Meta 구매값 / 광고비")
   ].join("");
 
   const rows = metaAdsRowsForLevel(meta)
     .sort((left, right) => Number(right.spend || 0) - Number(left.spend || 0))
     .slice(0, 6);
-  campaignTarget.innerHTML = rows.length ? rows.map((campaign) => (
-    `<article class="action-item">
-      <strong>${esc(metaAdsRowName(campaign))}</strong>
-      <span>${apiWon(campaign.spend)}</span>
-      <p>노출 ${apiNum(campaign.impressions)} · 도달 ${apiNum(campaign.reach)} · 클릭 ${apiNum(campaign.clicks)} · CTR ${pct(Number(campaign.ctr || 0) * 100)} · Meta ROAS ${campaign.roas === null ? "-" : multiple(campaign.roas)}</p>
-    </article>`
-  )).join("") : `<article class="action-item"><strong>${esc(metaAdsLevelLabel(activeAdLevel))} 데이터 없음</strong><p>선택 월에 표시할 Meta 광고 데이터가 없습니다.</p></article>`;
+  campaignTarget.innerHTML = rows.length ? rows.map((campaign) => metaAdsPerformanceCard(campaign)).join("") : `<article class="action-item"><strong>${esc(metaAdsLevelLabel(activeAdLevel))} 데이터 없음</strong><p>선택 월에 표시할 Meta 광고 데이터가 없습니다.</p></article>`;
 
   tableTarget.innerHTML = renderMetaAdsRows(metaAdsRowsForLevel(meta));
   rankingTarget.innerHTML = renderMetaAdsRanking(meta);
   contentTarget.innerHTML = renderAdOrganicCards(adPosts, organicPosts);
+}
+
+function metaAdsSummaryCard(label, value, note) {
+  return `<article class="action-item ad-summary-card">
+    <span>${esc(label)}</span>
+    <strong>${esc(value)}</strong>
+    <p>${esc(note)}</p>
+  </article>`;
+}
+
+function metaAdsPerformanceCard(row = {}) {
+  return `<article class="action-item ad-performance-card">
+    <strong title="${esc(metaAdsRowName(row))}">${esc(metaAdsRowName(row))}</strong>
+    <span>${apiWon(row.spend)}</span>
+    <div class="ad-card-metrics">
+      ${metaAdsMiniMetric("노출", apiNum(row.impressions))}
+      ${metaAdsMiniMetric("도달", apiNum(row.reach))}
+      ${metaAdsMiniMetric("클릭", apiNum(row.clicks))}
+      ${metaAdsMiniMetric("CTR", pct(Number(row.ctr || 0) * 100))}
+      ${metaAdsMiniMetric("CPC", apiWon(row.cpc))}
+      ${metaAdsMiniMetric("ROAS", row.roas === null ? "-" : multiple(row.roas || row.metaRoas))}
+    </div>
+  </article>`;
+}
+
+function metaAdsMiniMetric(label, value) {
+  return `<em><small>${esc(label)}</small><b>${esc(value)}</b></em>`;
 }
 
 function renderAdLevelTabs() {
@@ -823,7 +844,7 @@ function renderMetaAdsRows(rows = []) {
     .sort((left, right) => Number(right.spend || 0) - Number(left.spend || 0))
     .map((row) => (
       `<tr>
-        <td>${esc(metaAdsRowName(row))}</td>
+        <td class="ad-name-cell" title="${esc(metaAdsRowName(row))}">${esc(metaAdsRowName(row))}</td>
         <td>${apiWon(row.spend)}</td>
         <td>${apiNum(row.impressions)}</td>
         <td>${apiNum(row.reach)}</td>
@@ -842,13 +863,28 @@ function renderMetaAdsRanking(meta = {}) {
   const top = meta.topAds || [];
   const low = meta.lowAds || [];
   return [
-    `<article class="action-item"><strong>우수 광고 TOP 5</strong><p>${top.length ? top.map((row) => `${esc(metaAdsRankingName(row))} · Meta ROAS ${row.roas === null ? "-" : multiple(row.roas || row.metaRoas)} · ${apiWon(row.purchaseValue || row.metaPurchaseValue)}`).join("<br>") : "표시할 우수 광고 데이터가 없습니다."}</p></article>`,
-    `<article class="action-item"><strong>점검 광고 TOP 5</strong><p>${low.length ? low.map((row) => `${esc(metaAdsRankingName(row))} · Meta ROAS ${row.roas === null ? "-" : multiple(row.roas || row.metaRoas)} · 광고비 ${apiWon(row.spend)}`).join("<br>") : "표시할 점검 광고 데이터가 없습니다."}</p></article>`
+    metaAdsRankingCard("우수 광고 TOP 5", top, "good"),
+    metaAdsRankingCard("점검 광고 TOP 5", low, "warn")
   ].join("");
 }
 
 function metaAdsRankingName(row = {}) {
   return row.adName || row.adsetName || row.campaignName || row.label || row.adId || row.adsetId || row.campaignId || "광고";
+}
+
+function metaAdsRankingCard(title, rows = [], tone = "good") {
+  return `<article class="action-item ad-ranking-card ${esc(tone)}">
+    <strong>${esc(title)}</strong>
+    ${rows.length ? `<ol>${rows.map((row, index) => (
+      `<li>
+        <span>${index + 1}</span>
+        <div>
+          <b title="${esc(metaAdsRankingName(row))}">${esc(metaAdsRankingName(row))}</b>
+          <p>Meta ROAS ${row.roas === null ? "-" : multiple(row.roas || row.metaRoas)} · 구매값 ${apiWon(row.purchaseValue || row.metaPurchaseValue)} · 광고비 ${apiWon(row.spend)}</p>
+        </div>
+      </li>`
+    )).join("")}</ol>` : `<p>표시할 광고 데이터가 없습니다.</p>`}
+  </article>`;
 }
 
 function renderAdOrganicCards(adPosts, organicPosts) {

@@ -506,6 +506,134 @@ select,
   min-width: 1180px;
 }
 
+.ad-summary-card,
+.ad-performance-card,
+.ad-ranking-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ad-summary-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ad-summary-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 25px;
+  line-height: 1.12;
+}
+
+.ad-summary-card p,
+.ad-performance-card p,
+.ad-ranking-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.ad-performance-card strong {
+  display: -webkit-box;
+  min-height: 44px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 17px;
+  line-height: 1.28;
+}
+
+.ad-performance-card > span {
+  display: block;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.ad-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ad-card-metrics em {
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: #faf9f5;
+  font-style: normal;
+}
+
+.ad-card-metrics small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ad-card-metrics b {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.ad-ranking-card ol {
+  display: grid;
+  gap: 10px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ad-ranking-card li {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.ad-ranking-card li:first-child {
+  border-top: 0;
+}
+
+.ad-ranking-card li > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--black);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ad-ranking-card li b {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.25;
+}
+
+.ad-name-cell {
+  max-width: 280px;
+  min-width: 220px;
+  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
+.ad-table-wrap th,
+.ad-table-wrap td {
+  white-space: nowrap;
+}
+
+.ad-table-wrap .ad-name-cell {
+  white-space: normal;
+}
+
 .table-wrap {
   overflow: auto;
   border: 1px solid var(--line);
