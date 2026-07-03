@@ -372,6 +372,157 @@ select,
   min-height: 126px;
 }
 
+.home-hero {
+  align-items: end;
+}
+
+.home-kpi {
+  min-height: 148px;
+}
+
+.home-kpi strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.home-action-list,
+.home-month-grid,
+.home-todo-list,
+.home-alert-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.home-action-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.home-month-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.home-todo-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.home-alert-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.home-action-card,
+.home-month-card,
+.home-todo-card,
+.home-alert-card {
+  min-width: 0;
+  min-height: 112px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.home-action-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.home-action-card > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: #f1f0eb;
+  font-size: 17px;
+}
+
+.home-action-card strong,
+.home-month-card strong,
+.home-todo-card strong,
+.home-alert-card strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.home-action-card p,
+.home-month-card p,
+.home-todo-card p,
+.home-alert-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.home-action-card.good {
+  border-color: rgba(32, 111, 84, 0.3);
+  background: #f3faf6;
+}
+
+.home-action-card.warn,
+.home-alert-card.warn {
+  border-color: rgba(215, 166, 66, 0.45);
+  background: #fff9e8;
+}
+
+.home-action-card.urgent {
+  border-color: rgba(169, 66, 61, 0.45);
+  background: #fff3f1;
+}
+
+.home-month-card span,
+.home-alert-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.home-month-card strong {
+  margin-top: 10px;
+  font-size: 28px;
+}
+
+.home-todo-card {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 96px;
+}
+
+.home-todo-card > span {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border: 2px solid var(--line);
+  border-radius: 3px;
+  background: #fff;
+}
+
+.home-alert-card {
+  min-height: 104px;
+}
+
+.home-alert-card.good strong {
+  color: var(--green);
+}
+
+.home-alert-card.warn strong {
+  color: #8a650f;
+}
+
 .kpi span {
   color: var(--muted);
   font-size: 12px;
