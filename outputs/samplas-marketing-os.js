@@ -13,6 +13,7 @@ let monthlyData = [];
 let storyData = { stories: [], totals: {} };
 let activeContentTab = "All";
 let activeAdLevel = "campaign";
+let currentTodayBriefingItems = [];
 
 const nf = new Intl.NumberFormat("ko-KR");
 const $ = (selector) => document.querySelector(selector);
@@ -268,7 +269,8 @@ async function renderOverviewLiveData(data) {
   const target = $("#overviewLiveData");
   if (!target) return;
   target.innerHTML = `<article class="home-month-card"><strong>이번 달 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`;
-  $("#todayBriefing").innerHTML = `<article class="today-brief-card warn"><div><span>!</span><strong>오늘 해야 할 일을 정리 중입니다.</strong></div><p>연결 상태와 성과 데이터를 확인하고 있습니다.</p></article>`;
+  $("#todayBriefProgress").innerHTML = todayBriefProgressBar([]);
+  $("#todayBriefing").innerHTML = `<article class="today-brief-card warning"><div class="today-brief-head"><span>!</span><strong>오늘 해야 할 일을 정리 중입니다.</strong></div><p>연결 상태와 성과 데이터를 확인하고 있습니다.</p></article>`;
   $("#actions").innerHTML = `<article class="home-action-card warn"><span>!</span><div><strong>확인 중</strong><p>중요 알림을 정리합니다.</p></div></article>`;
   $("#nextActions").innerHTML = homeGoalCards();
   $("#insightList").innerHTML = homeActivityCards({ status: {}, meta: {}, cafe: {}, data });
@@ -302,7 +304,8 @@ async function renderOverviewLiveData(data) {
     homeTopMetric("오늘 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음")
   ].join("");
 
-  $("#todayBriefing").innerHTML = buildTodayBriefing({ data, meta, cafe, account: a, topSaved, topCampaign, topProduct, roas }).map((item) => todayBriefCard(item)).join("");
+  currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, account: a, topSaved, topCampaign, topProduct, roas });
+  renderTodayBriefing();
 
   target.innerHTML = [
     homeMonthCard("매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 확인 필요" : `주문 ${apiNum(cafeTotals.orderCount)}건`),
@@ -385,7 +388,17 @@ function buildTodayBriefing({ data, meta, cafe, account, topSaved, topCampaign, 
       cta: "홈 보기"
     });
   }
-  return items.slice(0, 4);
+  return items.slice(0, 4).map((item) => ({
+    ...item,
+    id: todayBriefId(item)
+  }));
+}
+
+function todayBriefId(item) {
+  return String(`${item.view}-${item.title}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function editorialBriefBrand(data) {
@@ -395,12 +408,78 @@ function editorialBriefBrand(data) {
   return candidates[0] || rows[0]?.brand || "GOOMHEO";
 }
 
+function todayStorageKey() {
+  return `samplas.todayBriefing.${new Date().toISOString().slice(0, 10)}`;
+}
+
+function readTodayBriefingState() {
+  try {
+    return JSON.parse(localStorage.getItem(todayStorageKey()) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeTodayBriefingState(state) {
+  localStorage.setItem(todayStorageKey(), JSON.stringify(state || {}));
+}
+
+function todayBriefState(item) {
+  const state = readTodayBriefingState()[item.id] || {};
+  return {
+    status: state.status || "todo",
+    doneAt: state.doneAt || ""
+  };
+}
+
+function nextTodayStatus(status) {
+  if (status === "todo") return "progress";
+  if (status === "progress") return "done";
+  return "todo";
+}
+
+function todayStatusLabel(status) {
+  if (status === "progress") return "진행 중";
+  if (status === "done") return "완료됨";
+  return "진행 전";
+}
+
+function todayStatusIcon(status) {
+  if (status === "progress") return "⏳";
+  if (status === "done") return "✓";
+  return "□";
+}
+
+function renderTodayBriefing() {
+  const target = $("#todayBriefing");
+  if (!target) return;
+  target.innerHTML = currentTodayBriefingItems.map((item) => todayBriefCard(item)).join("");
+  $("#todayBriefProgress").innerHTML = todayBriefProgressBar(currentTodayBriefingItems);
+}
+
+function todayBriefProgressBar(items) {
+  const total = items.length || 0;
+  const done = items.filter((item) => todayBriefState(item).status === "done").length;
+  const percent = total ? Math.round(done / total * 100) : 0;
+  return `<div class="today-progress-card">
+    <div><span>오늘 업무</span><strong>${done} / ${total} 완료</strong></div>
+    <i><b style="width:${percent}%"></b></i>
+    <em>${percent}%</em>
+  </div>`;
+}
+
 function todayBriefCard(item) {
-  return `<article class="today-brief-card ${esc(item.level)}">
-    <div class="today-brief-head"><span>${esc(item.icon)}</span><strong>${esc(item.title)}</strong></div>
+  const state = todayBriefState(item);
+  const done = state.status === "done";
+  return `<article class="today-brief-card ${esc(item.level)} ${esc(state.status)}" data-brief-id="${esc(item.id)}">
+    <div class="today-brief-top">
+      <div class="today-brief-head"><span>${done ? "✓" : esc(item.icon)}</span><strong>${esc(item.title)}</strong></div>
+      <button class="today-status-button" type="button" data-brief-status="${esc(item.id)}">${todayStatusIcon(state.status)} ${todayStatusLabel(state.status)}</button>
+    </div>
     <p>${esc(item.why)}</p>
     <small>${esc(item.evidence)}</small>
-    <button type="button" data-jump-view="${esc(item.view)}">${esc(item.cta)}</button>
+    ${done ? `<time>완료 시간 ${esc(state.doneAt)}</time>` : ""}
+    <button class="today-jump-button" type="button" data-jump-view="${esc(item.view)}">${esc(item.cta)}</button>
   </article>`;
 }
 
@@ -1651,6 +1730,25 @@ function bind() {
   $("#monthlyReportBtn")?.addEventListener("click", () => document.querySelector('[data-view="Reports"]')?.click());
   $("#refreshStoriesBtn")?.addEventListener("click", renderStoryInsights);
   $("#syncFixBtn")?.addEventListener("click", () => toast("Cafe24 오류는 Render Cafe24 재인증이 필요합니다."));
+  $("#todayBriefReset")?.addEventListener("click", () => {
+    localStorage.removeItem(todayStorageKey());
+    renderTodayBriefing();
+    toast("오늘 업무 상태를 초기화했습니다.");
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-brief-status]");
+    if (!button) return;
+    const id = button.dataset.briefStatus;
+    const state = readTodayBriefingState();
+    const current = state[id]?.status || "todo";
+    const next = nextTodayStatus(current);
+    state[id] = {
+      status: next,
+      doneAt: next === "done" ? new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : ""
+    };
+    writeTodayBriefingState(state);
+    renderTodayBriefing();
+  });
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-jump-view]");
     if (!button) return;

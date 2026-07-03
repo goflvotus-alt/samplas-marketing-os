@@ -382,6 +382,51 @@ select,
   gap: 12px;
 }
 
+.today-brief-progress {
+  margin-bottom: 12px;
+}
+
+.today-progress-card {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.22fr) minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 36px rgba(25, 25, 20, 0.06);
+}
+
+.today-progress-card span,
+.today-progress-card em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.today-progress-card strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.today-progress-card i {
+  display: block;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8e5dc;
+}
+
+.today-progress-card b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), #87a889);
+}
+
 .today-brief-card {
   min-width: 0;
   min-height: 210px;
@@ -393,6 +438,13 @@ select,
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 16px 48px rgba(25, 25, 20, 0.08);
+}
+
+.today-brief-card.done {
+  border-color: rgba(0, 0, 0, 0.08);
+  background: #eeeeea;
+  color: var(--muted);
+  box-shadow: none;
 }
 
 .today-brief-card.critical {
@@ -413,6 +465,20 @@ select,
 .today-brief-card.idea {
   border-color: rgba(40, 93, 154, 0.28);
   background: #f4f8ff;
+}
+
+.today-brief-card.done.critical,
+.today-brief-card.done.warning,
+.today-brief-card.done.opportunity,
+.today-brief-card.done.idea {
+  background: #eeeeea;
+}
+
+.today-brief-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
 }
 
 .today-brief-head {
@@ -458,7 +524,42 @@ select,
   line-height: 1.35;
 }
 
-.today-brief-card button {
+.today-brief-card time {
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.today-brief-card.done time {
+  color: var(--muted);
+}
+
+.today-status-button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.today-brief-card.progress .today-status-button {
+  border-color: rgba(215, 166, 66, 0.52);
+  background: #fff9e8;
+  color: #8a650f;
+}
+
+.today-brief-card.done .today-status-button {
+  border-color: rgba(32, 111, 84, 0.28);
+  background: #f3faf6;
+  color: var(--green);
+}
+
+.today-jump-button {
   align-self: flex-start;
   min-height: 34px;
   padding: 0 12px;
@@ -469,6 +570,12 @@ select,
   font-size: 12px;
   font-weight: 900;
   cursor: pointer;
+}
+
+.today-brief-card.done .today-jump-button {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--muted);
 }
 
 .home-kpi {
