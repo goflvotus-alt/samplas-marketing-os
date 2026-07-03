@@ -465,6 +465,21 @@ function isAuthorizedInternalRequest(req) {
 }
 
 async function fetchCafe24Orders(startDate, endDate, options = {}) {
+  await logCafe24OrdersDebug("flow_start", {
+    startDate,
+    endDate,
+    requestedLimit: options.limit || null,
+    isCurrentMonth: isCurrentMonth(monthFromDate(startDate)),
+    mode: env.CAFE24_PROXY_BASE_URL ? "proxy" : "direct",
+    mallId: env.CAFE24_MALL_ID || null,
+    configuredScopes: env.CAFE24_SCOPES || null,
+    hasAccessToken: Boolean(env.CAFE24_ACCESS_TOKEN),
+    hasRefreshToken: Boolean(env.CAFE24_REFRESH_TOKEN),
+    accessTokenExpiresAt: env.CAFE24_ACCESS_TOKEN_EXPIRES_AT || null,
+    hasProxyBaseUrl: Boolean(env.CAFE24_PROXY_BASE_URL),
+    hasProxySecret: Boolean(env.CAFE24_PROXY_SECRET),
+    hasProxyBasicAuth: Boolean(env.CAFE24_PROXY_BASIC_AUTH)
+  });
   if (!isCurrentMonth(monthFromDate(startDate))) {
     const cached = await readCachedCafe24Orders(startDate, endDate);
     if (cached) return decorateCachedSource(cached, "cafe24_orders", "past_month_cache_only");
@@ -486,17 +501,37 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
   try {
     body = await cafe24GetOrders(startDate, endDate, options);
   } catch (error) {
+    await logCafe24OrdersDebug("orders_error", {
+      startDate,
+      endDate,
+      message: safeErrorMessage(error),
+      statusCode: error.status || null,
+      request: error.cafe24OrdersDebug || null
+    });
     await logApiError("cafe24_orders", error, { startDate, endDate, stage: "orders" });
     if (!isCafe24InvalidToken(error)) return await fallbackCafe24OrdersAfterError(startDate, endDate, error);
     try {
       await refreshCafe24Token();
     } catch (refreshError) {
+      await logCafe24OrdersDebug("refresh_error", {
+        startDate,
+        endDate,
+        message: safeErrorMessage(refreshError),
+        statusCode: refreshError.status || null
+      });
       await logApiError("cafe24_refresh", refreshError, { startDate, endDate, stage: "refresh" });
       return await fallbackCafe24OrdersAfterError(startDate, endDate, refreshError);
     }
     try {
       body = await cafe24GetOrders(startDate, endDate, options);
     } catch (retryError) {
+      await logCafe24OrdersDebug("orders_after_refresh_error", {
+        startDate,
+        endDate,
+        message: safeErrorMessage(retryError),
+        statusCode: retryError.status || null,
+        request: retryError.cafe24OrdersDebug || null
+      });
       await logApiError("cafe24_orders", retryError, { startDate, endDate, stage: "orders_after_refresh" });
       return await fallbackCafe24OrdersAfterError(startDate, endDate, retryError);
     }
@@ -547,8 +582,28 @@ async function fetchCafe24OrdersFromProxy(startDate, endDate, options = {}) {
     throw new Error(`Cafe24 proxy가 JSON이 아닌 응답을 보냈습니다: ${response.status} ${text.slice(0, 80)}`);
   }
   if (!response.ok || body.error) {
+    await logCafe24OrdersDebug("proxy_response_error", {
+      proxyBaseUrl: base,
+      proxyPath: path,
+      requestUrl: url.toString(),
+      statusCode: response.status,
+      ok: response.ok,
+      responseBody: compactCafe24Body(body),
+      hasProxySecret: Boolean(env.CAFE24_PROXY_SECRET),
+      hasProxyBasicAuth: Boolean(env.CAFE24_PROXY_BASIC_AUTH)
+    });
     throw new Error(body.error || body.message || `Cafe24 proxy error ${response.status}`);
   }
+  await logCafe24OrdersDebug("proxy_response_ok", {
+    proxyBaseUrl: base,
+    proxyPath: path,
+    requestUrl: url.toString(),
+    statusCode: response.status,
+    ok: response.ok,
+    responseBody: compactCafe24Body(body),
+    hasProxySecret: Boolean(env.CAFE24_PROXY_SECRET),
+    hasProxyBasicAuth: Boolean(env.CAFE24_PROXY_BASIC_AUTH)
+  });
   const orders = body.orders || body.data || [];
   const result = {
     source: "cafe24_proxy",
@@ -1017,19 +1072,101 @@ async function cafe24FetchOrdersPage(url) {
   throw body.error;
 }
 
-async function cafe24FetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
-      "Content-Type": "application/json"
+function cafe24ApiVersion() {
+  return env.CAFE24_API_VERSION || env.CAFE24_ADMIN_API_VERSION || "2025-06-01";
+}
+
+function cafe24OrdersHeaders() {
+  return {
+    Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
+    "Content-Type": "application/json",
+    "X-Cafe24-Api-Version": cafe24ApiVersion()
+  };
+}
+
+function safeCafe24OrdersUrl(url) {
+  const safeUrl = new URL(url.toString());
+  return safeUrl.toString();
+}
+
+function cafe24OrdersDebugContext(url, extra = {}) {
+  const headers = cafe24OrdersHeaders();
+  return {
+    mallId: env.CAFE24_MALL_ID || null,
+    configuredScopes: env.CAFE24_SCOPES || null,
+    requestUrl: safeCafe24OrdersUrl(url),
+    apiVersion: headers["X-Cafe24-Api-Version"],
+    authorizationHeader: headers.Authorization ? `Bearer token present (${String(env.CAFE24_ACCESS_TOKEN || "").length} chars)` : "missing",
+    contentType: headers["Content-Type"],
+    hasClientId: Boolean(env.CAFE24_CLIENT_ID),
+    hasClientSecret: Boolean(env.CAFE24_CLIENT_SECRET),
+    hasAccessToken: Boolean(env.CAFE24_ACCESS_TOKEN),
+    hasRefreshToken: Boolean(env.CAFE24_REFRESH_TOKEN),
+    accessTokenExpiresAt: env.CAFE24_ACCESS_TOKEN_EXPIRES_AT || null,
+    ...extra
+  };
+}
+
+function compactCafe24Body(body) {
+  if (!body || typeof body !== "object") return body;
+  const compact = {};
+  for (const key of ["error", "error_description", "message", "errors", "trace_id", "orders", "items", "order_items"]) {
+    if (body[key] === undefined) continue;
+    if (Array.isArray(body[key])) {
+      compact[key] = key === "orders" || key === "items" || key === "order_items" ? `[array:${body[key].length}]` : body[key].slice(0, 3);
+    } else {
+      compact[key] = body[key];
     }
+  }
+  return Object.keys(compact).length ? compact : Object.keys(body).slice(0, 12);
+}
+
+async function logCafe24OrdersDebug(stage, data = {}) {
+  const entry = {
+    time: new Date().toISOString(),
+    source: "cafe24_orders_debug",
+    stage,
+    ...data
+  };
+  console.info(`[CAFE24_ORDERS_DEBUG] ${JSON.stringify(entry)}`);
+  try {
+    await mkdir(workDir, { recursive: true });
+    const file = join(workDir, "cafe24-orders-debug.ndjson");
+    const existing = existsSync(file) ? await readFile(file, "utf8") : "";
+    const lines = existing.split(/\r?\n/).filter(Boolean).slice(-199);
+    lines.push(JSON.stringify(entry));
+    await writeFile(file, `${lines.join("\n")}\n`);
+  } catch (logError) {
+    console.error(`[CAFE24_ORDERS_DEBUG_WRITE_FAILED] ${safeErrorMessage(logError)}`);
+  }
+}
+
+async function cafe24FetchJson(url) {
+  await logCafe24OrdersDebug("request", cafe24OrdersDebugContext(url));
+  const response = await fetch(url, {
+    headers: cafe24OrdersHeaders()
   });
-  const body = await response.json();
+  const text = await response.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = { message: text.slice(0, 500) };
+  }
+  await logCafe24OrdersDebug("response", cafe24OrdersDebugContext(url, {
+    statusCode: response.status,
+    ok: response.ok,
+    responseBody: compactCafe24Body(body)
+  }));
   if (!response.ok || body.error) {
     const message = body.error?.message || body.error_description || body.message || `Cafe24 API error ${response.status}`;
     const error = new Error(message);
     error.status = response.status;
     error.body = body;
+    error.cafe24OrdersDebug = cafe24OrdersDebugContext(url, {
+      statusCode: response.status,
+      responseBody: compactCafe24Body(body)
+    });
     return { error };
   }
   return body;
@@ -1051,13 +1188,23 @@ async function attachCafe24OrderItems(orders = []) {
 
 async function cafe24GetOrderItems(orderId) {
   const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/orders/${encodeURIComponent(orderId)}/items`);
+  await logCafe24OrdersDebug("items_request", cafe24OrdersDebugContext(url, { orderId }));
   const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
-      "Content-Type": "application/json"
-    }
+    headers: cafe24OrdersHeaders()
   });
-  const body = await response.json();
+  const text = await response.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = { message: text.slice(0, 500) };
+  }
+  await logCafe24OrdersDebug("items_response", cafe24OrdersDebugContext(url, {
+    orderId,
+    statusCode: response.status,
+    ok: response.ok,
+    responseBody: compactCafe24Body(body)
+  }));
   if (!response.ok || body.error) {
     const message = body.error?.message || body.error_description || body.message || `Cafe24 order item API error ${response.status}`;
     const error = new Error(message);
