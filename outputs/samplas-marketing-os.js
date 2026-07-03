@@ -413,7 +413,7 @@ function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSave
       view: "Content",
       cta: "콘텐츠 보기",
       projectKey: "cardnews",
-      projectUrl: cardnewsProject.projectOpenUrl || cardnewsProject.folderOpenUrl || ""
+      projectUrl: cardnewsLauncherUrl(cardnewsProject)
     });
   }
   const editorialBrand = editorialBriefBrand(data);
@@ -457,6 +457,16 @@ function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSave
 function activeCardnewsProject(cardnewsStatus = {}) {
   const items = Array.isArray(cardnewsStatus.items) ? cardnewsStatus.items : [];
   return items.find((item) => item.status === "진행 중") || items[0] || null;
+}
+
+function cardnewsLauncherUrl(project = {}) {
+  const url = new URL("http://127.0.0.1:8789/");
+  const projectName = project.projectName || project.brandName || "";
+  if (projectName) url.searchParams.set("project", projectName);
+  if (project.projectName) url.searchParams.set("projectName", project.projectName);
+  if (project.projectPath) url.searchParams.set("projectPath", project.projectPath);
+  if (project.folderOpenUrl) url.searchParams.set("folderOpenUrl", project.folderOpenUrl);
+  return url.toString();
 }
 
 function todayBriefId(item) {
