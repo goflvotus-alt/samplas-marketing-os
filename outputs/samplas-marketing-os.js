@@ -505,10 +505,12 @@ function renderPurposeRadar(posts) {
 }
 
 function renderContentTable(posts) {
-  $("#contentRows").innerHTML = (posts || []).slice(0, 80).map((post) => {
+  renderContentPerformanceCenter(posts || [], selectedMonth());
+  const legacyRows = $("#contentRows");
+  if (!legacyRows) return;
+  legacyRows.innerHTML = (posts || []).slice(0, 80).map((post) => {
     const metrics = postMetrics(post);
-    return (
-    `<tr>
+    return `<tr>
       <td>${esc(post.date || "-")}</td>
       <td><strong>${esc(post.title || "-")}</strong><br>${esc(post.tag || "-")}</td>
       <td>${esc(post.type || "-")}</td>
@@ -519,9 +521,155 @@ function renderContentTable(posts) {
       <td>${apiNum(post.saves)}</td>
       <td>${apiNum(post.shares)}</td>
       <td>${pct(metrics.engagementRate)}</td>
-    </tr>`
-    );
+    </tr>`;
   }).join("") || `<tr><td colspan="10">게시물별 데이터가 없습니다.</td></tr>`;
+}
+
+function renderContentPerformanceCenter(posts, data = {}) {
+  const account = data.account || {};
+  const targetKpis = $("#contentKpiGrid");
+  if (!targetKpis) return;
+  const totalReach = sum(posts, "reach");
+  const totalLikes = sum(posts, "likes");
+  const totalSaves = sum(posts, "saves");
+  const totalShares = sum(posts, "shares");
+  targetKpis.innerHTML = [
+    contentKpiCard("게시물 수", `${apiNum(posts.length)}개`, "분석 대상 콘텐츠"),
+    contentKpiCard("총 Reach", apiNum(totalReach), "게시물 합산"),
+    contentKpiCard("총 Likes", apiNum(totalLikes), "반응 신호"),
+    contentKpiCard("총 Saves", apiNum(totalSaves), "저장 신호"),
+    contentKpiCard("총 Shares", apiNum(totalShares), "확산 신호"),
+    contentKpiCard("팔로우 증가", hasApiValue(account.followerDelta) ? `${apiNum(account.followerDelta)}명` : "데이터 없음", "계정 월간 변화")
+  ].join("");
+
+  $("#contentTopGrid").innerHTML = [
+    contentRankingCard("조회수 TOP 5", topPosts(posts, (post) => post.views || post.reach, 5), (post) => `조회 ${apiNum(post.views)} · Reach ${apiNum(post.reach)}`),
+    contentRankingCard("저장률 TOP 5", topPosts(posts, (post) => postMetrics(post).saveRate, 5), (post) => `저장률 ${pct(postMetrics(post).saveRate)} · 저장 ${apiNum(post.saves)}`),
+    contentRankingCard("공유 TOP 5", topPosts(posts, (post) => post.shares, 5), (post) => `공유 ${apiNum(post.shares)} · 공유율 ${pct(postMetrics(post).shareRate)}`),
+    contentRankingCard("팔로우 전환 TOP 5", topPosts(posts, (post) => post.follows || post.profileVisits || post.websiteClicks || postMetrics(post).engagementRate, 5), (post) => `프로필 ${apiNum(post.profileVisits)} · 클릭 ${apiNum(post.websiteClicks)}`)
+  ].join("");
+
+  $("#contentTypeGrid").innerHTML = contentTypeCards(posts);
+  $("#contentHeatmap").innerHTML = contentHeatmapCards(posts);
+  $("#contentBrandGrid").innerHTML = contentBrandCards(posts);
+  $("#contentAiGrid").innerHTML = contentRecommendationCards(posts);
+}
+
+function contentKpiCard(label, value, note) {
+  return `<article class="content-kpi-card"><span>${esc(label)}</span><strong>${esc(value)}</strong><p>${esc(note)}</p></article>`;
+}
+
+function contentRankingCard(title, rows, helper) {
+  return `<article class="content-rank-card">
+    <h4>${esc(title)}</h4>
+    ${rows.length ? `<ol>${rows.map((post, index) => `<li>
+      <mark>${index + 1}</mark>
+      <div><strong title="${esc(post.title || "-")}">${esc(post.title || "-")}</strong><p>${esc(helper(post))}</p></div>
+    </li>`).join("")}</ol>` : contentEmpty("콘텐츠 데이터가 없습니다.")}
+  </article>`;
+}
+
+function contentTypeCards(posts) {
+  const summary = summarizeByType(posts);
+  const total = Math.max(1, posts.length);
+  const expected = ["릴스", "카드뉴스", "사진"];
+  const rows = expected.map((type) => summary.find((item) => item.type === type) || { type, count: 0, reach: 0, avgSaveRate: 0, shares: 0 });
+  return rows.map((item) => {
+    const share = Math.round(Number(item.count || 0) / total * 100);
+    return `<article class="content-type-card">
+      <div><span>${esc(item.type)}</span><strong>${share}%</strong></div>
+      <i><b style="width:${Math.max(4, share)}%"></b></i>
+      <p>${apiNum(item.count)}개 · Reach ${apiNum(item.reach)} · 저장률 ${pct(item.avgSaveRate)}</p>
+    </article>`;
+  }).join("");
+}
+
+function contentHeatmapCards(posts) {
+  const dayRows = contentTimeGroups(posts, "day");
+  const hourRows = contentTimeGroups(posts, "hour");
+  return [
+    contentHeatmapGroup("요일별 성과", dayRows),
+    contentHeatmapGroup("시간대별 성과", hourRows)
+  ].join("");
+}
+
+function contentTimeGroups(posts, mode) {
+  const labels = mode === "day" ? ["월", "화", "수", "목", "금", "토", "일"] : ["오전", "점심", "오후", "저녁"];
+  const groups = new Map(labels.map((label) => [label, []]));
+  for (const post of posts) {
+    const key = mode === "day" ? contentDayLabel(post.date) : contentHourLabel(post.date || post.createdAt || post.timestamp);
+    groups.set(key, [...(groups.get(key) || []), post]);
+  }
+  return [...groups.entries()].map(([label, group]) => ({
+    label,
+    count: group.length,
+    score: Math.round(avg(group.map((post) => Number(post.reach || 0) + interaction(post) * 10)))
+  }));
+}
+
+function contentDayLabel(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "월";
+  return ["일", "월", "화", "수", "목", "금", "토"][date.getDay()];
+}
+
+function contentHourLabel(value) {
+  const date = new Date(value || "");
+  const hour = Number.isNaN(date.getTime()) ? 12 : date.getHours();
+  if (hour < 11) return "오전";
+  if (hour < 14) return "점심";
+  if (hour < 18) return "오후";
+  return "저녁";
+}
+
+function contentHeatmapGroup(title, rows) {
+  const max = Math.max(1, ...rows.map((row) => row.score));
+  return `<article class="content-heat-card"><h4>${esc(title)}</h4><div>
+    ${rows.map((row) => `<span style="opacity:${Math.max(0.28, row.score / max)}"><b>${esc(row.label)}</b><em>${apiNum(row.count)}개</em></span>`).join("")}
+  </div></article>`;
+}
+
+function contentBrandCards(posts) {
+  const groups = new Map();
+  for (const post of posts) {
+    const brand = post.brand || post.tag || brandFromProduct(post.title || "") || "기타";
+    const group = groups.get(brand) || [];
+    group.push(post);
+    groups.set(brand, group);
+  }
+  const rows = [...groups.entries()].map(([brand, group]) => ({
+    brand,
+    count: group.length,
+    reach: avg(group.map((post) => Number(post.reach || 0))),
+    saveRate: avg(group.map((post) => postMetrics(post).saveRate)),
+    shares: avg(group.map((post) => Number(post.shares || 0)))
+  })).sort((left, right) => right.reach - left.reach).slice(0, 8);
+  return rows.length ? rows.map((row) => `<article class="content-brand-card">
+    <strong>${esc(row.brand)}</strong>
+    <span>${apiNum(row.count)} posts</span>
+    <p>평균 Reach ${apiNum(Math.round(row.reach))}</p>
+    <p>평균 저장률 ${pct(row.saveRate)} · 평균 공유 ${apiNum(Math.round(row.shares))}</p>
+  </article>`).join("") : contentEmpty("브랜드별 성과 데이터가 없습니다.");
+}
+
+function contentRecommendationCards(posts) {
+  const best = topPosts(posts, purposeScore, 1)[0];
+  const saved = topPosts(posts, (post) => postMetrics(post).saveRate, 1)[0];
+  const brand = saved ? (saved.brand || saved.tag || brandFromProduct(saved.title || "")) : "";
+  return [
+    contentAiCard("가장 성과가 좋았던 콘텐츠", best ? best.title || "Untitled" : "데이터 없음", best ? explainPost(best) : "콘텐츠 데이터가 쌓이면 표시됩니다."),
+    contentAiCard("저장률이 높은 이유", saved ? saved.title || "Untitled" : "데이터 없음", saved ? "저장률이 높은 콘텐츠는 다시 볼 이유가 명확한 정보형 구성이 많습니다." : "저장률 판단 데이터가 없습니다."),
+    contentAiCard("다음 콘텐츠 추천", saved ? `${saved.type || "콘텐츠"} 포맷 반복` : "릴스/카드뉴스 테스트", saved ? "성과가 나온 포맷을 같은 브랜드 또는 유사 상품으로 반복하세요." : "이번 주에는 릴스와 카드뉴스를 각각 1개씩 테스트하세요."),
+    contentAiCard("비슷한 브랜드 추천", brand || "데이터 없음", brand ? `${brand}와 비슷한 톤의 브랜드 콘텐츠를 추가로 기획하세요.` : "브랜드 태그가 쌓이면 추천이 더 정확해집니다.")
+  ].join("");
+}
+
+function contentAiCard(title, value, note) {
+  return `<article class="content-ai-card"><span>${esc(title)}</span><strong title="${esc(value)}">${esc(value)}</strong><p>${esc(note)}</p></article>`;
+}
+
+function contentEmpty(message) {
+  return `<div class="content-empty">${esc(message)}</div>`;
 }
 
 function metricCard(post) {
@@ -581,6 +729,7 @@ function feedCard(post, options = {}) {
 
 function renderCards(id, posts, mode = "metric") {
   const target = $(`#${id}`);
+  if (!target) return;
   if (mode === "feed" || mode === "cardnews") {
     target.classList.add("instagram-feed");
     target.classList.remove("cards");

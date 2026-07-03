@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SAMPLAS Instagram Marketing OS</title>
-  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-overview-home-v2" />
+  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-content-center" />
 </head>
 <body>
   <div class="app-shell">
@@ -103,33 +103,31 @@
           <div class="section-block">
             <div class="section-title compact">
               <div>
-                <p class="eyebrow">All Content</p>
-                <h3>전체 콘텐츠 KPI</h3>
+                <p class="eyebrow">Instagram KPI</p>
+                <h3>이번달 콘텐츠 KPI</h3>
               </div>
             </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>게시일</th>
-                    <th>콘텐츠</th>
-                    <th>포맷</th>
-                    <th>Reach</th>
-                    <th>Views</th>
-                    <th>Likes</th>
-                    <th>Comments</th>
-                    <th>Saves</th>
-                    <th>Shares</th>
-                    <th>Engagement Rate</th>
-                  </tr>
-                </thead>
-                <tbody id="contentRows"></tbody>
-              </table>
-            </div>
+            <div id="contentKpiGrid" class="content-kpi-grid"></div>
           </div>
           <div class="section-block">
-            <div class="section-title compact"><div><p class="eyebrow">Content Clicks</p><h3>유입 TOP 콘텐츠</h3></div></div>
-            <div id="conversionGrid" class="cards"></div>
+            <div class="section-title compact"><div><p class="eyebrow">Top Content</p><h3>TOP 콘텐츠</h3></div></div>
+            <div id="contentTopGrid" class="content-top-grid"></div>
+          </div>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Format Mix</p><h3>콘텐츠 유형 분석</h3></div></div>
+            <div id="contentTypeGrid" class="content-type-grid"></div>
+          </div>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Posting Time</p><h3>게시시간 분석</h3></div></div>
+            <div id="contentHeatmap" class="content-heatmap"></div>
+          </div>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Brand Performance</p><h3>브랜드별 성과</h3></div></div>
+            <div id="contentBrandGrid" class="content-brand-grid"></div>
+          </div>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">AI Recommendation</p><h3>AI 추천</h3></div></div>
+            <div id="contentAiGrid" class="content-ai-grid"></div>
           </div>
         </div>
         <div class="content-panel" data-content-panel="Reels">
@@ -272,6 +270,6 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260703-overview-home-v2"></script>
+  <script src="./samplas-marketing-os.js?v=20260703-content-center"></script>
 </body>
 </html>
