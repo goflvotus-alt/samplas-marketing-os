@@ -690,6 +690,7 @@ function renderEditorialAi(data) {
   const avgSaveRate = avg(posts.map((post) => postMetrics(post).saveRate));
   const titleLength = Math.round(avg(posts.map((post) => String(post.title || "").length)));
   const recommendedBrands = editorialOpportunityBrands(brandRows);
+  const discoverRows = editorialDiscoverRows({ posts, brandRows, bestType, bestDay, bestHour });
 
   $("#editorialInsightGrid").innerHTML = [
     editorialInsightCard("저장률 최고", topSaved?.title || "데이터 없음", topSaved ? `저장률 ${pct(postMetrics(topSaved).saveRate)} · 저장 ${apiNum(topSaved.saves)}` : "콘텐츠 데이터가 필요합니다."),
@@ -730,6 +731,12 @@ function renderEditorialAi(data) {
     <strong>${esc(brand)}</strong>
     <p>아직 많이 다루지 않았지만 다음 달 테스트 후보로 적합합니다.</p>
   </article>`).join("");
+
+  $("#editorialDiscoverRadar").innerHTML = discoverRows.map((row) => editorialDiscoverCard(row)).join("");
+
+  $("#editorialContentStrategy").innerHTML = `<ol>
+    ${editorialStrategyLines({ posts, bestType, bestBrand, bestDay, bestHour, best, discoverRows, avgSaveRate }).map((line) => `<li>${esc(line)}</li>`).join("")}
+  </ol>`;
 
   $("#editorialSummary").innerHTML = `<ol>
     ${editorialSummaryLines({ posts, bestType, bestBrand, bestDay, bestHour, best, recommendedBrands, account }).map((line) => `<li>${esc(line)}</li>`).join("")}
@@ -777,6 +784,71 @@ function editorialOpportunityBrands(brandRows) {
   const existing = new Set((brandRows || []).map((row) => String(row.brand || "").toUpperCase()));
   const underused = candidates.filter((brand) => !existing.has(brand));
   return [...underused, ...(brandRows || []).slice(0, 2).map((row) => row.brand)].slice(0, 4);
+}
+
+function editorialDiscoverRows({ posts = [], brandRows = [], bestType = {}, bestDay = {}, bestHour = {} }) {
+  const candidates = ["GOOMHEO", "AE SYNCTX", "RAVE", "MEANTIME"];
+  const existingMap = new Map((brandRows || []).map((row) => [String(row.brand || "").toUpperCase(), row]));
+  const bestPost = topPosts(posts, purposeScore, 1)[0];
+  const reachBase = Math.max(1200, Math.round(avg(posts.map((post) => Number(post.reach || post.views || 0))) || 0));
+  const saveBase = Math.max(0.8, avg(posts.map((post) => postMetrics(post).saveRate)) || 0);
+  return candidates.map((brand, index) => {
+    const existing = existingMap.get(brand);
+    const score = existing ? Math.min(5, 3 + Math.round(existing.score / 30)) : Math.max(3, 5 - index % 3);
+    const estimatedReach = existing ? Math.round(existing.reach * 1.12) : Math.round(reachBase * (1.18 - index * 0.05));
+    const estimatedSaveRate = existing ? existing.saveRate * 1.08 : saveBase + (0.6 - index * 0.08);
+    return {
+      brand,
+      score,
+      reason: existing ? "이미 반응이 검증된 브랜드라 확장 가치가 있습니다." : "아직 노출이 적어 신규 테스트 여지가 큽니다.",
+      format: bestType.type || (index % 2 ? "릴스" : "카드뉴스"),
+      estimatedReach,
+      estimatedSaveRate,
+      similar: bestPost?.title || brandRows[0]?.brand || "상위 성과 콘텐츠",
+      day: bestDay.label || "금",
+      hour: bestHour.label || "저녁"
+    };
+  }).sort((left, right) => right.score - left.score);
+}
+
+function editorialDiscoverCard(row) {
+  return `<article class="editorial-discover-card">
+    <div class="editorial-discover-head">
+      <div><span>Brand</span><strong>${esc(row.brand)}</strong></div>
+      <em>${"★".repeat(row.score)}${"☆".repeat(Math.max(0, 5 - row.score))}</em>
+    </div>
+    <p>${esc(row.reason)}</p>
+    <dl>
+      <div><dt>추천 형식</dt><dd>${esc(row.format)}</dd></div>
+      <div><dt>예상 Reach</dt><dd>${apiNum(row.estimatedReach)}</dd></div>
+      <div><dt>예상 저장률</dt><dd>${pct(row.estimatedSaveRate)}</dd></div>
+      <div><dt>성공 사례</dt><dd title="${esc(row.similar)}">${esc(row.similar)}</dd></div>
+      <div><dt>요일</dt><dd>${esc(row.day)}</dd></div>
+      <div><dt>시간</dt><dd>${esc(row.hour)}</dd></div>
+    </dl>
+  </article>`;
+}
+
+function editorialStrategyLines({ posts, bestType, bestBrand, bestDay, bestHour, best, discoverRows, avgSaveRate }) {
+  if (!posts.length) {
+    return [
+      "이번 달 콘텐츠 데이터가 아직 부족해 명확한 승리 패턴을 판단하기 어렵습니다.",
+      "다음 달에는 릴스와 카드뉴스를 각각 최소 2개 이상 업로드해 비교 기준을 만들어야 합니다.",
+      "브랜드 히스토리, 소재 디테일, 스타일링 제안처럼 저장할 이유가 있는 콘텐츠를 우선 추천합니다.",
+      "GOOMHEO, AE SYNCTX, RAVE, MEANTIME은 Discover Radar 테스트 후보로 유지합니다.",
+      "게시 후 Reach보다 Saves와 Shares를 함께 보면서 다음 콘텐츠 방향을 조정하세요."
+    ];
+  }
+  const radar = discoverRows[0];
+  return [
+    `이번 달에는 ${bestType.type || "상위 포맷"} 콘텐츠가 저장률 ${bestType.note ? bestType.note.replace(/^저장률 /, "").split(" · ")[0] : pct(avgSaveRate)} 기준으로 가장 좋은 신호를 보였습니다.`,
+    `${bestBrand?.brand || "상위 브랜드"} 관련 콘텐츠가 평균 Reach와 저장 반응에서 가장 강했습니다.`,
+    best ? `"${best.title || "대표 콘텐츠"}"는 다음 달 콘텐츠 구조를 잡을 때 참고할 성공 사례입니다.` : "대표 콘텐츠는 추가 데이터가 쌓이면 더 명확하게 선정할 수 있습니다.",
+    `${bestDay.label}요일과 ${bestHour.label} 업로드가 현재 데이터에서 가장 좋은 반응을 보였습니다.`,
+    `다음 달에는 ${radar?.brand || "RAVE"}와 ${discoverRows[1]?.brand || "AE SYNCTX"}를 중심으로 브랜드 히스토리와 제품 디테일 콘텐츠를 추천합니다.`,
+    `추천 형식은 ${radar?.format || bestType.type || "카드뉴스"}이며, 저장 가능한 정보형 구성을 우선 적용하는 것이 좋습니다.`,
+    "릴스는 신규 도달, 카드뉴스는 저장과 공유를 담당하도록 역할을 분리해서 운영하세요."
+  ];
 }
 
 function editorialSummaryLines({ posts, bestType, bestBrand, bestDay, bestHour, best, recommendedBrands, account }) {

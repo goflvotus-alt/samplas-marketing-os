@@ -897,11 +897,19 @@ select,
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.editorial-discover-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .editorial-card,
 .editorial-why-card,
 .editorial-recommend-card,
 .editorial-brand-card,
 .editorial-opportunity-card,
+.editorial-discover-card,
+.editorial-strategy-card,
 .editorial-summary-card {
   min-width: 0;
   padding: 16px;
@@ -965,6 +973,80 @@ select,
   background: linear-gradient(180deg, #fff, #f8faf6);
 }
 
+.editorial-discover-card {
+  min-height: 320px;
+}
+
+.editorial-discover-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.editorial-discover-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.editorial-discover-head strong {
+  display: block;
+  margin-top: 7px;
+  font-size: 22px;
+}
+
+.editorial-discover-head em {
+  color: #8a650f;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.editorial-discover-card > p {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.editorial-discover-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.editorial-discover-card dl div {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.editorial-discover-card dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.editorial-discover-card dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.editorial-strategy-card {
+  background: linear-gradient(180deg, #fff, #fbfaf6);
+}
+
+.editorial-strategy-card ol,
 .editorial-summary-card ol {
   display: grid;
   gap: 10px;
@@ -972,6 +1054,7 @@ select,
   padding-left: 22px;
 }
 
+.editorial-strategy-card li,
 .editorial-summary-card li {
   color: var(--ink);
   font-size: 15px;
