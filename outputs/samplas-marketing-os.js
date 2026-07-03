@@ -1,6 +1,7 @@
 const navItems = [
   "Overview",
   "Content",
+  "Editorial AI",
   "Advertising",
   "Sales",
   "Reports",
@@ -672,6 +673,147 @@ function contentEmpty(message) {
   return `<div class="content-empty">${esc(message)}</div>`;
 }
 
+function renderEditorialAi(data) {
+  const posts = data.posts || [];
+  const account = data.account || {};
+  const brandRows = editorialBrandRows(posts);
+  const topSaved = topPosts(posts, (post) => postMetrics(post).saveRate, 1)[0];
+  const topShared = topPosts(posts, (post) => post.shares, 1)[0];
+  const topViewed = topPosts(posts, (post) => post.views || post.reach, 1)[0];
+  const avgScore = avg(posts.map(purposeScore));
+  const highPosts = posts.filter((post) => purposeScore(post) > avgScore);
+  const best = topPosts(posts, purposeScore, 1)[0];
+  const bestType = editorialBestType(posts);
+  const bestBrand = brandRows[0];
+  const bestDay = editorialBestTime(posts, "day");
+  const bestHour = editorialBestTime(posts, "hour");
+  const avgSaveRate = avg(posts.map((post) => postMetrics(post).saveRate));
+  const titleLength = Math.round(avg(posts.map((post) => String(post.title || "").length)));
+  const recommendedBrands = editorialOpportunityBrands(brandRows);
+
+  $("#editorialInsightGrid").innerHTML = [
+    editorialInsightCard("저장률 최고", topSaved?.title || "데이터 없음", topSaved ? `저장률 ${pct(postMetrics(topSaved).saveRate)} · 저장 ${apiNum(topSaved.saves)}` : "콘텐츠 데이터가 필요합니다."),
+    editorialInsightCard("공유 최고", topShared?.title || "데이터 없음", topShared ? `공유 ${apiNum(topShared.shares)} · 공유율 ${pct(postMetrics(topShared).shareRate)}` : "공유 데이터가 필요합니다."),
+    editorialInsightCard("조회수 TOP", topViewed?.title || "데이터 없음", topViewed ? `조회 ${apiNum(topViewed.views)} · Reach ${apiNum(topViewed.reach)}` : "조회 데이터가 필요합니다."),
+    editorialInsightCard("평균 이상 게시물", posts.length ? `${apiNum(highPosts.length)}개` : "데이터 없음", posts.length ? `전체 ${apiNum(posts.length)}개 중 성과 평균 이상` : "게시물 데이터가 필요합니다.")
+  ].join("");
+
+  $("#editorialWhyGrid").innerHTML = [
+    editorialWhyCard("카드뉴스 비중", editorialTypeShare(posts, "카드뉴스"), "저장형 콘텐츠 비중"),
+    editorialWhyCard("릴스 비중", editorialTypeShare(posts, "릴스"), "조회와 신규 도달 비중"),
+    editorialWhyCard("브랜드", bestBrand?.brand || "데이터 없음", bestBrand ? `평균 Reach ${apiNum(Math.round(bestBrand.reach))}` : "브랜드 태그가 필요합니다."),
+    editorialWhyCard("업로드 요일", bestDay.label, `평균 성과 ${apiNum(bestDay.score)}`),
+    editorialWhyCard("업로드 시간", bestHour.label, `평균 성과 ${apiNum(bestHour.score)}`),
+    editorialWhyCard("제목 길이", titleLength ? `${apiNum(titleLength)}자` : "데이터 없음", "콘텐츠 제목 평균"),
+    editorialWhyCard("평균 저장률", posts.length ? pct(avgSaveRate) : "데이터 없음", "이번 달 콘텐츠 평균")
+  ].join("");
+
+  $("#editorialRecommendGrid").innerHTML = [
+    editorialRecommendCard("다음 카드뉴스 추천", best ? `${bestBrand?.brand || brandFromProduct(best.title || "")} 디테일 분석` : "브랜드 히스토리 카드뉴스", best ? "성과가 좋았던 브랜드를 정보형 카드뉴스로 반복하세요." : "데이터가 적을 때는 저장 가능한 정보형 콘텐츠부터 시작하세요."),
+    editorialRecommendCard("추천 브랜드", recommendedBrands[0] || bestBrand?.brand || "GOOMHEO", "최근 성과와 기회 브랜드를 함께 반영했습니다."),
+    editorialRecommendCard("추천 업로드 시간", bestHour.label, "현재 월 게시 시간대 성과 기준입니다."),
+    editorialRecommendCard("추천 요일", bestDay.label, "현재 월 요일별 평균 성과 기준입니다."),
+    editorialRecommendCard("추천 콘텐츠 형식", bestType.type || "카드뉴스", bestType.note || "저장률과 공유율을 높이기 좋은 포맷입니다."),
+    editorialRecommendCard("추천 이유", best ? explainPost(best) : "저장/공유가 쌓이는 콘텐츠가 구매 전환 전에 브랜드 관심을 만듭니다.", "현재 콘텐츠 지표 기반 자동 제안")
+  ].join("");
+
+  $("#editorialBrandGrid").innerHTML = brandRows.length ? brandRows.slice(0, 8).map((row) => `<article class="editorial-brand-card">
+    <strong>${esc(row.brand)}</strong>
+    <span>${apiNum(row.count)} posts</span>
+    <p>평균 Reach ${apiNum(Math.round(row.reach))}</p>
+    <p>Saves ${apiNum(Math.round(row.saves))} · Shares ${apiNum(Math.round(row.shares))}</p>
+    <p>저장률 ${pct(row.saveRate)}</p>
+  </article>`).join("") : editorialEmpty("브랜드별 분석 데이터가 없습니다.");
+
+  $("#editorialOpportunityGrid").innerHTML = recommendedBrands.map((brand) => `<article class="editorial-opportunity-card">
+    <span>Opportunity</span>
+    <strong>${esc(brand)}</strong>
+    <p>아직 많이 다루지 않았지만 다음 달 테스트 후보로 적합합니다.</p>
+  </article>`).join("");
+
+  $("#editorialSummary").innerHTML = `<ol>
+    ${editorialSummaryLines({ posts, bestType, bestBrand, bestDay, bestHour, best, recommendedBrands, account }).map((line) => `<li>${esc(line)}</li>`).join("")}
+  </ol>`;
+}
+
+function editorialBrandRows(posts) {
+  const groups = new Map();
+  for (const post of posts || []) {
+    const brand = post.brand || post.tag || brandFromProduct(post.title || "") || "기타";
+    const group = groups.get(brand) || [];
+    group.push(post);
+    groups.set(brand, group);
+  }
+  return [...groups.entries()].map(([brand, group]) => ({
+    brand,
+    count: group.length,
+    reach: avg(group.map((post) => Number(post.reach || 0))),
+    saves: avg(group.map((post) => Number(post.saves || 0))),
+    shares: avg(group.map((post) => Number(post.shares || 0))),
+    saveRate: avg(group.map((post) => postMetrics(post).saveRate)),
+    score: avg(group.map(purposeScore))
+  })).sort((left, right) => right.score - left.score);
+}
+
+function editorialBestType(posts) {
+  const rows = summarizeByType(posts || []);
+  const best = [...rows].sort((left, right) => Number(right.avgSaveRate || 0) - Number(left.avgSaveRate || 0))[0];
+  return best ? { type: best.type, note: `저장률 ${pct(best.avgSaveRate)} · ${apiNum(best.count)}개 게시` } : { type: "", note: "" };
+}
+
+function editorialTypeShare(posts, type) {
+  const total = Math.max(1, (posts || []).length);
+  const count = (posts || []).filter((post) => post.type === type).length;
+  return `${Math.round(count / total * 100)}%`;
+}
+
+function editorialBestTime(posts, mode) {
+  const rows = contentTimeGroups(posts || [], mode).sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
+  return rows[0] || { label: "데이터 없음", score: 0 };
+}
+
+function editorialOpportunityBrands(brandRows) {
+  const candidates = ["GOOMHEO", "AE SYNCTX", "RAVE", "MEANTIME"];
+  const existing = new Set((brandRows || []).map((row) => String(row.brand || "").toUpperCase()));
+  const underused = candidates.filter((brand) => !existing.has(brand));
+  return [...underused, ...(brandRows || []).slice(0, 2).map((row) => row.brand)].slice(0, 4);
+}
+
+function editorialSummaryLines({ posts, bestType, bestBrand, bestDay, bestHour, best, recommendedBrands, account }) {
+  if (!posts.length) {
+    return [
+      "이번 달 콘텐츠 데이터가 아직 충분하지 않습니다.",
+      "먼저 릴스와 카드뉴스를 균형 있게 업로드해 비교 기준을 만드는 것이 좋습니다.",
+      "브랜드 태그와 게시 시간 데이터가 쌓이면 추천 정확도가 올라갑니다.",
+      "다음 달에는 브랜드 히스토리와 제품 디테일 콘텐츠를 우선 테스트하세요.",
+      "Cafe24 매출 분석과 함께 보면 콘텐츠의 판매 기여도를 더 명확히 볼 수 있습니다."
+    ];
+  }
+  return [
+    `이번 달에는 ${bestType.type || "성과 좋은 포맷"} 콘텐츠가 저장률 측면에서 가장 좋은 신호를 보였습니다.`,
+    `${bestBrand?.brand || "상위 브랜드"} 관련 게시물이 가장 높은 평균 성과를 기록했습니다.`,
+    `${bestHour.label} 업로드와 ${bestDay.label}요일 콘텐츠가 상대적으로 좋은 반응을 얻었습니다.`,
+    best ? `"${best.title || "대표 콘텐츠"}"는 다음 콘텐츠 기획의 기준으로 삼을 만합니다.` : "대표 콘텐츠를 추가로 확인할 필요가 있습니다.",
+    `다음 달에는 ${recommendedBrands[0] || "GOOMHEO"} 중심의 브랜드 히스토리/디테일 콘텐츠를 추천합니다. 팔로워 변화는 ${apiNum(account.followerDelta)}명입니다.`
+  ];
+}
+
+function editorialInsightCard(title, value, note) {
+  return `<article class="editorial-card"><span>${esc(title)}</span><strong title="${esc(value)}">${esc(value)}</strong><p>${esc(note)}</p></article>`;
+}
+
+function editorialWhyCard(title, value, note) {
+  return `<article class="editorial-why-card"><span>${esc(title)}</span><strong>${esc(value)}</strong><p>${esc(note)}</p></article>`;
+}
+
+function editorialRecommendCard(title, value, note) {
+  return `<article class="editorial-recommend-card"><span>${esc(title)}</span><strong title="${esc(value)}">${esc(value)}</strong><p>${esc(note)}</p></article>`;
+}
+
+function editorialEmpty(message) {
+  return `<div class="content-empty">${esc(message)}</div>`;
+}
+
 function metricCard(post) {
   const metrics = postMetrics(post);
   return `<article class="report-panel">
@@ -1323,6 +1465,7 @@ function renderAll() {
   renderMonthlyDashboard(data);
   renderContentTabs();
   renderContentTable(data.posts || []);
+  renderEditorialAi(data);
   renderGrowthChart();
   renderOtherSections(data);
   updateSync(data);

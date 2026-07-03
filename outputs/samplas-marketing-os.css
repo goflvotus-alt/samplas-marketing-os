@@ -867,6 +867,118 @@ select,
   font-weight: 900;
 }
 
+.editorial-hero {
+  align-items: end;
+}
+
+.editorial-insight-grid,
+.editorial-why-grid,
+.editorial-recommend-grid,
+.editorial-brand-grid,
+.editorial-opportunity-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.editorial-insight-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.editorial-why-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.editorial-recommend-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.editorial-brand-grid,
+.editorial-opportunity-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.editorial-card,
+.editorial-why-card,
+.editorial-recommend-card,
+.editorial-brand-card,
+.editorial-opportunity-card,
+.editorial-summary-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 36px rgba(25, 25, 20, 0.06);
+}
+
+.editorial-card,
+.editorial-recommend-card,
+.editorial-opportunity-card {
+  min-height: 144px;
+}
+
+.editorial-card span,
+.editorial-why-card span,
+.editorial-recommend-card span,
+.editorial-brand-card span,
+.editorial-opportunity-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.editorial-card strong,
+.editorial-why-card strong,
+.editorial-recommend-card strong,
+.editorial-brand-card strong,
+.editorial-opportunity-card strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.editorial-card p,
+.editorial-why-card p,
+.editorial-recommend-card p,
+.editorial-brand-card p,
+.editorial-opportunity-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.editorial-why-card {
+  min-height: 118px;
+}
+
+.editorial-why-card strong {
+  font-size: 18px;
+}
+
+.editorial-opportunity-card {
+  background: linear-gradient(180deg, #fff, #f8faf6);
+}
+
+.editorial-summary-card ol {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.editorial-summary-card li {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .ad-level-tabs {
   display: flex;
   flex-wrap: wrap;
