@@ -22,6 +22,7 @@ const defaultProjectLinks = {
   cafe24: "",
   advertising: "",
   content: "",
+  cardnews: "",
   editorial: "",
   overview: ""
 };
@@ -284,10 +285,11 @@ async function renderOverviewLiveData(data) {
 
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
-  const [status, meta, cafe] = await Promise.all([
+  const [status, meta, cafe, cardnewsStatus] = await Promise.all([
     getJson("/api/status", 6000),
     getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
-    getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=500`, 7000)
+    getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=500`, 7000),
+    getJson("/api/contents/cardnews-status", 6000)
   ]);
 
   const a = data.account || {};
@@ -311,7 +313,7 @@ async function renderOverviewLiveData(data) {
     homeTopMetric("오늘 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음")
   ].join("");
 
-  currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, account: a, topSaved, topCampaign, topProduct, roas });
+  currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account: a, topSaved, topCampaign, topProduct, roas });
   renderTodayBriefing();
 
   target.innerHTML = [
@@ -329,7 +331,7 @@ async function renderOverviewLiveData(data) {
   $("#insightList").innerHTML = homeActivityCards({ status, meta, cafe, data });
 }
 
-function buildTodayBriefing({ data, meta, cafe, account, topSaved, topCampaign, topProduct, roas }) {
+function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSaved, topCampaign, topProduct, roas }) {
   const items = [];
   if (cafe.error) {
     items.push({
@@ -396,6 +398,24 @@ function buildTodayBriefing({ data, meta, cafe, account, topSaved, topCampaign, 
       projectKey: "content"
     });
   }
+  const cardnewsProject = activeCardnewsProject(cardnewsStatus);
+  if (cardnewsProject) {
+    const pngCount = Number(cardnewsProject.outputPngCount || 0);
+    items.push({
+      level: pngCount ? "opportunity" : "idea",
+      icon: pngCount ? "✓" : "i",
+      title: `${cardnewsProject.brandName || cardnewsProject.projectName} 카드뉴스 진행 확인`,
+      why: pngCount ? "출력 파일이 있어 업로드 또는 검수 단계로 넘길 수 있습니다." : "진행 중인 카드뉴스 프로젝트를 이어서 정리할 수 있습니다.",
+      evidence: `${cardnewsProject.projectName || "CARD NEWS"} · ${cardnewsProject.status || "진행 중"} · PNG ${apiNum(pngCount)}개 · ${cardnewsProject.modifiedLabel || "-"}`,
+      score: recommendationScore(pngCount ? 82 : 70, pngCount ? Math.min(pngCount, 10) : 0),
+      basis: [`상태 ${cardnewsProject.status || "진행 중"}`, `마지막 수정 ${cardnewsProject.modifiedLabel || "-"}`, `출력 PNG ${apiNum(pngCount)}개`],
+      expected: { reach: "-", saves: "-", shares: "-" },
+      view: "Content",
+      cta: "콘텐츠 보기",
+      projectKey: "cardnews",
+      projectUrl: cardnewsProject.projectOpenUrl || cardnewsProject.folderOpenUrl || ""
+    });
+  }
   const editorialBrand = editorialBriefBrand(data);
   const avgReach = Math.round(avg((data.posts || []).map((post) => Number(post.reach || post.views || 0))));
   const avgSaves = Math.round(avg((data.posts || []).map((post) => Number(post.saves || 0))));
@@ -432,6 +452,11 @@ function buildTodayBriefing({ data, meta, cafe, account, topSaved, topCampaign, 
     ...item,
     id: todayBriefId(item)
   }));
+}
+
+function activeCardnewsProject(cardnewsStatus = {}) {
+  const items = Array.isArray(cardnewsStatus.items) ? cardnewsStatus.items : [];
+  return items.find((item) => item.status === "진행 중") || items[0] || null;
 }
 
 function todayBriefId(item) {
@@ -534,7 +559,7 @@ function todayBriefCard(item) {
     ${done ? `<time>완료 시간 ${esc(state.doneAt)}</time>` : ""}
     <div class="today-brief-buttons">
       <button class="today-jump-button" type="button" data-jump-view="${esc(item.view)}">${esc(item.cta)}</button>
-      <button class="today-project-button" type="button" data-project-key="${esc(item.projectKey || "")}">프로젝트 열기</button>
+      <button class="today-project-button" type="button" data-project-key="${esc(item.projectKey || "")}" data-project-url="${esc(item.projectUrl || "")}">프로젝트 열기</button>
     </div>
   </article>`;
 }
@@ -1950,7 +1975,7 @@ function bind() {
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-project-key]");
     if (!button) return;
-    const url = projectLinkFor(button.dataset.projectKey);
+    const url = button.dataset.projectUrl || projectLinkFor(button.dataset.projectKey);
     if (!url) {
       toast("프로젝트 경로가 아직 설정되지 않았습니다. samplas.projectLinks 설정값에 연결할 수 있습니다.");
       return;

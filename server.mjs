@@ -68,6 +68,10 @@ createServer(async (req, res) => {
       );
       return json(res, data);
     }
+    if (url.pathname === "/api/contents/cardnews-status") {
+      const data = await fetchContentsCardnewsStatus();
+      return json(res, data);
+    }
     if (url.pathname === "/api/cafe24/health") {
       const data = await checkCafe24Health();
       return json(res, data);
@@ -202,6 +206,46 @@ async function readApiErrorLog(limit = 50) {
       }
     });
   return { source: "samplas_api_errors", logs };
+}
+
+async function fetchContentsCardnewsStatus() {
+  const baseUrl = (env.SAMPLAS_CONTENTS_DASHBOARD_URL || "http://127.0.0.1:8790").replace(/\/+$/, "");
+  const endpoint = `${baseUrl}/api/cardnews-status`;
+  try {
+    const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { error: `작업보드 응답을 읽지 못했습니다: ${text.slice(0, 120)}` };
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        source: "samplas_dashboard_proxy",
+        dashboardUrl: baseUrl,
+        error: body.error || `작업보드 API 오류 ${response.status}`,
+        status: response.status,
+        items: []
+      };
+    }
+    return {
+      ...body,
+      ok: body.ok !== false,
+      source: "samplas_dashboard_proxy",
+      dashboardUrl: baseUrl,
+      items: Array.isArray(body.items) ? body.items : []
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      source: "samplas_dashboard_proxy",
+      dashboardUrl: baseUrl,
+      error: safeErrorMessage(error),
+      items: []
+    };
+  }
 }
 
 async function buildMetaAdsSummary(since, until, options = {}) {
