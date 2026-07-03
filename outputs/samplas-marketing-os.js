@@ -1392,13 +1392,13 @@ async function getCafe24Status(startDate, endDate) {
   const sourceData = ordersOk ? orders : health;
   return {
     ok: ordersOk,
-    status: ordersOk ? "연결됨" : "오류",
+    status: ordersOk ? "연결됨" : "확인 필요",
     badge: ordersOk ? "정상" : "오류",
     tone: ordersOk ? "good" : "error",
     source: cafe24SourceLabel(sourceData),
     updatedAt: ordersOk ? healthTime() : health.detail?.updatedAt || healthTime(),
     lastOrderCheck: ordersOk ? "성공" : "실패",
-    orderApiStatus: ordersOk ? "정상" : "오류",
+    orderApiStatus: ordersOk ? "정상" : "확인 필요",
     orderCount: hasApiValue(orderCount) ? `${apiNum(orderCount)}건` : "-",
     basis: health.ok === true && !health.error ? "Health 정상" : "주문 API 기준",
     detail: ordersOk
