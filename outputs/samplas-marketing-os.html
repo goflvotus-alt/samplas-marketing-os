@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SAMPLAS Instagram Marketing OS</title>
-  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-briefing-hub" />
+  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-api-health-center" />
 </head>
 <body>
   <div class="app-shell">
@@ -307,23 +307,33 @@
       <section id="Settings" class="view">
         <div class="section-title">
           <div>
-            <p class="eyebrow">Settings</p>
-            <h3>연동 상태와 API 설정</h3>
+            <p class="eyebrow">API Health Center</p>
+            <h3>연동 상태 점검</h3>
           </div>
         </div>
         <div class="section-block">
           <div class="section-title compact">
             <div>
-              <p class="eyebrow">API Setup</p>
-              <h3>실제 연동을 위해 지금 세팅할 것</h3>
+              <p class="eyebrow">Connection Status</p>
+              <h3>Instagram / Meta Ads / Cafe24</h3>
+            </div>
+            <button id="healthRefreshBtn" class="button secondary" type="button">지금 동기화</button>
+          </div>
+          <div id="apiSetup" class="api-health-grid"></div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Actions</p>
+              <h3>문제가 생겼을 때</h3>
             </div>
           </div>
-          <div id="apiSetup" class="cards"></div>
+          <div id="apiHealthActions" class="api-health-actions"></div>
         </div>
       </section>
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260703-briefing-hub"></script>
+  <script src="./samplas-marketing-os.js?v=20260703-api-health-center"></script>
 </body>
 </html>

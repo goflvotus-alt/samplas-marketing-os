@@ -1318,12 +1318,110 @@ function renderOtherSections(data) {
   $("#calendarGrid").innerHTML = ["Brand Discovery", "Product Focus", "Editorial Cardnews", "Event / Sale"].map((title, index) => (
     `<article class="action-item"><strong>${index + 1}주차</strong><span>${title}</span><p>상위 성과 콘텐츠 톤을 다음 달에 확장합니다.</p></article>`
   )).join("");
-  $("#apiSetup").innerHTML = [
-    ["Instagram", "1-6월은 CSV 고정 데이터, 현재 월은 API/캐시 확인"],
-    ["Meta Ads", "API 차단 시 저장된 광고 캐시로 업무 지속"],
-    ["Cafe24", "왼쪽 상태는 실제 health 체크 기준으로 표시"],
-    ["Cafe24 재인증", "access_token / refresh_token이 모두 만료되면 OAuth 재승인이 필요합니다.", "/api/cafe24/oauth/start"]
-  ].map(([title, note, href]) => `<article class="action-item"><strong>${title}</strong><p>${note}</p>${href ? `<a class="button secondary" href="${href}" target="_blank" rel="noreferrer">재인증 시작</a>` : ""}</article>`).join("");
+  renderApiHealthCenter(data);
+}
+
+async function renderApiHealthCenter(data) {
+  const target = $("#apiSetup");
+  if (!target) return;
+  target.innerHTML = `<article class="api-health-card"><strong>연동 상태 확인 중</strong><p>Instagram, Meta Ads, Cafe24 상태를 확인합니다.</p></article>`;
+  $("#apiHealthActions").innerHTML = apiHealthActionCards();
+
+  const startDate = `${data.month}-01`;
+  const endDate = monthEnd(data.month);
+  const [status, meta, cafe] = await Promise.all([
+    getJson("/api/status", 6000),
+    getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
+    getJson("/api/cafe24/health", 6000)
+  ]);
+  const instagramOk = !data.error && status.instagram !== false;
+  const metaOk = !meta.error && status.metaAds !== false;
+  const cafeOk = cafe.ok === true && !cafe.error;
+  target.innerHTML = [
+    apiHealthCard({
+      title: "Instagram",
+      ok: instagramOk,
+      status: instagramOk ? "연결됨" : statusTextForError(data),
+      source: integrationSource(data.source),
+      updatedAt: healthTime(),
+      rows: [
+        ["데이터 소스", sourceLabel(data)],
+        ["마지막 성공 여부", instagramOk ? "성공" : "실패"],
+        ["재인증 필요", instagramOk ? "아니오" : "확인 필요"],
+        ["계정", data.account?.username || status.username || "samplaskr"]
+      ],
+      detail: data.error || data.cacheWarning || sourceText(data)
+    }),
+    apiHealthCard({
+      title: "Meta Ads",
+      ok: metaOk,
+      status: metaOk ? "연결됨" : statusTextForError(meta),
+      source: integrationSource(meta.source),
+      updatedAt: healthTime(),
+      rows: [
+        ["데이터 소스", String(meta.source || "").includes("_cached") ? "캐시" : "API"],
+        ["캠페인 수", `${apiNum((meta.campaigns || meta.rows || []).length)}개`],
+        ["마지막 성공 여부", metaOk ? "성공" : "실패"],
+        ["광고 계정", status.metaAdAccountId || "-"]
+      ],
+      detail: meta.error || `광고비 ${apiWon(meta.totals?.spend)} · 구매값 ${apiWon(meta.totals?.purchaseValue)}`
+    }),
+    apiHealthCard({
+      title: "Cafe24",
+      ok: cafeOk,
+      status: cafeOk ? "연결됨" : "확인 필요",
+      source: cafe.source || status.cafe24Mode || "-",
+      updatedAt: cafe.detail?.updatedAt || healthTime(),
+      rows: [
+        ["현재 오류 메시지", cafe.error || cafe.message || "-"],
+        ["Access Token", cafeOk ? "확인됨" : "정보 부족"],
+        ["Refresh Token", cafe.detail?.needsRefresh ? "갱신 필요" : cafeOk ? "확인됨" : "정보 부족"],
+        ["재인증 필요", cafeOk && !cafe.detail?.needsRefresh ? "아니오" : "확인 필요"],
+        ["proxyBaseUrl", status.cafe24ProxyBaseUrl || "-"]
+      ],
+      detail: cafe.message || cafe.error || "Cafe24 health 확인"
+    })
+  ].join("");
+}
+
+function integrationSource(source) {
+  const text = String(source || "");
+  if (!text) return "-";
+  if (text.includes("csv")) return "CSV";
+  if (text.includes("cached")) return "캐시";
+  if (text.includes("api") || text.includes("graph")) return "API";
+  return source;
+}
+
+function healthTime() {
+  return new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function apiHealthCard({ title, ok, status, source, updatedAt, rows, detail }) {
+  return `<article class="api-health-card ${ok ? "good" : "warn"}">
+    <div class="api-health-head">
+      <div><span>${esc(title)}</span><strong>${esc(status)}</strong></div>
+      <em>${ok ? "정상" : "확인 필요"}</em>
+    </div>
+    <p>${esc(detail || "-")}</p>
+    <dl>
+      <div><dt>데이터 소스</dt><dd>${esc(source || "-")}</dd></div>
+      <div><dt>마지막 동기화</dt><dd>${esc(updatedAt || "-")}</dd></div>
+      ${(rows || []).map(([label, value]) => `<div><dt>${esc(label)}</dt><dd title="${esc(value)}">${esc(value)}</dd></div>`).join("")}
+    </dl>
+  </article>`;
+}
+
+function apiHealthActionCards() {
+  return [
+    ["지금 동기화", "현재 화면의 데이터를 다시 불러옵니다.", "", "refresh"],
+    ["재인증 안내", "Cafe24 토큰 만료 시 OAuth 재인증을 시작합니다.", "/api/cafe24/oauth/start", ""],
+    ["상세 보기", "최근 진단 로그를 확인합니다.", "/api/diagnostics/logs", ""]
+  ].map(([title, note, href, action]) => `<article class="api-health-action">
+    <strong>${esc(title)}</strong>
+    <p>${esc(note)}</p>
+    ${href ? `<a class="button secondary" href="${href}" target="_blank" rel="noreferrer">${esc(title)}</a>` : `<button class="button secondary" type="button" data-health-action="${esc(action)}">${esc(title)}</button>`}
+  </article>`).join("");
 }
 
 async function renderAdvertising(data) {
@@ -1798,6 +1896,10 @@ function bind() {
   $("#monthlyReportBtn")?.addEventListener("click", () => document.querySelector('[data-view="Reports"]')?.click());
   $("#refreshStoriesBtn")?.addEventListener("click", renderStoryInsights);
   $("#syncFixBtn")?.addEventListener("click", () => toast("Cafe24 오류는 Render Cafe24 재인증이 필요합니다."));
+  $("#healthRefreshBtn")?.addEventListener("click", () => {
+    toast("연동 상태를 다시 확인합니다.");
+    renderApiHealthCenter(selectedMonth());
+  });
   $("#todayBriefReset")?.addEventListener("click", () => {
     localStorage.removeItem(todayStorageKey());
     renderTodayBriefing();
@@ -1831,6 +1933,14 @@ function bind() {
       return;
     }
     window.open(url, "_blank", "noopener");
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-health-action]");
+    if (!button) return;
+    if (button.dataset.healthAction === "refresh") {
+      toast("연동 상태를 다시 확인합니다.");
+      renderApiHealthCenter(selectedMonth());
+    }
   });
   $$("[data-content-tab]").forEach((button) => {
     button.addEventListener("click", () => {

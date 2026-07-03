@@ -1355,6 +1355,116 @@ select,
   line-height: 1.45;
 }
 
+.api-health-grid,
+.api-health-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.api-health-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.api-health-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.api-health-card,
+.api-health-action {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 36px rgba(25, 25, 20, 0.06);
+}
+
+.api-health-card.good {
+  border-color: rgba(32, 111, 84, 0.3);
+  background: #f3faf6;
+}
+
+.api-health-card.warn {
+  border-color: rgba(215, 166, 66, 0.45);
+  background: #fff9e8;
+}
+
+.api-health-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.api-health-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.api-health-head strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 22px;
+}
+
+.api-health-head em {
+  min-height: 28px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.api-health-card p,
+.api-health-action p {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.api-health-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.api-health-card dl div {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.api-health-card dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.api-health-card dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.api-health-action strong {
+  display: block;
+  font-size: 18px;
+}
+
 .ad-level-tabs {
   display: flex;
   flex-wrap: wrap;
