@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SAMPLAS Instagram Marketing OS</title>
-  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-operator-actions-v1" />
+  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-advertising-v1" />
 </head>
 <body>
   <div class="app-shell">
@@ -168,7 +168,36 @@
         </div>
         <div class="section-block">
           <div class="section-title compact"><div><p class="eyebrow">Campaign Performance</p><h3>캠페인별 성과</h3></div></div>
+          <div class="ad-level-tabs" id="adLevelTabs" aria-label="광고 성과 레벨 선택">
+            <button type="button" class="active" data-ad-level="campaign">Campaign</button>
+            <button type="button" data-ad-level="adset">Ad Set</button>
+            <button type="button" data-ad-level="ad">Ad</button>
+          </div>
           <div id="campaignPerformance" class="cards"></div>
+          <div class="table-wrap ad-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>이름</th>
+                  <th>광고비</th>
+                  <th>노출</th>
+                  <th>도달</th>
+                  <th>클릭</th>
+                  <th>CTR</th>
+                  <th>CPC</th>
+                  <th>CPM</th>
+                  <th>Meta 구매수</th>
+                  <th>Meta 구매값</th>
+                  <th>Meta ROAS</th>
+                </tr>
+              </thead>
+              <tbody id="adPerformanceRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Ad Ranking</p><h3>우수 광고 TOP 5 / 점검 광고 TOP 5</h3></div></div>
+          <div id="adRanking" class="cards"></div>
         </div>
         <div class="section-block">
           <div class="section-title compact"><div><p class="eyebrow">Ad + Organic</p><h3>광고와 유기 콘텐츠 비교</h3></div></div>
@@ -243,6 +272,6 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260703-operator-actions-v1"></script>
+  <script src="./samplas-marketing-os.js?v=20260703-advertising-v1"></script>
 </body>
 </html>

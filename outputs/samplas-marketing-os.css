@@ -474,6 +474,38 @@ select,
   display: block;
 }
 
+.ad-level-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.ad-level-tabs button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ad-level-tabs button.active,
+.ad-level-tabs button:hover {
+  border-color: var(--black);
+  background: var(--black);
+  color: #fff;
+}
+
+.ad-table-wrap {
+  margin-top: 12px;
+}
+
+.ad-table-wrap table {
+  min-width: 1180px;
+}
+
 .table-wrap {
   overflow: auto;
   border: 1px solid var(--line);

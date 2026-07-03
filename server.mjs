@@ -64,7 +64,7 @@ createServer(async (req, res) => {
       const data = await buildMetaAdsSummaryWithCache(
         url.searchParams.get("since") || `${currentMonth()}-01`,
         url.searchParams.get("until") || todayKey(),
-        { refresh: url.searchParams.get("refresh") === "1" }
+        { refresh: url.searchParams.get("refresh") === "1", level: url.searchParams.get("level") || "campaign" }
       );
       return json(res, data);
     }
@@ -204,72 +204,95 @@ async function readApiErrorLog(limit = 50) {
   return { source: "samplas_api_errors", logs };
 }
 
-async function buildMetaAdsSummary(since, until) {
+async function buildMetaAdsSummary(since, until, options = {}) {
   const adAccountId = cleanAdAccountId();
   if (!adAccountId) throw new Error(".env에 META_AD_ACCOUNT_ID가 없습니다.");
+  const level = metaAdsLevel(options.level);
   const body = await graphGet(`${adAccountId}/insights`, {
-    fields: "campaign_id,campaign_name,spend,reach,impressions,clicks,actions,action_values",
-    level: "campaign",
+    fields: metaAdsFieldsForLevel(level).join(","),
+    level,
     time_range: JSON.stringify({ since, until }),
     limit: 100
   });
-  const campaigns = (body.data || []).map((row) => {
+  const rows = (body.data || []).map((row) => {
     const spend = Number(row.spend || 0);
     const purchaseValue = actionValue(row.action_values, "purchase");
+    const impressions = Number(row.impressions || 0);
+    const clicks = Number(row.clicks || 0);
+    const purchases = actionValue(row.actions, "purchase");
+    const roas = spend ? purchaseValue / spend : null;
     return {
       campaignId: row.campaign_id,
       campaignName: row.campaign_name,
+      adsetId: row.adset_id || "",
+      adsetName: row.adset_name || "",
+      adId: row.ad_id || "",
+      adName: row.ad_name || "",
+      label: metaAdsLabelForLevel(row, level),
       spend,
       reach: Number(row.reach || 0),
-      impressions: Number(row.impressions || 0),
-      clicks: Number(row.clicks || 0),
-      purchases: actionValue(row.actions, "purchase"),
+      impressions,
+      clicks,
+      cpc: clicks ? spend / clicks : 0,
+      cpm: impressions ? (spend / impressions) * 1000 : 0,
+      ctr: impressions ? clicks / impressions : 0,
+      purchases,
+      metaPurchases: purchases,
       purchaseValue,
-      roas: spend ? purchaseValue / spend : null
+      metaPurchaseValue: purchaseValue,
+      roas,
+      metaRoas: roas
     };
   });
   const result = {
     source: "meta_marketing_api",
     since,
     until,
-    campaigns,
-    totals: {
-      spend: sum(campaigns, "spend"),
-      reach: sum(campaigns, "reach"),
-      impressions: sum(campaigns, "impressions"),
-      clicks: sum(campaigns, "clicks"),
-      purchaseValue: sum(campaigns, "purchaseValue")
-    }
+    level,
+    rows,
+    campaigns: level === "campaign" ? rows : [],
+    adsets: level === "adset" ? rows : [],
+    ads: level === "ad" ? rows : [],
+    topAds: buildMetaAdsTopRows(rows),
+    lowAds: buildMetaAdsLowRows(rows),
+    totals: summarizeMetaAdsRows(rows)
   };
   await mkdir(workDir, { recursive: true });
-  await writeFile(join(workDir, `meta-ads-${since}_${until}.json`), JSON.stringify(result, null, 2));
+  await writeFile(join(workDir, metaAdsCacheFileName(level, since, until)), JSON.stringify(result, null, 2));
   return result;
 }
 
 async function buildMetaAdsSummaryWithCache(since, until, options = {}) {
+  const level = metaAdsLevel(options.level);
   if (!isCurrentMonth(monthFromDate(since))) {
-    const cached = await readCachedMetaAdsSummary(since, until);
+    const cached = await readCachedMetaAdsSummary(since, until, { level });
     if (cached) return decorateCachedSource(cached, "meta_marketing_api", "past_month_cache_only");
     return pastMonthCsvRequired("meta_ads", monthFromDate(since), {
       since,
       until,
+      level,
+      rows: [],
       campaigns: [],
-      totals: { spend: 0, reach: 0, impressions: 0, clicks: 0, purchaseValue: 0 }
+      adsets: [],
+      ads: [],
+      topAds: [],
+      lowAds: [],
+      totals: { spend: 0, reach: 0, impressions: 0, clicks: 0, purchases: 0, purchaseValue: 0 }
     });
   }
 
   if (!options.refresh) {
-    const cached = await readCachedMetaAdsSummary(since, until);
+    const cached = await readCachedMetaAdsSummary(since, until, { level });
     if (cached) {
       return decorateCachedSource(cached, "meta_marketing_api", "cached_first");
     }
   }
 
   try {
-    return await buildMetaAdsSummary(since, until);
+    return await buildMetaAdsSummary(since, until, { level });
   } catch (error) {
-    await logApiError("meta_ads", error, { since, until });
-    const cached = await readCachedMetaAdsSummary(since, until);
+    await logApiError("meta_ads", error, { since, until, level });
+    const cached = await readCachedMetaAdsSummary(since, until, { level });
     if (cached) {
       return {
         ...cached,
@@ -282,24 +305,137 @@ async function buildMetaAdsSummaryWithCache(since, until, options = {}) {
   }
 }
 
-async function readCachedMetaAdsSummary(since, until) {
-  const exactFile = join(workDir, `meta-ads-${since}_${until}.json`);
-  if (existsSync(exactFile)) return JSON.parse(await readFile(exactFile, "utf8"));
+async function readCachedMetaAdsSummary(since, until, options = {}) {
+  const level = metaAdsLevel(options.level);
+  const exactFile = join(workDir, metaAdsCacheFileName(level, since, until));
+  if (existsSync(exactFile)) return normalizeMetaAdsCachedResult(JSON.parse(await readFile(exactFile, "utf8")), level);
+  if (level === "campaign") {
+    const legacyFile = join(workDir, `meta-ads-${since}_${until}.json`);
+    if (existsSync(legacyFile)) return normalizeMetaAdsCachedResult(JSON.parse(await readFile(legacyFile, "utf8")), level);
+  }
 
-  const monthPrefix = `meta-ads-${since}_`;
+  const monthPrefix = `meta-ads-${level}-${since}_`;
   const candidates = await readdirSafe(workDir);
   const latest = candidates
     .filter((name) => name.startsWith(monthPrefix) && name.endsWith(".json"))
     .sort()
     .at(-1);
+  if (!latest && level === "campaign") {
+    const legacyLatest = candidates
+      .filter((name) => name.startsWith(`meta-ads-${since}_`) && name.endsWith(".json"))
+      .sort()
+      .at(-1);
+    if (!legacyLatest) return null;
+    const legacyCached = JSON.parse(await readFile(join(workDir, legacyLatest), "utf8"));
+    return {
+      ...normalizeMetaAdsCachedResult(legacyCached, level),
+      requestedSince: since,
+      requestedUntil: until,
+      cacheFile: legacyLatest
+    };
+  }
   if (!latest) return null;
   const cached = JSON.parse(await readFile(join(workDir, latest), "utf8"));
   return {
-    ...cached,
+    ...normalizeMetaAdsCachedResult(cached, level),
     requestedSince: since,
     requestedUntil: until,
     cacheFile: latest
   };
+}
+
+function metaAdsLevel(value) {
+  return ["campaign", "adset", "ad"].includes(value) ? value : "campaign";
+}
+
+function metaAdsFieldsForLevel(level) {
+  const fields = {
+    campaign: ["campaign_id", "campaign_name"],
+    adset: ["campaign_id", "campaign_name", "adset_id", "adset_name"],
+    ad: ["campaign_id", "campaign_name", "adset_id", "adset_name", "ad_id", "ad_name"]
+  };
+  return [...fields[level], "spend", "reach", "impressions", "clicks", "actions", "action_values"];
+}
+
+function metaAdsLabelForLevel(row, level) {
+  if (level === "ad") return row.ad_name || row.ad_id || "광고";
+  if (level === "adset") return row.adset_name || row.adset_id || "광고세트";
+  return row.campaign_name || row.campaign_id || "캠페인";
+}
+
+function summarizeMetaAdsRows(rows = []) {
+  const totals = {
+    spend: sum(rows, "spend"),
+    reach: sum(rows, "reach"),
+    impressions: sum(rows, "impressions"),
+    clicks: sum(rows, "clicks"),
+    purchases: sum(rows, "purchases"),
+    metaPurchases: sum(rows, "metaPurchases"),
+    purchaseValue: sum(rows, "purchaseValue"),
+    metaPurchaseValue: sum(rows, "metaPurchaseValue")
+  };
+  totals.cpc = totals.clicks ? totals.spend / totals.clicks : 0;
+  totals.cpm = totals.impressions ? (totals.spend / totals.impressions) * 1000 : 0;
+  totals.ctr = totals.impressions ? totals.clicks / totals.impressions : 0;
+  totals.roas = totals.spend ? totals.purchaseValue / totals.spend : null;
+  totals.metaRoas = totals.roas;
+  return totals;
+}
+
+function normalizeMetaAdsCachedResult(data = {}, level = "campaign") {
+  const rows = (data.rows || data.campaigns || data.adsets || data.ads || []).map((row) => {
+    const spend = Number(row.spend || 0);
+    const impressions = Number(row.impressions || 0);
+    const clicks = Number(row.clicks || 0);
+    const purchaseValue = Number(row.purchaseValue || row.metaPurchaseValue || 0);
+    const purchases = Number(row.purchases || row.metaPurchases || 0);
+    const roas = row.roas === null ? null : Number(row.roas || (spend ? purchaseValue / spend : 0));
+    return {
+      ...row,
+      label: row.label || row.adName || row.adsetName || row.campaignName || row.adId || row.adsetId || row.campaignId || "-",
+      cpc: Number(row.cpc || (clicks ? spend / clicks : 0)),
+      cpm: Number(row.cpm || (impressions ? (spend / impressions) * 1000 : 0)),
+      ctr: Number(row.ctr || (impressions ? clicks / impressions : 0)),
+      purchases,
+      metaPurchases: Number(row.metaPurchases || purchases),
+      purchaseValue,
+      metaPurchaseValue: Number(row.metaPurchaseValue || purchaseValue),
+      roas,
+      metaRoas: row.metaRoas === null ? null : Number(row.metaRoas || roas || 0)
+    };
+  });
+  return {
+    ...data,
+    level: data.level || level,
+    rows,
+    campaigns: level === "campaign" ? rows : data.campaigns || [],
+    adsets: level === "adset" ? rows : data.adsets || [],
+    ads: level === "ad" ? rows : data.ads || [],
+    topAds: data.topAds || buildMetaAdsTopRows(rows),
+    lowAds: data.lowAds || buildMetaAdsLowRows(rows),
+    totals: {
+      ...summarizeMetaAdsRows(rows),
+      ...(data.totals || {})
+    }
+  };
+}
+
+function buildMetaAdsTopRows(rows = []) {
+  return [...rows]
+    .filter((row) => Number(row.spend || 0) > 0)
+    .sort((left, right) => Number(right.roas || 0) - Number(left.roas || 0) || Number(right.purchaseValue || 0) - Number(left.purchaseValue || 0))
+    .slice(0, 5);
+}
+
+function buildMetaAdsLowRows(rows = []) {
+  return [...rows]
+    .filter((row) => Number(row.spend || 0) > 0)
+    .sort((left, right) => Number(left.roas || 0) - Number(right.roas || 0) || Number(right.spend || 0) - Number(left.spend || 0))
+    .slice(0, 5);
+}
+
+function metaAdsCacheFileName(level, since, until) {
+  return `meta-ads-${level}-${since}_${until}.json`;
 }
 
 async function readdirSafe(dir) {

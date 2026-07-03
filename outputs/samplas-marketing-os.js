@@ -11,6 +11,7 @@ const months = ["2026-07", "2026-06", "2026-05", "2026-04", "2026-03", "2026-02"
 let monthlyData = [];
 let storyData = { stories: [], totals: {} };
 let activeContentTab = "All";
+let activeAdLevel = "campaign";
 
 const nf = new Intl.NumberFormat("ko-KR");
 const $ = (selector) => document.querySelector(selector);
@@ -38,6 +39,13 @@ function apiNum(value) {
 
 function apiWon(value) {
   return hasApiValue(value) ? `${nf.format(Math.round(Number(value)))}원` : "-";
+}
+
+function cafe24MoneyValue(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  if (typeof value === "object") return 0;
+  const parsed = Number(String(value).replace(/,/g, ""));
+  return Number.isFinite(parsed) ? Math.round(parsed) : 0;
 }
 
 function instagramApiErrors(data = {}) {
@@ -726,11 +734,14 @@ async function renderAdvertising(data) {
   const summaryTarget = $("#advertisingSummary");
   const campaignTarget = $("#campaignPerformance");
   const contentTarget = $("#adOrganicContent");
-  if (!summaryTarget || !campaignTarget || !contentTarget) return;
+  const tableTarget = $("#adPerformanceRows");
+  const rankingTarget = $("#adRanking");
+  if (!summaryTarget || !campaignTarget || !contentTarget || !tableTarget || !rankingTarget) return;
 
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
-  const meta = await getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000);
+  renderAdLevelTabs();
+  const meta = await getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}&level=${activeAdLevel}`, 9000);
   const posts = data.posts || [];
   const adPosts = posts.filter((post) => Number(post.adSpend || 0));
   const organicPosts = posts.filter((post) => !Number(post.adSpend || 0));
@@ -742,6 +753,8 @@ async function renderAdvertising(data) {
       `<article class="action-item"><strong>권한 오류 안내</strong><p>Meta API 권한 또는 토큰 권한이 막히면 광고 성과를 불러올 수 없습니다. Settings의 Meta Ads 연결 상태를 확인하세요.</p></article>`
     ].join("");
     campaignTarget.innerHTML = `<article class="action-item"><strong>캠페인별 성과</strong><p>Meta API 오류가 해결되면 캠페인 기준 성과가 표시됩니다.</p></article>`;
+    tableTarget.innerHTML = `<tr><td colspan="11">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
+    rankingTarget.innerHTML = `<article class="action-item"><strong>광고 순위 없음</strong><p>Meta API 오류가 해결되면 표시됩니다.</p></article>`;
     contentTarget.innerHTML = renderAdOrganicCards(adPosts, organicPosts);
     return;
   }
@@ -755,24 +768,87 @@ async function renderAdvertising(data) {
   summaryTarget.innerHTML = [
     `<article class="action-item"><strong>Meta API 상태</strong><span>정상</span><p>${esc(source)} · ${esc(startDate)} ~ ${esc(endDate)}</p></article>`,
     `<article class="action-item"><strong>광고비</strong><span>${apiWon(totals.spend)}</span><p>Meta 캠페인 기준 집행 금액</p></article>`,
+    `<article class="action-item"><strong>노출</strong><span>${apiNum(totals.impressions)}</span><p>선택 레벨 합계</p></article>`,
     `<article class="action-item"><strong>도달</strong><span>${apiNum(totals.reach)}</span><p>Meta 캠페인 기준</p></article>`,
     `<article class="action-item"><strong>클릭</strong><span>${apiNum(totals.clicks)}</span><p>Meta 캠페인 클릭 합계</p></article>`,
+    `<article class="action-item"><strong>CTR</strong><span>${pct(Number(totals.ctr || 0) * 100)}</span><p>클릭 / 노출</p></article>`,
+    `<article class="action-item"><strong>CPC</strong><span>${apiWon(totals.cpc)}</span><p>광고비 / 클릭</p></article>`,
+    `<article class="action-item"><strong>CPM</strong><span>${apiWon(totals.cpm)}</span><p>1,000회 노출 비용</p></article>`,
+    `<article class="action-item"><strong>Meta 구매수</strong><span>${apiNum(totals.purchases || totals.metaPurchases)}</span><p>Meta 기준 구매 이벤트</p></article>`,
     `<article class="action-item"><strong>Meta 기준 추정 구매값</strong><span>${apiWon(totals.purchaseValue)}</span><p>실제 매출이 아닌 Meta 어트리뷰션 기준 값입니다.</p></article>`,
-    `<article class="action-item"><strong>ROAS</strong><span>${roas === null ? "-" : multiple(roas)}</span><p>Meta 기준 추정 구매값 / 광고비</p></article>`
+    `<article class="action-item"><strong>Meta ROAS</strong><span>${roas === null ? "-" : multiple(roas)}</span><p>Meta 기준 추정 구매값 / 광고비</p></article>`
   ].join("");
 
-  const campaigns = [...(meta.campaigns || [])]
+  const rows = metaAdsRowsForLevel(meta)
     .sort((left, right) => Number(right.spend || 0) - Number(left.spend || 0))
     .slice(0, 6);
-  campaignTarget.innerHTML = campaigns.length ? campaigns.map((campaign) => (
+  campaignTarget.innerHTML = rows.length ? rows.map((campaign) => (
     `<article class="action-item">
-      <strong>${esc(campaign.campaignName || campaign.campaignId || "캠페인")}</strong>
+      <strong>${esc(metaAdsRowName(campaign))}</strong>
       <span>${apiWon(campaign.spend)}</span>
-      <p>도달 ${apiNum(campaign.reach)} · 클릭 ${apiNum(campaign.clicks)} · Meta 기준 추정 구매값 ${apiWon(campaign.purchaseValue)} · ROAS ${campaign.roas === null ? "-" : multiple(campaign.roas)}</p>
+      <p>노출 ${apiNum(campaign.impressions)} · 도달 ${apiNum(campaign.reach)} · 클릭 ${apiNum(campaign.clicks)} · CTR ${pct(Number(campaign.ctr || 0) * 100)} · Meta ROAS ${campaign.roas === null ? "-" : multiple(campaign.roas)}</p>
     </article>`
-  )).join("") : `<article class="action-item"><strong>캠페인 데이터 없음</strong><p>선택 월에 표시할 Meta 캠페인 데이터가 없습니다.</p></article>`;
+  )).join("") : `<article class="action-item"><strong>${esc(metaAdsLevelLabel(activeAdLevel))} 데이터 없음</strong><p>선택 월에 표시할 Meta 광고 데이터가 없습니다.</p></article>`;
 
+  tableTarget.innerHTML = renderMetaAdsRows(metaAdsRowsForLevel(meta));
+  rankingTarget.innerHTML = renderMetaAdsRanking(meta);
   contentTarget.innerHTML = renderAdOrganicCards(adPosts, organicPosts);
+}
+
+function renderAdLevelTabs() {
+  $$("[data-ad-level]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.adLevel === activeAdLevel);
+  });
+}
+
+function metaAdsRowsForLevel(meta = {}) {
+  if (Array.isArray(meta.rows) && meta.rows.length) return meta.rows;
+  if (activeAdLevel === "ad") return meta.ads || [];
+  if (activeAdLevel === "adset") return meta.adsets || [];
+  return meta.campaigns || [];
+}
+
+function metaAdsLevelLabel(level) {
+  return { campaign: "캠페인", adset: "광고세트", ad: "광고" }[level] || "캠페인";
+}
+
+function metaAdsRowName(row = {}) {
+  if (activeAdLevel === "ad") return row.adName || row.adId || row.label || "광고";
+  if (activeAdLevel === "adset") return row.adsetName || row.adsetId || row.label || "광고세트";
+  return row.campaignName || row.campaignId || row.label || "캠페인";
+}
+
+function renderMetaAdsRows(rows = []) {
+  return rows.length ? rows
+    .sort((left, right) => Number(right.spend || 0) - Number(left.spend || 0))
+    .map((row) => (
+      `<tr>
+        <td>${esc(metaAdsRowName(row))}</td>
+        <td>${apiWon(row.spend)}</td>
+        <td>${apiNum(row.impressions)}</td>
+        <td>${apiNum(row.reach)}</td>
+        <td>${apiNum(row.clicks)}</td>
+        <td>${pct(Number(row.ctr || 0) * 100)}</td>
+        <td>${apiWon(row.cpc)}</td>
+        <td>${apiWon(row.cpm)}</td>
+        <td>${apiNum(row.purchases || row.metaPurchases)}</td>
+        <td>${apiWon(row.purchaseValue || row.metaPurchaseValue)}</td>
+        <td>${row.roas === null ? "-" : multiple(row.roas || row.metaRoas)}</td>
+      </tr>`
+    )).join("") : `<tr><td colspan="11">선택 월에 표시할 Meta 광고 데이터가 없습니다.</td></tr>`;
+}
+
+function renderMetaAdsRanking(meta = {}) {
+  const top = meta.topAds || [];
+  const low = meta.lowAds || [];
+  return [
+    `<article class="action-item"><strong>우수 광고 TOP 5</strong><p>${top.length ? top.map((row) => `${esc(metaAdsRankingName(row))} · Meta ROAS ${row.roas === null ? "-" : multiple(row.roas || row.metaRoas)} · ${apiWon(row.purchaseValue || row.metaPurchaseValue)}`).join("<br>") : "표시할 우수 광고 데이터가 없습니다."}</p></article>`,
+    `<article class="action-item"><strong>점검 광고 TOP 5</strong><p>${low.length ? low.map((row) => `${esc(metaAdsRankingName(row))} · Meta ROAS ${row.roas === null ? "-" : multiple(row.roas || row.metaRoas)} · 광고비 ${apiWon(row.spend)}`).join("<br>") : "표시할 점검 광고 데이터가 없습니다."}</p></article>`
+  ].join("");
+}
+
+function metaAdsRankingName(row = {}) {
+  return row.adName || row.adsetName || row.campaignName || row.label || row.adId || row.adsetId || row.campaignId || "광고";
 }
 
 function renderAdOrganicCards(adPosts, organicPosts) {
@@ -799,19 +875,104 @@ async function renderCafe24Sales(data) {
     return;
   }
   const totals = sales.totals || {};
-  const topProducts = sales.topProducts || [];
-  const payments = sales.paymentMethods || [];
+  const orders = sales.orders || sales.data || [];
+  const topProducts = normalizeCafe24TopProducts(sales.topProducts, orders);
+  const payments = normalizeCafe24PaymentMethods(sales.paymentMethods, orders);
   const source = cafe24SourceLabel(sales);
   target.classList.add("cards");
   target.classList.remove("instagram-feed");
   target.innerHTML = [
-    `<article class="action-item"><strong>Cafe24 실제 매출 요약</strong><span>${apiWon(totals.orderAmount)}</span><p>${source} · ${esc(sales.startDate || startDate)} ~ ${esc(sales.endDate || endDate)}</p></article>`,
+    `<article class="action-item"><strong>Cafe24<br>실제 매출 요약</strong><span>${apiWon(totals.orderAmount)}</span><p>${source} · ${esc(sales.startDate || startDate)} ~ ${esc(sales.endDate || endDate)}</p></article>`,
     `<article class="action-item"><strong>정상 주문 수</strong><span>${apiNum(totals.orderCount)}건</span><p>취소/환불 주문 제외 기준</p></article>`,
     `<article class="action-item"><strong>제외 주문 수</strong><span>${apiNum(totals.excludedOrderCount)}건</span><p>취소/환불로 매출 집계에서 제외</p></article>`,
     `<article class="action-item"><strong>평균 객단가</strong><span>${apiWon(totals.averageOrderAmount)}</span><p>Cafe24 실제 결제 기준</p></article>`,
-    `<article class="action-item"><strong>결제수단별 매출</strong><span>${esc(payments[0]?.paymentMethod || "-")}</span><p>${payments.slice(0, 5).map((item) => `${esc(item.paymentMethod || "-")} · ${apiNum(item.orderCount)}건 · ${apiWon(item.orderAmount)}`).join("<br>") || "데이터 없음"}</p></article>`,
-    `<article class="action-item"><strong>판매 상품 TOP</strong><span>${esc(topProducts[0]?.productName || "-")}</span><p>${topProducts.slice(0, 5).map((item) => `${esc(item.productName || "-")} · ${apiNum(item.quantity)}개 · ${apiWon(item.itemAmount)}`).join("<br>") || "상품 상세 응답 없음"}</p></article>`
+    `<article class="action-item"><strong>결제수단별 매출</strong><span>${esc(payments[0]?.paymentMethod || "-")}</span><p>${payments.slice(0, 5).map((item) => `${esc(item.paymentMethod || "-")} · ${apiNum(item.orderCount)}건 · ${apiWon(item.orderAmount)}`).join("<br>") || "표시할 결제수단 데이터가 없습니다."}</p></article>`,
+    `<article class="action-item"><strong>판매 상품 TOP</strong><span>${esc(topProducts[0]?.productName || "-")}</span><p>${topProducts.slice(0, 5).map((item) => `${esc(item.productName || "-")} · ${apiNum(item.quantity)}개 · ${apiWon(item.itemAmount)}`).join("<br>") || "주문 데이터에서 상품명을 찾지 못했습니다."}</p></article>`
   ].join("");
+}
+
+function normalizeCafe24PaymentMethods(paymentMethods = [], orders = []) {
+  const normalized = paymentMethods
+    .map((item) => ({
+      paymentMethod: item.paymentMethod || item.payment_method_name || item.payment_method || item.name || "미확인",
+      orderCount: Number(item.orderCount || item.order_count || item.count || 0),
+      orderAmount: Number(item.orderAmount || item.order_amount || item.amount || 0)
+    }))
+    .filter((item) => item.paymentMethod && item.paymentMethod !== "-");
+  if (normalized.length) return normalized;
+  const map = new Map();
+  for (const order of orders) {
+    const method = cafe24PaymentMethodName(order);
+    const current = map.get(method) || { paymentMethod: method, orderCount: 0, orderAmount: 0 };
+    current.orderCount += 1;
+    current.orderAmount += cafe24OrderDisplayAmount(order);
+    map.set(method, current);
+  }
+  return [...map.values()].sort((left, right) => right.orderAmount - left.orderAmount);
+}
+
+function normalizeCafe24TopProducts(topProducts = [], orders = []) {
+  const normalized = topProducts
+    .map((item) => ({
+      productName: item.productName || item.product_name || item.item_name || item.name || "",
+      quantity: Number(item.quantity || item.qty || item.product_quantity || 0),
+      itemAmount: Number(item.itemAmount || item.item_amount || item.orderAmount || item.amount || 0)
+    }))
+    .filter((item) => item.productName && item.productName !== "-");
+  if (normalized.length) return normalized;
+  const map = new Map();
+  for (const order of orders) {
+    for (const item of cafe24OrderDisplayItems(order)) {
+      const productName = item.product_name || item.productName || item.product_name_default || item.item_name || item.name || "";
+      if (!productName) continue;
+      const quantity = cafe24ItemDisplayQuantity(item);
+      const current = map.get(productName) || { productName, quantity: 0, itemAmount: 0 };
+      current.quantity += quantity;
+      current.itemAmount += cafe24ItemDisplayAmount(item, quantity);
+      map.set(productName, current);
+    }
+  }
+  return [...map.values()].sort((left, right) => right.itemAmount - left.itemAmount);
+}
+
+function cafe24PaymentMethodName(order = {}) {
+  const raw = order.payment_method_name || order.payment_method || order.payment_methods?.[0]?.payment_method || "미확인";
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list.map((value) => String(value || "").trim()).filter(Boolean).join(" + ") || "미확인";
+}
+
+function cafe24OrderDisplayAmount(order = {}) {
+  return cafe24MoneyValue(order.actual_order_amount?.payment_amount)
+    || cafe24MoneyValue(order.actual_payment_amount)
+    || cafe24MoneyValue(order.payment_amount)
+    || cafe24MoneyValue(order.actual_order_amount?.order_price_amount)
+    || cafe24MoneyValue(order.order_price_amount)
+    || cafe24MoneyValue(order.initial_order_amount?.payment_amount)
+    || cafe24MoneyValue(order.initial_order_amount?.order_price_amount)
+    || cafe24MoneyValue(order.order_amount)
+    || cafe24MoneyValue(order.total_price);
+}
+
+function cafe24OrderDisplayItems(order = {}) {
+  for (const candidate of [order.items, order.order_items, order.products, order.order_item]) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
+function cafe24ItemDisplayQuantity(item = {}) {
+  const quantity = Number(item.quantity || item.qty || item.product_quantity || item.order_quantity || 1);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+}
+
+function cafe24ItemDisplayAmount(item = {}, quantity = 1) {
+  const amount = cafe24MoneyValue(item.actual_payment_amount)
+    || cafe24MoneyValue(item.order_price_amount)
+    || cafe24MoneyValue(item.product_price)
+    || cafe24MoneyValue(item.price)
+    || cafe24MoneyValue(item.sale_price)
+    || cafe24MoneyValue(item.supply_price);
+  return amount * quantity;
 }
 
 async function renderAdComparison(data) {
@@ -921,6 +1082,13 @@ function bind() {
     button.addEventListener("click", () => {
       activeContentTab = button.dataset.contentTab || "All";
       renderContentTabs();
+    });
+  });
+  $$("[data-ad-level]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeAdLevel = button.dataset.adLevel || "campaign";
+      const current = monthlyData.find((item) => item.month === $("#monthSelect")?.value) || monthlyData[0];
+      if (current) renderAdvertising(current);
     });
   });
 }
