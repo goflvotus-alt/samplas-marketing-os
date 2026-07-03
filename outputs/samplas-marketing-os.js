@@ -1374,6 +1374,7 @@ async function renderApiHealthCenter(data) {
       rows: [
         ["마지막 주문 조회", cafeStatus.lastOrderCheck],
         ["주문 API 상태", cafeStatus.orderApiStatus],
+        ["proxyBaseUrl", status.cafe24ProxyBaseUrl || "-"],
         ["조회 주문 수", cafeStatus.orderCount],
         ["연결 기준", cafeStatus.basis]
       ],
