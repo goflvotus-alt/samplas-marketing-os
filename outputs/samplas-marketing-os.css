@@ -1312,6 +1312,58 @@ td {
   height: 18px;
 }
 
+.action-item.sales-kpi-card,
+.action-item.sales-list-card,
+.action-item.sales-compare-card,
+.action-item.sales-warning-card {
+  display: flex;
+  grid-template-columns: none;
+  min-width: 0;
+}
+
+.action-item.sales-kpi-card span,
+.action-item.sales-list-card > span,
+.action-item.sales-compare-card span,
+.action-item.sales-warning-card span {
+  min-width: 96px;
+  max-width: 100%;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  line-height: 1.25;
+}
+
+.action-item.sales-kpi-card span,
+.action-item.sales-list-card > span,
+.action-item.sales-compare-card span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.action-item.sales-kpi-card strong,
+.action-item.sales-list-card > strong,
+.action-item.sales-compare-card strong,
+.action-item.sales-warning-card strong {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.action-item.sales-warning-card small {
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.action-item .sales-status-badge {
+  max-width: 100%;
+  white-space: normal;
+  word-break: keep-all;
+  line-height: 1.25;
+}
+
 .toast {
   position: fixed;
   right: 20px;
