@@ -266,10 +266,10 @@ function renderKpis(data) {
 async function renderOverviewLiveData(data) {
   const target = $("#overviewLiveData");
   if (!target) return;
-  target.innerHTML = `<article class="home-month-card"><strong>이번 달</strong><p>매출, 광고, 팔로워, 콘텐츠를 확인합니다.</p></article>`;
-  $("#actions").innerHTML = `<article class="home-action-card warn"><strong>확인 중</strong><p>오늘 먼저 볼 일을 정리합니다.</p></article>`;
-  $("#nextActions").innerHTML = homeTodoCards();
-  $("#insightList").innerHTML = homeAlertCards({ status: {}, meta: {}, cafe: {}, data });
+  target.innerHTML = `<article class="home-month-card"><strong>이번 달 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`;
+  $("#actions").innerHTML = `<article class="home-action-card warn"><span>!</span><div><strong>확인 중</strong><p>중요 알림을 정리합니다.</p></div></article>`;
+  $("#nextActions").innerHTML = homeGoalCards();
+  $("#insightList").innerHTML = homeActivityCards({ status: {}, meta: {}, cafe: {}, data });
 
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
@@ -290,41 +290,46 @@ async function renderOverviewLiveData(data) {
   const topCampaign = [...(meta.campaigns || [])].sort((left, right) => Number(right.purchaseValue || 0) - Number(left.purchaseValue || 0))[0];
   const topProduct = (cafe.topProducts || [])[0];
   const roas = Number(metaTotals.spend || 0) ? Number(metaTotals.purchaseValue || 0) / Number(metaTotals.spend || 0) : null;
+  const avgSaveRate = avg(posts.map((post) => postMetrics(post).saveRate));
+  const followerDelta = Number(a.followerDelta || 0);
 
   $("#kpiGrid").innerHTML = [
-    homeTopMetric("오늘 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 연결 확인" : "선택기간 기준"),
-    homeTopMetric("오늘 광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 연결 확인" : "선택기간 기준"),
-    homeTopMetric("오늘 주문", cafe.error ? "-" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문"),
-    homeTopMetric("오늘 인기상품", topProduct?.productName || "-", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음")
+    homeTopMetric("오늘 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 연결 후 표시" : "선택기간 기준"),
+    homeTopMetric("오늘 광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 연결 후 표시" : "선택기간 기준"),
+    homeTopMetric("오늘 주문", cafe.error ? "데이터 없음" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문"),
+    homeTopMetric("오늘 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음")
   ].join("");
 
   target.innerHTML = [
     homeMonthCard("매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 확인 필요" : `주문 ${apiNum(cafeTotals.orderCount)}건`),
-    homeMonthCard("광고", meta.error ? "확인 필요" : apiWon(metaTotals.spend), roas === null ? "ROAS 확인 중" : `ROAS ${multiple(roas)}`),
-    homeMonthCard("팔로워", apiNum(a.followers), `@${a.username || data.accountIdentity?.username || "samplaskr"}`),
-    homeMonthCard("콘텐츠", `${apiNum(postCount)}개`, `Reach ${apiNum(a.reach)}`)
+    homeMonthCard("광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 확인 필요" : "Meta Ads"),
+    homeMonthCard("ROAS", roas === null ? "확인 중" : multiple(roas), "Meta 기준 추정 구매값"),
+    homeMonthCard("팔로워 증가", followerDelta ? `${apiNum(followerDelta)}명` : "데이터 없음", `현재 ${apiNum(a.followers)}명`),
+    homeMonthCard("콘텐츠 개수", `${apiNum(postCount)}개`, data.postsScope === "recent_media_fallback" ? "최근 미디어 기준" : "선택 월 기준"),
+    homeMonthCard("평균 저장률", posts.length ? pct(avgSaveRate) : "데이터 없음", posts.length ? "콘텐츠 평균" : "콘텐츠 데이터 없음")
   ].join("");
 
   const actions = buildOverviewActions({ data, meta, cafe, account: a, topSaved, roas });
   $("#actions").innerHTML = actions.map((item) => homeActionCard(item)).join("");
-  $("#nextActions").innerHTML = homeTodoCards({ topSaved, topCampaign, roas, account: a });
-  $("#insightList").innerHTML = homeAlertCards({ status, meta, cafe, data });
+  $("#nextActions").innerHTML = homeGoalCards({ cafeTotals, metaTotals, postCount, followerDelta });
+  $("#insightList").innerHTML = homeActivityCards({ status, meta, cafe, data });
 }
 
 function buildOverviewActions({ data, meta, cafe, account, topSaved, roas }) {
   const urgent = [
-    meta.error ? { level: "urgent", icon: "⚠", title: "광고 연결 확인", text: "Meta 성과를 불러오지 못했습니다." } : null,
-    cafe.error ? { level: "urgent", icon: "⚠", title: "Cafe24 연결 확인", text: "실제 매출을 불러오지 못했습니다." } : null,
-    data.error ? { level: "urgent", icon: "⚠", title: "Instagram 연결 확인", text: "콘텐츠 성과를 불러오지 못했습니다." } : null
+    cafe.error ? { level: "urgent", category: "Critical", icon: "!", title: "Cafe24 연결 오류", text: "실제 매출을 불러오지 못했습니다." } : null,
+    meta.error ? { level: "urgent", category: "Critical", icon: "!", title: "Meta API 오류", text: "광고 성과를 불러오지 못했습니다." } : null,
+    data.error ? { level: "urgent", category: "Critical", icon: "!", title: "Instagram 오류", text: "콘텐츠 성과를 불러오지 못했습니다." } : null
   ].filter(Boolean);
   const watch = [
-    roas !== null && roas < 1 ? { level: "warn", icon: "⚠", title: "ROAS 감소", text: "광고비 대비 구매 신호가 약합니다." } : null,
-    Number(account.reachDelta) < 0 ? { level: "warn", icon: "⚠", title: "Reach 감소", text: `Reach가 ${pct(Math.abs(Number(account.reachDelta)))} 감소했습니다.` } : null
+    roas !== null && roas < 1 ? { level: "warn", category: "Warning", icon: "!", title: "ROAS 감소", text: "광고비 대비 구매 신호가 약합니다." } : null,
+    Number(account.reachDelta) < 0 ? { level: "warn", category: "Warning", icon: "↓", title: "도달 감소", text: `Reach가 ${pct(Math.abs(Number(account.reachDelta)))} 감소했습니다.` } : null,
+    Number(account.websiteClickDelta) < 0 ? { level: "warn", category: "Warning", icon: "↓", title: "클릭 감소", text: `웹사이트 클릭이 ${pct(Math.abs(Number(account.websiteClickDelta)))} 감소했습니다.` } : null
   ].filter(Boolean);
   const good = [
-    topSaved ? { level: "good", icon: "🔥", title: "저장률 높은 릴스", text: `"${topSaved.title || "성과 좋은 콘텐츠"}" 반응이 좋습니다.` } : null,
-    Number(account.followerDelta) > 0 ? { level: "good", icon: "👤", title: "팔로워 증가", text: `${apiNum(account.followerDelta)}명 증가했습니다.` } : null,
-    !urgent.length && !watch.length ? { level: "good", icon: "📦", title: "오늘 상태 정상", text: "큰 오류 없이 운영 데이터를 볼 수 있습니다." } : null
+    topSaved ? { level: "good", category: "Opportunity", icon: "★", title: "저장률 높은 릴스", text: `"${topSaved.title || "성과 좋은 콘텐츠"}" 반응이 좋습니다.` } : null,
+    Number(account.followerDelta) > 0 ? { level: "good", category: "Opportunity", icon: "+", title: "팔로우 증가", text: `${apiNum(account.followerDelta)}명 증가했습니다.` } : null,
+    !urgent.length && !watch.length ? { level: "good", category: "Opportunity", icon: "✓", title: "운영 상태 양호", text: "큰 오류 없이 주요 데이터를 볼 수 있습니다." } : null
   ].filter(Boolean);
   return [...urgent, ...watch, ...good].slice(0, 4);
 }
@@ -338,32 +343,44 @@ function homeMonthCard(label, value, note) {
 }
 
 function homeActionCard(item) {
-  return `<article class="home-action-card ${esc(item.level)}"><span>${esc(item.icon || "•")}</span><div><strong>${esc(item.title)}</strong><p>${esc(item.text)}</p></div></article>`;
+  return `<article class="home-action-card ${esc(item.level)}"><span>${esc(item.icon || "•")}</span><div><em>${esc(item.category || "")}</em><strong>${esc(item.title)}</strong><p>${esc(item.text)}</p></div></article>`;
 }
 
-function homeTodoCards({ topSaved, topCampaign, roas, account } = {}) {
+function homeGoalCards({ cafeTotals = {}, metaTotals = {}, postCount = 0, followerDelta = 0 } = {}) {
   const items = [
-    { label: "릴스 업로드", note: Number(account?.reachDelta) < 0 ? "Reach 회복용" : topSaved ? "저장 반응 포맷 반복" : "오늘 콘텐츠 일정" },
-    { label: "광고 점검", note: roas !== null && roas < 1 ? "ROAS 낮은 캠페인 확인" : topCampaign ? "성과 좋은 캠페인 확인" : "광고 상태 확인" },
-    { label: "상품 등록", note: "신상품/재입고 확인" },
-    { label: "품절 확인", note: "판매 상품 재고 확인" }
+    { label: "매출", value: goalPercent(Number(cafeTotals.orderAmount || 0), 5000000), note: "월 목표 500만원" },
+    { label: "광고", value: goalPercent(Number(metaTotals.spend || 0), 1500000), note: "월 예산 150만원" },
+    { label: "콘텐츠", value: goalPercent(Number(postCount || 0), 20), note: "월 목표 20개" },
+    { label: "팔로워", value: goalPercent(Math.max(0, Number(followerDelta || 0)), 300), note: "월 목표 +300명" }
   ];
-  return items.map((item) => `<article class="home-todo-card"><span aria-hidden="true"></span><div><strong>${esc(item.label)}</strong><p>${esc(item.note)}</p></div></article>`).join("");
+  return items.map((item) => `<article class="home-goal-card">
+    <div><span>${esc(item.label)}</span><strong>${item.value}%</strong></div>
+    <i><b style="width:${item.value}%"></b></i>
+    <p>${esc(item.note)}</p>
+  </article>`).join("");
 }
 
-function homeAlertCards({ status = {}, meta = {}, cafe = {}, data = {} }) {
+function goalPercent(value, target) {
+  if (!target) return 0;
+  const percent = Math.round((Number(value || 0) / target) * 100);
+  return Math.max(0, Math.min(100, percent || 0));
+}
+
+function homeActivityCards({ status = {}, meta = {}, cafe = {}, data = {} }) {
   const instagramOk = !data.error && status.instagram !== false;
   const metaOk = !meta.error && status.metaAds !== false;
   const cafeOk = !cafe.error && status.cafe24 !== false;
+  const time = new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
   return [
-    homeAlertCard("Instagram", instagramOk ? "정상" : "확인 필요", instagramOk ? "콘텐츠 데이터를 불러왔습니다." : "연결 상태를 확인하세요.", instagramOk ? "good" : "warn"),
-    homeAlertCard("Meta", metaOk ? "정상" : "확인 필요", metaOk ? "광고 데이터를 불러왔습니다." : "광고 연결을 확인하세요.", metaOk ? "good" : "warn"),
-    homeAlertCard("Cafe24", cafeOk ? "정상" : "확인 필요", cafeOk ? "주문 데이터를 불러왔습니다." : "주문 연결을 확인하세요.", cafeOk ? "good" : "warn")
+    homeActivityCard("Cafe24 동기화", cafeOk ? "완료" : "확인 필요", cafeOk ? "주문 데이터를 불러왔습니다." : "주문 연결을 확인하세요.", time, cafeOk ? "good" : "warn"),
+    homeActivityCard("Meta 광고 업데이트", metaOk ? "완료" : "확인 필요", metaOk ? "광고 데이터를 불러왔습니다." : "광고 연결을 확인하세요.", time, metaOk ? "good" : "warn"),
+    homeActivityCard("Instagram 캐시 저장", instagramOk ? "완료" : "확인 필요", instagramOk ? "콘텐츠 데이터를 불러왔습니다." : "연결 상태를 확인하세요.", time, instagramOk ? "good" : "warn"),
+    homeActivityCard("월간 보고서", "대기", "Reports에서 월간 정리를 확인할 수 있습니다.", time, "neutral")
   ].join("");
 }
 
-function homeAlertCard(label, value, note, level) {
-  return `<article class="home-alert-card ${esc(level)}"><span>${esc(label)}</span><strong>${esc(value)}</strong><p>${esc(note)}</p></article>`;
+function homeActivityCard(label, value, note, time, level) {
+  return `<article class="home-activity-card ${esc(level)}"><div><span>${esc(label)}</span><strong>${esc(value)}</strong><p>${esc(note)}</p></div><time>${esc(time)}</time></article>`;
 }
 
 function brandFromProduct(productName = "") {

@@ -377,22 +377,28 @@ select,
 }
 
 .home-kpi {
-  min-height: 148px;
+  min-height: 158px;
+  padding: 20px;
+  border-color: rgba(0, 0, 0, 0.08);
+  background: linear-gradient(180deg, #fff, #fbfaf6);
 }
 
 .home-kpi strong {
   display: -webkit-box;
+  min-height: 66px;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  margin-top: 16px;
+  font-size: 31px;
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
 
 .home-action-list,
 .home-month-grid,
-.home-todo-list,
-.home-alert-grid {
+.home-goal-grid,
+.home-activity-list {
   display: grid;
   gap: 12px;
 }
@@ -402,28 +408,28 @@ select,
 }
 
 .home-month-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.home-goal-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.home-todo-list {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.home-alert-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.home-activity-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .home-action-card,
 .home-month-card,
-.home-todo-card,
-.home-alert-card {
+.home-goal-card,
+.home-activity-card {
   min-width: 0;
   min-height: 112px;
   padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
   background: #fff;
-  box-shadow: var(--shadow);
+  box-shadow: 0 12px 36px rgba(25, 25, 20, 0.06);
 }
 
 .home-action-card {
@@ -440,13 +446,14 @@ select,
   height: 34px;
   border-radius: 999px;
   background: #f1f0eb;
-  font-size: 17px;
+  font-size: 15px;
+  font-weight: 900;
 }
 
 .home-action-card strong,
 .home-month-card strong,
-.home-todo-card strong,
-.home-alert-card strong {
+.home-goal-card strong,
+.home-activity-card strong {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -458,13 +465,23 @@ select,
 
 .home-action-card p,
 .home-month-card p,
-.home-todo-card p,
-.home-alert-card p {
+.home-goal-card p,
+.home-activity-card p {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
   line-height: 1.35;
+}
+
+.home-action-card em {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .home-action-card.good {
@@ -473,7 +490,7 @@ select,
 }
 
 .home-action-card.warn,
-.home-alert-card.warn {
+.home-activity-card.warn {
   border-color: rgba(215, 166, 66, 0.45);
   background: #fff9e8;
 }
@@ -484,7 +501,8 @@ select,
 }
 
 .home-month-card span,
-.home-alert-card span {
+.home-goal-card span,
+.home-activity-card span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
@@ -492,34 +510,61 @@ select,
 
 .home-month-card strong {
   margin-top: 10px;
-  font-size: 28px;
+  font-size: 24px;
 }
 
-.home-todo-card {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+.home-goal-card {
+  min-height: 130px;
+}
+
+.home-goal-card div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 10px;
-  min-height: 96px;
 }
 
-.home-todo-card > span {
-  width: 18px;
-  height: 18px;
-  margin-top: 2px;
-  border: 2px solid var(--line);
-  border-radius: 3px;
-  background: #fff;
+.home-goal-card strong {
+  color: var(--ink);
+  font-size: 24px;
 }
 
-.home-alert-card {
-  min-height: 104px;
+.home-goal-card i {
+  display: block;
+  height: 12px;
+  margin-top: 18px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8e5dc;
 }
 
-.home-alert-card.good strong {
+.home-goal-card b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), #87a889);
+}
+
+.home-activity-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  min-height: 92px;
+}
+
+.home-activity-card time {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.home-activity-card.good strong {
   color: var(--green);
 }
 
-.home-alert-card.warn strong {
+.home-activity-card.warn strong {
   color: #8a650f;
 }
 
