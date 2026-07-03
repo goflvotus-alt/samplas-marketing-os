@@ -642,6 +642,26 @@ select,
   gap: 8px;
 }
 
+.sales-warning-card {
+  grid-column: 1 / -1;
+  min-height: auto;
+}
+
+.sales-warning-card small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.sales-kpi-card.is-disabled,
+.sales-empty-card {
+  border-style: dashed;
+  background: #f1f0eb;
+  box-shadow: none;
+}
+
 .sales-kpi-card span,
 .sales-list-card > span,
 .sales-compare-card span {
@@ -659,11 +679,44 @@ select,
   line-height: 1.12;
 }
 
+.sales-kpi-card.is-disabled strong {
+  color: var(--muted);
+}
+
 .sales-kpi-card p,
 .sales-list-card p,
 .sales-compare-card p {
   margin: 0;
   color: var(--muted);
+}
+
+.sales-empty-card {
+  justify-content: center;
+}
+
+.sales-empty-card p {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.sales-status-badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid rgba(215, 166, 66, 0.45);
+  border-radius: 999px;
+  background: #fff9e8;
+  color: #8a650f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.sales-status-badge.urgent {
+  border-color: rgba(169, 66, 61, 0.35);
+  background: #fff3f1;
+  color: var(--red);
 }
 
 .sales-list-card ul,

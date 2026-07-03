@@ -905,9 +905,18 @@ async function renderCafe24Sales(data) {
   const endDate = monthEnd(data.month);
   const sales = await getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=500`, 8000);
   if (sales.error) {
+    const state = salesConnectionState(sales.error);
     target.classList.add("cards");
     target.classList.remove("instagram-feed");
-    target.innerHTML = `<article class="action-item"><strong>Cafe24 데이터 오류</strong><p>${esc(sales.error)}</p><small>API가 실패했고 저장된 CSV/캐시도 없으면 이 영역은 비어 있습니다. 과거 월은 CSV 업로드, 현재 월은 Cafe24 재인증 또는 Render 환경변수 확인이 필요합니다.</small></article>`;
+    target.innerHTML = [
+      salesWarningCard(state),
+      salesKpiCard("오늘(선택기간) 매출", "연결 필요", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
+      salesKpiCard("정상 주문", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
+      salesKpiCard("제외 주문", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
+      salesKpiCard("평균 객단가", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
+      salesPaymentCard([], 0),
+      salesTopProductsCard([])
+    ].join("");
     return;
   }
   const totals = sales.totals || {};
@@ -927,8 +936,34 @@ async function renderCafe24Sales(data) {
   ].join("");
 }
 
-function salesKpiCard(title, value, note) {
-  return `<article class="action-item sales-kpi-card">
+function salesConnectionState(error) {
+  const raw = String(error || "Cafe24 연결 상태를 확인할 수 없습니다.");
+  const lowered = raw.toLowerCase();
+  if (lowered.includes("refresh_token") || lowered.includes("invalid_token") || lowered.includes("access_token")) {
+    return {
+      title: "Cafe24 연결이 만료되었습니다.",
+      note: "다시 인증하면 Sales 데이터가 자동 복구됩니다.",
+      detail: raw
+    };
+  }
+  return {
+    title: "Cafe24 데이터를 불러오지 못했습니다.",
+    note: "연결 상태를 확인한 뒤 다시 불러와 주세요.",
+    detail: raw
+  };
+}
+
+function salesWarningCard(state) {
+  return `<article class="action-item urgent sales-warning-card">
+    <span>연결 필요</span>
+    <strong>${esc(state.title)}</strong>
+    <p>${esc(state.note)}</p>
+    <small>${esc(state.detail)}</small>
+  </article>`;
+}
+
+function salesKpiCard(title, value, note, className = "") {
+  return `<article class="action-item sales-kpi-card ${esc(className)}">
     <span>${esc(title)}</span>
     <strong>${esc(value)}</strong>
     <p>${esc(note)}</p>
@@ -936,23 +971,25 @@ function salesKpiCard(title, value, note) {
 }
 
 function salesPaymentCard(payments = [], totalAmount = 0) {
-  return `<article class="action-item sales-list-card">
+  const empty = !payments.length;
+  return `<article class="action-item sales-list-card ${empty ? "sales-empty-card" : ""}">
     <span>결제수단</span>
-    <strong>${esc(payments[0]?.paymentMethod || "-")}</strong>
+    ${empty ? "" : `<strong>${esc(payments[0]?.paymentMethod || "-")}</strong>`}
     ${payments.length ? `<ul>${payments.slice(0, 5).map((item) => {
       const share = totalAmount ? `${Math.round((Number(item.orderAmount || 0) / totalAmount) * 100)}%` : `${apiNum(item.orderCount)}건`;
       return `<li>
         <div><b>${esc(item.paymentMethod || "미확인")}</b><small>${apiNum(item.orderCount)}건 · ${share}</small></div>
         <em>${apiWon(item.orderAmount)}</em>
       </li>`;
-    }).join("")}</ul>` : `<p>결제수단 데이터가 없습니다.</p>`}
+    }).join("")}</ul>` : `<p>데이터가 없습니다.</p>`}
   </article>`;
 }
 
 function salesTopProductsCard(products = []) {
-  return `<article class="action-item sales-list-card sales-products-card">
+  const empty = !products.length;
+  return `<article class="action-item sales-list-card sales-products-card ${empty ? "sales-empty-card" : ""}">
     <span>TOP 상품</span>
-    <strong>${esc(products[0]?.productName || "-")}</strong>
+    ${empty ? "" : `<strong>${esc(products[0]?.productName || "-")}</strong>`}
     ${products.length ? `<ol>${products.slice(0, 5).map((item, index) => (
       `<li>
         <mark>${index + 1}</mark>
@@ -963,7 +1000,7 @@ function salesTopProductsCard(products = []) {
         </div>
         <em>${apiWon(item.itemAmount)}</em>
       </li>`
-    )).join("")}</ol>` : `<p>주문 데이터에서 상품명을 찾지 못했습니다.</p>`}
+    )).join("")}</ol>` : `<p>데이터가 없습니다.</p>`}
   </article>`;
 }
 
@@ -1065,18 +1102,19 @@ async function renderAdComparison(data) {
   const metaPurchaseValue = hasApiValue(metaTotals.purchaseValue) ? Number(metaTotals.purchaseValue) : null;
   const cafeOrderAmount = hasApiValue(cafeTotals.orderAmount) ? Number(cafeTotals.orderAmount) : null;
   const unmatchedValue = meta.error || cafe.error || metaPurchaseValue === null || cafeOrderAmount === null ? null : Math.max(0, metaPurchaseValue - cafeOrderAmount);
+  const cafeState = cafe.error ? salesConnectionState(cafe.error) : null;
   target.innerHTML = [
-    salesCompareCard("Meta 구매값", meta.error ? "확인 필요" : apiWon(metaTotals.purchaseValue), `${esc(meta.error || meta.source || "Meta Ads")} · 캠페인 ${apiNum((meta.campaigns || meta.rows || []).length)}개`),
-    salesCompareCard("Cafe24 실제매출", cafe.error ? "확인 필요" : apiWon(cafeTotals.orderAmount), `${esc(cafe.error || cafe24SourceLabel(cafe))} · 정상 주문 ${apiNum(cafeTotals.orderCount)}건`),
-    salesCompareCard("차이", unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue), "Meta 구매값 - Cafe24 실제매출"),
-    salesCompareCard("주의사항", "상품 단위 비교 아님", "현재 Meta 데이터는 캠페인 단위이므로 상품별 구매 분석으로 해석하지 않습니다.")
+    salesCompareCard("Meta 구매값", meta.error ? "확인 필요" : apiWon(metaTotals.purchaseValue), `${meta.error || meta.source || "Meta Ads"} · 캠페인 ${apiNum((meta.campaigns || meta.rows || []).length)}개`, { status: Boolean(meta.error) }),
+    salesCompareCard("Cafe24 실제매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafeState ? `${cafeState.title} ${cafeState.note}` : `${cafe24SourceLabel(cafe)} · 정상 주문 ${apiNum(cafeTotals.orderCount)}건`, { status: Boolean(cafe.error), tone: "urgent" }),
+    salesCompareCard("차이", unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue), "Meta 구매값 - Cafe24 실제매출", { status: unmatchedValue === null }),
+    salesCompareCard("주의사항", "상품 단위 비교 아님", "현재 Meta 데이터는 캠페인 단위이므로 상품별 구매 분석으로 해석하지 않습니다.", { status: true })
   ].join("");
 }
 
-function salesCompareCard(title, value, note) {
+function salesCompareCard(title, value, note, options = {}) {
   return `<article class="action-item sales-compare-card">
     <span>${esc(title)}</span>
-    <strong>${esc(value)}</strong>
+    ${options.status ? `<b class="sales-status-badge ${esc(options.tone || "")}">${esc(value)}</b>` : `<strong>${esc(value)}</strong>`}
     <p>${esc(note)}</p>
   </article>`;
 }
