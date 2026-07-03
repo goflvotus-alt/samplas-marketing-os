@@ -918,13 +918,53 @@ async function renderCafe24Sales(data) {
   target.classList.add("cards");
   target.classList.remove("instagram-feed");
   target.innerHTML = [
-    `<article class="action-item"><strong>Cafe24<br>실제 매출 요약</strong><span>${apiWon(totals.orderAmount)}</span><p>${source} · ${esc(sales.startDate || startDate)} ~ ${esc(sales.endDate || endDate)}</p></article>`,
-    `<article class="action-item"><strong>정상 주문 수</strong><span>${apiNum(totals.orderCount)}건</span><p>취소/환불 주문 제외 기준</p></article>`,
-    `<article class="action-item"><strong>제외 주문 수</strong><span>${apiNum(totals.excludedOrderCount)}건</span><p>취소/환불로 매출 집계에서 제외</p></article>`,
-    `<article class="action-item"><strong>평균 객단가</strong><span>${apiWon(totals.averageOrderAmount)}</span><p>Cafe24 실제 결제 기준</p></article>`,
-    `<article class="action-item"><strong>결제수단별 매출</strong><span>${esc(payments[0]?.paymentMethod || "-")}</span><p>${payments.slice(0, 5).map((item) => `${esc(item.paymentMethod || "-")} · ${apiNum(item.orderCount)}건 · ${apiWon(item.orderAmount)}`).join("<br>") || "표시할 결제수단 데이터가 없습니다."}</p></article>`,
-    `<article class="action-item"><strong>판매 상품 TOP</strong><span>${esc(topProducts[0]?.productName || "-")}</span><p>${topProducts.slice(0, 5).map((item) => `${esc(item.productName || "-")} · ${apiNum(item.quantity)}개 · ${apiWon(item.itemAmount)}`).join("<br>") || "주문 데이터에서 상품명을 찾지 못했습니다."}</p></article>`
+    salesKpiCard("오늘(선택기간) 매출", apiWon(totals.orderAmount), `${source} · ${sales.startDate || startDate} ~ ${sales.endDate || endDate}`),
+    salesKpiCard("정상 주문", `${apiNum(totals.orderCount)}건`, "취소/환불 주문 제외"),
+    salesKpiCard("제외 주문", `${apiNum(totals.excludedOrderCount)}건`, "취소/환불로 매출 집계에서 제외"),
+    salesKpiCard("평균 객단가", apiWon(totals.averageOrderAmount), "Cafe24 실제 결제 기준"),
+    salesPaymentCard(payments, Number(totals.orderAmount || 0)),
+    salesTopProductsCard(topProducts)
   ].join("");
+}
+
+function salesKpiCard(title, value, note) {
+  return `<article class="action-item sales-kpi-card">
+    <span>${esc(title)}</span>
+    <strong>${esc(value)}</strong>
+    <p>${esc(note)}</p>
+  </article>`;
+}
+
+function salesPaymentCard(payments = [], totalAmount = 0) {
+  return `<article class="action-item sales-list-card">
+    <span>결제수단</span>
+    <strong>${esc(payments[0]?.paymentMethod || "-")}</strong>
+    ${payments.length ? `<ul>${payments.slice(0, 5).map((item) => {
+      const share = totalAmount ? `${Math.round((Number(item.orderAmount || 0) / totalAmount) * 100)}%` : `${apiNum(item.orderCount)}건`;
+      return `<li>
+        <div><b>${esc(item.paymentMethod || "미확인")}</b><small>${apiNum(item.orderCount)}건 · ${share}</small></div>
+        <em>${apiWon(item.orderAmount)}</em>
+      </li>`;
+    }).join("")}</ul>` : `<p>결제수단 데이터가 없습니다.</p>`}
+  </article>`;
+}
+
+function salesTopProductsCard(products = []) {
+  return `<article class="action-item sales-list-card sales-products-card">
+    <span>TOP 상품</span>
+    <strong>${esc(products[0]?.productName || "-")}</strong>
+    ${products.length ? `<ol>${products.slice(0, 5).map((item, index) => (
+      `<li>
+        <mark>${index + 1}</mark>
+        <div>
+          <small>${esc(brandFromProduct(item.productName || ""))}</small>
+          <b title="${esc(item.productName || "-")}">${esc(item.productName || "-")}</b>
+          <p>판매수량 ${apiNum(item.quantity)}개</p>
+        </div>
+        <em>${apiWon(item.itemAmount)}</em>
+      </li>`
+    )).join("")}</ol>` : `<p>주문 데이터에서 상품명을 찾지 못했습니다.</p>`}
+  </article>`;
 }
 
 function normalizeCafe24PaymentMethods(paymentMethods = [], orders = []) {
@@ -1026,10 +1066,19 @@ async function renderAdComparison(data) {
   const cafeOrderAmount = hasApiValue(cafeTotals.orderAmount) ? Number(cafeTotals.orderAmount) : null;
   const unmatchedValue = meta.error || cafe.error || metaPurchaseValue === null || cafeOrderAmount === null ? null : Math.max(0, metaPurchaseValue - cafeOrderAmount);
   target.innerHTML = [
-    `<article class="action-item"><strong>Meta 기준 추정 구매값</strong><span>${meta.error ? "확인 필요" : apiWon(metaTotals.purchaseValue)}</span><p>${esc(meta.error || meta.source || "Meta Ads API")} · 캠페인 ${apiNum((meta.campaigns || []).length)}개</p></article>`,
-    `<article class="action-item"><strong>Cafe24 실제 주문 매출</strong><span>${cafe.error ? "확인 필요" : apiWon(cafeTotals.orderAmount)}</span><p>${esc(cafe.error || cafe24SourceLabel(cafe))} · 정상 주문 ${apiNum(cafeTotals.orderCount)}건</p></article>`,
-    `<article class="action-item"><strong>Meta 구매값과 Cafe24 실제 매출 차이</strong><span>${unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue)}</span><p>현재 Meta 데이터는 캠페인 단위이므로 상품별 구매 분석으로 해석하지 않습니다.</p></article>`
+    salesCompareCard("Meta 구매값", meta.error ? "확인 필요" : apiWon(metaTotals.purchaseValue), `${esc(meta.error || meta.source || "Meta Ads")} · 캠페인 ${apiNum((meta.campaigns || meta.rows || []).length)}개`),
+    salesCompareCard("Cafe24 실제매출", cafe.error ? "확인 필요" : apiWon(cafeTotals.orderAmount), `${esc(cafe.error || cafe24SourceLabel(cafe))} · 정상 주문 ${apiNum(cafeTotals.orderCount)}건`),
+    salesCompareCard("차이", unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue), "Meta 구매값 - Cafe24 실제매출"),
+    salesCompareCard("주의사항", "상품 단위 비교 아님", "현재 Meta 데이터는 캠페인 단위이므로 상품별 구매 분석으로 해석하지 않습니다.")
   ].join("");
+}
+
+function salesCompareCard(title, value, note) {
+  return `<article class="action-item sales-compare-card">
+    <span>${esc(title)}</span>
+    <strong>${esc(value)}</strong>
+    <p>${esc(note)}</p>
+  </article>`;
 }
 
 function cafe24SourceLabel(data = {}) {
