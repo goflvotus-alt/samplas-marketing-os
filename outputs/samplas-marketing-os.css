@@ -376,6 +376,101 @@ select,
   align-items: end;
 }
 
+.today-briefing-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.today-brief-card {
+  min-width: 0;
+  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 16px 48px rgba(25, 25, 20, 0.08);
+}
+
+.today-brief-card.critical {
+  border-color: rgba(169, 66, 61, 0.42);
+  background: #fff3f1;
+}
+
+.today-brief-card.warning {
+  border-color: rgba(215, 166, 66, 0.48);
+  background: #fff9e8;
+}
+
+.today-brief-card.opportunity {
+  border-color: rgba(32, 111, 84, 0.34);
+  background: #f3faf6;
+}
+
+.today-brief-card.idea {
+  border-color: rgba(40, 93, 154, 0.28);
+  background: #f4f8ff;
+}
+
+.today-brief-head {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.today-brief-head span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--black);
+  color: #fff;
+  font-weight: 900;
+}
+
+.today-brief-head strong {
+  display: block;
+  min-width: 0;
+  font-size: 19px;
+  line-height: 1.25;
+  word-break: keep-all;
+}
+
+.today-brief-card p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.42;
+}
+
+.today-brief-card small {
+  display: block;
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.today-brief-card button {
+  align-self: flex-start;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--black);
+  border-radius: 999px;
+  background: var(--black);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .home-kpi {
   min-height: 158px;
   padding: 20px;

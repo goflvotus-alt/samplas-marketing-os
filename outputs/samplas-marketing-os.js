@@ -268,6 +268,7 @@ async function renderOverviewLiveData(data) {
   const target = $("#overviewLiveData");
   if (!target) return;
   target.innerHTML = `<article class="home-month-card"><strong>이번 달 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`;
+  $("#todayBriefing").innerHTML = `<article class="today-brief-card warn"><div><span>!</span><strong>오늘 해야 할 일을 정리 중입니다.</strong></div><p>연결 상태와 성과 데이터를 확인하고 있습니다.</p></article>`;
   $("#actions").innerHTML = `<article class="home-action-card warn"><span>!</span><div><strong>확인 중</strong><p>중요 알림을 정리합니다.</p></div></article>`;
   $("#nextActions").innerHTML = homeGoalCards();
   $("#insightList").innerHTML = homeActivityCards({ status: {}, meta: {}, cafe: {}, data });
@@ -301,6 +302,8 @@ async function renderOverviewLiveData(data) {
     homeTopMetric("오늘 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음")
   ].join("");
 
+  $("#todayBriefing").innerHTML = buildTodayBriefing({ data, meta, cafe, account: a, topSaved, topCampaign, topProduct, roas }).map((item) => todayBriefCard(item)).join("");
+
   target.innerHTML = [
     homeMonthCard("매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 확인 필요" : `주문 ${apiNum(cafeTotals.orderCount)}건`),
     homeMonthCard("광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 확인 필요" : "Meta Ads"),
@@ -314,6 +317,91 @@ async function renderOverviewLiveData(data) {
   $("#actions").innerHTML = actions.map((item) => homeActionCard(item)).join("");
   $("#nextActions").innerHTML = homeGoalCards({ cafeTotals, metaTotals, postCount, followerDelta });
   $("#insightList").innerHTML = homeActivityCards({ status, meta, cafe, data });
+}
+
+function buildTodayBriefing({ data, meta, cafe, account, topSaved, topCampaign, topProduct, roas }) {
+  const items = [];
+  if (cafe.error) {
+    items.push({
+      level: "critical",
+      icon: "!",
+      title: "Cafe24 연결 확인",
+      why: "실제 매출과 주문 데이터를 불러오지 못했습니다.",
+      evidence: cafe.error || "Cafe24 주문 API 확인 필요",
+      view: "Sales",
+      cta: "Sales 보기"
+    });
+  }
+  if (meta.error) {
+    items.push({
+      level: "critical",
+      icon: "!",
+      title: "Meta API 오류 확인",
+      why: "광고비와 구매값을 확인할 수 없어 ROAS 판단이 막힙니다.",
+      evidence: meta.error || "Meta Ads API 확인 필요",
+      view: "Advertising",
+      cta: "광고 보기"
+    });
+  }
+  if (roas !== null && roas < 1) {
+    items.push({
+      level: "warning",
+      icon: "!",
+      title: "ROAS 낮은 광고 점검",
+      why: "광고비 대비 Meta 기준 구매값이 낮습니다.",
+      evidence: `ROAS ${multiple(roas)} · 광고비 ${apiWon(meta.totals?.spend)} · 구매값 ${apiWon(meta.totals?.purchaseValue)}`,
+      view: "Advertising",
+      cta: "광고 점검"
+    });
+  }
+  if (topSaved) {
+    items.push({
+      level: "opportunity",
+      icon: "+",
+      title: "저장률 높은 콘텐츠 재활용",
+      why: "저장률이 높은 콘텐츠는 다시 볼 이유가 있어 다음 카드뉴스 소재로 확장하기 좋습니다.",
+      evidence: `${topSaved.title || "성과 좋은 콘텐츠"} · 저장률 ${pct(postMetrics(topSaved).saveRate)} · 저장 ${apiNum(topSaved.saves)}`,
+      view: "Content",
+      cta: "콘텐츠 보기"
+    });
+  }
+  items.push({
+    level: "idea",
+    icon: "i",
+    title: `${editorialBriefBrand(data)} 카드뉴스 제작 추천`,
+    why: "브랜드 히스토리와 제품 디테일은 저장/공유를 만들기 좋은 정보형 소재입니다.",
+    evidence: topProduct ? `인기상품 ${topProduct.productName} · ${apiNum(topProduct.quantity)}개 판매` : `팔로워 변화 ${apiNum(account.followerDelta)}명 · 콘텐츠 ${apiNum((data.posts || []).length)}개`,
+    view: "Editorial AI",
+    cta: "전략 보기"
+  });
+  if (!items.some((item) => item.level === "critical") && !items.some((item) => item.level === "warning")) {
+    items.unshift({
+      level: "opportunity",
+      icon: "✓",
+      title: "오늘은 반복 가능한 성과 찾기",
+      why: "큰 연결 오류가 없으니 성과가 좋은 콘텐츠와 상품을 반복할 수 있습니다.",
+      evidence: topCampaign ? `상위 캠페인 ${topCampaign.campaignName || topCampaign.name || "성과 좋은 캠페인"}` : "운영 데이터 정상 확인",
+      view: "Overview",
+      cta: "홈 보기"
+    });
+  }
+  return items.slice(0, 4);
+}
+
+function editorialBriefBrand(data) {
+  const posts = data.posts || [];
+  const rows = editorialBrandRows(posts);
+  const candidates = editorialOpportunityBrands(rows);
+  return candidates[0] || rows[0]?.brand || "GOOMHEO";
+}
+
+function todayBriefCard(item) {
+  return `<article class="today-brief-card ${esc(item.level)}">
+    <div class="today-brief-head"><span>${esc(item.icon)}</span><strong>${esc(item.title)}</strong></div>
+    <p>${esc(item.why)}</p>
+    <small>${esc(item.evidence)}</small>
+    <button type="button" data-jump-view="${esc(item.view)}">${esc(item.cta)}</button>
+  </article>`;
 }
 
 function buildOverviewActions({ data, meta, cafe, account, topSaved, roas }) {
@@ -1563,6 +1651,11 @@ function bind() {
   $("#monthlyReportBtn")?.addEventListener("click", () => document.querySelector('[data-view="Reports"]')?.click());
   $("#refreshStoriesBtn")?.addEventListener("click", renderStoryInsights);
   $("#syncFixBtn")?.addEventListener("click", () => toast("Cafe24 오류는 Render Cafe24 재인증이 필요합니다."));
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-jump-view]");
+    if (!button) return;
+    document.querySelector(`[data-view="${button.dataset.jumpView}"]`)?.click();
+  });
   $$("[data-content-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       activeContentTab = button.dataset.contentTab || "All";
