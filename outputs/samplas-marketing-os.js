@@ -178,7 +178,7 @@ function statusTextForError(data) {
   return "오류";
 }
 
-function setSyncRow(id, ok, label, detail, status = "정상") {
+function setSyncRow(id, ok, label, detail, status = "정상", badgeText = "") {
   const row = $(`#${id}`);
   if (!row) return;
   const isError = ok === false || ["오류", "권한 차단", "토큰 만료"].includes(status);
@@ -186,7 +186,7 @@ function setSyncRow(id, ok, label, detail, status = "정상") {
   row.classList.toggle("warn", ok === true && status === "캐시");
   row.classList.toggle("error", isError);
   row.classList.remove("loading");
-  const badge = isError ? status : status === "CSV" ? "CSV" : status === "캐시" ? "캐시" : "100%";
+  const badge = isError ? status : badgeText || (status === "CSV" ? "CSV" : status === "캐시" ? "캐시" : "100%");
   row.innerHTML = `<span></span><strong>${esc(label)}</strong><small title="${esc(detail)}">${esc(detail)}</small><em>${badge}</em>`;
 }
 
@@ -1329,21 +1329,13 @@ async function renderApiHealthCenter(data) {
 
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
-  const [status, meta, cafe, cafeOrders] = await Promise.all([
+  const [status, meta, cafeStatus] = await Promise.all([
     getJson("/api/status", 6000),
     getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
-    getJson("/api/cafe24/health", 6000),
-    getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=20`, 8000)
+    getCafe24Status(startDate, endDate)
   ]);
   const instagramOk = !data.error && status.instagram !== false;
   const metaOk = !meta.error && status.metaAds !== false;
-  const cafeOrdersOk = !cafeOrders.error && (cafeOrders.ok !== false);
-  const cafeOk = cafeOrdersOk;
-  const cafeSource = cafe24SourceLabel(cafeOrdersOk ? cafeOrders : cafe);
-  const cafeOrderCount = cafeOrders?.totals?.orderCount ?? cafeOrders?.orders?.length ?? cafeOrders?.orderCount;
-  const cafeDetail = cafeOrdersOk
-    ? `주문 API가 정상 응답했습니다${hasApiValue(cafeOrderCount) ? ` · 주문 ${apiNum(cafeOrderCount)}건` : ""}.`
-    : cafeOrders.error || cafe.error || cafe.message || "Cafe24 주문 API 확인 필요";
   target.innerHTML = [
     apiHealthCard({
       title: "Instagram",
@@ -1375,19 +1367,44 @@ async function renderApiHealthCenter(data) {
     }),
     apiHealthCard({
       title: "Cafe24",
-      ok: cafeOk,
-      status: cafeOk ? "연결됨" : "확인 필요",
-      source: cafeSource,
-      updatedAt: cafeOrdersOk ? healthTime() : cafe.detail?.updatedAt || healthTime(),
+      ok: cafeStatus.ok,
+      status: cafeStatus.status,
+      source: cafeStatus.source,
+      updatedAt: cafeStatus.updatedAt,
       rows: [
-        ["마지막 주문 조회", cafeOrdersOk ? "성공" : "실패"],
-        ["주문 API 상태", cafeOrdersOk ? "정상" : "확인 필요"],
-        ["조회 주문 수", hasApiValue(cafeOrderCount) ? `${apiNum(cafeOrderCount)}건` : "-"],
-        ["연결 기준", cafe.ok === true && !cafe.error ? "Health 정상" : "주문 API 기준"]
+        ["마지막 주문 조회", cafeStatus.lastOrderCheck],
+        ["주문 API 상태", cafeStatus.orderApiStatus],
+        ["조회 주문 수", cafeStatus.orderCount],
+        ["연결 기준", cafeStatus.basis]
       ],
-      detail: cafeDetail
+      detail: cafeStatus.detail
     })
   ].join("");
+}
+
+async function getCafe24Status(startDate, endDate) {
+  const [health, orders] = await Promise.all([
+    getJson("/api/cafe24/health", 6000),
+    getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=20`, 8000)
+  ]);
+  const ordersOk = !orders.error && orders.ok !== false;
+  const orderCount = orders?.totals?.orderCount ?? orders?.orders?.length ?? orders?.orderCount;
+  const sourceData = ordersOk ? orders : health;
+  return {
+    ok: ordersOk,
+    status: ordersOk ? "연결됨" : "오류",
+    badge: ordersOk ? "정상" : "오류",
+    tone: ordersOk ? "good" : "error",
+    source: cafe24SourceLabel(sourceData),
+    updatedAt: ordersOk ? healthTime() : health.detail?.updatedAt || healthTime(),
+    lastOrderCheck: ordersOk ? "성공" : "실패",
+    orderApiStatus: ordersOk ? "정상" : "오류",
+    orderCount: hasApiValue(orderCount) ? `${apiNum(orderCount)}건` : "-",
+    basis: health.ok === true && !health.error ? "Health 정상" : "주문 API 기준",
+    detail: ordersOk
+      ? `연결됨 · 주문 API가 정상 응답했습니다${hasApiValue(orderCount) ? ` · 주문 ${apiNum(orderCount)}건` : ""}.`
+      : orders.error || health.error || health.message || "Cafe24 주문 API 확인 필요"
+  };
 }
 
 function integrationSource(source) {
@@ -1862,9 +1879,8 @@ async function updateSync(data) {
   const meta = await getJson(`/api/meta-ads/summary?since=${data.month}-01&until=${monthEnd(data.month)}`, 5000);
   setSyncRow("metaAdsSyncRow", !meta.error, "Meta Ads", meta.error || (String(meta.source || "").includes("_cached") ? "저장된 광고 데이터 기준" : "연결 확인"), meta.error ? statusTextForError(meta) : (String(meta.source || "").includes("_cached") ? "캐시" : "정상"));
 
-  const cafe = await getJson("/api/cafe24/health", 5000);
-  const cafeOk = cafe.ok === true && !cafe.error;
-  setSyncRow("cafe24SyncRow", cafeOk, "Cafe24", cafe.error || cafe.message || "Cafe24 확인", cafeOk ? "정상" : "오류");
+  const cafeStatus = await getCafe24Status(`${data.month}-01`, monthEnd(data.month));
+  setSyncRow("cafe24SyncRow", cafeStatus.ok, "Cafe24", cafeStatus.detail, cafeStatus.badge, cafeStatus.badge);
 }
 
 function renderAll() {
