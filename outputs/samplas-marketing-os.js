@@ -1329,14 +1329,21 @@ async function renderApiHealthCenter(data) {
 
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
-  const [status, meta, cafe] = await Promise.all([
+  const [status, meta, cafe, cafeOrders] = await Promise.all([
     getJson("/api/status", 6000),
     getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
-    getJson("/api/cafe24/health", 6000)
+    getJson("/api/cafe24/health", 6000),
+    getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=20`, 8000)
   ]);
   const instagramOk = !data.error && status.instagram !== false;
   const metaOk = !meta.error && status.metaAds !== false;
-  const cafeOk = cafe.ok === true && !cafe.error;
+  const cafeOrdersOk = !cafeOrders.error && (cafeOrders.ok !== false);
+  const cafeOk = cafeOrdersOk;
+  const cafeSource = cafe24SourceLabel(cafeOrdersOk ? cafeOrders : cafe);
+  const cafeOrderCount = cafeOrders?.totals?.orderCount ?? cafeOrders?.orders?.length ?? cafeOrders?.orderCount;
+  const cafeDetail = cafeOrdersOk
+    ? `주문 API가 정상 응답했습니다${hasApiValue(cafeOrderCount) ? ` · 주문 ${apiNum(cafeOrderCount)}건` : ""}.`
+    : cafeOrders.error || cafe.error || cafe.message || "Cafe24 주문 API 확인 필요";
   target.innerHTML = [
     apiHealthCard({
       title: "Instagram",
@@ -1370,16 +1377,15 @@ async function renderApiHealthCenter(data) {
       title: "Cafe24",
       ok: cafeOk,
       status: cafeOk ? "연결됨" : "확인 필요",
-      source: cafe.source || status.cafe24Mode || "-",
-      updatedAt: cafe.detail?.updatedAt || healthTime(),
+      source: cafeSource,
+      updatedAt: cafeOrdersOk ? healthTime() : cafe.detail?.updatedAt || healthTime(),
       rows: [
-        ["현재 오류 메시지", cafe.error || cafe.message || "-"],
-        ["Access Token", cafeOk ? "확인됨" : "정보 부족"],
-        ["Refresh Token", cafe.detail?.needsRefresh ? "갱신 필요" : cafeOk ? "확인됨" : "정보 부족"],
-        ["재인증 필요", cafeOk && !cafe.detail?.needsRefresh ? "아니오" : "확인 필요"],
-        ["proxyBaseUrl", status.cafe24ProxyBaseUrl || "-"]
+        ["마지막 주문 조회", cafeOrdersOk ? "성공" : "실패"],
+        ["주문 API 상태", cafeOrdersOk ? "정상" : "확인 필요"],
+        ["조회 주문 수", hasApiValue(cafeOrderCount) ? `${apiNum(cafeOrderCount)}건` : "-"],
+        ["연결 기준", cafe.ok === true && !cafe.error ? "Health 정상" : "주문 API 기준"]
       ],
-      detail: cafe.message || cafe.error || "Cafe24 health 확인"
+      detail: cafeDetail
     })
   ].join("");
 }
