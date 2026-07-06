@@ -106,7 +106,11 @@ createServer(async (req, res) => {
       const data = await readApiErrorLog(Number(url.searchParams.get("limit") || 50));
       return json(res, data);
     }
-    if (url.pathname.startsWith("/outputs/")) {
+    if (url.pathname === "/api/diagnostics/cafe24-product-check") {
+            const data = await diagnoseCafe24ProductAccessSafe();
+            return json(res, data);
+    }
+        if (url.pathname.startsWith("/outputs/")) {
       return serveFile(res, join(root, url.pathname));
     }
     return serveFile(res, join(outputDir, url.pathname.replace(/^\//, "")));
@@ -1257,6 +1261,133 @@ async function cafe24GetOrderItems(orderId) {
     throw error;
   }
   return body.items || body.order_items || [];
+}
+
+// Product Dashboard 구현에 필요한 Cafe24 API 8종을 한 번에 점검하는 읽기 전용 진단 함수입니다.
+// 응답에는 각 API마다 { apiName, ok, httpStatus, errorCode, message }만 담고(토큰/secret/
+// Authorization 헤더는 어디에도 노출하지 않음), 마지막에 dashboardReady로 Product Dashboard
+// 구현에 필요한 기능이 준비됐는지 한눈에 보여줍니다. 기존 기능은 전혀 건드리지 않는 순수 추가 코드입니다.
+async function diagnoseCafe24ProductAccessSafe() {
+    const mallId = env.CAFE24_MALL_ID || null;
+    if (!mallId || !env.CAFE24_ACCESS_TOKEN) {
+          return {
+                  mallId,
+                  apiChecks: [],
+                  requestedFieldCheck: {},
+                  dashboardReady: {},
+                  message: "CAFE24_MALL_ID 또는 CAFE24_ACCESS_TOKEN이 설정되어 있지 않습니다."
+          };
+    }
+  
+    const cafe24ErrorCode = (body) => body?.error?.code ?? body?.error_code ?? (typeof body?.error === "string" ? body.error : null);
+    const cafe24ErrorMessage = (body) => body?.error?.message || body?.error_description || (typeof body?.error === "string" ? body.error : null) || body?.message || null;
+  
+    const call = async (path, params = {}) => {
+          const url = new URL(`https://${mallId}.cafe24api.com/api/v2/admin${path}`);
+          for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+          const response = await fetch(url, { headers: cafe24OrdersHeaders() });
+          const body = await response.json().catch(() => ({}));
+          return { ok: response.ok, status: response.status, body };
+    };
+  
+    const apiChecks = [];
+    const runCheck = async (apiName, path, params = {}) => {
+          let r = await call(path, params);
+          if (!r.ok && isCafe24InvalidToken({ message: cafe24ErrorMessage(r.body) || "", body: r.body })) {
+                  try {
+                            await refreshCafe24Token();
+                            r = await call(path, params);
+                  } catch (_refreshError) {
+                            // refresh 실패 사유는 access/secret 관련 문자열이 섞일 수 있어 응답/로그에 포함하지 않음
+                  }
+          }
+          apiChecks.push({ apiName, ok: r.ok, httpStatus: r.status, errorCode: cafe24ErrorCode(r.body), message: cafe24ErrorMessage(r.body) });
+          return r;
+    };
+  
+    const skip = (apiName, reason) => {
+          apiChecks.push({ apiName, ok: false, httpStatus: null, errorCode: null, message: reason });
+          return null;
+    };
+  
+    const productsResult = await runCheck("products_list (GET /admin/products)", "/products", { limit: 3 });
+    const firstProduct = productsResult.ok ? productsResult.body?.products?.[0] : null;
+  
+    let detailResult = null;
+    let variantsResult = null;
+    let imagesResult = null;
+    let categoriesResult = null;
+    let inventoriesResult = null;
+  
+    if (firstProduct?.product_no) {
+          const no = firstProduct.product_no;
+          detailResult = await runCheck("product_detail (GET /admin/products/{no})", `/products/${no}`, {});
+          variantsResult = await runCheck("product_variants (GET /admin/products/{no}/variants)", `/products/${no}/variants`, { limit: 20 });
+          imagesResult = await runCheck("product_images (GET /admin/products/{no}/images)", `/products/${no}/images`, {});
+          categoriesResult = await runCheck("product_categories (GET /admin/products/{no}/categories)", `/products/${no}/categories`, {});
+          inventoriesResult = await runCheck("product_inventories (GET /admin/products/{no}/inventories)", `/products/${no}/inventories`, {});
+    } else {
+          const reason = "products_list에서 product_no를 얻지 못해 시도하지 않음";
+          detailResult = skip("product_detail (GET /admin/products/{no})", reason);
+          variantsResult = skip("product_variants (GET /admin/products/{no}/variants)", reason);
+          imagesResult = skip("product_images (GET /admin/products/{no}/images)", reason);
+          categoriesResult = skip("product_categories (GET /admin/products/{no}/categories)", reason);
+          inventoriesResult = skip("product_inventories (GET /admin/products/{no}/inventories)", reason);
+    }
+  
+    const today = new Date().toISOString().slice(0, 10);
+    const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const salesReportResult = await runCheck("sales_products_report (GET /admin/reports/salesproducts)", "/reports/salesproducts", { start_date: monthAgo, end_date: today, shop_no: 1 });
+    const ordersResult = await runCheck("orders (GET /admin/orders)", "/orders", { start_date: monthAgo, end_date: today, limit: 3 });
+  
+    const FIELD_ALIASES = {
+          product_no: ["product_no"], product_code: ["product_code"], product_name: ["product_name"],
+          brand: ["brand", "brand_code", "brand_name"], category: ["category", "category_no", "categories"],
+          option_name: ["option_name", "options"], option_value: ["option_value", "variants", "option_values"],
+          inventory_quantity: ["inventory_quantity", "quantity", "stock_quantity", "safety_inventory_quantity"],
+          sold_out: ["sold_out", "soldout"], display: ["display"], selling: ["selling"],
+          created_date: ["created_date", "regist_date"], updated_date: ["updated_date", "modified_date"]
+    };
+    function deepFind(obj, keys, depth = 0, path = "") {
+          if (depth > 4 || obj === null || typeof obj !== "object") return null;
+          for (const key of Object.keys(obj)) if (keys.includes(key)) return { path: path ? `${path}.${key}` : key };
+          for (const key of Object.keys(obj)) {
+                  const value = obj[key];
+                  if (value && typeof value === "object") {
+                            const nested = Array.isArray(value)
+                                        ? deepFind(value[0] || {}, keys, depth + 1, `${path ? `${path}.` : ""}${key}[0]`)
+                                        : deepFind(value, keys, depth + 1, `${path ? `${path}.` : ""}${key}`);
+                            if (nested) return nested;
+                  }
+          }
+          return null;
+    }
+    const sources = [
+      { label: "products_list", body: firstProduct || null },
+      { label: "product_detail", body: detailResult?.ok ? (detailResult.body?.product || detailResult.body) : null },
+      { label: "product_variants", body: variantsResult?.ok ? (variantsResult.body?.variants?.[0] || variantsResult.body) : null }
+        ];
+    const requestedFieldCheck = {};
+    for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
+          let hit = null;
+          for (const source of sources) {
+                  if (!source.body) continue;
+                  const found = deepFind(source.body, aliases);
+                  if (found) { hit = { found: true, foundIn: source.label, path: found.path }; break; }
+          }
+          requestedFieldCheck[field] = hit || { found: false };
+    }
+  
+    const dashboardReady = {
+          Product: productsResult.ok && detailResult?.ok ? "✅" : (productsResult.ok || detailResult?.ok ? "⚠" : "❌"),
+          Inventory: (variantsResult?.ok || inventoriesResult?.ok) ? (variantsResult?.ok && inventoriesResult?.ok ? "✅" : "⚠") : "❌",
+          Sales: ordersResult.ok ? "✅" : "❌",
+          Images: imagesResult?.ok ? "✅" : "❌",
+          Categories: categoriesResult?.ok ? "✅" : "❌",
+          "Product Sales Report": salesReportResult.ok ? "✅" : "❌"
+    };
+  
+    return { mallId, apiChecks, requestedFieldCheck, dashboardReady };
 }
 
 async function refreshCafe24Token() {
