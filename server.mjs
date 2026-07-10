@@ -713,13 +713,67 @@ async function readCachedMetaAdsFullReport(since, until) {
 // buildMetaAdsFullReportWithCache와 동일한 원칙: 캐시가 없으면(지난 달이라도) 항상 라이브 API를
 // 먼저 시도합니다. 이전에는 지난 달 캐시가 없으면 API를 아예 호출하지 않고 광고비 0원짜리
 // 응답을 반환했는데, 이는 "데이터가 없다"가 아니라 "한 번도 조회한 적이 없다"였던 버그였습니다.
+const META_ADS_SUMMARY_TTL_MS = Math.max(60000, Number(env.META_ADS_SUMMARY_TTL_MS || 6 * 60 * 60 * 1000));
+const metaAdsSummaryRefreshInFlight = new Set();
+
+function metaAdsSummaryCacheKey(level, since, until) {
+  return `${level}:${since}:${until}`;
+}
+
+function metaAdsSummaryCacheAgeMs(cached = {}) {
+  const time = Date.parse(cached.syncedAt || cached.updatedAt || 0);
+  return Number.isFinite(time) ? Date.now() - time : Number.POSITIVE_INFINITY;
+}
+
+function isCurrentMonthMetaAdsSummaryRequest(since) {
+  return isCurrentMonth(monthFromDate(since));
+}
+
+function isUsableMetaAdsSummaryCache(cached, since, until) {
+  if (!cached) return false;
+  if (isCurrentMonthMetaAdsSummaryRequest(since) && cached.until !== until) return false;
+  return true;
+}
+
+function decorateMetaAdsSummaryCache(cached, since, until) {
+  const currentMonth = isCurrentMonthMetaAdsSummaryRequest(since);
+  const decorated = decorateCachedSource(cached, "meta_marketing_api", currentMonth ? "cached_first" : "past_month_cached");
+  decorated.cacheAgeMs = metaAdsSummaryCacheAgeMs(cached);
+  decorated.ttlMs = META_ADS_SUMMARY_TTL_MS;
+  if (cached.cacheFile) decorated.cacheFile = cached.cacheFile;
+  if (cached.requestedSince) decorated.requestedSince = cached.requestedSince;
+  if (cached.requestedUntil) decorated.requestedUntil = cached.requestedUntil;
+  return decorated;
+}
+
+function scheduleMetaAdsSummaryBackgroundRefresh(since, until, options = {}) {
+  const level = metaAdsLevel(options.level);
+  const key = metaAdsSummaryCacheKey(level, since, until);
+  if (metaAdsSummaryRefreshInFlight.has(key)) return false;
+  metaAdsSummaryRefreshInFlight.add(key);
+  (async () => {
+    try {
+      await buildMetaAdsSummary(since, until, { level });
+    } catch (error) {
+      await logApiError("meta_ads", error, { since, until, level, stage: "summary_background_ttl_refresh" });
+    } finally {
+      metaAdsSummaryRefreshInFlight.delete(key);
+    }
+  })();
+  return true;
+}
+
 async function buildMetaAdsSummaryWithCache(since, until, options = {}) {
   const level = metaAdsLevel(options.level);
 
   if (!options.refresh) {
     const cached = await readCachedMetaAdsSummary(since, until, { level });
     if (cached) {
-      return decorateCachedSource(cached, "meta_marketing_api", isCurrentMonth(monthFromDate(since)) ? "cached_first" : "past_month_cached");
+      const decorated = decorateMetaAdsSummaryCache(cached, since, until);
+      if (isCurrentMonthMetaAdsSummaryRequest(since) && decorated.cacheAgeMs > META_ADS_SUMMARY_TTL_MS) {
+        decorated.staleRefreshTriggered = scheduleMetaAdsSummaryBackgroundRefresh(since, until, { level });
+      }
+      return decorated;
     }
   }
 
@@ -743,10 +797,16 @@ async function buildMetaAdsSummaryWithCache(since, until, options = {}) {
 async function readCachedMetaAdsSummary(since, until, options = {}) {
   const level = metaAdsLevel(options.level);
   const exactFile = join(workDir, metaAdsCacheFileName(level, since, until));
-  if (existsSync(exactFile)) return normalizeMetaAdsCachedResult(JSON.parse(await readFile(exactFile, "utf8")), level);
+  if (existsSync(exactFile)) {
+    const cached = normalizeMetaAdsCachedResult(JSON.parse(await readFile(exactFile, "utf8")), level);
+    return isUsableMetaAdsSummaryCache(cached, since, until) ? cached : null;
+  }
   if (level === "campaign") {
     const legacyFile = join(workDir, `meta-ads-${since}_${until}.json`);
-    if (existsSync(legacyFile)) return normalizeMetaAdsCachedResult(JSON.parse(await readFile(legacyFile, "utf8")), level);
+    if (existsSync(legacyFile)) {
+      const cached = normalizeMetaAdsCachedResult(JSON.parse(await readFile(legacyFile, "utf8")), level);
+      return isUsableMetaAdsSummaryCache(cached, since, until) ? cached : null;
+    }
   }
 
   const monthPrefix = `meta-ads-${level}-${since}_`;
@@ -762,8 +822,10 @@ async function readCachedMetaAdsSummary(since, until, options = {}) {
       .at(-1);
     if (!legacyLatest) return null;
     const legacyCached = JSON.parse(await readFile(join(workDir, legacyLatest), "utf8"));
+    const normalized = normalizeMetaAdsCachedResult(legacyCached, level);
+    if (!isUsableMetaAdsSummaryCache(normalized, since, until)) return null;
     return {
-      ...normalizeMetaAdsCachedResult(legacyCached, level),
+      ...normalized,
       requestedSince: since,
       requestedUntil: until,
       cacheFile: legacyLatest
@@ -771,8 +833,10 @@ async function readCachedMetaAdsSummary(since, until, options = {}) {
   }
   if (!latest) return null;
   const cached = JSON.parse(await readFile(join(workDir, latest), "utf8"));
+  const normalized = normalizeMetaAdsCachedResult(cached, level);
+  if (!isUsableMetaAdsSummaryCache(normalized, since, until)) return null;
   return {
-    ...normalizeMetaAdsCachedResult(cached, level),
+    ...normalized,
     requestedSince: since,
     requestedUntil: until,
     cacheFile: latest
