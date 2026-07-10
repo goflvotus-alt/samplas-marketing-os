@@ -122,6 +122,15 @@ createServer(async (req, res) => {
       });
       return json(res, data);
     }
+    if (url.pathname === "/api/diagnostics/product-join-report") {
+      // 상품 Join 진단용 읽기 전용 API. 토큰/시크릿은 포함하지 않는다.
+      // (2026-07-10 상품 Join 구조 개선)
+      const data = await buildProductJoinReport(
+        url.searchParams.get("since") || `${currentMonth()}-01`,
+        url.searchParams.get("until") || todayKey()
+      );
+      return json(res, data);
+    }
     if (url.pathname === "/api/cafe24/csv/import") {
       if (req.method !== "POST") return json(res, { error: "POST만 지원합니다." }, 405);
       if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
@@ -1020,6 +1029,24 @@ async function markCafe24ReauthRequired(error) {
   return safeCafe24TokenRecord(record);
 }
 
+// (2026-07-10 상품 Join 구조 개선) 상품 조회에 동시성 3을 도입하면서, 여러 요청이 동시에
+// 만료된 토큰을 만나면 refresh가 중복 실행될 수 있다. Cafe24는 refresh 시 refresh token을
+// 회전시키므로 동시 refresh는 토큰 무효화 위험이 있다. in-flight promise 하나로 직렬화만
+// 하고, refreshCafe24Token 내부 로직(토큰 저장/갱신)은 일절 건드리지 않는다.
+let cafe24RefreshInFlightPromise = null;
+async function refreshCafe24TokenSingleFlight() {
+  if (!cafe24RefreshInFlightPromise) {
+    cafe24RefreshInFlightPromise = (async () => {
+      try {
+        return await refreshCafe24Token();
+      } finally {
+        cafe24RefreshInFlightPromise = null;
+      }
+    })();
+  }
+  return cafe24RefreshInFlightPromise;
+}
+
 async function ensureCafe24AccessToken() {
   const record = await readCafe24TokenRecord();
   if (!record?.accessToken || !record?.refreshToken) {
@@ -1029,7 +1056,7 @@ async function ensureCafe24AccessToken() {
     throw new Error("Cafe24 token 상태가 reauth_required입니다. 재인증 필요");
   }
   if (cafe24TokenNeedsRefresh(record)) {
-    await refreshCafe24Token();
+    await refreshCafe24TokenSingleFlight();
   } else {
     hydrateCafe24EnvFromTokenRecord(record);
   }
@@ -1482,51 +1509,114 @@ function normalizeCafe24ProductRow(item = {}, detail = {}, variants = []) {
   };
 }
 
+// ============================================================================
+// (2026-07-10 상품 Join 구조 개선) 카탈로그 캐시 공통 헬퍼.
+// - TTL: 기본 6시간. 지나면 Dashboard는 기존 캐시를 즉시 쓰고 백그라운드에서만 갱신한다.
+// - 저장은 항상 tmp 파일에 쓴 뒤 rename하는 atomic 방식만 사용한다.
+// - 주문에 등장한 product_no 중 캐시에 없는 것만 추가 조회해 병합한다(온디맨드).
+// ============================================================================
+const CAFE24_CATALOG_TTL_MS = Math.max(60000, Number(env.CAFE24_CATALOG_TTL_MS || 6 * 60 * 60 * 1000));
+const CAFE24_PRODUCT_FETCH_CONCURRENCY = 3;
+const cafe24ProductCatalogFile = () => join(workDir, "cafe24-product-catalog.json");
+
+async function writeJsonAtomic(file, data) {
+  await mkdir(workDir, { recursive: true });
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(tmp, JSON.stringify(data, null, 2));
+  await rename(tmp, file);
+}
+
+// 동시성 실행은 기존 mapWithConcurrency() 헬퍼(Instagram 경로에서 사용 중)를 그대로 재사용한다.
+
+async function readCafe24ProductCatalogCache() {
+  const cacheFile = cafe24ProductCatalogFile();
+  if (!existsSync(cacheFile)) return null;
+  try {
+    return JSON.parse(await readFile(cacheFile, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCafe24ProductCatalogRow(item) {
+  const productNo = item.product_no;
+  let detail = {};
+  let variants = [];
+  try {
+    detail = await fetchCafe24ProductDetail(productNo);
+  } catch (error) {
+    await logApiError("cafe24_product_detail", error, { productNo });
+  }
+  try {
+    variants = await fetchCafe24ProductVariantsWithInventory(productNo);
+  } catch (error) {
+    await logApiError("cafe24_product_variants", error, { productNo });
+  }
+  return normalizeCafe24ProductRow(item, detail, variants);
+}
+
 async function buildCafe24ProductCatalog(options = {}) {
   const list = await fetchCafe24ProductList(options);
-  const products = [];
-  for (const item of list) {
-    const productNo = item.product_no;
-    let detail = {};
-    let variants = [];
-    try {
-      detail = await fetchCafe24ProductDetail(productNo);
-    } catch (error) {
-      await logApiError("cafe24_product_detail", error, { productNo });
+  // 상품별 detail+variants 조회를 동시성 3으로 병렬화한다. Cafe24 rate limit(초당 리필 2,
+  // 버킷 40)을 넘지 않는 보수적 수준이고, 429가 나면 cafe24FetchJson이 1회 재시도한다.
+  const products = await mapWithConcurrency(list, CAFE24_PRODUCT_FETCH_CONCURRENCY, (item) => fetchCafe24ProductCatalogRow(item));
+  // 전체 리빌드가 온디맨드로 병합된 옛 상품/negative cache를 지우지 않도록 이전 캐시와 병합한다.
+  // 온디맨드 상품은 TTL 안쪽 것만 유지 — TTL이 지나면 다음 Dashboard 빌드에서 재조회돼 재고가 갱신된다.
+  const previous = await readCafe24ProductCatalogCache();
+  const listedNos = new Set(products.map((product) => String(product.productNo)));
+  const now = Date.now();
+  if (previous) {
+    for (const old of previous.products || []) {
+      if (!old.fetchedOnDemand || listedNos.has(String(old.productNo))) continue;
+      const age = now - (Date.parse(old.onDemandSyncedAt || 0) || 0);
+      if (age < CAFE24_CATALOG_TTL_MS) products.push(old);
     }
-    try {
-      variants = await fetchCafe24ProductVariantsWithInventory(productNo);
-    } catch (error) {
-      await logApiError("cafe24_product_variants", error, { productNo });
-    }
-    products.push(normalizeCafe24ProductRow(item, detail, variants));
   }
   const result = {
     ok: true,
     source: "cafe24_product_api",
     syncedAt: new Date().toISOString(),
     productCount: products.length,
+    missingProducts: previous?.missingProducts || {},
     products
   };
-  await mkdir(workDir, { recursive: true });
-  await writeFile(join(workDir, "cafe24-product-catalog.json"), JSON.stringify(result, null, 2));
+  await writeJsonAtomic(cafe24ProductCatalogFile(), result);
   return result;
 }
 
-async function buildCafe24ProductCatalogWithCache(options = {}) {
-  const cacheFile = join(workDir, "cafe24-product-catalog.json");
-  const readCache = async () => {
-    if (!existsSync(cacheFile)) return null;
+let cafe24CatalogRefreshInFlight = false;
+function scheduleCafe24CatalogBackgroundRefresh(options = {}) {
+  if (cafe24CatalogRefreshInFlight) return false;
+  cafe24CatalogRefreshInFlight = true;
+  (async () => {
     try {
-      return JSON.parse(await readFile(cacheFile, "utf8"));
-    } catch {
-      return null;
+      await buildCafe24ProductCatalog({ limit: options.limit });
+    } catch (error) {
+      await logApiError("cafe24_product_catalog", error, { stage: "background_ttl_refresh" });
+    } finally {
+      cafe24CatalogRefreshInFlight = false;
     }
-  };
+  })();
+  return true;
+}
+
+async function buildCafe24ProductCatalogWithCache(options = {}) {
+  const readCache = readCafe24ProductCatalogCache;
 
   if (!options.refresh) {
     const cached = await readCache();
-    if (cached) return decorateCachedSource(cached, "cafe24_product_api", "cached_first");
+    if (cached) {
+      // TTL 안이면 캐시 그대로. TTL이 지나도 사용자는 기다리지 않는다 — 기존 캐시를 즉시
+      // 돌려주고 백그라운드에서 한 번만 전체 갱신을 돌린다. (2026-07-10 Cache TTL)
+      const ageMs = Date.now() - (Date.parse(cached.syncedAt || 0) || 0);
+      const decorated = decorateCachedSource(cached, "cafe24_product_api", "cached_first");
+      decorated.cacheAgeMs = ageMs;
+      decorated.ttlMs = CAFE24_CATALOG_TTL_MS;
+      if (ageMs > CAFE24_CATALOG_TTL_MS) {
+        decorated.staleRefreshTriggered = scheduleCafe24CatalogBackgroundRefresh(options);
+      }
+      return decorated;
+    }
   }
 
   try {
@@ -1555,29 +1645,150 @@ async function buildCafe24ProductCatalogWithCache(options = {}) {
   }
 }
 
-function matchCafe24OrdersToProducts(orders = [], catalog = []) {
+// 주문에 등장했지만 카탈로그 캐시에 없는 product_no만 Cafe24에서 추가 조회해 캐시에 병합한다.
+// 이미 캐시에 있는 상품은 절대 다시 조회하지 않고, 404(삭제/비공개)는 negative cache
+// (missingProducts)에 기록해 TTL 동안 재조회하지 않는다. 읽기 전용 GET만 사용한다.
+// (2026-07-10 상품 Join 구조 개선: Orders → product_no Set → Cache Lookup → 추가 조회 → Merge)
+async function ensureCatalogCoversOrderProducts(catalogResult, orders = []) {
+  const summary = {
+    attempted: 0,
+    added: 0,
+    deletedOrPrivate: 0,
+    failed: 0,
+    addedProductNos: [],
+    deletedProductNos: [],
+    failedProductNos: []
+  };
+  if (!catalogResult || catalogResult.ok === false) return summary;
+  if (!Array.isArray(catalogResult.products)) catalogResult.products = [];
+  const products = catalogResult.products;
+  const known = new Set(products.map((product) => String(product.productNo)));
+  if (!catalogResult.missingProducts || typeof catalogResult.missingProducts !== "object") catalogResult.missingProducts = {};
+  const negative = catalogResult.missingProducts;
+  const now = Date.now();
+  const wanted = new Set();
+  for (const order of orders) {
+    if (isCafe24CanceledOrRefunded(order)) continue;
+    for (const item of cafe24OrderItems(order)) {
+      const productNo = String(item.product_no || item.productNo || "").trim();
+      if (!productNo || known.has(productNo) || wanted.has(productNo)) continue;
+      const neg = negative[productNo];
+      if (neg && now - (Date.parse(neg.checkedAt || 0) || 0) < CAFE24_CATALOG_TTL_MS) continue;
+      wanted.add(productNo);
+    }
+  }
+  if (!wanted.size) return summary;
+  const productNos = [...wanted];
+  summary.attempted = productNos.length;
+  await mapWithConcurrency(productNos, CAFE24_PRODUCT_FETCH_CONCURRENCY, async (productNo) => {
+    try {
+      const detail = await fetchCafe24ProductDetail(productNo);
+      let variants = [];
+      try {
+        variants = await fetchCafe24ProductVariantsWithInventory(productNo);
+      } catch (variantError) {
+        await logApiError("cafe24_product_variants", variantError, { productNo, stage: "on_demand" });
+      }
+      const row = normalizeCafe24ProductRow({ product_no: detail.product_no ?? Number(productNo) }, detail, variants);
+      row.fetchedOnDemand = true;
+      row.onDemandSyncedAt = new Date().toISOString();
+      products.push(row);
+      delete negative[productNo];
+      summary.added += 1;
+      summary.addedProductNos.push(productNo);
+    } catch (error) {
+      const status = Number(error?.status || error?.body?.error?.code || 0);
+      if (status === 404) {
+        negative[productNo] = { reason: "deleted_or_private", checkedAt: new Date().toISOString() };
+        summary.deletedOrPrivate += 1;
+        summary.deletedProductNos.push(productNo);
+      } else {
+        summary.failed += 1;
+        summary.failedProductNos.push(productNo);
+        await logApiError("cafe24_product_on_demand", error, { productNo });
+      }
+    }
+  });
+  if (summary.added || summary.deletedOrPrivate) {
+    try {
+      // 캐시 파일에는 decorate 필드(source 접미사, cacheMode 등)를 제외한 원형만 저장한다.
+      const toSave = {
+        ok: true,
+        source: "cafe24_product_api",
+        syncedAt: catalogResult.syncedAt || new Date().toISOString(),
+        onDemandSyncedAt: new Date().toISOString(),
+        productCount: products.length,
+        missingProducts: negative,
+        products
+      };
+      await writeJsonAtomic(cafe24ProductCatalogFile(), toSave);
+      catalogResult.productCount = products.length;
+    } catch (error) {
+      await logApiError("cafe24_product_catalog_save", error, { stage: "on_demand_merge" });
+    }
+  }
+  return summary;
+}
+
+const CAFE24_JOIN_REASON_LABELS = {
+  missing_identifier: "상품번호 없음 (수기/개인결제 등)",
+  deleted_or_private: "삭제되었거나 조회 불가한 상품",
+  fetch_failed: "추가 조회 실패 (일시 오류)",
+  not_in_catalog: "카탈로그 미동기화"
+};
+
+function matchCafe24OrdersToProducts(orders = [], catalog = [], context = {}) {
   const byNo = new Map();
   const byCode = new Map();
   for (const product of catalog) {
     if (product.productNo) byNo.set(String(product.productNo), product);
     if (product.productCode) byCode.set(String(product.productCode), product);
   }
+  const negative = context.negativeProducts || {};
+  const failed = new Set((context.failedProductNos || []).map(String));
   const salesByProduct = new Map();
+  let orderCount = 0;
+  let itemCount = 0;
+  let matchedCount = 0;
   let unmatchedCount = 0;
   let unmatchedAmount = 0;
+  const unmatchedItems = [];
+  const reasonTotals = new Map();
   for (const order of orders) {
     if (isCafe24CanceledOrRefunded(order)) continue;
+    orderCount += 1;
     for (const item of cafe24OrderItems(order)) {
+      itemCount += 1;
       const quantity = cafe24ItemQuantity(item);
       const amount = cafe24ItemAmount(item, quantity);
       const productNo = item.product_no || item.productNo || "";
       const productCode = item.product_code || item.productCode || "";
       const product = (productNo && byNo.get(String(productNo))) || (productCode && byCode.get(String(productCode)));
       if (!product) {
+        let reason = "not_in_catalog";
+        if (!productNo && !productCode) reason = "missing_identifier";
+        else if (negative[String(productNo)]) reason = "deleted_or_private";
+        else if (failed.has(String(productNo))) reason = "fetch_failed";
         unmatchedCount += 1;
         unmatchedAmount += amount;
+        const entry = reasonTotals.get(reason) || { reason, label: CAFE24_JOIN_REASON_LABELS[reason] || reason, count: 0, amount: 0 };
+        entry.count += 1;
+        entry.amount += amount;
+        reasonTotals.set(reason, entry);
+        if (unmatchedItems.length < 100) {
+          unmatchedItems.push({
+            productNo: productNo ? String(productNo) : null,
+            productCode: productCode ? String(productCode) : null,
+            variantCode: item.variant_code || item.variantCode || null,
+            productName: item.product_name || item.productName || item.item_name || null,
+            quantity,
+            amount,
+            reason
+          });
+        }
         continue;
       }
+      matchedCount += 1;
       const key = product.productNo;
       const entry = salesByProduct.get(key) || { quantity: 0, amount: 0 };
       entry.quantity += quantity;
@@ -1585,7 +1796,16 @@ function matchCafe24OrdersToProducts(orders = [], catalog = []) {
       salesByProduct.set(key, entry);
     }
   }
-  return { salesByProduct, unmatchedCount, unmatchedAmount };
+  return {
+    salesByProduct,
+    unmatchedCount,
+    unmatchedAmount,
+    orderCount,
+    itemCount,
+    matchedCount,
+    unmatchedItems,
+    unmatchedReasons: [...reasonTotals.values()].sort((a, b) => b.amount - a.amount)
+  };
 }
 
 function daysBetweenDateKeys(since, until) {
@@ -1695,9 +1915,24 @@ async function buildProductDashboardWithCache(since, until, options = {}) {
     };
   }
 
-  const catalog = catalogResult.products || [];
   const orders = ordersResult.orders || ordersResult.data || [];
-  const { salesByProduct, unmatchedCount, unmatchedAmount } = matchCafe24OrdersToProducts(orders, catalog);
+  // (2026-07-10 상품 Join 구조 개선) Orders → product_no Set → Cache Lookup →
+  // 캐시에 없는 product만 추가 조회 → Merge → Join 순서로 수행한다.
+  const onDemand = await ensureCatalogCoversOrderProducts(catalogResult, orders);
+  const catalog = catalogResult.products || [];
+  const {
+    salesByProduct,
+    unmatchedCount,
+    unmatchedAmount,
+    orderCount,
+    itemCount,
+    matchedCount,
+    unmatchedItems,
+    unmatchedReasons
+  } = matchCafe24OrdersToProducts(orders, catalog, {
+    negativeProducts: catalogResult.missingProducts || {},
+    failedProductNos: onDemand.failedProductNos
+  });
 
   const products = catalog.map((product) => {
     const sales = salesByProduct.get(product.productNo) || { quantity: 0, amount: 0 };
@@ -1723,10 +1958,79 @@ async function buildProductDashboardWithCache(since, until, options = {}) {
     catalogSource: catalogResult.source,
     catalogSyncedAt: catalogResult.syncedAt || null,
     cacheMode: catalogResult.cacheMode || null,
+    catalogTtl: {
+      ttlMs: CAFE24_CATALOG_TTL_MS,
+      ageMs: catalogResult.cacheAgeMs ?? null,
+      staleRefreshTriggered: catalogResult.staleRefreshTriggered || false
+    },
+    onDemandFetch: onDemand,
+    join: {
+      orderCount,
+      itemCount,
+      matched: matchedCount,
+      unmatched: unmatchedCount,
+      successRate: itemCount ? Math.round((matchedCount / itemCount) * 1000) / 10 : null
+    },
     metaReference: metaReferenceFromSummary(metaResult),
     products,
     unmatched: { count: unmatchedCount, amount: unmatchedAmount },
+    unmatchedDetail: {
+      count: unmatchedCount,
+      amount: unmatchedAmount,
+      reasons: unmatchedReasons,
+      items: unmatchedItems
+    },
     ordersError: ordersResult.error || null
+  };
+}
+
+// Join 진단용 읽기 전용 리포트. 조회 주문/품목/상품 수, Join 성공·실패, 누락 product_no/
+// variant_code, 누락 이유를 한 번에 보여준다. proxy 모드(로컬)에서는 Render의 동일
+// endpoint로 위임한다. (2026-07-10 상품 Join 구조 개선)
+async function buildProductJoinReport(since, until) {
+  if (env.CAFE24_PROXY_BASE_URL) {
+    const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
+    const url = new URL(`${base}/api/diagnostics/product-join-report`);
+    url.searchParams.set("since", since);
+    url.searchParams.set("until", until);
+    const response = await fetch(url, { headers: cafe24ProxyHeaders() });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      const hint = response.status === 404
+        ? "Render 배포본에 /api/diagnostics/product-join-report가 아직 없습니다. 최신 코드를 push/배포하세요."
+        : text.slice(0, 80);
+      throw Object.assign(new Error(`Join report proxy가 JSON이 아닌 응답을 보냈습니다: ${response.status} ${hint}`), { status: response.status });
+    }
+    if (!response.ok || body.error) {
+      throw Object.assign(new Error(body.error || body.message || `Join report proxy error ${response.status}`), { status: response.status });
+    }
+    return { ...body, source: "product_join_report_proxy", proxyBaseUrl: base };
+  }
+  const dashboard = await buildProductDashboardWithCache(since, until, {});
+  if (dashboard.ok === false) return dashboard;
+  const items = dashboard.unmatchedDetail?.items || [];
+  return {
+    ok: true,
+    source: "product_join_report",
+    since,
+    until,
+    orderCount: dashboard.join?.orderCount ?? null,
+    itemCount: dashboard.join?.itemCount ?? null,
+    productCount: (dashboard.products || []).length,
+    joinMatched: dashboard.join?.matched ?? null,
+    joinUnmatched: dashboard.join?.unmatched ?? null,
+    joinSuccessRatePercent: dashboard.join?.successRate ?? null,
+    unmatchedAmount: dashboard.unmatched?.amount ?? null,
+    reasons: dashboard.unmatchedDetail?.reasons || [],
+    missingProductNos: [...new Set(items.map((item) => item.productNo).filter(Boolean))],
+    missingVariantCodes: [...new Set(items.map((item) => item.variantCode).filter(Boolean))],
+    unmatchedItems: items,
+    onDemandFetch: dashboard.onDemandFetch || null,
+    catalogTtl: dashboard.catalogTtl || null,
+    catalogSyncedAt: dashboard.catalogSyncedAt || null
   };
 }
 
@@ -2094,13 +2398,19 @@ async function cafe24FetchJson(url, options = {}) {
       statusCode: response.status,
       responseBody: compactCafe24Body(body)
     });
+    // Cafe24 rate limit(429)이면 1.2초 대기 후 정확히 1회만 재시도한다. 읽기 전용 GET이라
+    // 재시도해도 부작용이 없다. (2026-07-10 동시성 3 도입에 따른 안전장치)
+    if (!options.retriedAfterRateLimit && response.status === 429) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 1200));
+      return await cafe24FetchJson(url, { ...options, retriedAfterRateLimit: true });
+    }
     // invalid_token(401)이면 refresh 후 원 요청을 정확히 1회만 재시도한다.
     // retriedAfterRefresh 플래그로 재귀를 1단계로 제한 — 무한 재시도 금지.
     // (2026-07-10 Cafe24 401 refresh-retry — Products 경로에도 동일 적용)
     if (!options.retriedAfterRefresh && isCafe24InvalidToken(error)) {
       try {
-        await refreshCafe24Token();
-        return await cafe24FetchJson(url, { retriedAfterRefresh: true });
+        await refreshCafe24TokenSingleFlight();
+        return await cafe24FetchJson(url, { ...options, retriedAfterRefresh: true });
       } catch (refreshError) {
         await logApiError("cafe24_refresh", refreshError, { stage: "cafe24_fetch_json_refresh" });
       }

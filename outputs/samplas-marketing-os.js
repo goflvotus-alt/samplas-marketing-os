@@ -2907,13 +2907,16 @@ async function renderProductDashboard(data) {
 
   const products = result.products || [];
   const metaRef = result.metaReference || {};
+  const joinInfo = result.join || null;
+  const joinNote = joinInfo && joinInfo.itemCount ? ` · Join ${apiNum(joinInfo.matched)}/${apiNum(joinInfo.itemCount)} (${joinInfo.successRate ?? "-"}%)` : "";
   const syncNote = result.catalogSyncedAt ? `상품 데이터 동기화 ${esc(formatRelativeMinutes(result.catalogSyncedAt))}` : "상품 데이터 동기화 시각 확인 불가";
   bannerTarget.className = "ad-status-banner good";
-  bannerTarget.innerHTML = `<span class="status-dot"></span><strong>상품 Dashboard 정상</strong><span class="note">${syncNote} · 상품 ${apiNum(products.length)}개${result.unmatched?.count ? ` · 미매칭 주문항목 ${apiNum(result.unmatched.count)}건` : ""}</span>`;
+  bannerTarget.innerHTML = `<span class="status-dot"></span><strong>상품 Dashboard 정상</strong><span class="note">${syncNote} · 상품 ${apiNum(products.length)}개${result.unmatched?.count ? ` · 미매칭 주문항목 ${apiNum(result.unmatched.count)}건` : ""}${joinNote}</span>`;
 
   metaRefTarget.innerHTML = [
     salesCompareCard("Meta 광고비 (기간 참고치)", metaRef.error ? "확인 필요" : apiWon(metaRef.spend), "상품별 배분값 아님 · 기간 전체 합계", { status: Boolean(metaRef.error) }),
-    salesCompareCard("Meta ROAS (기간 참고치)", metaRef.error || metaRef.roas === null ? "확인 필요" : `${multiple(metaRef.roas)}`, "상품별 ROAS는 v1에서 만들지 않습니다.", { status: Boolean(metaRef.error) })
+    salesCompareCard("Meta ROAS (기간 참고치)", metaRef.error || metaRef.roas === null ? "확인 필요" : `${multiple(metaRef.roas)}`, "상품별 ROAS는 v1에서 만들지 않습니다.", { status: Boolean(metaRef.error) }),
+    productUnmatchedCardHtml(result)
   ].join("");
 
   if (products.length === 0) {
@@ -2925,6 +2928,34 @@ async function renderProductDashboard(data) {
     .sort((a, b) => Number(b.salesAmount || 0) - Number(a.salesAmount || 0))
     .map(productDashboardRowHtml)
     .join("");
+}
+
+// 미매칭 주문항목이 "왜" 미매칭인지 사유별로 보여주는 카드. (2026-07-10 상품 Join 구조 개선)
+// 서버 응답에 unmatchedDetail이 없으면(구버전 Render 배포본) 안내 문구로 폴백한다.
+function productUnmatchedCardHtml(result = {}) {
+  const count = result.unmatchedDetail?.count ?? result.unmatched?.count ?? 0;
+  if (!count) {
+    return `<article class="action-item sales-list-card sales-empty-card">
+      <span>미매칭 주문항목</span>
+      <strong>0건</strong>
+      <p>모든 주문 품목이 상품 카탈로그와 연결되었습니다.</p>
+    </article>`;
+  }
+  const amount = result.unmatchedDetail?.amount ?? result.unmatched?.amount ?? 0;
+  const reasons = result.unmatchedDetail?.reasons || [];
+  const onDemand = result.onDemandFetch || null;
+  const onDemandNote = onDemand && onDemand.attempted
+    ? `<p>추가 조회 ${apiNum(onDemand.attempted)}건 → 병합 ${apiNum(onDemand.added)} · 삭제/비공개 ${apiNum(onDemand.deletedOrPrivate)} · 실패 ${apiNum(onDemand.failed)}</p>`
+    : "";
+  return `<article class="action-item sales-list-card">
+    <span>미매칭 주문항목 · 사유</span>
+    <strong>${apiNum(count)}건 · ${apiWon(amount)}</strong>
+    ${reasons.length ? `<ul>${reasons.slice(0, 5).map((item) => `<li>
+        <div><b>${esc(item.label || item.reason || "기타")}</b><small>${apiNum(item.count)}건</small></div>
+        <em>${apiWon(item.amount)}</em>
+      </li>`).join("")}</ul>` : `<p>사유 분석 데이터가 없습니다. Render 배포본이 최신인지 확인하세요.</p>`}
+    ${onDemandNote}
+  </article>`;
 }
 
 function productDashboardRowHtml(row) {
