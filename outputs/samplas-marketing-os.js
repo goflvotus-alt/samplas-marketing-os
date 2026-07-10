@@ -14,6 +14,9 @@ let storyData = { stories: [], totals: {} };
 let activeContentTab = "All";
 let activeAdLevel = "campaign";
 let currentTodayBriefingItems = [];
+// Cafe24 재인증 콜백이 실패로 돌아왔을 때만 채워진다(handleCafe24OAuthRedirect() 참고).
+// (2026-07-08 Cafe24 재인증 흐름 개선)
+let cafe24OAuthErrorReason = null;
 
 const nf = new Intl.NumberFormat("ko-KR");
 const $ = (selector) => document.querySelector(selector);
@@ -114,6 +117,32 @@ async function getJson(url, timeoutMs = 8000) {
   }
 }
 
+async function postJson(url, payload, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { error: `응답을 읽지 못했습니다: ${text.slice(0, 100)}` };
+    }
+    if (!response.ok && !body.error) body.error = `API 오류 ${response.status}`;
+    return body;
+  } catch (error) {
+    return { error: error.name === "AbortError" ? "응답 지연" : error.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function selectedMonth() {
   const value = $("#monthSelect")?.value;
   return monthlyData.find((item) => item.month === value) || monthlyData[0] || emptyMonth("2026-07");
@@ -179,16 +208,52 @@ function statusTextForError(data) {
   return "오류";
 }
 
-function setSyncRow(id, ok, label, detail, status = "정상", badgeText = "") {
+// 지금 보고 있는 Meta Ads 데이터가 실시간인지/캐시인지/조회 실패인지 한눈에 보이도록 하는 배지입니다.
+// - 🔴 No Data: API 호출 자체가 실패했고 저장된 캐시도 없는 경우 (숫자를 지어내지 않고 실패를 그대로 보여줌)
+// - 🟡 Cache: 캐시를 사용 중 (정상적으로 저장된 값을 우선 사용했거나, 실시간 조회 실패 후 대체한 경우)
+// - 🟢 Live Meta API: 지금 이 요청에서 Meta API를 직접 호출해 받은 값
+function metaAdsSourceBadge(meta = {}) {
+  if (meta.error) {
+    return { icon: "🔴", label: "No Data", tone: "error", detail: meta.error };
+  }
+  const source = String(meta.source || "");
+  const cacheMode = meta.cacheMode || "";
+  if (source.includes("_cached") || cacheMode) {
+    const syncedMs = meta.syncedAt ? new Date(meta.syncedAt).getTime() : null;
+    let agoText = "";
+    if (syncedMs) {
+      const minutes = Math.max(0, Math.round((Date.now() - syncedMs) / 60000));
+      agoText = minutes < 1 ? " · 방금 전 저장" : minutes < 60 ? ` · ${minutes}분 전 저장` : ` · ${Math.round(minutes / 60)}시간 전 저장`;
+    }
+    const fallbackNote = cacheMode === "fallback_after_error" ? ` · 실시간 조회 실패로 저장된 값 표시(${meta.cacheWarning || ""})` : "";
+    return { icon: "🟡", label: "Cache", tone: "warn", detail: `${agoText}${fallbackNote}` };
+  }
+  return { icon: "🟢", label: "Live Meta API", tone: "good", detail: "" };
+}
+
+// Sidebar is a persistent "traffic light" visible on every tab, so it only
+// carries dot color + a 4-word badge (정상 / Cache / 실패 / 재인증 필요).
+// Full reasons/actions live in the Overview Health Banner and the Settings
+// API Health Center — kept out of this function on purpose.
+function setSyncRow(id, tone, label, badge) {
   const row = $(`#${id}`);
   if (!row) return;
-  const isError = ok === false || ["오류", "권한 차단", "토큰 만료"].includes(status);
-  row.classList.toggle("good", ok === true && !isError && status !== "캐시");
-  row.classList.toggle("warn", ok === true && status === "캐시");
-  row.classList.toggle("error", isError);
-  row.classList.remove("loading");
-  const badge = isError ? status : badgeText || (status === "CSV" ? "CSV" : status === "캐시" ? "캐시" : "100%");
-  row.innerHTML = `<span></span><strong>${esc(label)}</strong><small title="${esc(detail)}">${esc(detail)}</small><em>${badge}</em>`;
+  row.classList.remove("loading", "good", "warn", "error");
+  row.classList.add(tone);
+  row.innerHTML = `<span></span><strong>${esc(label)}</strong><em>${esc(badge)}</em>`;
+}
+
+// Condenses the richer bannerState() classification (used by the Overview
+// Health Banner) down to the sidebar's 4-word vocabulary. Reuses the same
+// classification instead of re-deriving status, so sidebar and banner never
+// disagree.
+function sidebarBadgeFromState(state) {
+  if (state.tone === "good") return { tone: "good", badge: "정상" };
+  if (state.tone === "error") {
+    const isReauth = state.label === "토큰 만료" || state.label === "권한 만료";
+    return { tone: "error", badge: isReauth ? "재인증 필요" : "실패" };
+  }
+  return { tone: "warn", badge: "Cache" };
 }
 
 function toast(message) {
@@ -205,13 +270,23 @@ function renderNav() {
   nav.innerHTML = navItems.map((item, index) => (
     `<button type="button" class="${index === 0 ? "active" : ""}" data-view="${esc(item)}">${esc(item)}</button>`
   )).join("");
+  setTopbarTitle(navItems[0]);
   nav.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-view]");
     if (!button) return;
     $$(".nav button").forEach((node) => node.classList.toggle("active", node === button));
     $$(".view").forEach((view) => view.classList.toggle("active", view.id === button.dataset.view));
+    setTopbarTitle(button.dataset.view);
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
+}
+
+// Topbar used to repeat "MONTHLY INTELLIGENCE / Marketing Director / SAMPLAS"
+// on every tab (already shown once in the sidebar brand block). Replaced with
+// a single line reflecting which tab is actually open right now.
+function setTopbarTitle(view) {
+  const target = $("#topbarTitle");
+  if (target) target.textContent = view;
 }
 
 function renderContentTabs() {
@@ -232,18 +307,39 @@ function renderMonthSelect() {
   select.onchange = renderAll;
 }
 
+// Reports used to list every month as a row of pills (its own month picker,
+// duplicating the topbar's #monthSelect) under two stacked "Reports /
+// 월간 보고서 / Monthly Summary / 월간 요약" headers. Director-mode pass:
+// one compact "‹ [month] ›" switcher, no repeated titles, so the report's
+// own headline ("2026-07 SAMPLAS MONTHLY REPORT" from renderMonthlyDashboard)
+// is what the operator actually sees first.
 function renderMonthRail(data) {
   const rail = $("#monthRail");
-  rail.innerHTML = monthlyData.map((item) => (
-    `<button class="month-pill ${item.month === data.month ? "active" : ""}" type="button" data-month="${item.month}">
-      ${item.month}<span>${sourceLabel(item)}</span>
-    </button>`
-  )).join("");
-  rail.querySelectorAll("button").forEach((button) => {
-    button.addEventListener("click", () => {
-      $("#monthSelect").value = button.dataset.month;
-      renderAll();
-    });
+  if (!rail) return;
+  const index = monthlyData.findIndex((item) => item.month === data.month);
+  const older = index >= 0 ? monthlyData[index + 1] : null;
+  const newer = index > 0 ? monthlyData[index - 1] : null;
+  rail.innerHTML = `
+    <button type="button" class="month-nav-btn" data-nav="prev" ${older ? "" : "disabled"} aria-label="이전 달">‹</button>
+    <select id="monthRailSelect" aria-label="리포트 월 선택">
+      ${monthlyData.map((item) => `<option value="${esc(item.month)}" ${item.month === data.month ? "selected" : ""}>${esc(item.month)}</option>`).join("")}
+    </select>
+    <button type="button" class="month-nav-btn" data-nav="next" ${newer ? "" : "disabled"} aria-label="다음 달">›</button>
+    <span class="month-rail-source">${esc(sourceLabel(data))}</span>
+  `;
+  rail.querySelector('[data-nav="prev"]')?.addEventListener("click", () => {
+    if (!older) return;
+    $("#monthSelect").value = older.month;
+    renderAll();
+  });
+  rail.querySelector('[data-nav="next"]')?.addEventListener("click", () => {
+    if (!newer) return;
+    $("#monthSelect").value = newer.month;
+    renderAll();
+  });
+  rail.querySelector("#monthRailSelect")?.addEventListener("change", (event) => {
+    $("#monthSelect").value = event.target.value;
+    renderAll();
   });
 }
 
@@ -275,8 +371,10 @@ function renderKpis(data) {
 
 async function renderOverviewLiveData(data) {
   const target = $("#overviewLiveData");
-  if (!target) return;
-  target.innerHTML = `<article class="home-month-card"><strong>이번 달 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`;
+  const supportTarget = $("#overviewLiveSupport");
+  if (!target || !supportTarget) return;
+  target.innerHTML = `<article class="action-item"><strong>이번 달 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`;
+  supportTarget.innerHTML = "";
   $("#todayBriefProgress").innerHTML = todayBriefProgressBar([]);
   $("#todayBriefing").innerHTML = `<article class="today-brief-card warning"><div class="today-brief-head"><span>!</span><strong>오늘 해야 할 일을 정리 중입니다.</strong></div><p>연결 상태와 성과 데이터를 확인하고 있습니다.</p></article>`;
   $("#actions").innerHTML = `<article class="home-action-card warn"><span>!</span><div><strong>확인 중</strong><p>중요 알림을 정리합니다.</p></div></article>`;
@@ -306,23 +404,28 @@ async function renderOverviewLiveData(data) {
   const avgSaveRate = avg(posts.map((post) => postMetrics(post).saveRate));
   const followerDelta = Number(a.followerDelta || 0);
 
+  renderHealthBanner({ instagram: data, meta, cafe });
+
   $("#kpiGrid").innerHTML = [
-    homeTopMetric("오늘 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 연결 후 표시" : "선택기간 기준"),
-    homeTopMetric("오늘 광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 연결 후 표시" : "선택기간 기준"),
-    homeTopMetric("오늘 주문", cafe.error ? "데이터 없음" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문"),
-    homeTopMetric("오늘 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음")
+    homeTopMetric("오늘 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 연결 후 표시" : "선택기간 기준", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderAmount))),
+    homeTopMetric("오늘 광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 연결 후 표시" : "선택기간 기준", cardBadge("meta", meta, hasApiValue(metaTotals.spend))),
+    homeTopMetric("오늘 주문", cafe.error ? "데이터 없음" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderCount))),
+    homeTopMetric("오늘 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음", cardBadge("cafe24", cafe, Boolean(topProduct)))
   ].join("");
 
   currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account: a, topSaved, topCampaign, topProduct, roas });
   renderTodayBriefing();
 
   target.innerHTML = [
-    homeMonthCard("매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 확인 필요" : `주문 ${apiNum(cafeTotals.orderCount)}건`),
-    homeMonthCard("광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 확인 필요" : "Meta Ads"),
-    homeMonthCard("ROAS", roas === null ? "확인 중" : multiple(roas), "Meta 기준 추정 구매값"),
-    homeMonthCard("팔로워 증가", followerDelta ? `${apiNum(followerDelta)}명` : "데이터 없음", `현재 ${apiNum(a.followers)}명`),
-    homeMonthCard("콘텐츠 개수", `${apiNum(postCount)}개`, data.postsScope === "recent_media_fallback" ? "최근 미디어 기준" : "선택 월 기준"),
-    homeMonthCard("평균 저장률", posts.length ? pct(avgSaveRate) : "데이터 없음", posts.length ? "콘텐츠 평균" : "콘텐츠 데이터 없음")
+    homeMonthPrimaryCard("매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 확인 필요" : `주문 ${apiNum(cafeTotals.orderCount)}건`, cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderAmount))),
+    homeMonthPrimaryCard("ROAS", roas === null ? "확인 중" : multiple(roas), "Meta 기준 추정 구매값", cardBadge("meta", meta, roas !== null)),
+    homeMonthPrimaryCard("평균 저장률", posts.length ? pct(avgSaveRate) : "데이터 없음", posts.length ? "콘텐츠 평균" : "콘텐츠 데이터 없음", cardBadge("instagram", data, posts.length > 0))
+  ].join("");
+
+  supportTarget.innerHTML = [
+    homeMonthSupportCard("광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 확인 필요" : "Meta Ads", cardBadge("meta", meta, hasApiValue(metaTotals.spend))),
+    homeMonthSupportCard("팔로워 증가", followerDelta ? `${apiNum(followerDelta)}명` : "데이터 없음", `현재 ${apiNum(a.followers)}명`, cardBadge("instagram", data, Boolean(followerDelta))),
+    homeMonthSupportCard("콘텐츠 개수", `${apiNum(postCount)}개`, data.postsScope === "recent_media_fallback" ? "최근 미디어 기준" : "선택 월 기준", cardBadge("instagram", data, postCount > 0))
   ].join("");
 
   const actions = buildOverviewActions({ data, meta, cafe, account: a, topSaved, roas });
@@ -448,7 +551,10 @@ function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSave
       projectKey: "overview"
     });
   }
-  return items.slice(0, 4).map((item) => ({
+  return items
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+    .slice(0, 4)
+    .map((item) => ({
     ...item,
     id: todayBriefId(item)
   }));
@@ -547,12 +653,19 @@ function todayBriefProgressBar(items) {
   </div>`;
 }
 
+// Score (0-100) -> 1~5 stars, so the busiest reader sees priority at a glance
+// without reading the numeric Recommendation Score.
+function starRating(score) {
+  const stars = Math.max(1, Math.min(5, Math.round(Number(score || 0) / 20)));
+  return "★".repeat(stars) + "☆".repeat(5 - stars);
+}
+
 function todayBriefCard(item) {
   const state = todayBriefState(item);
   const done = state.status === "done";
   return `<article class="today-brief-card ${esc(item.level)} ${esc(state.status)}" data-brief-id="${esc(item.id)}">
     <div class="today-brief-top">
-      <div class="today-brief-head"><span>${done ? "✓" : esc(item.icon)}</span><strong>${esc(item.title)}</strong></div>
+      <div class="today-brief-head"><span>${done ? "✓" : esc(item.icon)}</span><div class="today-brief-title-row"><strong>${esc(item.title)}</strong><em class="today-brief-stars" title="Recommendation Score ${apiNum(item.score)}/100">${starRating(item.score)}</em></div></div>
       <button class="today-status-button" type="button" data-brief-status="${esc(item.id)}">${todayStatusIcon(state.status)} ${todayStatusLabel(state.status)}</button>
     </div>
     <div class="today-score-row"><span>Recommendation Score</span><strong>${apiNum(item.score)}/100</strong></div>
@@ -605,12 +718,24 @@ function buildOverviewActions({ data, meta, cafe, account, topSaved, roas }) {
   return [...urgent, ...watch, ...good].slice(0, 4);
 }
 
-function homeTopMetric(label, value, note) {
-  return `<article class="kpi home-kpi"><span>${esc(label)}</span><strong title="${esc(value)}">${esc(value)}</strong><p class="delta">${esc(note)}</p></article>`;
+function homeTopMetric(label, value, note, badge) {
+  return `<article class="kpi home-kpi">${dataBadgeHtml(badge)}<span>${esc(label)}</span><strong title="${esc(value)}">${esc(value)}</strong><p class="delta">${esc(note)}</p></article>`;
 }
 
-function homeMonthCard(label, value, note) {
-  return `<article class="home-month-card"><span>${esc(label)}</span><strong>${esc(value)}</strong><p>${esc(note)}</p></article>`;
+function homeMonthCard(label, value, note, badge) {
+  return `<article class="home-month-card">${dataBadgeHtml(badge)}<span>${esc(label)}</span><strong>${esc(value)}</strong><p>${esc(note)}</p></article>`;
+}
+
+// Overview "이번 달 KPI" now follows the same 대표/보조 visual language as
+// Reports/Content/Advertising/Sales: 3 emphasized primary cards (green accent,
+// reused from Advertising's ad-core-kpi-card) + a compact supporting row
+// (reused from Reports' report-support-row).
+function homeMonthPrimaryCard(label, value, note, badge) {
+  return `<article class="action-item ad-summary-card ad-core-kpi-card">${dataBadgeHtml(badge)}<span>${esc(label)}</span><strong>${esc(value)}</strong><p>${esc(note)}</p></article>`;
+}
+
+function homeMonthSupportCard(label, value, note, badge) {
+  return `<div class="report-support-item">${dataBadgeHtml(badge)}<span>${esc(label)}</span><strong>${esc(value)}</strong><em>${esc(note)}</em></div>`;
 }
 
 function homeActionCard(item) {
@@ -639,14 +764,17 @@ function goalPercent(value, target) {
 
 function homeActivityCards({ status = {}, meta = {}, cafe = {}, data = {} }) {
   const instagramOk = !data.error && status.instagram !== false;
+  // 진단용 로그 (2026-07-08). data는 /api/instagram/monthly 응답, status는 /api/status 응답이다.
+  // instagramOk가 false인데 data.error가 비어있다면 status.instagram이 원인이고,
+  // data.error가 채워져 있다면 loadMonths()가 받아온 시점의 실제 값이 원인이다.
+  console.log({ data, status, instagramOk });
   const metaOk = !meta.error && status.metaAds !== false;
   const cafeOk = !cafe.error && status.cafe24 !== false;
-  const time = new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
   return [
-    homeActivityCard("Cafe24 동기화", cafeOk ? "완료" : "확인 필요", cafeOk ? "주문 데이터를 불러왔습니다." : "주문 연결을 확인하세요.", time, cafeOk ? "good" : "warn"),
-    homeActivityCard("Meta 광고 업데이트", metaOk ? "완료" : "확인 필요", metaOk ? "광고 데이터를 불러왔습니다." : "광고 연결을 확인하세요.", time, metaOk ? "good" : "warn"),
-    homeActivityCard("Instagram 캐시 저장", instagramOk ? "완료" : "확인 필요", instagramOk ? "콘텐츠 데이터를 불러왔습니다." : "연결 상태를 확인하세요.", time, instagramOk ? "good" : "warn"),
-    homeActivityCard("월간 보고서", "대기", "Reports에서 월간 정리를 확인할 수 있습니다.", time, "neutral")
+    homeActivityCard("Cafe24 동기화", cafeOk ? "완료" : "확인 필요", cafeOk ? "주문 데이터를 불러왔습니다." : "주문 연결을 확인하세요.", syncStatusText(cafe), cafeOk ? "good" : "warn"),
+    homeActivityCard("Meta 광고 업데이트", metaOk ? "완료" : "확인 필요", metaOk ? "광고 데이터를 불러왔습니다." : "광고 연결을 확인하세요.", syncStatusText(meta), metaOk ? "good" : "warn"),
+    homeActivityCard("Instagram 캐시 저장", instagramOk ? "완료" : "확인 필요", instagramOk ? "콘텐츠 데이터를 불러왔습니다." : "연결 상태를 확인하세요.", syncStatusText(data), instagramOk ? "good" : "warn"),
+    homeActivityCard("월간 보고서", "대기", "Reports에서 월간 정리를 확인할 수 있습니다.", "-", "neutral")
   ].join("");
 }
 
@@ -802,16 +930,31 @@ function renderContentPerformanceCenter(posts, data = {}) {
   if (!targetKpis) return;
   const totalReach = sum(posts, "reach");
   const totalLikes = sum(posts, "likes");
-  const totalSaves = sum(posts, "saves");
   const totalShares = sum(posts, "shares");
-  targetKpis.innerHTML = [
-    contentKpiCard("게시물 수", `${apiNum(posts.length)}개`, "분석 대상 콘텐츠"),
-    contentKpiCard("총 Reach", apiNum(totalReach), "게시물 합산"),
-    contentKpiCard("총 Likes", apiNum(totalLikes), "반응 신호"),
-    contentKpiCard("총 Saves", apiNum(totalSaves), "저장 신호"),
-    contentKpiCard("총 Shares", apiNum(totalShares), "확산 신호"),
-    contentKpiCard("팔로우 증가", hasApiValue(account.followerDelta) ? `${apiNum(account.followerDelta)}명` : "데이터 없음", "계정 월간 변화")
-  ].join("");
+  const avgSaveRate = posts.length ? avg(posts.map((post) => postMetrics(post).saveRate)) : null;
+  // Information-density pass: 저장률/Reach stay as the two highlighted
+  // numbers a director actually judges content by; 게시물 수/Likes/Shares/
+  // 팔로우 증가 move into one compact secondary row instead of 6 equal-weight
+  // 128px cards. Same underlying data as before (postMetrics/sum), no new
+  // calculation source.
+  targetKpis.innerHTML = `
+    <article class="content-kpi-highlight">
+      <span>저장률</span>
+      <strong>${avgSaveRate === null ? "데이터 없음" : pct(avgSaveRate)}</strong>
+      <p>이번 달 평균 저장률</p>
+    </article>
+    <article class="content-kpi-highlight">
+      <span>Reach</span>
+      <strong>${apiNum(totalReach)}</strong>
+      <p>게시물 합산 도달</p>
+    </article>
+    <div class="content-kpi-row">
+      ${contentKpiRowItem("게시물 수", `${apiNum(posts.length)}개`)}
+      ${contentKpiRowItem("Likes", apiNum(totalLikes))}
+      ${contentKpiRowItem("Shares", apiNum(totalShares))}
+      ${contentKpiRowItem("팔로우 증가", hasApiValue(account.followerDelta) ? `${apiNum(account.followerDelta)}명` : "-")}
+    </div>
+  `;
 
   $("#contentTopGrid").innerHTML = [
     contentRankingCard("조회수 TOP 5", topPosts(posts, (post) => post.views || post.reach, 5), (post) => `조회 ${apiNum(post.views)} · Reach ${apiNum(post.reach)}`),
@@ -828,6 +971,10 @@ function renderContentPerformanceCenter(posts, data = {}) {
 
 function contentKpiCard(label, value, note) {
   return `<article class="content-kpi-card"><span>${esc(label)}</span><strong>${esc(value)}</strong><p>${esc(note)}</p></article>`;
+}
+
+function contentKpiRowItem(label, value) {
+  return `<div class="content-kpi-row-item"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`;
 }
 
 function contentRankingCard(title, rows, helper) {
@@ -1178,10 +1325,20 @@ function feedStat(label, value) {
   return `<div class="feed-stat"><span>${label}</span><strong>${value}</strong></div>`;
 }
 
+// 2026-07-08 Reports 썸네일 실제 이미지 교체: 서버 normalizePost()가 media_type별
+// 규칙(IMAGE→media_url, CAROUSEL_ALBUM→children 첫 장, VIDEO/REELS→thumbnail_url
+// 우선)으로 계산한 coverImageUrl을 최우선으로 쓰고, coverImageUrl이 아직 없는(=이
+// 필드가 추가되기 전에 저장된 과거 캐시) 게시물은 기존 thumbnailUrl/mediaUrl로
+// 폴백한다. 이미지가 전혀 없으면 기존 Gradient Placeholder(.feed-media의 CSS
+// background)가 그대로 보인다.
+function feedCoverImageUrl(post) {
+  return post.coverImageUrl || post.thumbnailUrl || post.mediaUrl || "";
+}
+
 function feedCard(post, options = {}) {
   const m = postMetrics(post);
-  const imageUrl = post.thumbnailUrl || post.mediaUrl || "";
-  const mediaStyle = imageUrl ? ` style="background-image: linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.58)), url('${esc(imageUrl)}')"` : "";
+  const imageUrl = feedCoverImageUrl(post);
+  const permalink = post.permalink || "";
   const stats = [
     ["Reach", apiNum(post.reach)],
     ["Views", apiNum(post.views)],
@@ -1190,10 +1347,19 @@ function feedCard(post, options = {}) {
     ["Saves", apiNum(post.saves)],
     ["Shares", apiNum(post.shares)]
   ];
+  // 이미지 <img>는 CSS background가 아니라 실제 <img> 엘리먼트로 렌더링하고
+  // object-fit: cover로 채운다. loading="lazy"로 지연 로딩하고, 로드 실패 시
+  // onerror가 자신을 제거해 .feed-media의 has-image 클래스만 해제하면 기존
+  // Gradient Placeholder(CSS background)가 자동으로 다시 보인다.
+  const imgHtml = imageUrl
+    ? `<img class="feed-media-img" src="${esc(imageUrl)}" alt="${esc(post.title || "Instagram 게시물")}" loading="lazy" onerror="this.closest('.feed-media')?.classList.remove('has-image');this.remove();">`
+    : "";
   return `<article class="feed-card">
-    <a class="feed-media ${imageUrl ? "has-image" : ""}"${mediaStyle} href="${esc(post.permalink || "#")}" target="_blank" rel="noreferrer">
+    <a class="feed-media${imageUrl ? " has-image" : ""}" href="${esc(permalink || "#")}" target="_blank" rel="noreferrer">
+      ${imgHtml}
       <span class="feed-type">${esc(post.type || "POST")}</span>
       <strong>${esc(post.title || "Untitled")}</strong>
+      ${permalink ? `<span class="feed-media-hover">▶ Instagram 보기</span>` : ""}
     </a>
     <div class="feed-body">
       <div class="chip-row">
@@ -1250,20 +1416,25 @@ function renderMonthlyDashboard(data) {
         <span>${topContent ? `이번 달 대표 콘텐츠 · ${esc(topContent.tag || topContent.type)} · 점수 ${Math.round(purposeScore(topContent))}` : "월간 KPI 중심으로 표시합니다."}</span>
       </section>
       <section class="executive-kpis">
-        ${miniMetric("팔로워", num(a.followers), `순증 +${num(a.followerDelta)}`)}
-        ${miniMetric("도달", num(a.reach), `${pct(a.reachDelta)} 전월 대비`)}
-        ${miniMetric("웹사이트 클릭", num(totalClicks), "구매 유입 후보")}
-        ${miniMetric(totalSales ? "Cafe24 7일 매출" : "Meta 광고비", totalSales ? krw(totalSales) : krw(totalSpend), totalSales ? "실제 주문 기준" : "광고 캐시 기준")}
+        <p class="report-tier-label">Business</p>
+        <div class="executive-kpis-grid">
+          ${miniMetric("도달", num(a.reach), `${pct(a.reachDelta)} 전월 대비`)}
+          ${miniMetric("웹사이트 클릭", num(totalClicks), "구매 유입 후보")}
+          ${miniMetric(totalSales ? "Cafe24 7일 매출" : "Meta 광고비", totalSales ? krw(totalSales) : krw(totalSpend), totalSales ? "실제 주문 기준" : "광고 캐시 기준")}
+          ${miniMetric("팔로워 증가", `+${num(a.followerDelta)}`, `현재 ${num(a.followers)}명`)}
+        </div>
       </section>
     </div>
 
-    <div class="signal-board">
-      ${signalCard("콘텐츠 수", num(posts.length), "이번 달 분석 대상")}
-      ${signalCard("좋아요", num(totalLikes), "반응 신호")}
-      ${signalCard("댓글", num(totalComments), "대화 신호")}
-      ${signalCard("저장 / 공유", `${num(totalSaves)} / ${num(totalShares)}`, "카드뉴스 핵심")}
+    <p class="report-tier-label report-support-label">Content · Supporting KPI</p>
+    <div class="report-support-row">
+      ${supportMetric("콘텐츠 수", num(posts.length), "이번 달 분석 대상")}
+      ${supportMetric("좋아요", num(totalLikes), "반응 신호")}
+      ${supportMetric("댓글", num(totalComments), "대화 신호")}
+      ${supportMetric("저장 / 공유", `${num(totalSaves)} / ${num(totalShares)}`, "카드뉴스 핵심")}
     </div>
 
+    <p class="report-tier-label">Analysis</p>
     <div class="report-lanes executive-lanes">
       ${reportLane("종합 TOP", topByScore, (post) => `${post.tag || post.type} · 점수 ${Math.round(purposeScore(post))}`)}
       ${reportLane("저장 TOP", topSaved, (post) => `저장 ${num(post.saves)} · 저장률 ${pct(postMetrics(post).saveRate)}`)}
@@ -1306,6 +1477,10 @@ function signalCard(label, value, helper) {
   return `<article class="signal-card"><span>${esc(label)}</span><strong>${esc(value)}</strong><p>${esc(helper)}</p></article>`;
 }
 
+function supportMetric(label, value, helper) {
+  return `<div class="report-support-item"><span>${esc(label)}</span><strong>${esc(value)}</strong><em>${esc(helper)}</em></div>`;
+}
+
 function reportLane(title, posts, helper) {
   return `<section class="report-panel report-lane">
     <h4>${esc(title)}</h4>
@@ -1340,20 +1515,148 @@ function renderOtherSections(data) {
   renderCards("reelsReport", posts.filter((post) => post.type === "릴스"), "feed");
   renderCards("cardnewsReport", posts.filter((post) => post.type === "카드뉴스"), "cardnews");
   renderCards("conversionGrid", [...posts].sort((a, b) => Number(b.websiteClicks || 0) - Number(a.websiteClicks || 0)).slice(0, 6));
+  $("#adAiBriefing").innerHTML = `<article class="action-item"><strong>오늘 AI 브리핑 확인 중</strong><p>Objective별 Score를 계산하고 있습니다.</p></article>`;
+  $("#adTodayStatus").innerHTML = `<span class="status-dot"></span><strong>오늘 광고 상태 확인 중</strong><span class="note">Meta Ads 데이터를 불러오고 있습니다.</span>`;
+  $("#adCoreKpi").innerHTML = `<article class="action-item"><strong>핵심 지표 확인 중</strong><p>광고비, ROAS, 실매출을 확인합니다.</p></article>`;
   $("#advertisingSummary").innerHTML = `<article class="action-item"><strong>Meta 광고 데이터 확인 중</strong><p>광고비, 도달, 클릭, 구매값, ROAS를 확인합니다.</p></article>`;
   $("#campaignPerformance").innerHTML = `<article class="action-item"><strong>캠페인 성과 확인 중</strong><p>Meta 캠페인 기준으로 불러옵니다.</p></article>`;
+  $("#adReconciliationSummary").innerHTML = `<article class="action-item"><strong>데이터 일치 검증 확인 중</strong><p>Meta 계정 전체 합계와 비교하고 있습니다.</p></article>`;
+  $("#adFullReportActiveRows").innerHTML = `<tr><td colspan="18">전체 캠페인 데이터를 확인하고 있습니다.</td></tr>`;
   $("#adOrganicContent").innerHTML = `<article class="action-item"><strong>광고 / 유기 콘텐츠 비교 확인 중</strong><p>콘텐츠의 광고 집행 여부를 기준으로 비교합니다.</p></article>`;
   renderAdvertising(data);
+  $("#salesHealthBanner").innerHTML = `<span class="status-dot"></span><strong>Sales Health 확인 중</strong><span class="note">Meta · Cafe24 데이터를 불러오고 있습니다.</span>`;
   $("#salesImpact").classList.add("cards");
   $("#salesImpact").classList.remove("instagram-feed");
   $("#salesImpact").innerHTML = `<article class="action-item"><strong>Cafe24 주문 데이터 확인 중</strong><p>CSV 또는 저장 캐시를 읽고 있습니다.</p></article>`;
+  $("#salesDetail").innerHTML = `<article class="action-item"><strong>결제수단 · TOP 상품 확인 중</strong><p>Cafe24 주문 데이터를 불러오고 있습니다.</p></article>`;
   renderCafe24Sales(data);
-  $("#adComparison").innerHTML = `<article class="action-item"><strong>Meta / Cafe24 비교 확인 중</strong><p>광고 구매값과 실제 주문 매출을 비교합니다.</p></article>`;
+  $("#salesMetaEstimate").innerHTML = `<article class="action-item"><strong>Meta 추정 매출 확인 중</strong><p>Meta 구매값을 불러오고 있습니다.</p></article>`;
+  $("#salesVariance").innerHTML = `<article class="action-item"><strong>오차 분석 확인 중</strong><p>Meta 구매값과 Cafe24 실제 매출을 비교합니다.</p></article>`;
+  $("#salesAction").innerHTML = `<article class="action-item"><strong>추천 Action 확인 중</strong><p>Sales Health 판단 후 표시됩니다.</p></article>`;
   renderAdComparison(data);
+  $("#productDashboardBanner").innerHTML = `<span class="status-dot"></span><strong>상품 Dashboard 확인 중</strong><span class="note">Cafe24 Orders · Products 데이터를 불러오고 있습니다.</span>`;
+  $("#productDashboardRows").innerHTML = `<tr><td colspan="7">상품 데이터를 불러오고 있습니다.</td></tr>`;
+  renderProductDashboard(data);
   $("#calendarGrid").innerHTML = ["Brand Discovery", "Product Focus", "Editorial Cardnews", "Event / Sale"].map((title, index) => (
     `<article class="action-item"><strong>${index + 1}주차</strong><span>${title}</span><p>상위 성과 콘텐츠 톤을 다음 달에 확장합니다.</p></article>`
   )).join("");
   renderApiHealthCenter(data);
+  renderScoreWeightsSettings();
+  renderCafe24ProductDiagnostics();
+}
+
+const SCORE_FACTOR_LABELS = {
+  roas: "ROAS",
+  purchase: "Purchase",
+  cpa: "CPA",
+  ctr: "CTR",
+  landingPageView: "Landing Page View",
+  cpc: "CPC",
+  thruplay: "ThruPlay",
+  completionRate: "Completion Rate",
+  engagementRate: "Engagement Rate",
+  frequency: "Frequency",
+  reach: "Reach",
+  cpm: "CPM"
+};
+
+const SCORE_OBJECTIVE_LABELS = {
+  sales: "Sales",
+  traffic: "Traffic",
+  video: "Video",
+  engagement: "Engagement",
+  awareness: "Awareness"
+};
+
+// Preset은 저희가 만든 출발점입니다. Balanced는 기본값과 동일하고, Sales/Traffic/Aggressive는
+// 각각 매출 전환, 트래픽/유입, 효율보다 규모(볼륨)를 우선하는 쪽으로 가중치를 옮긴 것입니다.
+// Preset을 고르면 값만 채워지고, 실제 저장은 "저장" 버튼을 눌러야 반영됩니다.
+const SCORE_PRESETS = {
+  balanced: {
+    sales: { roas: 50, purchase: 30, cpa: 20 },
+    traffic: { ctr: 35, landingPageView: 35, cpc: 30 },
+    video: { thruplay: 50, completionRate: 50 },
+    engagement: { engagementRate: 70, ctr: 30 },
+    awareness: { reach: 35, frequency: 35, cpm: 30 }
+  },
+  sales: {
+    sales: { roas: 60, purchase: 25, cpa: 15 },
+    traffic: { ctr: 25, landingPageView: 50, cpc: 25 },
+    video: { thruplay: 40, completionRate: 60 },
+    engagement: { engagementRate: 50, ctr: 50 },
+    awareness: { reach: 30, frequency: 40, cpm: 30 }
+  },
+  traffic: {
+    sales: { roas: 40, purchase: 40, cpa: 20 },
+    traffic: { ctr: 45, landingPageView: 30, cpc: 25 },
+    video: { thruplay: 60, completionRate: 40 },
+    engagement: { engagementRate: 40, ctr: 60 },
+    awareness: { reach: 45, frequency: 25, cpm: 30 }
+  },
+  aggressive: {
+    sales: { roas: 30, purchase: 50, cpa: 20 },
+    traffic: { ctr: 30, landingPageView: 20, cpc: 50 },
+    video: { thruplay: 70, completionRate: 30 },
+    engagement: { engagementRate: 80, ctr: 20 },
+    awareness: { reach: 60, frequency: 15, cpm: 25 }
+  }
+};
+
+function renderScoreWeightsForm(weights) {
+  const formTarget = $("#scoreWeightsForm");
+  if (!formTarget) return;
+  formTarget.innerHTML = Object.entries(weights).map(([objective, factors]) => `
+    <div class="score-weights-group">
+      <h4>${esc(SCORE_OBJECTIVE_LABELS[objective] || objective)}</h4>
+      ${Object.entries(factors).map(([factorKey, value]) => `
+        <label class="score-weights-field">
+          <span>${esc(SCORE_FACTOR_LABELS[factorKey] || factorKey)}</span>
+          <input type="number" min="0" max="100" data-objective="${esc(objective)}" data-factor="${esc(factorKey)}" value="${esc(value)}" />
+        </label>
+      `).join("")}
+    </div>
+  `).join("");
+}
+
+async function renderScoreWeightsSettings() {
+  const formTarget = $("#scoreWeightsForm");
+  const saveBtn = $("#scoreWeightsSaveBtn");
+  const presetSelect = $("#scoreWeightsPreset");
+  if (!formTarget) return;
+  const resp = await getJson("/api/meta-ads/score-weights", 5000);
+  const weights = resp.weights || {};
+  renderScoreWeightsForm(weights);
+
+  if (presetSelect && !presetSelect.dataset.bound) {
+    presetSelect.dataset.bound = "1";
+    presetSelect.addEventListener("change", () => {
+      const preset = SCORE_PRESETS[presetSelect.value];
+      if (!preset) return;
+      renderScoreWeightsForm(preset);
+      toast("Preset 값을 채웠습니다. 저장을 눌러야 실제로 반영됩니다.");
+    });
+  }
+
+  if (saveBtn && !saveBtn.dataset.bound) {
+    saveBtn.dataset.bound = "1";
+    saveBtn.addEventListener("click", async () => {
+      const inputs = $$("#scoreWeightsForm input[data-objective]");
+      const next = {};
+      inputs.forEach((input) => {
+        const objective = input.dataset.objective;
+        const factor = input.dataset.factor;
+        next[objective] = next[objective] || {};
+        next[objective][factor] = Number(input.value || 0);
+      });
+      saveBtn.disabled = true;
+      const originalLabel = saveBtn.textContent;
+      saveBtn.textContent = "저장 중...";
+      const result = await postJson("/api/meta-ads/score-weights", { weights: next }, 5000);
+      saveBtn.disabled = false;
+      saveBtn.textContent = originalLabel;
+      toast(result.error ? "저장에 실패했습니다." : "가중치를 저장했습니다.");
+    });
+  }
 }
 
 async function renderApiHealthCenter(data) {
@@ -1370,6 +1673,10 @@ async function renderApiHealthCenter(data) {
     getCafe24Status(startDate, endDate)
   ]);
   const instagramOk = !data.error && status.instagram !== false;
+  // 진단용 로그 (2026-07-08). renderApiHealthCenter()는 renderOtherSections(data)에서
+  // selectedMonth()가 반환한 data를 그대로 받는다 — 여기 찍히는 data가 실제
+  // /api/instagram/monthly 최신 응답과 같은지 이 로그로 확인한다.
+  console.log("renderApiHealthCenter", { data, status, instagramOk });
   const metaOk = !meta.error && status.metaAds !== false;
   target.innerHTML = [
     apiHealthCard({
@@ -1377,21 +1684,27 @@ async function renderApiHealthCenter(data) {
       ok: instagramOk,
       status: instagramOk ? "연결됨" : statusTextForError(data),
       source: integrationSource(data.source),
-      updatedAt: healthTime(),
+      updatedAt: syncStatusText(data),
       rows: [
         ["데이터 소스", sourceLabel(data)],
         ["마지막 성공 여부", instagramOk ? "성공" : "실패"],
         ["재인증 필요", instagramOk ? "아니오" : "확인 필요"],
-        ["계정", data.account?.username || status.username || "samplaskr"]
+        ["계정", data.account?.username || status.username || "samplaskr"],
+        ["자동 동기화(6시간)", instagramSyncStatusLabel(status.instagramSync)]
       ],
-      detail: data.error || data.cacheWarning || sourceText(data)
+      // data.error/data.cacheWarning는 이 페이지 요청 자체가 실패했을 때만 채워진다.
+      // 서버 백그라운드 스케줄러(6시간 주기)가 조용히 실패한 경우는 이 값들에 잡히지
+      // 않으므로, /api/status의 instagramSync.lastError도 함께 보여준다 — 캐시는
+      // 깨지지 않지만 "에러는 health 상태에 표시"라는 요구를 만족시키기 위함.
+      // (2026-07-08 Instagram 자동 동기화 기능 추가)
+      detail: data.error || data.cacheWarning || status.instagramSync?.lastError || sourceText(data)
     }),
     apiHealthCard({
       title: "Meta Ads",
       ok: metaOk,
       status: metaOk ? "연결됨" : statusTextForError(meta),
       source: integrationSource(meta.source),
-      updatedAt: healthTime(),
+      updatedAt: syncStatusText(meta),
       rows: [
         ["데이터 소스", String(meta.source || "").includes("_cached") ? "캐시" : "API"],
         ["캠페인 수", `${apiNum((meta.campaigns || meta.rows || []).length)}개`],
@@ -1416,6 +1729,21 @@ async function renderApiHealthCenter(data) {
       detail: cafeStatus.detail
     })
   ].join("");
+  // Cafe24 재인증 콜백이 실패로 돌아온 경우, alert 대신 Settings의 이 패널 맨 위에
+  // 계속 보이는 경고 카드로 안내한다(요청: Overview 또는 Settings에 오류 메시지 표시,
+  // alert 금지). Cafe24 상태가 다시 정상이 되면 자동으로 사라진다.
+  // (2026-07-08 Cafe24 재인증 흐름 개선)
+  if (cafeStatus.ok) {
+    cafe24OAuthErrorReason = null;
+  } else if (cafe24OAuthErrorReason) {
+    target.innerHTML = `<article class="api-health-card warn">
+      <div class="api-health-head">
+        <div><span>Cafe24</span><strong>재인증 실패</strong></div>
+        <em>확인 필요</em>
+      </div>
+      <p>${esc(cafe24OAuthErrorReason)}</p>
+    </article>` + target.innerHTML;
+  }
 }
 
 async function getCafe24Status(startDate, endDate) {
@@ -1432,7 +1760,7 @@ async function getCafe24Status(startDate, endDate) {
     badge: ordersOk ? "정상" : "오류",
     tone: ordersOk ? "good" : "error",
     source: cafe24SourceLabel(sourceData),
-    updatedAt: ordersOk ? healthTime() : health.detail?.updatedAt || healthTime(),
+    updatedAt: syncStatusText(sourceData),
     lastOrderCheck: ordersOk ? "성공" : "실패",
     orderApiStatus: ordersOk ? "정상" : "확인 필요",
     orderCount: hasApiValue(orderCount) ? `${apiNum(orderCount)}건` : "-",
@@ -1452,8 +1780,238 @@ function integrationSource(source) {
   return source;
 }
 
+// 서버가 6시간마다 자동으로 돌리는 Instagram 백그라운드 동기화(runInstagramBackgroundSync)의
+// 마지막 상태를 사람이 읽을 수 있는 문구로 바꾼다. (2026-07-08 Instagram 자동 동기화 기능 추가)
+function instagramSyncStatusLabel(instagramSync) {
+  if (!instagramSync || !instagramSync.lastAttemptAt) return "대기 중 (곧 첫 실행)";
+  if (instagramSync.lastError) return `오류 (${relativeAgeText(cacheAgeMinutes({ syncedAt: instagramSync.lastAttemptAt }))} 전 시도) · 기존 캐시 유지`;
+  if (instagramSync.lastSuccessAt) return `정상 (${relativeAgeText(cacheAgeMinutes({ syncedAt: instagramSync.lastSuccessAt }))} 전)`;
+  return "확인 중";
+}
+
 function healthTime() {
   return new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+}
+
+// --- Real sync-time / cache-vs-live helpers (1차 신뢰도 패치) ---
+// Data payloads from server.mjs already carry a real syncedAt (when the cache
+// file was last written by a live fetch). Previously the UI ignored that and
+// showed healthTime() (the browser's current clock) instead, which always
+// looked like "just synced" even when serving hours/days-old cache. These
+// helpers read the real timestamp so "마지막 동기화" reflects reality.
+function formatSyncStamp(iso) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(date);
+  const get = (type) => parts.find((part) => part.type === type)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
+}
+
+// true = live API response, false = cache/CSV, null = unknown (no source info yet)
+function isLiveSource(data = {}) {
+  const source = String(data.source || "");
+  if (!source) return null;
+  if (source.includes("cached") || source.includes("csv") || data.cacheMode) return false;
+  if (source.includes("graph_api") || source.includes("marketing_api") || source.includes("admin_api")) return true;
+  return null;
+}
+
+function syncStatusText(data = {}) {
+  const stamp = formatSyncStamp(data.syncedAt);
+  if (!stamp) return "동기화 기록 없음";
+  const live = isLiveSource(data);
+  if (live === null) return stamp;
+  return `${live ? "Live" : "Cache"} · ${stamp}`;
+}
+
+// How many minutes old is this payload's syncedAt? null = unknown.
+function cacheAgeMinutes(data = {}) {
+  const iso = data.syncedAt;
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.round(ms / 60000));
+}
+
+// "Cache 사용 중" alone doesn't tell a director whether the number can be
+// trusted right now. Show relative age instead: 최신 / N분 전 / N시간 전 / N일 전.
+function cacheFreshnessLabel(data = {}) {
+  const minutes = cacheAgeMinutes(data);
+  if (minutes === null) return "Cache";
+  if (minutes < 15) return "Cache (최신)";
+  if (minutes < 60) return `Cache (${minutes}분 전)`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Cache (${hours}시간 전)`;
+  const days = Math.floor(hours / 24);
+  return `Cache (${days}일 전)`;
+}
+
+function cacheFreshnessTone(data = {}) {
+  const minutes = cacheAgeMinutes(data);
+  if (minutes === null) return "warn";
+  return minutes >= 1440 ? "error" : "warn";
+}
+
+// One-line health classification shared by the Overview banner. Failures
+// carry a concrete reason + next action (not just "실패"), and cache carries
+// a freshness read so a director can judge whether to trust the number.
+// kind is "instagram" | "meta" | "cafe24" — only Cafe24 has an in-app
+// re-auth link (/api/cafe24/oauth/start); Instagram/Meta tokens are rotated
+// manually in .env, so those show the required action as plain text.
+function bannerState(data = {}, kind = "") {
+  if (data.error) {
+    const lower = String(data.error).toLowerCase();
+    const category = String(data.category || "").toLowerCase();
+    if (lower.includes("refresh_token") || category.includes("expired_refresh_token") || lower.includes("재인증")) {
+      return {
+        tone: "error",
+        label: "토큰 만료",
+        reason: "Refresh Token 만료",
+        action: "재인증 필요",
+        actionHref: kind === "cafe24" ? "/api/cafe24/oauth/start" : null
+      };
+    }
+    if (isPermissionBlocked(data) || category.includes("permission_blocked")) {
+      return { tone: "error", label: "권한 만료", reason: "앱 권한 차단", action: "다시 로그인 필요", actionHref: null };
+    }
+    if (lower.includes("access_token") || lower.includes("invalid_token") || category.includes("invalid_access_token")) {
+      return { tone: "error", label: "토큰 오류", reason: "Access Token 오류", action: "토큰 재발급 필요", actionHref: null };
+    }
+    return { tone: "error", label: "API 실패", reason: data.error, action: "연결 상태 확인 필요", actionHref: null };
+  }
+  if (data.source === "csv_required") {
+    return { tone: "warn", label: "캐시 사용 중", reason: "지난 달 데이터(CSV)", action: "", actionHref: null };
+  }
+  const live = isLiveSource(data);
+  if (live === false) {
+    return { tone: cacheFreshnessTone(data), label: cacheFreshnessLabel(data), reason: "", action: "", actionHref: null };
+  }
+  return { tone: "good", label: "정상", reason: "", action: "", actionHref: null };
+}
+
+// Small "출처 배지" for individual data cards: which service the number came
+// from (확정 매출 vs 추정 vs 콘텐츠 신호), and whether it's Live or Cache right
+// now. Falls back to "데이터 없음" so a real zero is never silently shown the
+// same way as a missing/blocked value.
+function cardBadge(kind, data = {}, hasValue = true) {
+  if (data.error || !hasValue) return { label: "데이터 없음", tone: "muted" };
+  const kindLabel = { cafe24: "Cafe24 확정", meta: "Meta 추정", instagram: "Instagram 콘텐츠 신호" }[kind] || "";
+  const live = isLiveSource(data);
+  const modeLabel = live === false ? "Cache" : live === true ? "Live API" : "";
+  return {
+    label: [kindLabel, modeLabel].filter(Boolean).join(" · "),
+    tone: live === false ? "cache" : live === true ? "live" : "neutral"
+  };
+}
+
+function dataBadgeHtml(badge) {
+  if (!badge || !badge.label) return "";
+  return `<i class="data-badge ${esc(badge.tone || "")}">${esc(badge.label)}</i>`;
+}
+
+// 상대 시간 텍스트만("최신"/"N분 전"/"N시간 전"/"N일 전") 반환한다. cacheFreshnessLabel()은
+// "Cache (N일 전)"처럼 "Cache" 접두어가 고정되어 있어 Instagram의 "정상 (N일 전)" 문구에는
+// 재사용할 수 없어 별도로 뺐다. (2026-07-08 Health Banner 색상/문구 보정)
+function relativeAgeText(minutes) {
+  if (minutes === null) return "";
+  if (minutes < 15) return "최신";
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  return `${days}일 전`;
+}
+
+// Overview 상단 Health Banner 전용 색상/문구 보정.
+// bannerState()/cacheFreshnessTone()는 Sidebar(updateSync)와 Sales 판단(salesDecisionState)
+// 등 다른 화면에서도 쓰이므로 그대로 두고, 이 함수는 Health Banner 렌더링에서만 쓴다.
+//
+// 문제였던 지점: bannerState()는 data.error가 없어도(=API 자체는 정상) 서버가 온디스크
+// 캐시를 서빙 중이면(source에 "_cached") cacheFreshnessTone()으로 넘어가고, 캐시가
+// 24시간(1440분) 넘게 오래됐으면 tone:"error"를 반환했다 — Sidebar는 이미 지난 수정에서
+// data.error 유무만으로 판정하도록 바꿨지만, Health Banner는 여전히 bannerState()의 원본
+// tone을 그대로 써서 Sidebar(정상)와 Health Banner(빨간 점)가 서로 모순되어 보였다.
+//
+// 기준: 빨간색 = 실제 오류/재인증 필요, 노란색 = Cache/동기화 필요/최신 아님, 초록색 = API 정상.
+// 캐시가 오래됐다는 이유만으로는(=data.error 없음) 절대 빨간색을 쓰지 않는다.
+function healthBannerState(data = {}, kind = "") {
+  const base = bannerState(data, kind);
+  if (data.error) {
+    // 실제 오류: Cafe24는 재인증성 오류를 요청하신 문구("재인증 필요")로 통일한다.
+    // Instagram/Meta는 기존 라벨(토큰 오류/API 실패 등)을 그대로 유지한다.
+    if (kind === "cafe24" && (base.label === "토큰 만료" || base.label === "권한 만료" || base.label === "토큰 오류")) {
+      return { ...base, tone: "error", label: "재인증 필요" };
+    }
+    return { ...base, tone: "error" };
+  }
+  // data.error가 없는데 base.tone이 "error"라면 원인은 오직 "캐시가 오래됐다"는 것뿐이다
+  // (bannerState()의 cacheFreshnessTone() 분기) — 이건 실패가 아니라 정상/동기화 필요다.
+  if (kind === "instagram") {
+    const minutes = cacheAgeMinutes(data);
+    const ageText = relativeAgeText(minutes);
+    // 방금 동기화된 경우("최신")까지 괄호로 덧붙이면 중복스러우니 그때는 "정상"만 표시한다.
+    return {
+      tone: "good",
+      label: ageText && ageText !== "최신" ? `정상 (마지막 동기화 ${ageText})` : "정상",
+      reason: "",
+      action: "",
+      actionHref: null
+    };
+  }
+  const live = isLiveSource(data);
+  if (live === false || data.source === "csv_required") {
+    const minutes = cacheAgeMinutes(data);
+    return {
+      tone: "warn",
+      label: minutes === null ? "동기화 필요" : "Cache",
+      reason: base.reason,
+      action: base.action,
+      actionHref: base.actionHref
+    };
+  }
+  return { tone: "good", label: "정상", reason: base.reason, action: base.action, actionHref: base.actionHref };
+}
+
+// Reference UI status-banner language: Overview/Advertising/Sales all answer
+// "지금 데이터를 믿어도 되는가" with the exact same visual grammar (dot +
+// bold label + muted note, reusing .ad-status-banner). Overview needs 3
+// source rows (Instagram/Meta/Cafe24) instead of Advertising/Sales' single
+// synthesized row, so it stacks 3 of the same banner instead of one.
+function renderHealthBanner({ instagram = {}, meta = {}, cafe = {} } = {}) {
+  const target = $("#apiHealthBanner");
+  if (!target) return;
+  target.classList.remove("loading");
+  const rows = [
+    ["Instagram", instagram, "instagram"],
+    ["Meta Ads", meta, "meta"],
+    ["Cafe24", cafe, "cafe24"]
+  ];
+  target.innerHTML = rows.map(([label, data, kind]) => {
+    const state = healthBannerState(data, kind);
+    const stamp = formatSyncStamp(data.syncedAt) || "동기화 기록 없음";
+    const reasonText = [state.reason, stamp].filter(Boolean).join(" · ");
+    // Cafe24 재인증 링크는 새 탭이 아니라 같은 탭에서 이동한다 — Cafe24 로그인/동의 화면을
+    // 거친 뒤 서버가 "/"로 리다이렉트하므로, 같은 탭에서 그대로 대시보드로 돌아오게 하기 위함이다.
+    // (2026-07-08 Cafe24 재인증 흐름 개선)
+    const actionHtml = !state.action ? "" : state.actionHref
+      ? `<a class="health-action" href="${esc(state.actionHref)}">${esc(state.action)}</a>`
+      : `<span class="health-action" title="${esc(kind === "cafe24" ? "" : "META_ACCESS_TOKEN / .env에서 수동 갱신 필요")}">${esc(state.action)}</span>`;
+    return `<div class="ad-status-banner ${esc(state.tone)}">
+      <span class="status-dot"></span>
+      <strong>${esc(label)} · ${esc(state.label)}</strong>
+      <span class="note">${esc(reasonText)}</span>
+      ${actionHtml}
+    </div>`;
+  }).join("");
 }
 
 function apiHealthCard({ title, ok, status, source, updatedAt, rows, detail }) {
@@ -1473,54 +2031,87 @@ function apiHealthCard({ title, ok, status, source, updatedAt, rows, detail }) {
 
 function apiHealthActionCards() {
   return [
-    ["지금 동기화", "현재 화면의 데이터를 다시 불러옵니다.", "", "refresh"],
-    ["재인증 안내", "Cafe24 토큰 만료 시 OAuth 재인증을 시작합니다.", "/api/cafe24/oauth/start", ""],
-    ["상세 보기", "최근 진단 로그를 확인합니다.", "/api/diagnostics/logs", ""]
-  ].map(([title, note, href, action]) => `<article class="api-health-action">
+    ["지금 동기화", "현재 화면의 데이터를 다시 불러옵니다.", "", "refresh", false],
+    // Cafe24 재인증은 같은 탭에서 이동해야 Cafe24 로그인/동의 후 서버가 "/"로 리다이렉트할 때
+    // 같은 탭으로 돌아온다 — 새 탭(target="_blank")이면 새 탭에만 결과가 남는다.
+    // (2026-07-08 Cafe24 재인증 흐름 개선)
+    ["재인증 안내", "Cafe24 토큰 만료 시 OAuth 재인증을 시작합니다.", "/api/cafe24/oauth/start", "", false],
+    ["상세 보기", "최근 진단 로그를 확인합니다.", "/api/diagnostics/logs", "", true]
+  ].map(([title, note, href, action, newTab]) => `<article class="api-health-action">
     <strong>${esc(title)}</strong>
     <p>${esc(note)}</p>
-    ${href ? `<a class="button secondary" href="${href}" target="_blank" rel="noreferrer">${esc(title)}</a>` : `<button class="button secondary" type="button" data-health-action="${esc(action)}">${esc(title)}</button>`}
+    ${href ? `<a class="button secondary" href="${href}"${newTab ? ' target="_blank" rel="noreferrer"' : ""}>${esc(title)}</a>` : `<button class="button secondary" type="button" data-health-action="${esc(action)}">${esc(title)}</button>`}
   </article>`).join("");
 }
 
 async function renderAdvertising(data) {
+  const briefingTarget = $("#adAiBriefing");
+  const statusTarget = $("#adTodayStatus");
+  const coreKpiTarget = $("#adCoreKpi");
   const summaryTarget = $("#advertisingSummary");
   const campaignTarget = $("#campaignPerformance");
   const contentTarget = $("#adOrganicContent");
   const tableTarget = $("#adPerformanceRows");
-  const rankingTarget = $("#adRanking");
-  if (!summaryTarget || !campaignTarget || !contentTarget || !tableTarget || !rankingTarget) return;
+  const reconTarget = $("#adReconciliationSummary");
+  const fullReportTargets = {
+    active: $("#adFullReportActiveRows"),
+    other: $("#adFullReportOtherRows")
+  };
+  bindAdFullReportToggles();
+  if (!briefingTarget || !statusTarget || !coreKpiTarget || !summaryTarget || !campaignTarget || !contentTarget || !tableTarget || !reconTarget || !fullReportTargets.active || !fullReportTargets.other) return;
 
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
   renderAdLevelTabs();
-  const meta = await getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}&level=${activeAdLevel}`, 9000);
+  const [meta, fullReport, weightsResp] = await Promise.all([
+    getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}&level=${activeAdLevel}`, 9000),
+    getJson(`/api/meta-ads/full-report?since=${startDate}&until=${endDate}`, 12000),
+    getJson("/api/meta-ads/score-weights", 5000)
+  ]);
+  const scoreWeights = weightsResp.weights || {};
   const posts = data.posts || [];
   const adPosts = posts.filter((post) => Number(post.adSpend || 0));
   const organicPosts = posts.filter((post) => !Number(post.adSpend || 0));
+  logAdExecutionDebug(fullReport, data.month);
 
   if (meta.error) {
     const status = statusTextForError(meta);
+    const badge = metaAdsSourceBadge(meta);
+    briefingTarget.innerHTML = `<article class="action-item"><strong>브리핑 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다.</p></article>`;
+    statusTarget.className = "ad-status-banner error";
+    statusTarget.innerHTML = `<span class="status-dot"></span><strong>${esc(badge.icon)} ${esc(badge.label)} · ${esc(status)}</strong><span class="note">${esc(startDate)} ~ ${esc(endDate)} · ${esc(meta.error)}</span>`;
+    coreKpiTarget.innerHTML = `<article class="action-item"><strong>핵심 지표 확인 불가</strong><p>Meta API 오류가 해결되면 광고비 · ROAS · 실매출이 표시됩니다.</p></article>`;
     summaryTarget.innerHTML = [
       `<article class="action-item"><strong>Meta API 상태</strong><span>${esc(status)}</span><p>${esc(meta.error)}</p></article>`,
       `<article class="action-item"><strong>권한 오류 안내</strong><p>Meta API 권한 또는 토큰 권한이 막히면 광고 성과를 불러올 수 없습니다. Settings의 Meta Ads 연결 상태를 확인하세요.</p></article>`
     ].join("");
     campaignTarget.innerHTML = `<article class="action-item"><strong>캠페인별 성과</strong><p>Meta API 오류가 해결되면 캠페인 기준 성과가 표시됩니다.</p></article>`;
     tableTarget.innerHTML = `<tr><td colspan="11">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
-    rankingTarget.innerHTML = `<article class="action-item"><strong>광고 순위 없음</strong><p>Meta API 오류가 해결되면 표시됩니다.</p></article>`;
+    reconTarget.innerHTML = `<article class="action-item"><strong>검증 불가</strong><p>Meta API 오류가 해결되면 표시됩니다.</p></article>`;
+    fullReportTargets.active.innerHTML = `<tr><td colspan="18">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
+    fullReportTargets.other.innerHTML = "";
     contentTarget.innerHTML = renderAdOrganicCards(adPosts, organicPosts);
     return;
   }
+
+  renderAdAiBriefing(fullReport, scoreWeights, briefingTarget);
 
   const totals = meta.totals || {};
   const spend = Number(totals.spend || 0);
   const purchaseValue = Number(totals.purchaseValue || 0);
   const roas = spend ? purchaseValue / spend : null;
-  const source = String(meta.source || "").includes("_cached") ? "저장된 Meta 광고 데이터" : "Meta Ads API";
+  const badge = metaAdsSourceBadge(meta);
+
+  statusTarget.className = `ad-status-banner ${badge.tone}`;
+  statusTarget.innerHTML = `<span class="status-dot"></span><strong>${esc(badge.icon)} ${esc(badge.label)}</strong><span class="note">${esc(startDate)} ~ ${esc(endDate)}${badge.detail ? " " + esc(badge.detail) : ""}</span>`;
+
+  coreKpiTarget.innerHTML = [
+    metaAdsSummaryCard("광고비", apiWon(totals.spend), "선택 기간 집행 금액", true),
+    metaAdsSummaryCard("ROAS", roas === null ? "-" : multiple(roas), "Meta 구매값 / 광고비", true),
+    metaAdsSummaryCard("실매출", "Cafe24 연동 예정", "추후 Cafe24 실제 매출과 연결됩니다.", true)
+  ].join("");
 
   summaryTarget.innerHTML = [
-    metaAdsSummaryCard("상태", "정상", `${source} · ${startDate} ~ ${endDate}`),
-    metaAdsSummaryCard("광고비", apiWon(totals.spend), "선택 기간 집행 금액"),
     metaAdsSummaryCard("노출", apiNum(totals.impressions), "광고가 표시된 횟수"),
     metaAdsSummaryCard("도달", apiNum(totals.reach), "광고를 본 계정 수"),
     metaAdsSummaryCard("클릭", apiNum(totals.clicks), "Meta 클릭 합계"),
@@ -1528,8 +2119,7 @@ async function renderAdvertising(data) {
     metaAdsSummaryCard("CPC", apiWon(totals.cpc), "광고비 / 클릭"),
     metaAdsSummaryCard("CPM", apiWon(totals.cpm), "1,000회 노출 비용"),
     metaAdsSummaryCard("Meta 구매수", apiNum(totals.purchases || totals.metaPurchases), "Meta 기준 구매 이벤트"),
-    metaAdsSummaryCard("Meta 구매값", apiWon(totals.purchaseValue), "Meta 기준 추정 구매값"),
-    metaAdsSummaryCard("Meta ROAS", roas === null ? "-" : multiple(roas), "Meta 구매값 / 광고비")
+    metaAdsSummaryCard("Meta 구매값", apiWon(totals.purchaseValue), "Meta 기준 추정 구매값")
   ].join("");
 
   const rows = metaAdsRowsForLevel(meta)
@@ -1538,12 +2128,13 @@ async function renderAdvertising(data) {
   campaignTarget.innerHTML = rows.length ? rows.map((campaign) => metaAdsPerformanceCard(campaign)).join("") : `<article class="action-item"><strong>${esc(metaAdsLevelLabel(activeAdLevel))} 데이터 없음</strong><p>선택 월에 표시할 Meta 광고 데이터가 없습니다.</p></article>`;
 
   tableTarget.innerHTML = renderMetaAdsRows(metaAdsRowsForLevel(meta));
-  rankingTarget.innerHTML = renderMetaAdsRanking(meta);
+  renderMetaAdsReconciliation(fullReport, reconTarget);
+  renderMetaAdsFullReportGroups(fullReport, scoreWeights, fullReportTargets);
   contentTarget.innerHTML = renderAdOrganicCards(adPosts, organicPosts);
 }
 
-function metaAdsSummaryCard(label, value, note) {
-  return `<article class="action-item ad-summary-card">
+function metaAdsSummaryCard(label, value, note, emphasize = false) {
+  return `<article class="action-item ad-summary-card${emphasize ? " ad-core-kpi-card" : ""}">
     <span>${esc(label)}</span>
     <strong>${esc(value)}</strong>
     <p>${esc(note)}</p>
@@ -1612,32 +2203,423 @@ function renderMetaAdsRows(rows = []) {
     )).join("") : `<tr><td colspan="11">선택 월에 표시할 Meta 광고 데이터가 없습니다.</td></tr>`;
 }
 
-function renderMetaAdsRanking(meta = {}) {
-  const top = meta.topAds || [];
-  const low = meta.lowAds || [];
-  return [
-    metaAdsRankingCard("우수 광고 TOP 5", top, "good"),
-    metaAdsRankingCard("점검 광고 TOP 5", low, "warn")
-  ].join("");
+const META_OBJECTIVE_LABEL = {
+  sales: "Sales",
+  traffic: "Traffic",
+  engagement: "Engagement",
+  video: "Video",
+  awareness: "Awareness",
+  unknown: "확인 필요"
+};
+
+function metaAdsObjectiveLabel(row = {}) {
+  return META_OBJECTIVE_LABEL[row.objective] || "확인 필요";
 }
 
-function metaAdsRankingName(row = {}) {
-  return row.adName || row.adsetName || row.campaignName || row.label || row.adId || row.adsetId || row.campaignId || "광고";
+// AI Reason: "중지 검토" 같은 태그가 아니라 마케팅 팀장이 코멘트하듯 자연스러운 한두 문장으로
+// 근거를 설명합니다. Objective마다 보는 지표가 다르고, 같은 지표라도 다른 지표와 조합되면
+// 결론이 달라집니다(예: CTR은 좋아도 Frequency가 높으면 피로도 경고로 바뀝니다).
+function metaAdsNarrative(row = {}) {
+  const objective = row.objective || "unknown";
+  const impressions = Number(row.impressions || 0);
+  const frequency = Number(row.frequency || 0);
+
+  if (objective === "sales") {
+    const purchases = Number(row.purchases || 0);
+    const roas = Number(row.roas || 0);
+    if (purchases <= 0) return "구매 전환이 발생하지 않아 광고비만 소진되고 있습니다. 소재 또는 타겟 점검을 추천합니다.";
+    const aov = purchases ? Number(row.purchaseValue || 0) / purchases : 0;
+    const cpaEfficient = aov > 0 && Number(row.cpa || 0) / aov <= 0.5;
+    if (roas >= 8) return `ROAS는 매우 우수합니다.${cpaEfficient ? " CPA도 낮으므로 예산을 20% 증액해도 좋습니다." : " 예산 확대를 검토해도 좋습니다."}`;
+    if (roas >= 3) return "ROAS가 안정적으로 유지되고 있습니다. 현재 예산으로 계속 운영하세요.";
+    if (roas >= 1) return "ROAS가 다소 낮은 편입니다. 소재나 타겟 조정을 검토하세요.";
+    return "광고비 대비 매출 전환이 낮습니다. 예산 축소 또는 타겟 재설정이 필요합니다.";
+  }
+
+  if (objective === "traffic") {
+    const ctr = Number(row.ctr || 0);
+    if (ctr >= 0.02 && frequency > 3.5) return "CTR은 우수하지만 Frequency가 높아져 피로도가 발생하고 있습니다. 새 크리에이티브 교체를 추천합니다.";
+    if (ctr >= 0.02) return "CTR이 우수하고 광고 피로도도 낮습니다. 현재 세팅을 유지하세요.";
+    if (ctr >= 0.01) return "CTR이 보통 수준입니다. 소재 테스트로 개선 여지가 있습니다.";
+    return "CTR이 낮아 클릭을 충분히 만들지 못하고 있습니다. 타겟 또는 소재 변경이 필요합니다.";
+  }
+
+  if (objective === "engagement") {
+    const rate = impressions ? Number(row.postEngagement || 0) / impressions : 0;
+    if (rate >= 0.05) return "참여율이 우수합니다. 반응이 좋은 소재이니 유사한 콘텐츠로 확장해도 좋습니다.";
+    if (rate >= 0.02) return "참여율이 보통 수준입니다. 소재 톤이나 CTA 문구를 조정해보세요.";
+    return "참여율이 낮습니다. 콘텐츠 포맷이나 메시지를 재검토하세요.";
+  }
+
+  if (objective === "video") {
+    const videoViews = Number(row.videoViews || 0);
+    if (!videoViews) return "Video 조회 데이터가 아직 없습니다. 집행 기간을 조금 더 지켜보세요.";
+    const completionRate = Number(row.videoCompletion || 0) / videoViews;
+    if (completionRate >= 0.3) return "완주율이 높아 소재 몰입도가 좋습니다. 예산 확대를 고려해도 좋습니다.";
+    if (completionRate >= 0.15) return "완주율이 보통 수준입니다. 영상 초반 3초의 후킹을 강화해보세요.";
+    return "완주율이 낮아 초반 이탈이 많습니다. 도입부 크리에이티브 교체를 추천합니다.";
+  }
+
+  if (objective === "awareness") {
+    const cpm = Number(row.cpm || 0);
+    if (frequency > 4) return "Frequency가 높아 동일 사용자에게 반복 노출되고 있습니다. 타겟을 넓히거나 소재를 교체하세요.";
+    if (cpm > 12000) return "CPM이 높은 편이라 노출 효율이 낮습니다. 타겟 범위를 재검토하세요.";
+    return "Reach가 안정적으로 확대되고 있고 광고 피로도도 낮습니다. 현재 설정을 유지하세요.";
+  }
+
+  return "Objective 정보를 확인할 수 없어 자동 판단이 어렵습니다. 직접 확인이 필요합니다.";
 }
 
-function metaAdsRankingCard(title, rows = [], tone = "good") {
-  return `<article class="action-item ad-ranking-card ${esc(tone)}">
-    <strong>${esc(title)}</strong>
-    ${rows.length ? `<ol>${rows.map((row, index) => (
-      `<li>
-        <span>${index + 1}</span>
-        <div>
-          <b title="${esc(metaAdsRankingName(row))}">${esc(metaAdsRankingName(row))}</b>
-          <p>Meta ROAS ${row.roas === null ? "-" : multiple(row.roas || row.metaRoas)} · 구매값 ${apiWon(row.purchaseValue || row.metaPurchaseValue)} · 광고비 ${apiWon(row.spend)}</p>
-        </div>
-      </li>`
-    )).join("")}</ol>` : `<p>표시할 광고 데이터가 없습니다.</p>`}
+// 표에서 보여줄 핵심 지표 한 줄(스캔용). 문장형 근거(metaAdsNarrative)와 함께 씁니다.
+function metaAdsKeyMetricLine(row = {}) {
+  const objective = row.objective || "unknown";
+  if (objective === "sales") return `ROAS ${row.roas === null ? "-" : multiple(row.roas)} · 구매 ${apiNum(row.purchases)}건`;
+  if (objective === "traffic") return `CTR ${pct(Number(row.ctr || 0) * 100)} · CPC ${apiWon(row.cpc)}`;
+  if (objective === "engagement") return `참여율 ${pct((Number(row.impressions || 0) ? Number(row.postEngagement || 0) / Number(row.impressions || 0) : 0) * 100)}`;
+  if (objective === "video") return `완주율 ${pct((Number(row.videoViews || 0) ? Number(row.videoCompletion || 0) / Number(row.videoViews || 0) : 0) * 100)}`;
+  if (objective === "awareness") return `Frequency ${Number(row.frequency || 0).toFixed(1)} · Reach ${apiNum(row.reach)}`;
+  return "";
+}
+
+// 별점 라벨(확대/유지/관찰/점검/중지)을 실제 액션 문구로 바꿉니다.
+function metaAdsDecisionActionText(label) {
+  const map = {
+    확대: "예산 확대 추천",
+    유지: "현행 유지",
+    관찰: "관찰 필요",
+    점검: "점검 필요",
+    중지: "중지 추천"
+  };
+  return map[label] || label;
+}
+
+// "이번 기간에 실제로 집행되었는지"를 Meta Ads Manager와 동일한 기준(광고비/노출/도달 중
+// 하나라도 0보다 큼)으로 판단합니다. 캠페인의 계정 상태(진행중/종료/초안)는 선택한 기간에
+// 실제로 돈이 나갔는지와 다를 수 있어(예: 이번 달엔 멈췄지만 상태는 "진행중"), Marketing
+// Director는 상태가 아니라 이 실행 여부를 기본 표시 기준으로 삼습니다.
+function metaAdsIsExecuted(row = {}) {
+  return Number(row.spend || 0) > 0 || Number(row.impressions || 0) > 0 || Number(row.reach || 0) > 0;
+}
+
+// 캠페인 전체 표를 집행 / 미집행 2그룹으로 나눕니다.
+// 기본 화면은 이번 기간에 실제로 운영된 광고만 보는 것이 목적이라, 미집행 캠페인은 하나로
+// 묶어 접어둡니다. 기간을 바꾸면 이 판단도 그 기간의 데이터로 다시 계산됩니다.
+function metaAdsStatusGroup(row) {
+  return metaAdsIsExecuted(row) ? "active" : "other";
+}
+
+// 특정 캠페인이 왜 이번 달 "집행 캠페인"에 보이는지/안 보이는지를 콘솔에서 바로 확인할 수 있게
+// 해주는 디버그 로그입니다. 상태(진행중 등)·생성일·이름은 판단에 전혀 쓰지 않고, 오직 선택한
+// 기간의 Insights 값(spend/impressions/reach)만으로 isVisible을 계산합니다.
+function logAdExecutionDebug(fullReport = {}, month) {
+  const rows = fullReport.rows || [];
+  const debugRows = rows.map((row) => {
+    const isVisible = metaAdsIsExecuted(row);
+    return {
+      campaign_name: row.campaignName,
+      selected_month: month,
+      spend: Number(row.spend || 0),
+      impressions: Number(row.impressions || 0),
+      reach: Number(row.reach || 0),
+      isVisible,
+      hideReason: isVisible ? "" : "이 기간 spend/impressions/reach가 모두 0 (status/생성일/이름은 판단에 사용 안 함)"
+    };
+  });
+  console.groupCollapsed(`[Ad Execution Debug] ${month} · 캠페인 ${debugRows.length}개 (집행 ${debugRows.filter((r) => r.isVisible).length}개 / 미집행 ${debugRows.filter((r) => !r.isVisible).length}개)`);
+  if (console.table) console.table(debugRows);
+  else debugRows.forEach((r) => console.log(r));
+  console.groupEnd();
+}
+
+function clampScore(value) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+// Objective별 factor를 0~100으로 정규화하는 기준선(벤치마크)입니다. Settings에서 바꿀 수 있는
+// 것은 이 factor들 사이의 "가중치"이고, 정규화 기준선 자체는 코드에 고정되어 있습니다
+// (계정 성과가 쌓이면 조정이 필요할 수 있습니다).
+const SCORE_FACTOR_FNS = {
+  sales: {
+    roas: (row) => {
+      const purchases = Number(row.purchases || 0);
+      const roas = Number(row.roas || 0);
+      if (!purchases) return 0;
+      if (roas < 3) return clampScore(10 + (roas / 3) * 40);
+      if (roas < 8) return clampScore(50 + ((roas - 3) / 5) * 40);
+      return clampScore(90 + Math.min(10, ((roas - 8) / 8) * 10));
+    },
+    purchase: (row) => clampScore((Number(row.purchases || 0) / 5) * 100),
+    cpa: (row) => {
+      const purchases = Number(row.purchases || 0);
+      if (!purchases) return 0;
+      const aov = Number(row.purchaseValue || 0) / purchases;
+      if (!aov) return 0;
+      const ratio = Number(row.cpa || 0) / aov;
+      if (ratio <= 0.3) return 100;
+      if (ratio >= 1) return 0;
+      return clampScore(100 * (1 - (ratio - 0.3) / 0.7));
+    }
+  },
+  traffic: {
+    ctr: (row) => clampScore((Number(row.ctr || 0) / 0.02) * 100),
+    landingPageView: (row) => {
+      const clicks = Number(row.clicks || 0);
+      const rate = clicks ? Number(row.landingPageViews || 0) / clicks : 0;
+      return clampScore((rate / 0.7) * 100);
+    },
+    cpc: (row) => {
+      const cpc = Number(row.cpc || 0);
+      if (!cpc) return 0;
+      if (cpc <= 200) return 100;
+      if (cpc >= 800) return 0;
+      return clampScore(100 * (1 - (cpc - 200) / 600));
+    }
+  },
+  video: {
+    thruplay: (row) => {
+      const impressions = Number(row.impressions || 0);
+      const rate = impressions ? Number(row.thruplayViews || 0) / impressions : 0;
+      return clampScore((rate / 0.3) * 100);
+    },
+    completionRate: (row) => {
+      const videoViews = Number(row.videoViews || 0);
+      if (!videoViews) return 0;
+      return clampScore((Number(row.videoCompletion || 0) / videoViews / 0.3) * 100);
+    }
+  },
+  engagement: {
+    engagementRate: (row) => {
+      const impressions = Number(row.impressions || 0);
+      const rate = impressions ? Number(row.postEngagement || 0) / impressions : 0;
+      return clampScore((rate / 0.05) * 100);
+    },
+    ctr: (row) => clampScore((Number(row.ctr || 0) / 0.02) * 100)
+  },
+  awareness: {
+    frequency: (row) => clampScore(100 - Math.max(0, Number(row.frequency || 0) - 3) * 25),
+    reach: (row) => {
+      const reach = Number(row.reach || 0);
+      const spend = Number(row.spend || 0);
+      if (!reach) return 0;
+      const cpr = spend / reach;
+      if (cpr <= 15) return 100;
+      if (cpr >= 50) return 0;
+      return clampScore(100 * (1 - (cpr - 15) / 35));
+    },
+    cpm: (row) => {
+      const cpm = Number(row.cpm || 0);
+      if (!cpm) return 0;
+      if (cpm <= 5000) return 100;
+      if (cpm >= 15000) return 0;
+      return clampScore(100 * (1 - (cpm - 5000) / 10000));
+    }
+  }
+};
+
+// Performance Score(0~100) Rule Engine. Objective별 factor의 0~100 정규화 점수를
+// Settings에서 설정한 가중치로 가중평균합니다. 가중치 합이 100이 아니어도 자동으로
+// 정규화되고, 가중치가 0/비어있는 factor는 계산에서 제외됩니다.
+function metaAdsPerformanceScore(row = {}, weights = {}) {
+  const objective = row.objective || "unknown";
+  const factorFns = SCORE_FACTOR_FNS[objective];
+  if (!factorFns) return null;
+  const objectiveWeights = weights[objective] || {};
+  let weightedSum = 0;
+  let weightTotal = 0;
+  for (const [factorKey, fn] of Object.entries(factorFns)) {
+    const weight = Number(objectiveWeights[factorKey] || 0);
+    if (!weight) continue;
+    weightedSum += fn(row) * weight;
+    weightTotal += weight;
+  }
+  if (!weightTotal) return null;
+  return Math.round(weightedSum / weightTotal);
+}
+
+// AI Decision: Objective와 무관하게 Score 하나로 통일한 5단계 신뢰도 표시입니다.
+function metaAdsStarDecision(score) {
+  if (score === null || score === undefined) return { stars: "-", label: "확인 필요", tone: "warn" };
+  if (score >= 80) return { stars: "★★★★★", label: "확대", tone: "good" };
+  if (score >= 60) return { stars: "★★★★", label: "유지", tone: "good" };
+  if (score >= 40) return { stars: "★★★", label: "관찰", tone: "warn" };
+  if (score >= 20) return { stars: "★★", label: "점검", tone: "warn" };
+  return { stars: "★", label: "중지", tone: "urgent" };
+}
+
+function metaAdsDecisionCellHtml(row, weights) {
+  const score = metaAdsPerformanceScore(row, weights);
+  const decision = metaAdsStarDecision(score);
+  return `<div class="ad-decision-cell ${esc(decision.tone)}">
+    <span class="ad-decision-stars">${esc(decision.stars)} ${esc(metaAdsDecisionActionText(decision.label))}</span>
+    <span class="ad-decision-line">${esc(metaAdsNarrative(row))}</span>
+  </div>`;
+}
+
+function metaAdsFullReportRowHtml(row, weights) {
+  const score = metaAdsPerformanceScore(row, weights);
+  return `<tr>
+    <td class="ad-name-cell" title="${esc(row.campaignName || "-")}">${esc(row.campaignName || "-")}</td>
+    <td>${esc(row.status || "확인 필요")}</td>
+    <td>${esc(metaAdsObjectiveLabel(row))}</td>
+    <td>${apiWon(row.spend)}</td>
+    <td>${apiNum(row.purchases)}</td>
+    <td>${apiWon(row.purchaseValue)}</td>
+    <td>${row.roas === null ? "-" : multiple(row.roas)}</td>
+    <td>${score === null ? "-" : `${score}점`}</td>
+    <td>${metaAdsDecisionCellHtml(row, weights)}</td>
+    <td class="ad-detail-col">${pct(Number(row.ctr || 0) * 100)}</td>
+    <td class="ad-detail-col">${apiWon(row.cpc)}</td>
+    <td class="ad-detail-col">${apiWon(row.cpm)}</td>
+    <td class="ad-detail-col">${Number(row.frequency || 0).toFixed(1)}</td>
+    <td class="ad-detail-col">${apiNum(row.landingPageViews)}</td>
+    <td class="ad-detail-col">${apiNum(row.profileVisits)}</td>
+    <td class="ad-detail-col">${pct(Number(row.conversionRate || 0) * 100)}</td>
+    <td class="ad-detail-col">${hasApiValue(row.cpa) ? apiWon(row.cpa) : "-"}</td>
+    <td class="ad-detail-col">${row.executionStart && row.executionEnd ? `${esc(row.executionStart)} ~ ${esc(row.executionEnd)}` : "-"}</td>
+  </tr>`;
+}
+
+function renderMetaAdsFullReportGroups(fullReport = {}, weights = {}, targets = {}) {
+  const groups = { active: [], other: [] };
+  if (!fullReport.error) {
+    (fullReport.rows || []).forEach((row) => {
+      groups[metaAdsStatusGroup(row)].push(row);
+    });
+  }
+  Object.values(groups).forEach((rows) => {
+    rows.sort((left, right) => Number(right.spend || 0) - Number(left.spend || 0));
+  });
+
+  const emptyRow = (label) => `<tr><td colspan="18">${esc(label)}</td></tr>`;
+  if (targets.active) {
+    targets.active.innerHTML = fullReport.error
+      ? emptyRow(fullReport.error)
+      : groups.active.length ? groups.active.map((row) => metaAdsFullReportRowHtml(row, weights)).join("") : emptyRow("이 기간에 집행된 캠페인이 없습니다.");
+  }
+  if (targets.other) {
+    targets.other.innerHTML = fullReport.error ? "" : groups.other.length ? groups.other.map((row) => metaAdsFullReportRowHtml(row, weights)).join("") : emptyRow("미집행 캠페인이 없습니다.");
+  }
+
+  const otherHeader = $("#adGroupOtherHeader");
+  if (otherHeader) otherHeader.textContent = `미집행 캠페인 (${groups.other.length})`;
+}
+
+// 상세 보기 토글은 DOM이 다시 그려져도 유지되도록 document 레벨에서 한 번만 바인딩합니다
+// (event delegation). 진행중/종료·보관·초안 표 2개 모두에 동시에 적용됩니다.
+let adFullReportTogglesBound = false;
+function bindAdFullReportToggles() {
+  if (adFullReportTogglesBound) return;
+  adFullReportTogglesBound = true;
+  document.addEventListener("click", (event) => {
+    const detailBtn = event.target.closest("#adDetailToggleBtn");
+    if (!detailBtn) return;
+    const wraps = $$(".ad-full-report-wrap");
+    if (!wraps.length) return;
+    const show = !wraps[0].classList.contains("show-detail");
+    wraps.forEach((wrap) => wrap.classList.toggle("show-detail", show));
+    detailBtn.textContent = show ? "기본만 보기" : "상세 보기";
+  });
+}
+
+// 오늘 확인해야 할 우선순위: 중지 > 점검 > 관찰 > 유지 > 확대 순으로 급한 것부터,
+// 같은 등급이면 광고비가 큰 캠페인(=금액이 걸린 위험이 큰 캠페인)을 먼저 보여줍니다.
+const AD_DECISION_URGENCY = { 중지: 0, 점검: 1, 관찰: 2, 유지: 3, 확대: 4 };
+
+// 매일 아침 3분 안에 볼 화면이라 카운트 집계 없이 "지금 확인할 3개"만 카드로 보여줍니다.
+function renderAdAiBriefing(fullReport = {}, weights = {}, target) {
+  if (!target) return;
+  if (fullReport.error) {
+    target.innerHTML = `<article class="action-item"><strong>브리핑 확인 불가</strong><p>${esc(fullReport.error)}</p></article>`;
+    return;
+  }
+  const rows = (fullReport.rows || []).filter((row) => Number(row.spend || 0) > 0);
+  const scored = rows.map((row) => {
+    const score = metaAdsPerformanceScore(row, weights);
+    const decision = metaAdsStarDecision(score);
+    return { row, score, decision };
+  });
+
+  const priority = [...scored]
+    .sort((left, right) => {
+      const urgencyDiff = (AD_DECISION_URGENCY[left.decision.label] ?? 5) - (AD_DECISION_URGENCY[right.decision.label] ?? 5);
+      if (urgencyDiff !== 0) return urgencyDiff;
+      return Number(right.row.spend || 0) - Number(left.row.spend || 0);
+    })
+    .slice(0, 3);
+
+  if (!priority.length) {
+    target.innerHTML = `<p class="hint-text">이번 기간에 광고비가 집행된 캠페인이 없습니다.</p>`;
+    return;
+  }
+
+  target.innerHTML = priority.map(({ row, decision }, index) => `
+    <article class="ad-ai-briefing-card ${esc(decision.tone)}">
+      <div class="ad-ai-briefing-head">
+        <span class="ad-ai-briefing-rank">${index + 1}</span>
+        <strong>${esc(decision.stars)} ${esc(metaAdsDecisionActionText(decision.label))}</strong>
+      </div>
+      <p class="ad-ai-briefing-name" title="${esc(row.campaignName || "-")}">${esc(row.campaignName || "-")}</p>
+      <p class="ad-ai-briefing-narrative">${esc(metaAdsNarrative(row))}</p>
+      <p class="ad-ai-briefing-metric">${esc(metaAdsKeyMetricLine(row))} · 광고비 ${apiWon(row.spend)}</p>
+    </article>
+  `).join("");
+}
+
+// Meta 계정 전체 합계(level=account)와 표에 실제로 보이는 캠페인 합계를 대조합니다.
+// 차이가 있으면 삭제/보관되어 캠페인 목록에는 없지만 과거 집행 이력이 insights에는
+// 남아있는 경우일 가능성이 큽니다(누락 캠페인 수로 표시).
+// Meta 값과 Marketing Director 값이 다를 때 "왜 다른지"를 사람이 바로 이해하도록 원인을 추정합니다.
+// 우선순위: 삭제/보관 캠페인(수치로 확인 가능) > 캐시 데이터 기준(source/cacheMode로 확인 가능) > 기간/Attribution(그 외 잔여 원인, 확정할 수 없어 가능성으로만 안내).
+function metaAdsReconciliationDiffReason(fullReport = {}, unlistedCount) {
+  if (unlistedCount > 0) {
+    return `삭제되었거나 보관 처리된 캠페인 ${unlistedCount}개의 과거 광고비가 Meta 전체 합계에는 남아있어 발생한 차이입니다.`;
+  }
+  const source = fullReport.source || "";
+  if (source.includes("_cached") || fullReport.cacheMode) {
+    return "저장된 캐시 데이터 기준으로 계산되어 Meta의 실시간 값과 약간의 시간차가 있을 수 있습니다. 동기화 점검으로 최신화해보세요.";
+  }
+  return "집계 기간 경계 또는 Meta의 Attribution(전환 인정 기준) 차이로 인한 것일 수 있습니다.";
+}
+
+function metaAdsReconciliationCard(label, metaValue, mdValue, formatFn, tolerance, reasonText) {
+  const ok = Math.abs(Number(metaValue || 0) - Number(mdValue || 0)) <= tolerance;
+  return `<article class="action-item ad-summary-card ad-core-kpi-card">
+    <span>${esc(label)}</span>
+    <strong>${ok ? "✔ 일치" : "⚠ 차이 발생"}</strong>
+    <p>Meta Total ${esc(formatFn(metaValue))} · Marketing Director Total ${esc(formatFn(mdValue))}</p>
+    ${ok ? "" : `<p>${esc(reasonText)}</p>`}
   </article>`;
+}
+
+function renderMetaAdsReconciliation(fullReport = {}, target) {
+  if (!target) return;
+  if (fullReport.error) {
+    target.innerHTML = `<article class="action-item"><strong>검증 불가</strong><p>${esc(fullReport.error)}</p></article>`;
+    return;
+  }
+  const r = fullReport.reconciliation || {};
+  const mdSpend = Number(r.tableSpend || 0);
+  const mdPurchaseValue = Number(r.tablePurchaseValue || 0);
+  const mdRoas = mdSpend ? mdPurchaseValue / mdSpend : null;
+  const metaRoas = hasApiValue(r.metaAccountRoas) ? Number(r.metaAccountRoas) : null;
+  const unlistedCount = Number(r.unlistedCampaignCount || 0);
+  const roasFormat = (value) => (value === null || value === undefined ? "-" : multiple(value));
+  // 부동소수점 합산 순서 차이로 생기는 몇 원 단위 오차까지 "차이 발생"으로 잡지 않도록
+  // 절대 오차(100원) 또는 Meta 합계의 0.5% 중 더 큰 값을 금액 허용 오차로 둡니다.
+  // ROAS는 배율이라 금액과 같은 기준을 쓸 수 없어 0.05x를 허용 오차로 둡니다.
+  const spendTolerance = Math.max(100, Math.abs(Number(r.metaAccountSpend || 0)) * 0.005);
+  const purchaseValueTolerance = Math.max(100, Math.abs(Number(r.metaAccountPurchaseValue || 0)) * 0.005);
+  const diffReason = metaAdsReconciliationDiffReason(fullReport, unlistedCount);
+  target.innerHTML = [
+    metaAdsReconciliationCard("총 광고비", r.metaAccountSpend, mdSpend, apiWon, spendTolerance, diffReason),
+    metaAdsReconciliationCard("총 구매값", r.metaAccountPurchaseValue, mdPurchaseValue, apiWon, purchaseValueTolerance, diffReason),
+    metaAdsReconciliationCard("총 ROAS", metaRoas, mdRoas, roasFormat, 0.05, diffReason),
+    `<article class="action-item ad-summary-card ad-core-kpi-card">
+      <span>누락 캠페인 수</span>
+      <strong>${apiNum(unlistedCount)}</strong>
+      <p>${unlistedCount ? `삭제/보관 캠페인 광고비 ${apiWon(r.unlistedSpend)} 별도 집계` : "전체 캠페인이 표에 반영됨"}</p>
+    </article>`
+  ].join("");
 }
 
 function renderAdOrganicCards(adPosts, organicPosts) {
@@ -1653,7 +2635,8 @@ function renderAdOrganicCards(adPosts, organicPosts) {
 
 async function renderCafe24Sales(data) {
   const target = $("#salesImpact");
-  if (!target) return;
+  const detailTarget = $("#salesDetail");
+  if (!target || !detailTarget) return;
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
   const sales = await getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=500`, 8000);
@@ -1666,7 +2649,9 @@ async function renderCafe24Sales(data) {
       salesKpiCard("오늘(선택기간) 매출", "연결 필요", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
       salesKpiCard("정상 주문", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
       salesKpiCard("제외 주문", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
-      salesKpiCard("평균 객단가", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
+      salesKpiCard("평균 객단가", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled")
+    ].join("");
+    detailTarget.innerHTML = [
       salesPaymentCard([], 0),
       salesTopProductsCard([])
     ].join("");
@@ -1683,7 +2668,9 @@ async function renderCafe24Sales(data) {
     salesKpiCard("오늘(선택기간) 매출", apiWon(totals.orderAmount), `${source} · ${sales.startDate || startDate} ~ ${sales.endDate || endDate}`),
     salesKpiCard("정상 주문", `${apiNum(totals.orderCount)}건`, "취소/환불 주문 제외"),
     salesKpiCard("제외 주문", `${apiNum(totals.excludedOrderCount)}건`, "취소/환불로 매출 집계에서 제외"),
-    salesKpiCard("평균 객단가", apiWon(totals.averageOrderAmount), "Cafe24 실제 결제 기준"),
+    salesKpiCard("평균 객단가", apiWon(totals.averageOrderAmount), "Cafe24 실제 결제 기준")
+  ].join("");
+  detailTarget.innerHTML = [
     salesPaymentCard(payments, Number(totals.orderAmount || 0)),
     salesTopProductsCard(topProducts)
   ].join("");
@@ -1842,8 +2829,11 @@ function cafe24ItemDisplayAmount(item = {}, quantity = 1) {
 }
 
 async function renderAdComparison(data) {
-  const target = $("#adComparison");
-  if (!target) return;
+  const healthTarget = $("#salesHealthBanner");
+  const metaTarget = $("#salesMetaEstimate");
+  const varianceTarget = $("#salesVariance");
+  const actionTarget = $("#salesAction");
+  if (!healthTarget || !metaTarget || !varianceTarget || !actionTarget) return;
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
   const [meta, cafe] = await Promise.all([
@@ -1855,17 +2845,163 @@ async function renderAdComparison(data) {
   const metaPurchaseValue = hasApiValue(metaTotals.purchaseValue) ? Number(metaTotals.purchaseValue) : null;
   const cafeOrderAmount = hasApiValue(cafeTotals.orderAmount) ? Number(cafeTotals.orderAmount) : null;
   const unmatchedValue = meta.error || cafe.error || metaPurchaseValue === null || cafeOrderAmount === null ? null : Math.max(0, metaPurchaseValue - cafeOrderAmount);
-  const cafeState = cafe.error ? salesConnectionState(cafe.error) : null;
-  target.innerHTML = [
-    salesCompareCard("Meta 구매값", meta.error ? "확인 필요" : apiWon(metaTotals.purchaseValue), `${meta.error || meta.source || "Meta Ads"} · 캠페인 ${apiNum((meta.campaigns || meta.rows || []).length)}개`, { status: Boolean(meta.error) }),
-    salesCompareCard("Cafe24 실제매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafeState ? `${cafeState.title} ${cafeState.note}` : `${cafe24SourceLabel(cafe)} · 정상 주문 ${apiNum(cafeTotals.orderCount)}건`, { status: Boolean(cafe.error), tone: "urgent" }),
-    salesCompareCard("차이", unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue), "Meta 구매값 - Cafe24 실제매출", { status: unmatchedValue === null }),
+  const mismatchRate = (!meta.error && !cafe.error && metaPurchaseValue !== null && cafeOrderAmount !== null && cafeOrderAmount > 0)
+    ? Math.abs(metaPurchaseValue - cafeOrderAmount) / cafeOrderAmount * 100
+    : null;
+
+  const decision = salesDecisionState({ meta, cafe, mismatchRate });
+
+  healthTarget.className = `ad-status-banner ${esc(decision.tone)}`;
+  healthTarget.innerHTML = `<span class="status-dot"></span><strong>Sales Health · ${esc(decision.label)}</strong><span class="note">${esc(decision.reason)}</span>`;
+
+  metaTarget.innerHTML = salesCompareCard("Meta 구매값", meta.error ? "확인 필요" : apiWon(metaTotals.purchaseValue), `${meta.error || meta.source || "Meta Ads"} · 캠페인 ${apiNum((meta.campaigns || meta.rows || []).length)}개`, { status: Boolean(meta.error), badge: cardBadge("meta", meta, hasApiValue(metaTotals.purchaseValue)) });
+
+  varianceTarget.innerHTML = [
+    salesCompareCard("차이", unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue), "Meta 구매값 - Cafe24 실제매출", { status: unmatchedValue === null, badge: unmatchedValue === null ? { label: "데이터 없음", tone: "muted" } : { label: "계산값", tone: "neutral" } }),
+    salesCompareCard("오차율", mismatchRate === null ? "확인 필요" : `${mismatchRate < 1 ? mismatchRate.toFixed(1) : Math.round(mismatchRate)}%`, "Cafe24 실제매출 대비 Meta 구매값 오차", { status: mismatchRate === null, tone: decision.tone === "error" ? "urgent" : decision.tone === "warn" ? "warn" : "" }),
     salesCompareCard("주의사항", "상품 단위 비교 아님", "현재 Meta 데이터는 캠페인 단위이므로 상품별 구매 분석으로 해석하지 않습니다.", { status: true })
   ].join("");
+
+  actionTarget.innerHTML = salesActionCard(decision);
+}
+
+// ============================================================================
+// Product Dashboard v1 — Cafe24 Orders + Products 기반 상품 의사결정 Dashboard.
+// 상품별 ROAS는 만들지 않고, Meta 광고비/ROAS는 기간 전체 참고치로만 표시한다.
+// mall.read_product 스코프가 없으면 서버가 insufficient_scope를 반환하며,
+// 이 경우 고정 문구 배너만 보여주고 나머지 카드/테이블은 비활성 처리한다.
+// ============================================================================
+const PRODUCT_SCOPE_BANNER_TEXT = "Cafe24 상품 데이터 접근 권한이 부족합니다. Cafe24 개발자센터에서 mall.read_product 스코프를 추가한 뒤 OAuth 재인증을 진행해주세요.";
+
+async function renderProductDashboard(data) {
+  const bannerTarget = $("#productDashboardBanner");
+  const metaRefTarget = $("#productDashboardMetaRef");
+  const rowsTarget = $("#productDashboardRows");
+  if (!bannerTarget || !metaRefTarget || !rowsTarget) return;
+  const startDate = `${data.month}-01`;
+  const endDate = monthEnd(data.month);
+  const result = await getJson(`/api/products/dashboard?since=${startDate}&until=${endDate}`, 15000);
+
+  if (result.error) {
+    bannerTarget.className = "ad-status-banner error";
+    bannerTarget.innerHTML = `<span class="status-dot"></span><strong>상품 Dashboard 오류</strong><span class="note">${esc(result.error)}</span>`;
+    metaRefTarget.innerHTML = "";
+    rowsTarget.innerHTML = `<tr><td colspan="7">상품 데이터를 불러오지 못했습니다.</td></tr>`;
+    return;
+  }
+
+  if (result.ok === false && result.reason === "insufficient_scope") {
+    bannerTarget.className = "ad-status-banner error";
+    bannerTarget.innerHTML = `<span class="status-dot"></span><strong>권한 부족</strong><span class="note">${esc(PRODUCT_SCOPE_BANNER_TEXT)}</span>`;
+    metaRefTarget.innerHTML = "";
+    rowsTarget.innerHTML = `<tr><td colspan="7">mall.read_product 스코프 추가 후 재인증하면 이 표가 채워집니다.</td></tr>`;
+    return;
+  }
+
+  const products = result.products || [];
+  const metaRef = result.metaReference || {};
+  const syncNote = result.catalogSyncedAt ? `상품 데이터 동기화 ${esc(formatRelativeMinutes(result.catalogSyncedAt))}` : "상품 데이터 동기화 시각 확인 불가";
+  bannerTarget.className = "ad-status-banner good";
+  bannerTarget.innerHTML = `<span class="status-dot"></span><strong>상품 Dashboard 정상</strong><span class="note">${syncNote} · 상품 ${apiNum(products.length)}개${result.unmatched?.count ? ` · 미매칭 주문항목 ${apiNum(result.unmatched.count)}건` : ""}</span>`;
+
+  metaRefTarget.innerHTML = [
+    salesCompareCard("Meta 광고비 (기간 참고치)", metaRef.error ? "확인 필요" : apiWon(metaRef.spend), "상품별 배분값 아님 · 기간 전체 합계", { status: Boolean(metaRef.error) }),
+    salesCompareCard("Meta ROAS (기간 참고치)", metaRef.error || metaRef.roas === null ? "확인 필요" : `${multiple(metaRef.roas)}`, "상품별 ROAS는 v1에서 만들지 않습니다.", { status: Boolean(metaRef.error) })
+  ].join("");
+
+  if (products.length === 0) {
+    rowsTarget.innerHTML = `<tr><td colspan="7">표시할 상품이 없습니다.</td></tr>`;
+    return;
+  }
+
+  rowsTarget.innerHTML = [...products]
+    .sort((a, b) => Number(b.salesAmount || 0) - Number(a.salesAmount || 0))
+    .map(productDashboardRowHtml)
+    .join("");
+}
+
+function productDashboardRowHtml(row) {
+  const actionClass = { Push: "good", Observe: "", Hold: "warn", Stop: "urgent" }[row.aiAction] || "";
+  return `<tr>
+    <td>${esc(row.productName)}<div class="hint-text">${esc(row.productCode || "")}</div></td>
+    <td>${apiNum(row.inventoryQuantity)}${row.soldOut ? ' <span class="badge urgent">품절</span>' : ""}</td>
+    <td>${row.daysOfStockLeft === null || row.daysOfStockLeft === undefined ? "-" : `${apiNum(row.daysOfStockLeft)}일`}</td>
+    <td>${apiNum(row.quantitySold)}</td>
+    <td>${apiWon(row.salesAmount)}</td>
+    <td>${Number(row.salesVelocityPerDay || 0).toFixed(2)}개</td>
+    <td><span class="badge ${actionClass}">${esc(row.aiAction)}</span><div class="hint-text">${esc(row.aiActionReason || "")}</div></td>
+  </tr>`;
+}
+
+function formatRelativeMinutes(isoTime) {
+  const then = new Date(isoTime).getTime();
+  if (!Number.isFinite(then)) return "확인 불가";
+  const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (minutes < 1) return "방금 전";
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  return `${Math.round(hours / 24)}일 전`;
+}
+
+// ============================================================================
+// Settings 탭 — Cafe24 상품 API 진단 위젯. 로컬 서버 자체 진단
+// (/api/diagnostics/cafe24-product-access)을 호출해 dashboardReady를 보여준다.
+// 이 위젯은 로컬 8787의 Cafe24 토큰 상태를 반영하며, Render 배포본의 진단
+// (/api/diagnostics/cafe24-product-check)과는 별개다.
+// ============================================================================
+async function renderCafe24ProductDiagnostics() {
+  const target = $("#cafe24ProductDiagnostics");
+  if (!target) return;
+  target.innerHTML = `<article class="action-item"><strong>Cafe24 상품 API 진단 확인 중</strong><p>로컬 서버 기준으로 확인하고 있습니다.</p></article>`;
+  const result = await getJson("/api/diagnostics/cafe24-product-access", 15000);
+  const ready = result.dashboardReady || {};
+  const keys = Object.keys(ready);
+  if (keys.length === 0) {
+    target.innerHTML = `<article class="action-item"><strong>진단 결과 없음</strong><p>${esc(result.message || "진단 API 응답을 확인할 수 없습니다.")}</p></article>`;
+    return;
+  }
+  target.innerHTML = `<div class="cafe24-diagnostics-grid">${keys.map((key) => (
+    `<article class="action-item"><strong>${ready[key]} ${esc(key)}</strong></article>`
+  )).join("")}</div>
+  <p class="hint-text">이 결과는 로컬 8787 서버 기준입니다. mall.read_product 스코프 추가 후 재인증했다면, Render 배포본(samplas-marketing-os.onrender.com/api/diagnostics/cafe24-product-check)도 함께 확인해보세요.</p>`;
+}
+
+function salesDecisionState({ meta, cafe, mismatchRate }) {
+  if (cafe.error) {
+    const state = bannerState(cafe, "cafe24");
+    return { tone: state.tone === "error" ? "error" : state.tone, label: state.label, reason: state.reason || "Cafe24 데이터를 불러오지 못했습니다.", action: state.action || "Cafe24 연결을 확인하세요." };
+  }
+  if (meta.error) {
+    const state = bannerState(meta, "meta");
+    return { tone: state.tone === "error" ? "error" : state.tone, label: state.label, reason: state.reason || "Meta 데이터를 불러오지 못했습니다.", action: state.action || "Meta Ads 연결을 확인하세요." };
+  }
+  if (mismatchRate === null) {
+    return { tone: "warn", label: "판단 보류", reason: "비교할 매출 데이터가 아직 부족합니다.", action: "이번 달 주문이 쌓이면 다시 확인하세요." };
+  }
+  const rounded = mismatchRate < 1 ? mismatchRate.toFixed(1) : Math.round(mismatchRate);
+  if (mismatchRate <= 10) {
+    return { tone: "good", label: "정상", reason: `Meta와 Cafe24 오차 ${rounded}%`, action: "Meta 데이터를 참고해도 됩니다." };
+  }
+  if (mismatchRate <= 25) {
+    return { tone: "warn", label: "주의", reason: `Meta와 Cafe24 오차 ${rounded}%`, action: "광고 기여 기간 차이를 먼저 확인하세요." };
+  }
+  return { tone: "error", label: "주의", reason: `Meta와 Cafe24 오차 ${rounded}%`, action: "광고 귀속 또는 API 상태를 점검하세요." };
+}
+
+function salesActionCard(decision) {
+  const tone = decision.tone === "error" ? "urgent" : decision.tone === "warn" ? "warn" : "good";
+  const icon = decision.tone === "error" ? "\u{1F534}" : decision.tone === "warn" ? "\u{1F7E1}" : "\u{1F7E2}";
+  return `<article class="action-item ${esc(tone)} sales-compare-card">
+    <span>${icon} ${esc(decision.label)}</span>
+    <strong>${esc(decision.reason)}</strong>
+    <p>${esc(decision.action)}</p>
+  </article>`;
 }
 
 function salesCompareCard(title, value, note, options = {}) {
   return `<article class="action-item sales-compare-card">
+    ${dataBadgeHtml(options.badge)}
     <span>${esc(title)}</span>
     ${options.status ? `<b class="sales-status-badge ${esc(options.tone || "")}">${esc(value)}</b>` : `<strong>${esc(value)}</strong>`}
     <p>${esc(note)}</p>
@@ -1907,16 +3043,65 @@ async function renderStoryInsights() {
   )).join("") || `<div class="action-item">스토리 데이터가 없습니다.</div>`;
 }
 
+// loadMonths()가 데이터를 가져온 "그 순간"의 HTTP 응답 하나로만 성공/실패가 결정되고,
+// 이후에는 아무 코드도 그 결과를 다시 검증하지 않는다(getJson()의 108행이 유일하게 .error를
+// 세팅하는 지점). 그래서 화면을 이미 열어둔 상태에서 토큰이 재발급되는 등 원인이 해소돼도
+// Overview는 새로고침 전까지 예전 실패 상태를 계속 보여준다. 현재 달에 한해 세션당 1회만
+// 조용히 재확인해서, 실제로는 해결된 실패를 화면에 계속 남겨두지 않도록 한다.
+// (2026-07-08 Instagram Data Sync stale-error 자동 복구)
+const instagramRetriedMonths = new Set();
+
 async function updateSync(data) {
-  const instagramStatus = sourceLabel(data);
-  const instagramOk = !data.error;
-  setSyncRow("instagramSyncRow", instagramOk, "Instagram", sourceText(data), data.error ? statusTextForError(data) : instagramStatus === "CSV" ? "CSV" : "캐시");
+  const instagramState = bannerState(data, "instagram");
+  // 근본 원인: bannerState()는 data.error가 없어도(=API 자체는 정상) source에 "_cached"가
+  // 붙어 있으면(서버가 온디스크 캐시를 서빙 중일 때 항상 이렇게 붙는다, server.mjs의
+  // decorateCachedSource()) isLiveSource()가 live=false로 판정하고, cacheFreshnessTone()이
+  // 캐시가 24시간(1440분) 넘게 오래됐으면 tone:"error"를 반환한다. sidebarBadgeFromState()는
+  // 그 tone을 그대로 "실패"로 표시해왔다. 반면 renderApiHealthCenter/homeActivityCards의
+  // instagramOk는 캐시 최신성을 전혀 보지 않고 오직 data.error 유무만 본다 — 그래서
+  // renderApiHealthCenter는 "정상", Sidebar는 "실패"로 서로 어긋났다.
+  // 수정: Sidebar도 renderApiHealthCenter와 동일하게 data.error 유무만으로 판정한다.
+  // (2026-07-08 Sidebar/HealthCenter 판정 불일치 수정)
+  const instagramSidebar = data.error
+    ? {
+        tone: "error",
+        badge: instagramState.label === "토큰 만료" || instagramState.label === "권한 만료" ? "재인증 필요" : "실패"
+      }
+    : { tone: "good", badge: "정상" };
+  console.log("sidebar", { bannerState: instagramState, instagramSidebar, dataError: data.error || null, dataSource: data.source });
+
+  if (data.error && data.month === months[0] && !instagramRetriedMonths.has(data.month)) {
+    instagramRetriedMonths.add(data.month);
+    const fresh = await getJson(`/api/instagram/monthly?month=${data.month}`, 20000);
+    if (!fresh.error) {
+      const index = monthlyData.findIndex((item) => item.month === data.month);
+      if (index !== -1) monthlyData[index] = fresh;
+      if (selectedMonth().month === data.month) {
+        renderAll();
+        return;
+      }
+    }
+  }
+  setSyncRow("instagramSyncRow", instagramSidebar.tone, "Instagram", instagramSidebar.badge);
 
   const meta = await getJson(`/api/meta-ads/summary?since=${data.month}-01&until=${monthEnd(data.month)}`, 5000);
-  setSyncRow("metaAdsSyncRow", !meta.error, "Meta Ads", meta.error || (String(meta.source || "").includes("_cached") ? "저장된 광고 데이터 기준" : "연결 확인"), meta.error ? statusTextForError(meta) : (String(meta.source || "").includes("_cached") ? "캐시" : "정상"));
+  const metaSidebar = sidebarBadgeFromState(bannerState(meta, "meta"));
+  setSyncRow("metaAdsSyncRow", metaSidebar.tone, "Meta Ads", metaSidebar.badge);
 
   const cafeStatus = await getCafe24Status(`${data.month}-01`, monthEnd(data.month));
-  setSyncRow("cafe24SyncRow", cafeStatus.ok, "Cafe24", cafeStatus.detail, cafeStatus.badge, cafeStatus.badge);
+  const cafeReauth = /refresh_token|재인증/i.test(String(cafeStatus.detail || ""));
+  const cafeSidebar = cafeStatus.ok ? { tone: "good", badge: "정상" } : { tone: "error", badge: cafeReauth ? "재인증 필요" : "실패" };
+  setSyncRow("cafe24SyncRow", cafeSidebar.tone, "Cafe24", cafeSidebar.badge);
+  // Sidebar에도 재인증 버튼을 노출한다(요청: Sidebar Cafe24 상태 배지 또는 관련 영역에서
+  // 재인증 시작 URL로 이동 가능해야 함). 버튼 자체는 HTML에 이미 있었지만 항상 숨겨져 있었고
+  // 클릭해도 toast만 띄우고 실제로는 아무 데도 이동하지 않았다 — 여기서 조건부로 보이게 하고,
+  // 클릭 동작은 bind()에서 /api/cafe24/oauth/start로 실제 이동하도록 고쳤다.
+  // (2026-07-08 Cafe24 재인증 흐름 개선)
+  const fixBtn = $("#syncFixBtn");
+  if (fixBtn) {
+    fixBtn.classList.toggle("hidden", !cafeReauth);
+    if (cafeReauth) fixBtn.textContent = "Cafe24 재인증하기";
+  }
 }
 
 function renderAll() {
@@ -1934,10 +3119,18 @@ function renderAll() {
   updateSync(data);
 }
 
-async function loadMonths() {
+// options.forceRefresh (2026-07-08 Instagram 자동 동기화 기능 추가): "지금 동기화"
+// 버튼은 캐시를 다시 읽는 것만으로는 새 게시물을 반영할 수 없었다 — 서버의
+// buildInstagramMonthlyDataWithCache()는 기본적으로 캐시 우선이라 이 함수가
+// refresh=1을 보내지 않으면 항상 같은 on-disk 캐시만 돌려줬다. forceRefresh가 true면
+// 실제 API를 다시 호출해야 하는 이번 달(months[0])에 한해 refresh=1을 붙인다.
+// 지난 달들은 서버가 어차피 CSV/저장 캐시 전용으로 처리하므로 붙이지 않는다.
+async function loadMonths(options = {}) {
+  const forceRefresh = Boolean(options.forceRefresh);
   monthlyData = [];
   for (const month of months) {
-    const data = await getJson(`/api/instagram/monthly?month=${month}`, 20000);
+    const refreshQuery = forceRefresh && month === months[0] ? "&refresh=1" : "";
+    const data = await getJson(`/api/instagram/monthly?month=${month}${refreshQuery}`, 20000);
     monthlyData.push(data.error ? errorMonth(month, data.error) : data);
   }
   monthlyData.sort((a, b) => b.month.localeCompare(a.month));
@@ -1947,13 +3140,16 @@ async function loadMonths() {
 
 function bind() {
   $("#refreshBtn")?.addEventListener("click", async () => {
-    toast("데이터를 다시 확인합니다.");
-    await loadMonths();
+    toast("Instagram 최신 게시물을 실제 API에서 다시 가져옵니다.");
+    await loadMonths({ forceRefresh: true });
     await renderStoryInsights();
   });
-  $("#monthlyReportBtn")?.addEventListener("click", () => document.querySelector('[data-view="Reports"]')?.click());
   $("#refreshStoriesBtn")?.addEventListener("click", renderStoryInsights);
-  $("#syncFixBtn")?.addEventListener("click", () => toast("Cafe24 오류는 Render Cafe24 재인증이 필요합니다."));
+  // 같은 탭에서 이동한다 — Cafe24 로그인/동의 후 서버가 "/"로 리다이렉트하므로 그대로
+  // 이 탭으로 돌아온다. (2026-07-08 Cafe24 재인증 흐름 개선)
+  $("#syncFixBtn")?.addEventListener("click", () => {
+    window.location.href = "/api/cafe24/oauth/start";
+  });
   $("#healthRefreshBtn")?.addEventListener("click", () => {
     toast("연동 상태를 다시 확인합니다.");
     renderApiHealthCenter(selectedMonth());
@@ -2015,7 +3211,28 @@ function bind() {
   });
 }
 
+// server.mjs의 /api/cafe24/oauth/callback은 성공/실패 모두 "/"로 리다이렉트하며
+// 결과를 쿼리스트링으로만 전달한다(토큰 값은 절대 URL에 담지 않는다 — 실패 시 reason은
+// safeErrorMessage()로 이미 마스킹된 짧은 사유 문구뿐). 여기서 그 쿼리스트링을 읽어
+// toast + Settings 오류 배너로 안내하고, 새로고침 시 같은 메시지가 반복 표시되지 않도록
+// 주소창에서 즉시 제거한다. (2026-07-08 Cafe24 재인증 흐름 개선)
+function handleCafe24OAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get("cafe24_oauth");
+  if (!result) return;
+  const reason = params.get("reason") || "";
+  window.history.replaceState(null, "", window.location.pathname);
+  if (result === "success") {
+    toast("Cafe24 재인증이 완료되었습니다. 동기화 상태를 확인합니다.");
+    cafe24OAuthErrorReason = null;
+  } else if (result === "error") {
+    toast("Cafe24 재인증에 실패했습니다. Settings에서 자세한 내용을 확인하세요.");
+    cafe24OAuthErrorReason = reason || "원인을 확인할 수 없습니다.";
+  }
+}
+
 renderNav();
 bind();
+handleCafe24OAuthRedirect();
 loadMonths();
 renderStoryInsights();

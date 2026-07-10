@@ -38,6 +38,12 @@ createServer(async (req, res) => {
         instagram: integrations.instagram.ok,
         metaAds: integrations.metaAds.ok,
         cafe24: integrations.cafe24.ok,
+        instagramSync: {
+          lastAttemptAt: instagramSyncScheduler.lastAttemptAt,
+          lastSuccessAt: instagramSyncScheduler.lastSuccessAt,
+          lastError: instagramSyncScheduler.lastError,
+          intervalMs: instagramSyncScheduler.intervalMs
+        },
         environment: integrations,
         pageId: env.FACEBOOK_PAGE_ID || null,
         instagramBusinessAccountId: env.INSTAGRAM_BUSINESS_ACCOUNT_ID || null,
@@ -68,6 +74,24 @@ createServer(async (req, res) => {
       );
       return json(res, data);
     }
+    if (url.pathname === "/api/meta-ads/full-report") {
+      const data = await buildMetaAdsFullReportWithCache(
+        url.searchParams.get("since") || `${currentMonth()}-01`,
+        url.searchParams.get("until") || todayKey(),
+        { refresh: url.searchParams.get("refresh") === "1" }
+      );
+      return json(res, data);
+    }
+    if (url.pathname === "/api/meta-ads/score-weights") {
+      if (req.method === "POST") {
+        if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+        const payload = await readJsonBody(req);
+        const saved = await writeScoreWeights(payload.weights || payload || {});
+        return json(res, { weights: saved, saved: true });
+      }
+      const weights = await readScoreWeights();
+      return json(res, { weights });
+    }
     if (url.pathname === "/api/contents/cardnews-status") {
       const data = await fetchContentsCardnewsStatus();
       return json(res, data);
@@ -84,6 +108,16 @@ createServer(async (req, res) => {
       );
       return json(res, data);
     }
+    if (url.pathname === "/api/products/dashboard") {
+      const since = url.searchParams.get("since") || `${currentMonth()}-01`;
+      const until = url.searchParams.get("until") || todayKey();
+      const data = await buildProductDashboardWithCache(since, until, {
+        refresh: url.searchParams.get("refresh") === "1",
+        productLimit: url.searchParams.get("productLimit") ? Number(url.searchParams.get("productLimit")) : undefined,
+        orderLimit: url.searchParams.get("orderLimit") ? Number(url.searchParams.get("orderLimit")) : undefined
+      });
+      return json(res, data);
+    }
     if (url.pathname === "/api/cafe24/csv/import") {
       if (req.method !== "POST") return json(res, { error: "POST만 지원합니다." }, 405);
       if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
@@ -98,19 +132,66 @@ createServer(async (req, res) => {
     if (url.pathname === "/api/cafe24/oauth/start") {
       return redirect(res, buildCafe24AuthorizeUrl());
     }
+    if (url.pathname === "/api/diagnostics/cafe24-oauth-config") {
+      // redirect_uri 불일치("invalid_request: redirect_uri is invalid") 진단용 읽기 전용 API.
+      // client_secret/access_token/refresh_token은 절대 포함하지 않는다.
+      // buildCafe24AuthorizeUrl()을 직접 호출하지 않는다 — 그 함수는 매번 새 state를 생성해
+      // env.CAFE24_OAUTH_STATE를 덮어쓰기 때문에(부작용), 실제 재인증 진행 중에 이 진단
+      // endpoint를 호출하면 진행 중이던 재인증의 state 검증이 깨질 수 있다. 여기서는 미리보기용
+      // authorize URL을 별도로, 부작용 없이 다시 조립한다. (2026-07-08 Cafe24 redirect_uri 진단)
+      try {
+        const required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID"];
+        const missing = required.filter((key) => !env[key]);
+        if (missing.length) {
+          throw new Error(`Cafe24 OAuth 시작에 필요한 값이 없습니다: ${missing.join(", ")}`);
+        }
+        const redirectUri = cafe24RedirectUri();
+        const previewUrl = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/oauth/authorize`);
+        previewUrl.searchParams.set("response_type", "code");
+        previewUrl.searchParams.set("client_id", env.CAFE24_CLIENT_ID);
+        previewUrl.searchParams.set("state", "(실제 요청마다 새로 생성됨 - 미리보기용 자리표시자)");
+        previewUrl.searchParams.set("redirect_uri", redirectUri);
+        if (env.CAFE24_SCOPES) previewUrl.searchParams.set("scope", env.CAFE24_SCOPES);
+        return json(res, {
+          ok: true,
+          mallId: env.CAFE24_MALL_ID || null,
+          clientId: env.CAFE24_CLIENT_ID || null,
+          redirectUriSource: env.CAFE24_REDIRECT_URI ? "env.CAFE24_REDIRECT_URI" : "fallback (host:port from server)",
+          redirectUriDecoded: redirectUri,
+          redirectUriEncoded: encodeURIComponent(redirectUri),
+          scopesConfigured: env.CAFE24_SCOPES || null,
+          authorizeUrlPreview: previewUrl.toString(),
+          note: "authorizeUrlPreview의 redirect_uri가 Cafe24 Developers Center에 등록된 값과 글자 하나까지 동일해야 합니다. state 값은 실제 재인증 클릭 시 매번 새로 생성되므로 여기서는 자리표시자입니다."
+        });
+      } catch (error) {
+        return json(res, { ok: false, error: safeErrorMessage(error) }, 400);
+      }
+    }
     if (url.pathname === "/api/cafe24/oauth/callback") {
-      const data = await handleCafe24OAuthCallback(url);
-      return html(res, cafe24OAuthSuccessHtml(data));
+      // 재인증 성공/실패 어느 쪽이든 토큰/시크릿 값을 화면에 절대 노출하지 않는다.
+      // 성공/실패 모두 "/"로 리다이렉트해서 대시보드 SPA가 쿼리스트링만 보고
+      // 토스트 + Settings 오류 배너로 안내하도록 한다. (2026-07-08 Cafe24 재인증 흐름 개선)
+      try {
+        await handleCafe24OAuthCallback(url);
+        return redirect(res, "/?cafe24_oauth=success");
+      } catch (error) {
+        await logApiError("cafe24_oauth_callback", error, {});
+        return redirect(res, `/?cafe24_oauth=error&reason=${encodeURIComponent(safeErrorMessage(error))}`);
+      }
     }
     if (url.pathname === "/api/diagnostics/logs") {
       const data = await readApiErrorLog(Number(url.searchParams.get("limit") || 50));
       return json(res, data);
     }
-    if (url.pathname === "/api/diagnostics/cafe24-product-check") {
-            const data = await diagnoseCafe24ProductAccessSafe();
-            return json(res, data);
+    if (url.pathname === "/api/diagnostics/cafe24-product-access") {
+      const data = await diagnoseCafe24ProductAccess();
+      return json(res, data);
     }
-        if (url.pathname.startsWith("/outputs/")) {
+    if (url.pathname === "/api/diagnostics/cafe24-product-check") {
+      const data = await diagnoseCafe24ProductAccess();
+      return json(res, data);
+    }
+    if (url.pathname.startsWith("/outputs/")) {
       return serveFile(res, join(root, url.pathname));
     }
     return serveFile(res, join(outputDir, url.pathname.replace(/^\//, "")));
@@ -120,6 +201,10 @@ createServer(async (req, res) => {
   }
 }).listen(port, host, () => {
   console.log(`SAMPLAS Marketing OS running at http://${host}:${port}`);
+  // Instagram 자동 동기화 스케줄러 시작: 서버 부팅 시 1회 실행 후 6시간마다 반복.
+  // (2026-07-08 Instagram 자동 동기화 기능 추가)
+  runInstagramBackgroundSync();
+  setInterval(runInstagramBackgroundSync, instagramSyncScheduler.intervalMs);
 });
 
 async function loadEnv() {
@@ -262,6 +347,9 @@ async function buildMetaAdsSummary(since, until, options = {}) {
     time_range: JSON.stringify({ since, until }),
     limit: 100
   });
+  await logMetaAdsDiagnostic(body.data || [], { since, until, level });
+  const campaignIds = [...new Set((body.data || []).map((row) => row.campaign_id).filter(Boolean))];
+  const campaignMeta = await fetchCampaignObjectives(campaignIds);
   const rows = (body.data || []).map((row) => {
     const spend = Number(row.spend || 0);
     const purchaseValue = actionValue(row.action_values, "purchase");
@@ -269,6 +357,19 @@ async function buildMetaAdsSummary(since, until, options = {}) {
     const clicks = Number(row.clicks || 0);
     const purchases = actionValue(row.actions, "purchase");
     const roas = spend ? purchaseValue / spend : null;
+    const meta = campaignMeta[row.campaign_id] || {};
+    const objectiveRaw = meta.objective || null;
+    const frequency = Number(row.frequency || 0);
+    const landingPageViews = actionValue(row.actions, ["landing_page_view"]);
+    const postEngagement = actionValue(row.actions, ["post_engagement"]);
+    const likes = actionValue(row.actions, ["like", "post_reaction"]);
+    const saves = actionValue(row.actions, ["onsite_conversion.post_save", "save"]);
+    const shares = actionValue(row.actions, ["post", "onsite_conversion.post_share"]);
+    const profileVisits = actionValue(row.actions, ["onsite_conversion.profile_visit", "ig_profile_visit"]);
+    const videoViews = actionValue(row.actions, ["video_view"]);
+    const videoWatchTime = actionValue(row.video_avg_time_watched_actions, ["video_view"]);
+    const videoCompletion = actionValue(row.video_p100_watched_actions, ["video_view"]);
+    const thruplayViews = actionValue(row.video_thruplay_watched_actions, ["video_view"]);
     return {
       campaignId: row.campaign_id,
       campaignName: row.campaign_name,
@@ -281,6 +382,7 @@ async function buildMetaAdsSummary(since, until, options = {}) {
       reach: Number(row.reach || 0),
       impressions,
       clicks,
+      frequency,
       cpc: clicks ? spend / clicks : 0,
       cpm: impressions ? (spend / impressions) * 1000 : 0,
       ctr: impressions ? clicks / impressions : 0,
@@ -289,11 +391,26 @@ async function buildMetaAdsSummary(since, until, options = {}) {
       purchaseValue,
       metaPurchaseValue: purchaseValue,
       roas,
-      metaRoas: roas
+      metaRoas: roas,
+      cpa: purchases ? spend / purchases : null,
+      objectiveRaw,
+      objective: normalizeMetaObjective(objectiveRaw),
+      status: metaCampaignStatusLabel(meta.effective_status),
+      landingPageViews,
+      postEngagement,
+      likes,
+      saves,
+      shares,
+      profileVisits,
+      videoViews,
+      videoWatchTime,
+      videoCompletion,
+      thruplayViews
     };
   });
   const result = {
     source: "meta_marketing_api",
+    syncedAt: new Date().toISOString(),
     since,
     until,
     level,
@@ -310,29 +427,276 @@ async function buildMetaAdsSummary(since, until, options = {}) {
   return result;
 }
 
+// Performance Score Rule Engine의 기본 가중치입니다. Settings 화면에서 사용자가 수정할 수 있고,
+// 수정한 값은 work/meta-ads-score-weights.json에 저장됩니다. 실제 점수 계산(0~100 정규화 로직)은
+// 프론트엔드(samplas-marketing-os.js)에 있고, 서버는 가중치 값만 읽고 씁니다.
+const DEFAULT_SCORE_WEIGHTS = {
+  sales: { roas: 50, purchase: 30, cpa: 20 },
+  traffic: { ctr: 35, landingPageView: 35, cpc: 30 },
+  video: { thruplay: 50, completionRate: 50 },
+  engagement: { engagementRate: 70, ctr: 30 },
+  awareness: { reach: 35, frequency: 35, cpm: 30 }
+};
+
+function scoreWeightsFilePath() {
+  return join(workDir, "meta-ads-score-weights.json");
+}
+
+function mergeScoreWeights(defaults, saved = {}) {
+  const merged = {};
+  for (const [objective, factors] of Object.entries(defaults)) {
+    const savedFactors = saved[objective] || {};
+    // factor 구조가 바뀌어도(예: traffic의 profileVisit → cpc) 예전 저장값에 남아있는
+    // 더 이상 쓰이지 않는 key는 무시하고, 지금 정의된 key만 덮어씁니다.
+    const next = { ...factors };
+    for (const factorKey of Object.keys(factors)) {
+      if (savedFactors[factorKey] !== undefined) next[factorKey] = savedFactors[factorKey];
+    }
+    merged[objective] = next;
+  }
+  return merged;
+}
+
+async function readScoreWeights() {
+  try {
+    const file = scoreWeightsFilePath();
+    if (existsSync(file)) {
+      const saved = JSON.parse(await readFile(file, "utf8"));
+      return mergeScoreWeights(DEFAULT_SCORE_WEIGHTS, saved);
+    }
+  } catch {
+    // 저장된 파일이 손상됐으면 기본값으로 폴백합니다.
+  }
+  return DEFAULT_SCORE_WEIGHTS;
+}
+
+async function writeScoreWeights(next) {
+  const merged = mergeScoreWeights(DEFAULT_SCORE_WEIGHTS, next);
+  await mkdir(workDir, { recursive: true });
+  await writeFile(scoreWeightsFilePath(), JSON.stringify(merged, null, 2));
+  return merged;
+}
+
+// Meta Ads Manager처럼 "전체 캠페인"(집행 이력이 없는 캠페인 포함)을 보여주기 위한 리포트.
+// buildMetaAdsSummary()는 Insights에 잡히는(=집행 이력이 있는) 캠페인만 반환하므로,
+// 별도로 계정의 전체 캠페인 목록(/campaigns)을 가져와 Insights와 LEFT JOIN 합니다.
+// 캠페인명이나 생성일이 아니라 이번 기간 Insights 값만으로 "실제 집행됐는지"를 판단합니다.
+// (클라이언트의 metaAdsIsExecuted와 동일한 기준을 서버에서도 그대로 씁니다.)
+function isMetaAdsExecutedRow(row) {
+  return Number(row.spend || 0) > 0 || Number(row.impressions || 0) > 0 || Number(row.reach || 0) > 0;
+}
+
+function subtractMonthsFromDateKey(dateKey, months) {
+  const [year, month] = String(dateKey).split("-").map(Number);
+  const d = new Date(Date.UTC(year, month - 1 - months, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
+// 캠페인명("...2026. 5. 31. 캠페인")이나 생성일은 실제 집행 기간과 다를 수 있습니다(예: 이름은
+// 5/31 하루짜리처럼 보이지만 실제로는 6월에도 계속 집행비가 발생). 그래서 Meta Insights의
+// 일별(time_increment=1) 데이터를 직접 훑어서 spend/impressions/reach가 하나라도 발생한
+// 첫날과 마지막날을 "실제 집행 기간"으로 계산합니다. 비용을 아끼기 위해 이번 기간에 실제로
+// 집행된 캠페인에 한해서만(보통 47개 중 몇 개뿐) 조회하고, 조회 범위도 선택한 기간 기준
+// 3개월 전까지로만 넉넉하게 잡습니다(무제한 과거 조회는 하지 않음 — 정확한 "최초 집행일"이
+// 아니라 "선택한 기간에 이 캠페인이 왜 보이는지 이해하기 위한 근처 실제 구간" 목적입니다).
+async function fetchCampaignExecutionWindows(adAccountId, campaignIds, until) {
+  if (!campaignIds.length) return {};
+  const lookbackSince = subtractMonthsFromDateKey(until, 3);
+  try {
+    const dailyRows = await graphGetAllPages(`${adAccountId}/insights`, {
+      level: "campaign",
+      time_increment: 1,
+      time_range: JSON.stringify({ since: lookbackSince, until }),
+      fields: "campaign_id,spend,impressions,reach",
+      filtering: JSON.stringify([{ field: "campaign.id", operator: "IN", value: campaignIds }]),
+      limit: 500
+    }, { maxPages: 20 });
+    const windows = {};
+    dailyRows.forEach((row) => {
+      if (!isMetaAdsExecutedRow(row)) return;
+      const date = row.date_start;
+      if (!date) return;
+      const existing = windows[row.campaign_id];
+      if (!existing) {
+        windows[row.campaign_id] = { first: date, last: date };
+      } else {
+        if (date < existing.first) existing.first = date;
+        if (date > existing.last) existing.last = date;
+      }
+    });
+    return windows;
+  } catch (error) {
+    await logApiError("meta_ads_execution_window", error, { since: lookbackSince, until, campaignCount: campaignIds.length });
+    return {};
+  }
+}
+
+async function buildMetaAdsFullReport(since, until) {
+  const adAccountId = cleanAdAccountId();
+  if (!adAccountId) throw new Error(".env에 META_AD_ACCOUNT_ID가 없습니다.");
+
+  const [campaigns, insightsRows, accountTotals] = await Promise.all([
+    fetchAllCampaignsList(adAccountId),
+    fetchAllCampaignInsights(adAccountId, since, until),
+    fetchMetaAccountTotals(adAccountId, since, until)
+  ]);
+
+  await logMetaAdsDiagnostic(insightsRows, { since, until, level: "campaign_full_report" });
+
+  const insightsByCampaign = new Map();
+  insightsRows.forEach((row) => insightsByCampaign.set(row.campaign_id, row));
+
+  const rows = campaigns.map((campaign) => {
+    const insight = insightsByCampaign.get(campaign.id) || {};
+    const spend = Number(insight.spend || 0);
+    const impressions = Number(insight.impressions || 0);
+    const clicks = Number(insight.clicks || 0);
+    const reach = Number(insight.reach || 0);
+    const frequency = Number(insight.frequency || (reach ? impressions / reach : 0));
+    const purchaseValue = actionValue(insight.action_values, "purchase");
+    const purchases = actionValue(insight.actions, "purchase");
+    const landingPageViews = actionValue(insight.actions, ["landing_page_view"]);
+    const profileVisits = actionValue(insight.actions, ["onsite_conversion.profile_visit", "ig_profile_visit"]);
+    const postEngagement = actionValue(insight.actions, ["post_engagement"]);
+    const videoViews = actionValue(insight.actions, ["video_view"]);
+    const videoWatchTime = actionValue(insight.video_avg_time_watched_actions, ["video_view"]);
+    const videoCompletion = actionValue(insight.video_p100_watched_actions, ["video_view"]);
+    const thruplayViews = actionValue(insight.video_thruplay_watched_actions, ["video_view"]);
+    const roas = spend ? purchaseValue / spend : null;
+    return {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      objectiveRaw: campaign.objective || null,
+      objective: normalizeMetaObjective(campaign.objective),
+      bidStrategyRaw: campaign.bid_strategy || null,
+      campaignStrategy: metaBidStrategyLabel(campaign.bid_strategy),
+      effectiveStatus: campaign.effective_status || null,
+      status: metaCampaignDisplayStatus(campaign.effective_status, spend),
+      spend,
+      reach,
+      impressions,
+      clicks,
+      frequency,
+      cpc: clicks ? spend / clicks : 0,
+      cpm: impressions ? (spend / impressions) * 1000 : 0,
+      ctr: impressions ? clicks / impressions : 0,
+      landingPageViews,
+      profileVisits,
+      postEngagement,
+      videoViews,
+      videoWatchTime,
+      videoCompletion,
+      thruplayViews,
+      purchases,
+      purchaseValue,
+      roas,
+      cpa: purchases ? spend / purchases : null,
+      conversionRate: clicks ? purchases / clicks : 0
+    };
+  });
+
+  const executedCampaignIds = rows.filter(isMetaAdsExecutedRow).map((row) => row.campaignId);
+  const executionWindows = await fetchCampaignExecutionWindows(adAccountId, executedCampaignIds, until);
+  rows.forEach((row) => {
+    const w = executionWindows[row.campaignId];
+    if (w) {
+      row.executionStart = w.first;
+      row.executionEnd = w.last;
+    } else if (isMetaAdsExecutedRow(row)) {
+      // 일별 조회가 실패했거나 조회 범위 밖일 때의 대체값: 최소한 "이 기간 안에서 집행됨"은
+      // 확실하므로 선택한 기간 자체를 보여줍니다(정확한 첫날/마지막날은 아닐 수 있음).
+      row.executionStart = since;
+      row.executionEnd = until;
+    } else {
+      row.executionStart = null;
+      row.executionEnd = null;
+    }
+  });
+
+  const campaignIdSet = new Set(campaigns.map((campaign) => campaign.id));
+  const unmatched = insightsRows.filter((row) => !campaignIdSet.has(row.campaign_id));
+  const unlistedSpend = sum(unmatched.map((row) => ({ spend: Number(row.spend || 0) })), "spend");
+  const unlistedPurchaseValue = sum(unmatched.map((row) => ({ purchaseValue: actionValue(row.action_values, "purchase") })), "purchaseValue");
+
+  const tableSpend = sum(rows, "spend");
+  const tablePurchaseValue = sum(rows, "purchaseValue");
+
+  const reconciliation = {
+    metaAccountSpend: accountTotals.spend,
+    metaAccountPurchaseValue: accountTotals.purchaseValue,
+    metaAccountRoas: accountTotals.roas,
+    tableSpend,
+    tablePurchaseValue,
+    tableRoas: tableSpend ? tablePurchaseValue / tableSpend : null,
+    unlistedCampaignCount: unmatched.length,
+    unlistedSpend,
+    unlistedPurchaseValue,
+    spendDiff: accountTotals.spend - (tableSpend + unlistedSpend),
+    purchaseValueDiff: accountTotals.purchaseValue - (tablePurchaseValue + unlistedPurchaseValue)
+  };
+
+  const result = {
+    source: "meta_marketing_api",
+    syncedAt: new Date().toISOString(),
+    since,
+    until,
+    rows,
+    reconciliation
+  };
+  await mkdir(workDir, { recursive: true });
+  await writeFile(join(workDir, metaAdsFullReportCacheFileName(since, until)), JSON.stringify(result, null, 2));
+  return result;
+}
+
+// 과거 Meta Ads Insights도 Meta API에 그대로 남아있는 실데이터이므로(계정이 존재하는 한
+// 캐시가 없다고 0원을 지어내지 않고), 이번 달이든 지난 달이든 캐시가 없으면 항상 먼저
+// 라이브 API를 한 번 시도합니다. 캐시는 "속도를 위한 우선 사용"일 뿐, "지난 달이라 API를
+// 아예 부르지 않는다"는 정책은 Cafe24 CSV 워크플로우에만 해당하며 Meta Ads에는 적용하지 않습니다.
+async function buildMetaAdsFullReportWithCache(since, until, options = {}) {
+  if (!options.refresh) {
+    const cached = await readCachedMetaAdsFullReport(since, until);
+    if (cached) {
+      return decorateCachedSource(cached, "meta_marketing_api", isCurrentMonth(monthFromDate(since)) ? "cached_first" : "past_month_cached");
+    }
+  }
+
+  try {
+    return await buildMetaAdsFullReport(since, until);
+  } catch (error) {
+    await logApiError("meta_ads_full_report", error, { since, until });
+    const cached = await readCachedMetaAdsFullReport(since, until);
+    if (cached) {
+      return {
+        ...cached,
+        source: cached.source?.endsWith("_cached") ? cached.source : `${cached.source || "meta_marketing_api"}_cached`,
+        cacheMode: "fallback_after_error",
+        cacheWarning: error.message
+      };
+    }
+    throw error;
+  }
+}
+
+function metaAdsFullReportCacheFileName(since, until) {
+  return `meta-ads-full-report-${since}_${until}.json`;
+}
+
+async function readCachedMetaAdsFullReport(since, until) {
+  const file = join(workDir, metaAdsFullReportCacheFileName(since, until));
+  if (existsSync(file)) return JSON.parse(await readFile(file, "utf8"));
+  return null;
+}
+
+// buildMetaAdsFullReportWithCache와 동일한 원칙: 캐시가 없으면(지난 달이라도) 항상 라이브 API를
+// 먼저 시도합니다. 이전에는 지난 달 캐시가 없으면 API를 아예 호출하지 않고 광고비 0원짜리
+// 응답을 반환했는데, 이는 "데이터가 없다"가 아니라 "한 번도 조회한 적이 없다"였던 버그였습니다.
 async function buildMetaAdsSummaryWithCache(since, until, options = {}) {
   const level = metaAdsLevel(options.level);
-  if (!isCurrentMonth(monthFromDate(since))) {
-    const cached = await readCachedMetaAdsSummary(since, until, { level });
-    if (cached) return decorateCachedSource(cached, "meta_marketing_api", "past_month_cache_only");
-    return pastMonthCsvRequired("meta_ads", monthFromDate(since), {
-      since,
-      until,
-      level,
-      rows: [],
-      campaigns: [],
-      adsets: [],
-      ads: [],
-      topAds: [],
-      lowAds: [],
-      totals: { spend: 0, reach: 0, impressions: 0, clicks: 0, purchases: 0, purchaseValue: 0 }
-    });
-  }
 
   if (!options.refresh) {
     const cached = await readCachedMetaAdsSummary(since, until, { level });
     if (cached) {
-      return decorateCachedSource(cached, "meta_marketing_api", "cached_first");
+      return decorateCachedSource(cached, "meta_marketing_api", isCurrentMonth(monthFromDate(since)) ? "cached_first" : "past_month_cached");
     }
   }
 
@@ -402,7 +766,49 @@ function metaAdsFieldsForLevel(level) {
     adset: ["campaign_id", "campaign_name", "adset_id", "adset_name"],
     ad: ["campaign_id", "campaign_name", "adset_id", "adset_name", "ad_id", "ad_name"]
   };
-  return [...fields[level], "spend", "reach", "impressions", "clicks", "actions", "action_values"];
+  return [
+    ...fields[level],
+    "spend", "reach", "impressions", "clicks", "frequency",
+    "actions", "action_values",
+    "video_avg_time_watched_actions", "video_p100_watched_actions", "video_thruplay_watched_actions"
+  ];
+}
+
+// campaign_id별 objective/effective_status는 Insights가 아니라 Campaign 노드 필드라서
+// 별도의 가벼운 배치 조회 한 번으로 가져옵니다. 실패해도 전체 응답은 깨지지 않게 처리합니다.
+async function fetchCampaignObjectives(campaignIds = []) {
+  if (!campaignIds.length) return {};
+  try {
+    const body = await graphGet("", { ids: campaignIds.join(","), fields: "objective,effective_status" });
+    return body || {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizeMetaObjective(raw) {
+  const value = String(raw || "").toUpperCase();
+  if (!value) return "unknown";
+  if (value.includes("SALES") || value.includes("CONVERSION") || value.includes("LEAD")) return "sales";
+  if (value.includes("TRAFFIC") || value.includes("LINK_CLICK") || value.includes("APP")) return "traffic";
+  if (value.includes("ENGAGEMENT") || value.includes("MESSAGE")) return "engagement";
+  if (value.includes("VIDEO")) return "video";
+  if (value.includes("AWARENESS") || value.includes("REACH") || value.includes("BRAND")) return "awareness";
+  return "unknown";
+}
+
+function metaCampaignStatusLabel(effectiveStatus) {
+  const map = {
+    ACTIVE: "진행중",
+    PAUSED: "일시중지",
+    ARCHIVED: "보관됨",
+    DELETED: "삭제됨",
+    IN_PROCESS: "검토중",
+    WITH_ISSUES: "문제 있음",
+    CAMPAIGN_PAUSED: "일시중지",
+    ADSET_PAUSED: "일시중지"
+  };
+  return map[effectiveStatus] || (effectiveStatus ? effectiveStatus : "확인 필요");
 }
 
 function metaAdsLabelForLevel(row, level) {
@@ -420,13 +826,22 @@ function summarizeMetaAdsRows(rows = []) {
     purchases: sum(rows, "purchases"),
     metaPurchases: sum(rows, "metaPurchases"),
     purchaseValue: sum(rows, "purchaseValue"),
-    metaPurchaseValue: sum(rows, "metaPurchaseValue")
+    metaPurchaseValue: sum(rows, "metaPurchaseValue"),
+    landingPageViews: sum(rows, "landingPageViews"),
+    postEngagement: sum(rows, "postEngagement"),
+    likes: sum(rows, "likes"),
+    saves: sum(rows, "saves"),
+    shares: sum(rows, "shares"),
+    profileVisits: sum(rows, "profileVisits"),
+    videoViews: sum(rows, "videoViews")
   };
   totals.cpc = totals.clicks ? totals.spend / totals.clicks : 0;
   totals.cpm = totals.impressions ? (totals.spend / totals.impressions) * 1000 : 0;
   totals.ctr = totals.impressions ? totals.clicks / totals.impressions : 0;
   totals.roas = totals.spend ? totals.purchaseValue / totals.spend : null;
   totals.metaRoas = totals.roas;
+  totals.cpa = totals.purchases ? totals.spend / totals.purchases : null;
+  totals.frequency = totals.reach ? totals.impressions / totals.reach : 0;
   return totals;
 }
 
@@ -588,6 +1003,7 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
   const summary = summarizeCafe24Orders(orders);
   const result = {
     source: "cafe24_admin_api",
+    syncedAt: new Date().toISOString(),
     startDate,
     endDate,
     orders,
@@ -857,6 +1273,284 @@ function cafe24ItemAmount(item = {}, quantity = 1) {
     item.supply_price
   ]);
   return amount * quantity;
+}
+
+// ============================================================================
+// Product Dashboard v1 (Sales 탭 확장) — Cafe24 Orders + Products 기반.
+// mall.read_product 스코프 하나만 필요. Product Sales Report(mall.read_salesreport)는
+// v1에서 사용하지 않음. 상품별 ROAS는 만들지 않고, Meta 광고비/ROAS는 기간 참고치로만
+// 별도 표시한다. 기존 fetchCafe24Orders/buildMetaAdsSummaryWithCache 등 기존 로직은
+// 전혀 건드리지 않고, 아래는 전부 새로 추가되는 함수/라우트다.
+// ============================================================================
+
+function isCafe24InsufficientScope(error) {
+  const status = Number(error?.status || 0);
+  const message = String(error?.message || "").toLowerCase();
+  const code = String(error?.body?.error?.code ?? error?.body?.error_code ?? "").toLowerCase();
+  return status === 403 || message.includes("insufficient_scope") || message.includes("permission necessary") || code === "403";
+}
+
+const CAFE24_PRODUCT_SCOPE_MESSAGE = "Cafe24 상품 데이터 접근 권한이 부족합니다. Cafe24 개발자센터에서 mall.read_product 스코프를 추가한 뒤 OAuth 재인증을 진행해주세요.";
+
+async function fetchCafe24ProductList(options = {}) {
+  const limit = Math.min(Number(options.limit || 60) || 60, 200);
+  const pageSize = Math.min(100, limit);
+  const products = [];
+  for (let offset = 0; offset < limit; offset += pageSize) {
+    const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products`);
+    url.searchParams.set("limit", String(Math.min(pageSize, limit - offset)));
+    url.searchParams.set("offset", String(offset));
+    const body = await cafe24FetchJson(url);
+    if (body.error) throw body.error;
+    const page = body.products || [];
+    products.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return products;
+}
+
+async function fetchCafe24ProductDetail(productNo) {
+  const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products/${productNo}`);
+  const body = await cafe24FetchJson(url);
+  if (body.error) throw body.error;
+  return body.product || {};
+}
+
+async function fetchCafe24ProductVariantsWithInventory(productNo) {
+  const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products/${productNo}/variants`);
+  url.searchParams.set("limit", "100");
+  url.searchParams.set("embed", "inventories");
+  const body = await cafe24FetchJson(url);
+  if (body.error) throw body.error;
+  return body.variants || [];
+}
+
+function firstCafe24Inventory(variant = {}) {
+  const raw = variant.inventories ?? variant.inventory ?? null;
+  if (!raw) return {};
+  return Array.isArray(raw) ? raw[0] || {} : raw;
+}
+
+function normalizeCafe24ProductRow(item = {}, detail = {}, variants = []) {
+  const merged = { ...item, ...detail };
+  const options = variants.map((variant) => {
+    const inv = firstCafe24Inventory(variant);
+    return {
+      variantCode: variant.variant_code || "",
+      optionSummary: (variant.options || []).map((option) => `${option.name}:${option.value}`).join(", "),
+      quantity: Number(inv.quantity ?? variant.quantity ?? 0),
+      soldOut: String(inv.display_soldout ?? variant.sold_out ?? "F").toUpperCase() === "T"
+    };
+  });
+  const inventoryQuantity = options.reduce((total, option) => total + (Number.isFinite(option.quantity) ? option.quantity : 0), 0);
+  const soldOut = options.length > 0
+    ? options.every((option) => option.soldOut || option.quantity <= 0)
+    : String(merged.sold_out || "F").toUpperCase() === "T";
+  return {
+    productNo: merged.product_no,
+    productCode: merged.product_code || merged.custom_product_code || "",
+    productName: merged.product_name || merged.eng_product_name || "상품명 없음",
+    brand: merged.brand_code || merged.brand || "",
+    categoryNos: (merged.category || []).map((category) => category.category_no).filter((no) => no !== undefined),
+    mainImage: merged.list_image || merged.small_image || merged.tiny_image || merged.detail_image || "",
+    display: merged.display || "F",
+    selling: merged.selling || "F",
+    createdDate: merged.created_date || merged.regist_date || null,
+    options,
+    inventoryQuantity,
+    soldOut
+  };
+}
+
+async function buildCafe24ProductCatalog(options = {}) {
+  const list = await fetchCafe24ProductList(options);
+  const products = [];
+  for (const item of list) {
+    const productNo = item.product_no;
+    let detail = {};
+    let variants = [];
+    try {
+      detail = await fetchCafe24ProductDetail(productNo);
+    } catch (error) {
+      await logApiError("cafe24_product_detail", error, { productNo });
+    }
+    try {
+      variants = await fetchCafe24ProductVariantsWithInventory(productNo);
+    } catch (error) {
+      await logApiError("cafe24_product_variants", error, { productNo });
+    }
+    products.push(normalizeCafe24ProductRow(item, detail, variants));
+  }
+  const result = {
+    ok: true,
+    source: "cafe24_product_api",
+    syncedAt: new Date().toISOString(),
+    productCount: products.length,
+    products
+  };
+  await mkdir(workDir, { recursive: true });
+  await writeFile(join(workDir, "cafe24-product-catalog.json"), JSON.stringify(result, null, 2));
+  return result;
+}
+
+async function buildCafe24ProductCatalogWithCache(options = {}) {
+  const cacheFile = join(workDir, "cafe24-product-catalog.json");
+  const readCache = async () => {
+    if (!existsSync(cacheFile)) return null;
+    try {
+      return JSON.parse(await readFile(cacheFile, "utf8"));
+    } catch {
+      return null;
+    }
+  };
+
+  if (!options.refresh) {
+    const cached = await readCache();
+    if (cached) return decorateCachedSource(cached, "cafe24_product_api", "cached_first");
+  }
+
+  try {
+    return await buildCafe24ProductCatalog(options);
+  } catch (error) {
+    await logApiError("cafe24_product_catalog", error, {});
+    if (isCafe24InsufficientScope(error)) {
+      return {
+        ok: false,
+        reason: "insufficient_scope",
+        message: CAFE24_PRODUCT_SCOPE_MESSAGE,
+        source: "cafe24_product_api",
+        products: []
+      };
+    }
+    const cached = await readCache();
+    if (cached) {
+      return {
+        ...cached,
+        source: cached.source?.endsWith("_cached") ? cached.source : `${cached.source || "cafe24_product_api"}_cached`,
+        cacheMode: "fallback_after_error",
+        cacheWarning: error.message
+      };
+    }
+    throw error;
+  }
+}
+
+function matchCafe24OrdersToProducts(orders = [], catalog = []) {
+  const byNo = new Map();
+  const byCode = new Map();
+  for (const product of catalog) {
+    if (product.productNo) byNo.set(String(product.productNo), product);
+    if (product.productCode) byCode.set(String(product.productCode), product);
+  }
+  const salesByProduct = new Map();
+  let unmatchedCount = 0;
+  let unmatchedAmount = 0;
+  for (const order of orders) {
+    if (isCafe24CanceledOrRefunded(order)) continue;
+    for (const item of cafe24OrderItems(order)) {
+      const quantity = cafe24ItemQuantity(item);
+      const amount = cafe24ItemAmount(item, quantity);
+      const productNo = item.product_no || item.productNo || "";
+      const productCode = item.product_code || item.productCode || "";
+      const product = (productNo && byNo.get(String(productNo))) || (productCode && byCode.get(String(productCode)));
+      if (!product) {
+        unmatchedCount += 1;
+        unmatchedAmount += amount;
+        continue;
+      }
+      const key = product.productNo;
+      const entry = salesByProduct.get(key) || { quantity: 0, amount: 0 };
+      entry.quantity += quantity;
+      entry.amount += amount;
+      salesByProduct.set(key, entry);
+    }
+  }
+  return { salesByProduct, unmatchedCount, unmatchedAmount };
+}
+
+function daysBetweenDateKeys(since, until) {
+  const start = new Date(`${since}T00:00:00Z`);
+  const end = new Date(`${until}T00:00:00Z`);
+  const days = Math.round((end - start) / 86400000) + 1;
+  return Math.max(1, days);
+}
+
+function computeCafe24ProductAiAction(row) {
+  const { quantitySold, inventoryQuantity, salesVelocityPerDay, daysOfStockLeft } = row;
+  if (inventoryQuantity <= 0 && quantitySold === 0) return { action: "Stop", reason: "재고 없음 · 선택 기간 판매 없음" };
+  if (inventoryQuantity <= 0) return { action: "Stop", reason: "재고 소진" };
+  if (quantitySold === 0) return { action: "Hold", reason: "선택 기간 판매 없음" };
+  if (daysOfStockLeft !== null && daysOfStockLeft <= 7) return { action: "Push", reason: `재고 소진 임박 (약 ${daysOfStockLeft}일 남음)` };
+  if (salesVelocityPerDay >= 1) return { action: "Push", reason: `판매 속도 높음 (일 평균 ${salesVelocityPerDay.toFixed(1)}개)` };
+  if (daysOfStockLeft !== null && daysOfStockLeft > 60) return { action: "Hold", reason: `재고 과다 (소진까지 약 ${daysOfStockLeft}일)` };
+  return { action: "Observe", reason: "판매 흐름 관찰 필요" };
+}
+
+function metaReferenceFromSummary(meta = {}) {
+  const totals = meta.totals || {};
+  return {
+    error: meta.error || null,
+    spend: Number(totals.spend || 0),
+    roas: totals.roas === null || totals.roas === undefined ? null : Number(totals.roas),
+    purchaseValue: Number(totals.purchaseValue || 0),
+    note: "기간 참고치입니다 — 상품별로 배분된 값이 아닙니다."
+  };
+}
+
+async function buildProductDashboardWithCache(since, until, options = {}) {
+  const days = daysBetweenDateKeys(since, until);
+  const [ordersResult, catalogResult, metaResult] = await Promise.all([
+    fetchCafe24Orders(since, until, { limit: options.orderLimit || 500 }).catch((error) => ({ error: error.message, orders: [], totals: {} })),
+    buildCafe24ProductCatalogWithCache({ refresh: options.refresh, limit: options.productLimit }),
+    buildMetaAdsSummaryWithCache(since, until, { refresh: false }).catch((error) => ({ error: error.message, totals: {} }))
+  ]);
+
+  if (catalogResult.ok === false && catalogResult.reason === "insufficient_scope") {
+    return {
+      ok: false,
+      reason: "insufficient_scope",
+      message: catalogResult.message,
+      since,
+      until,
+      metaReference: metaReferenceFromSummary(metaResult),
+      products: [],
+      unmatched: { count: 0, amount: 0 }
+    };
+  }
+
+  const catalog = catalogResult.products || [];
+  const orders = ordersResult.orders || ordersResult.data || [];
+  const { salesByProduct, unmatchedCount, unmatchedAmount } = matchCafe24OrdersToProducts(orders, catalog);
+
+  const products = catalog.map((product) => {
+    const sales = salesByProduct.get(product.productNo) || { quantity: 0, amount: 0 };
+    const salesVelocityPerDay = sales.quantity / days;
+    const daysOfStockLeft = salesVelocityPerDay > 0 ? Math.round(product.inventoryQuantity / salesVelocityPerDay) : null;
+    const row = {
+      ...product,
+      quantitySold: sales.quantity,
+      salesAmount: sales.amount,
+      salesVelocityPerDay,
+      daysOfStockLeft
+    };
+    const ai = computeCafe24ProductAiAction(row);
+    row.aiAction = ai.action;
+    row.aiActionReason = ai.reason;
+    return row;
+  });
+
+  return {
+    ok: true,
+    since,
+    until,
+    catalogSource: catalogResult.source,
+    catalogSyncedAt: catalogResult.syncedAt || null,
+    cacheMode: catalogResult.cacheMode || null,
+    metaReference: metaReferenceFromSummary(metaResult),
+    products,
+    unmatched: { count: unmatchedCount, amount: unmatchedAmount },
+    ordersError: ordersResult.error || null
+  };
 }
 
 async function importCafe24Csv(csvText, csvFile = "cafe24-upload.csv") {
@@ -1263,131 +1957,152 @@ async function cafe24GetOrderItems(orderId) {
   return body.items || body.order_items || [];
 }
 
-// Product Dashboard 구현에 필요한 Cafe24 API 8종을 한 번에 점검하는 읽기 전용 진단 함수입니다.
-// 응답에는 각 API마다 { apiName, ok, httpStatus, errorCode, message }만 담고(토큰/secret/
-// Authorization 헤더는 어디에도 노출하지 않음), 마지막에 dashboardReady로 Product Dashboard
-// 구현에 필요한 기능이 준비됐는지 한눈에 보여줍니다. 기존 기능은 전혀 건드리지 않는 순수 추가 코드입니다.
-async function diagnoseCafe24ProductAccessSafe() {
-    const mallId = env.CAFE24_MALL_ID || null;
-    if (!mallId || !env.CAFE24_ACCESS_TOKEN) {
-          return {
-                  mallId,
-                  apiChecks: [],
-                  requestedFieldCheck: {},
-                  dashboardReady: {},
-                  message: "CAFE24_MALL_ID 또는 CAFE24_ACCESS_TOKEN이 설정되어 있지 않습니다."
-          };
+// Product Dashboard를 만들기 전에 필요한 Cafe24 API 8종을 한 번에 점검합니다.
+// 응답은 각 API마다 { apiName, ok, httpStatus, errorCode, message }만 담고(토큰/secret/
+// Authorization 헤더는 어디에도 노출하지 않음), 마지막에 dashboardReady로 무엇이 준비됐고
+// 무엇이 아직 안 됐는지 한눈에 보여줍니다.
+async function diagnoseCafe24ProductAccess() {
+  const mallId = env.CAFE24_MALL_ID || null;
+  if (!mallId || !env.CAFE24_ACCESS_TOKEN) {
+    return {
+      mallId,
+      apiChecks: [],
+      requestedFieldCheck: {},
+      dashboardReady: {},
+      message: ".env에 CAFE24_MALL_ID / CAFE24_ACCESS_TOKEN이 없습니다."
+    };
+  }
+
+  // Cafe24 에러 응답은 엔드포인트에 따라 { error: { code, message } } (리소스 API)와
+  // { error, error_description } (OAuth 토큰 API) 두 형태가 섞여 있어 둘 다 처리합니다.
+  const cafe24ErrorCode = (body) => body?.error?.code ?? body?.error_code ?? (typeof body?.error === "string" ? body.error : null);
+  const cafe24ErrorMessage = (body) => body?.error?.message || body?.error_description || (typeof body?.error === "string" ? body.error : null) || body?.message || null;
+
+  const call = async (path, params = {}) => {
+    const url = new URL(`https://${mallId}.cafe24api.com/api/v2/admin${path}`);
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+    const response = await fetch(url, { headers: cafe24OrdersHeaders() });
+    const body = await response.json().catch(() => ({}));
+    return { ok: response.ok, status: response.status, body };
+  };
+
+  // apiName/ok/httpStatus/errorCode/message만 apiChecks에 쌓고, 응답 본문(body)은
+  // requestedFieldCheck 계산에만 내부적으로 쓰고 최종 응답에는 포함하지 않습니다.
+  const apiChecks = [];
+  const runCheck = async (apiName, path, params = {}) => {
+    let r = await call(path, params);
+    if (!r.ok && isCafe24InvalidToken({ message: cafe24ErrorMessage(r.body) || "", body: r.body })) {
+      try {
+        await refreshCafe24Token();
+        r = await call(path, params);
+      } catch (_refreshError) {
+        // 재발급 실패 사유는 토큰 관련 문자열이 섞일 수 있어 응답/로그에 남기지 않습니다.
+      }
     }
-  
-    const cafe24ErrorCode = (body) => body?.error?.code ?? body?.error_code ?? (typeof body?.error === "string" ? body.error : null);
-    const cafe24ErrorMessage = (body) => body?.error?.message || body?.error_description || (typeof body?.error === "string" ? body.error : null) || body?.message || null;
-  
-    const call = async (path, params = {}) => {
-          const url = new URL(`https://${mallId}.cafe24api.com/api/v2/admin${path}`);
-          for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-          const response = await fetch(url, { headers: cafe24OrdersHeaders() });
-          const body = await response.json().catch(() => ({}));
-          return { ok: response.ok, status: response.status, body };
-    };
-  
-    const apiChecks = [];
-    const runCheck = async (apiName, path, params = {}) => {
-          let r = await call(path, params);
-          if (!r.ok && isCafe24InvalidToken({ message: cafe24ErrorMessage(r.body) || "", body: r.body })) {
-                  try {
-                            await refreshCafe24Token();
-                            r = await call(path, params);
-                  } catch (_refreshError) {
-                            // refresh 실패 사유는 access/secret 관련 문자열이 섞일 수 있어 응답/로그에 포함하지 않음
-                  }
-          }
-          apiChecks.push({ apiName, ok: r.ok, httpStatus: r.status, errorCode: cafe24ErrorCode(r.body), message: cafe24ErrorMessage(r.body) });
-          return r;
-    };
-  
-    const skip = (apiName, reason) => {
-          apiChecks.push({ apiName, ok: false, httpStatus: null, errorCode: null, message: reason });
-          return null;
-    };
-  
-    const productsResult = await runCheck("products_list (GET /admin/products)", "/products", { limit: 3 });
-    const firstProduct = productsResult.ok ? productsResult.body?.products?.[0] : null;
-  
-    let detailResult = null;
-    let variantsResult = null;
-    let imagesResult = null;
-    let categoriesResult = null;
-    let inventoriesResult = null;
-  
-    if (firstProduct?.product_no) {
-          const no = firstProduct.product_no;
-          detailResult = await runCheck("product_detail (GET /admin/products/{no})", `/products/${no}`, {});
-          variantsResult = await runCheck("product_variants (GET /admin/products/{no}/variants)", `/products/${no}/variants`, { limit: 20 });
-          imagesResult = await runCheck("product_images (GET /admin/products/{no}/images)", `/products/${no}/images`, {});
-          categoriesResult = await runCheck("product_categories (GET /admin/products/{no}/categories)", `/products/${no}/categories`, {});
-          inventoriesResult = await runCheck("product_inventories (GET /admin/products/{no}/inventories)", `/products/${no}/inventories`, {});
-    } else {
-          const reason = "products_list에서 product_no를 얻지 못해 시도하지 않음";
-          detailResult = skip("product_detail (GET /admin/products/{no})", reason);
-          variantsResult = skip("product_variants (GET /admin/products/{no}/variants)", reason);
-          imagesResult = skip("product_images (GET /admin/products/{no}/images)", reason);
-          categoriesResult = skip("product_categories (GET /admin/products/{no}/categories)", reason);
-          inventoriesResult = skip("product_inventories (GET /admin/products/{no}/inventories)", reason);
+    apiChecks.push({ apiName, ok: r.ok, httpStatus: r.status, errorCode: cafe24ErrorCode(r.body), message: cafe24ErrorMessage(r.body) });
+    return r;
+  };
+
+  const skip = (apiName, reason) => {
+    apiChecks.push({ apiName, ok: false, httpStatus: null, errorCode: null, message: reason });
+    return null;
+  };
+
+  const productsResult = await runCheck("products_list (GET /admin/products)", "/products", { limit: 3 });
+  const firstProduct = productsResult.ok ? productsResult.body?.products?.[0] : null;
+
+  let detailResult = null;
+  let variantsResult = null;
+  let imagesResult = null;
+  let categoriesResult = null;
+  let inventoriesResult = null;
+
+  if (firstProduct?.product_no) {
+    const no = firstProduct.product_no;
+    detailResult = await runCheck("product_detail (GET /admin/products/{no})", `/products/${no}`, {});
+    variantsResult = await runCheck("product_variants (GET /admin/products/{no}/variants)", `/products/${no}/variants`, { limit: 20 });
+    imagesResult = await runCheck("product_images (GET /admin/products/{no}/images)", `/products/${no}/images`, {});
+    categoriesResult = await runCheck("product_categories (GET /admin/products/{no}/categories)", `/products/${no}/categories`, {});
+    inventoriesResult = await runCheck("product_inventories (GET /admin/products/{no}/inventories)", `/products/${no}/inventories`, {});
+  } else {
+    const reason = "products_list에서 product_no를 얻지 못해 시도하지 않음";
+    detailResult = skip("product_detail (GET /admin/products/{no})", reason);
+    variantsResult = skip("product_variants (GET /admin/products/{no}/variants)", reason);
+    imagesResult = skip("product_images (GET /admin/products/{no}/images)", reason);
+    categoriesResult = skip("product_categories (GET /admin/products/{no}/categories)", reason);
+    inventoriesResult = skip("product_inventories (GET /admin/products/{no}/inventories)", reason);
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const salesReportResult = await runCheck("sales_products_report (GET /admin/reports/salesproducts)", "/reports/salesproducts", { start_date: monthAgo, end_date: today, shop_no: 1 });
+  const ordersResult = await runCheck("orders (GET /admin/orders)", "/orders", { start_date: monthAgo, end_date: today, limit: 3 });
+
+  // 요청하신 13개 필드가 products_list/product_detail/product_variants 세 응답 중
+  // 어디에 실제로 존재하는지 재귀적으로 훑어 확인합니다. 정확한 이름뿐 아니라 Cafe24가
+  // 흔히 쓰는 동의어(별칭)도 함께 찾되, 별칭으로 찾은 경우를 구분해 과장하지 않습니다.
+  const FIELD_ALIASES = {
+    product_no: ["product_no"],
+    product_code: ["product_code"],
+    product_name: ["product_name"],
+    brand: ["brand", "brand_code", "brand_name"],
+    category: ["category", "category_no", "categories"],
+    option_name: ["option_name", "options"],
+    option_value: ["option_value", "variants", "option_values"],
+    inventory_quantity: ["inventory_quantity", "quantity", "stock_quantity", "safety_inventory_quantity"],
+    sold_out: ["sold_out", "soldout"],
+    display: ["display"],
+    selling: ["selling"],
+    created_date: ["created_date", "regist_date"],
+    updated_date: ["updated_date", "modified_date"]
+  };
+
+  function deepFind(obj, keys, depth = 0, path = "") {
+    if (depth > 4 || obj === null || typeof obj !== "object") return null;
+    for (const key of Object.keys(obj)) {
+      if (keys.includes(key)) return { path: path ? `${path}.${key}` : key };
     }
-  
-    const today = new Date().toISOString().slice(0, 10);
-    const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-    const salesReportResult = await runCheck("sales_products_report (GET /admin/reports/salesproducts)", "/reports/salesproducts", { start_date: monthAgo, end_date: today, shop_no: 1 });
-    const ordersResult = await runCheck("orders (GET /admin/orders)", "/orders", { start_date: monthAgo, end_date: today, limit: 3 });
-  
-    const FIELD_ALIASES = {
-          product_no: ["product_no"], product_code: ["product_code"], product_name: ["product_name"],
-          brand: ["brand", "brand_code", "brand_name"], category: ["category", "category_no", "categories"],
-          option_name: ["option_name", "options"], option_value: ["option_value", "variants", "option_values"],
-          inventory_quantity: ["inventory_quantity", "quantity", "stock_quantity", "safety_inventory_quantity"],
-          sold_out: ["sold_out", "soldout"], display: ["display"], selling: ["selling"],
-          created_date: ["created_date", "regist_date"], updated_date: ["updated_date", "modified_date"]
-    };
-    function deepFind(obj, keys, depth = 0, path = "") {
-          if (depth > 4 || obj === null || typeof obj !== "object") return null;
-          for (const key of Object.keys(obj)) if (keys.includes(key)) return { path: path ? `${path}.${key}` : key };
-          for (const key of Object.keys(obj)) {
-                  const value = obj[key];
-                  if (value && typeof value === "object") {
-                            const nested = Array.isArray(value)
-                                        ? deepFind(value[0] || {}, keys, depth + 1, `${path ? `${path}.` : ""}${key}[0]`)
-                                        : deepFind(value, keys, depth + 1, `${path ? `${path}.` : ""}${key}`);
-                            if (nested) return nested;
-                  }
-          }
-          return null;
+    for (const key of Object.keys(obj)) {
+      const value = obj[key];
+      if (value && typeof value === "object") {
+        const nested = Array.isArray(value)
+          ? deepFind(value[0] || {}, keys, depth + 1, `${path ? `${path}.` : ""}${key}[0]`)
+          : deepFind(value, keys, depth + 1, `${path ? `${path}.` : ""}${key}`);
+        if (nested) return nested;
+      }
     }
-    const sources = [
-      { label: "products_list", body: firstProduct || null },
-      { label: "product_detail", body: detailResult?.ok ? (detailResult.body?.product || detailResult.body) : null },
-      { label: "product_variants", body: variantsResult?.ok ? (variantsResult.body?.variants?.[0] || variantsResult.body) : null }
-        ];
-    const requestedFieldCheck = {};
-    for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
-          let hit = null;
-          for (const source of sources) {
-                  if (!source.body) continue;
-                  const found = deepFind(source.body, aliases);
-                  if (found) { hit = { found: true, foundIn: source.label, path: found.path }; break; }
-          }
-          requestedFieldCheck[field] = hit || { found: false };
+    return null;
+  }
+
+  const sources = [
+    { label: "products_list", body: firstProduct || null },
+    { label: "product_detail", body: detailResult?.ok ? (detailResult.body?.product || detailResult.body) : null },
+    { label: "product_variants", body: variantsResult?.ok ? (variantsResult.body?.variants?.[0] || variantsResult.body) : null }
+  ];
+
+  const requestedFieldCheck = {};
+  for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
+    let hit = null;
+    for (const source of sources) {
+      if (!source.body) continue;
+      const found = deepFind(source.body, aliases);
+      if (found) { hit = { found: true, foundIn: source.label, path: found.path }; break; }
     }
-  
-    const dashboardReady = {
-          Product: productsResult.ok && detailResult?.ok ? "✅" : (productsResult.ok || detailResult?.ok ? "⚠" : "❌"),
-          Inventory: (variantsResult?.ok || inventoriesResult?.ok) ? (variantsResult?.ok && inventoriesResult?.ok ? "✅" : "⚠") : "❌",
-          Sales: ordersResult.ok ? "✅" : "❌",
-          Images: imagesResult?.ok ? "✅" : "❌",
-          Categories: categoriesResult?.ok ? "✅" : "❌",
-          "Product Sales Report": salesReportResult.ok ? "✅" : "❌"
-    };
-  
-    return { mallId, apiChecks, requestedFieldCheck, dashboardReady };
+    requestedFieldCheck[field] = hit || { found: false };
+  }
+
+  // Product Dashboard 구현에 필요한 6개 기능 단위로 묶어서 한눈에 보이게 합니다.
+  // ✅ 정상 / ⚠ 일부만 됨(대체 경로 있음) / ❌ 전혀 안 됨.
+  const dashboardReady = {
+    Product: productsResult.ok && detailResult?.ok ? "✅" : (productsResult.ok || detailResult?.ok ? "⚠" : "❌"),
+    Inventory: (variantsResult?.ok || inventoriesResult?.ok) ? (variantsResult?.ok && inventoriesResult?.ok ? "✅" : "⚠") : "❌",
+    Sales: ordersResult.ok ? "✅" : "❌",
+    Images: imagesResult?.ok ? "✅" : "❌",
+    Categories: categoriesResult?.ok ? "✅" : "❌",
+    "Product Sales Report": salesReportResult.ok ? "✅" : "❌"
+  };
+
+  return { mallId, apiChecks, requestedFieldCheck, dashboardReady };
 }
 
 async function refreshCafe24Token() {
@@ -1447,12 +2162,24 @@ function buildCafe24AuthorizeUrl() {
   }
   const state = randomUUID();
   env.CAFE24_OAUTH_STATE = state;
+  const redirectUri = cafe24RedirectUri();
   const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/oauth/authorize`);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", env.CAFE24_CLIENT_ID);
   url.searchParams.set("state", state);
-  url.searchParams.set("redirect_uri", cafe24RedirectUri());
+  url.searchParams.set("redirect_uri", redirectUri);
   if (env.CAFE24_SCOPES) url.searchParams.set("scope", env.CAFE24_SCOPES);
+  // 진단용 로그: redirect_uri 불일치("invalid_request: redirect_uri is invalid")를 추적하기 위해
+  // 인코딩 전/후 redirect_uri와 전체 authorize URL을 출력한다. 토큰/시크릿은 포함하지 않는다.
+  // (2026-07-08 Cafe24 redirect_uri 불일치 진단)
+  console.log("[CAFE24_OAUTH_START]", {
+    mallId: env.CAFE24_MALL_ID,
+    redirectUriSource: env.CAFE24_REDIRECT_URI ? "env.CAFE24_REDIRECT_URI" : `fallback(http://${host}:${port}/...)`,
+    redirectUriDecoded: redirectUri,
+    redirectUriEncoded: encodeURIComponent(redirectUri),
+    scopes: env.CAFE24_SCOPES || "(empty)",
+    authorizeUrl: url.toString()
+  });
   return url.toString();
 }
 
@@ -1515,42 +2242,11 @@ async function handleCafe24OAuthCallback(callbackUrl) {
   };
 }
 
-function cafe24OAuthSuccessHtml(data) {
-  const envText = [
-    `CAFE24_ACCESS_TOKEN=${data.accessToken}`,
-    `CAFE24_REFRESH_TOKEN=${data.refreshToken}`,
-    `CAFE24_ACCESS_TOKEN_EXPIRES_AT=${data.expiresAt || ""}`
-  ].join("\n");
-  return `<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Cafe24 Connected</title>
-  <style>
-    body { margin:0; padding:32px; font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif; background:#f7f7f4; color:#14282d; }
-    main { max-width:900px; margin:0 auto; }
-    h1 { margin:0 0 12px; font-size:32px; }
-    p { color:#58666b; line-height:1.6; }
-    textarea { width:100%; min-height:180px; padding:16px; font:14px ui-monospace,SFMono-Regular,Menlo,monospace; border:1px solid #cdd6d9; background:white; color:#14282d; }
-    .warning { padding:16px; border:1px solid #ffb84d; background:#fff7e8; margin:20px 0; }
-    a { color:#0f3b45; font-weight:800; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>Cafe24 연결 완료</h1>
-    <p>새 Cafe24 토큰이 발급되었습니다. 아래 3개 값을 Render Environment Variables에 그대로 업데이트하세요.</p>
-    <div class="warning">
-      이 화면에는 실제 토큰이 표시됩니다. 다른 사람에게 공유하지 말고, Render에 저장한 뒤 이 탭을 닫으세요.
-    </div>
-    <textarea readonly>${escapeHtml(envText)}</textarea>
-    <p>Render에 저장 후 서비스를 재시작하거나 재배포한 다음 <a href="/api/cafe24/health">/api/cafe24/health</a>와 <a href="/api/cafe24/orders">/api/cafe24/orders</a>를 확인하세요.</p>
-    <p><a href="/">대시보드로 돌아가기</a></p>
-  </main>
-</body>
-</html>`;
-}
+// cafe24OAuthSuccessHtml()은 이 자리에 있었으나 화면에 access_token/refresh_token 원문을
+// 그대로 노출했다("Render Environment Variables에 그대로 업데이트하세요" 텍스트와 함께).
+// 토큰/시크릿 값을 화면이나 로그에 노출하지 않는다는 요구사항에 따라 제거했다. 재인증 성공/실패는
+// 이제 위 /api/cafe24/oauth/callback에서 "/"로 리다이렉트해 대시보드 SPA가 안내한다.
+// (2026-07-08 Cafe24 재인증 흐름 개선 — 토큰 노출 제거)
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -1629,7 +2325,9 @@ function integrationStatus() {
 }
 
 function actionValue(items = [], type) {
-  const found = items.find((item) => item.action_type === type || item.action_type === `offsite_conversion.fb_pixel_${type}`);
+  const candidates = Array.isArray(type) ? type : [type];
+  const expanded = candidates.flatMap((name) => [name, `offsite_conversion.fb_pixel_${name}`]);
+  const found = (items || []).find((item) => expanded.includes(item.action_type));
   return Number(found?.value || 0);
 }
 
@@ -1718,8 +2416,8 @@ function dashboardHtml() {
     const months = ["2026-07","2026-06","2026-05","2026-04","2026-03","2026-02","2026-01"];
     const monthSelect = document.querySelector("#month");
     monthSelect.innerHTML = months.map((month) => '<option value="' + month + '">' + month + '</option>').join("");
-    document.querySelector("#reload").addEventListener("click", load);
-    monthSelect.addEventListener("change", load);
+    document.querySelector("#reload").addEventListener("click", () => load({ forceRefresh: true }));
+    monthSelect.addEventListener("change", () => load());
     const num = (value) => Number(value || 0).toLocaleString("ko-KR");
     const krw = (value) => Math.round(Number(value || 0) / 10000).toLocaleString("ko-KR") + "만원";
     const pct = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(1) + "%" : "-";
@@ -1767,9 +2465,10 @@ function dashboardHtml() {
         '</tbody></table>';
     }
 
-    async function load() {
+    async function load(options) {
       const month = monthSelect.value;
-      const data = await readJson('/api/instagram/monthly?month=' + month);
+      const refreshQuery = (options && options.forceRefresh) ? '&refresh=1' : '';
+      const data = await readJson('/api/instagram/monthly?month=' + month + refreshQuery);
       setStatus("#instagramStatus", !data.error, "캐시", data.error ? data.error : (data.source === "csv_import" ? "CSV 고정 데이터 기준" : "API/캐시 기준"), data.source === "csv_import" ? "CSV" : "캐시");
       renderKpis(data.error ? { account: {}, posts: [], source: "오류" } : data);
       renderPosts(data.error ? { posts: [] } : data);
@@ -1854,6 +2553,90 @@ async function graphGet(path, params = {}) {
   return body;
 }
 
+// Meta의 paging.next는 access_token까지 포함된 완전한 URL이라 그대로 fetch합니다.
+async function graphGetRawUrl(fullUrl) {
+  const response = await fetch(fullUrl);
+  const body = await response.json();
+  if (!response.ok || body.error) {
+    const error = new Error(body.error?.message || `Graph API error ${response.status}`);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+  return body;
+}
+
+// 캠페인 목록/Insights처럼 계정 규모에 따라 여러 페이지로 나뉠 수 있는 응답을 모두 모읍니다.
+// 안전장치로 최대 페이지 수를 제한합니다(계정이 비정상적으로 커도 무한 루프에 빠지지 않도록).
+async function graphGetAllPages(path, params = {}, { maxPages = 10 } = {}) {
+  const results = [];
+  let body = await graphGet(path, params);
+  results.push(...(body.data || []));
+  let pages = 1;
+  while (body.paging?.next && pages < maxPages) {
+    body = await graphGetRawUrl(body.paging.next);
+    results.push(...(body.data || []));
+    pages += 1;
+  }
+  return results;
+}
+
+async function fetchAllCampaignsList(adAccountId) {
+  return graphGetAllPages(`${adAccountId}/campaigns`, {
+    fields: "id,name,objective,effective_status,status,bid_strategy",
+    limit: 200
+  });
+}
+
+async function fetchAllCampaignInsights(adAccountId, since, until) {
+  return graphGetAllPages(`${adAccountId}/insights`, {
+    fields: metaAdsFieldsForLevel("campaign").join(","),
+    level: "campaign",
+    time_range: JSON.stringify({ since, until }),
+    limit: 200
+  });
+}
+
+// Meta Ads Manager가 보여주는 계정 전체 합계와 대조하기 위한 level=account 집계.
+async function fetchMetaAccountTotals(adAccountId, since, until) {
+  const body = await graphGet(`${adAccountId}/insights`, {
+    fields: "spend,actions,action_values",
+    level: "account",
+    time_range: JSON.stringify({ since, until }),
+    limit: 1
+  });
+  const row = (body.data || [])[0] || {};
+  const spend = Number(row.spend || 0);
+  const purchaseValue = actionValue(row.action_values, "purchase");
+  const purchases = actionValue(row.actions, "purchase");
+  return { spend, purchaseValue, purchases, roas: spend ? purchaseValue / spend : null };
+}
+
+function metaBidStrategyLabel(raw) {
+  const map = {
+    LOWEST_COST_WITHOUT_CAP: "최고 성과 우선",
+    LOWEST_COST_WITH_BID_CAP: "입찰가 상한",
+    LOWEST_COST_WITH_MIN_ROAS: "최소 ROAS 목표",
+    COST_CAP: "비용 한도",
+    TARGET_COST: "목표 비용"
+  };
+  return map[raw] || (raw ? raw : "확인 필요");
+}
+
+// Meta API에는 "초안(Draft)" 상태가 없어(광고관리자 UI 임시 저장은 API 객체로 생성되지 않는
+// 경우가 많음) 완전히 정확하지는 않은 근사치입니다. effective_status + 기간 내 집행 여부로
+// 진행중/종료/초안/비활성 4가지로 근사해서 분류합니다.
+function metaCampaignDisplayStatus(effectiveStatus, spend) {
+  if (effectiveStatus === "ACTIVE") return "진행중";
+  if (spend > 0) {
+    if (effectiveStatus === "ARCHIVED" || effectiveStatus === "DELETED") return "종료";
+    return "비활성";
+  }
+  if (effectiveStatus === "ARCHIVED" || effectiveStatus === "DELETED") return "종료";
+  if (effectiveStatus === "PAUSED" || effectiveStatus === "CAMPAIGN_PAUSED") return "초안";
+  return "비활성";
+}
+
 async function buildInstagramMonthlyData(month) {
   const igId = env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
   if (!igId) throw new Error(".env에 INSTAGRAM_BUSINESS_ACCOUNT_ID가 없습니다.");
@@ -1862,7 +2645,7 @@ async function buildInstagramMonthlyData(month) {
     fields: "id,username,name,followers_count,media_count"
   });
   const media = await fetchMedia(igId, { maxPages: 2 });
-  const monthMedia = media.filter((item) => String(item.timestamp || "").startsWith(month));
+  const monthMedia = media.filter((item) => monthKeyInReportTimezone(item.timestamp) === month);
   const postMedia = monthMedia.length ? monthMedia : isCurrentMonth(month) ? media.slice(0, 12) : monthMedia;
   const errors = [];
   const posts = await mapWithConcurrency(postMedia, 6, async (item) => {
@@ -1951,21 +2734,144 @@ async function buildInstagramMonthlyDataWithCache(month, options = {}) {
 
   if (!options.refresh) {
     const cached = await readCachedInstagramMonth(month);
-    if (cached && !isEmptyInstagramMonth(cached)) {
+    if (cached && !isEmptyInstagramMonth(cached) && !isStaleCurrentMonthCache(cached)) {
+      await logInstagramDiagnostic("cache_hit_fresh", month, {
+        postsScope: cached.postsScope,
+        monthMediaCount: cached.monthMediaCount,
+        syncedAt: cached.syncedAt
+      });
       return decorateCachedSource(cached, "instagram_graph_api", "cached_first");
+    }
+    if (cached && isStaleCurrentMonthCache(cached)) {
+      await logInstagramDiagnostic("cache_stale_fallback_refetching", month, {
+        postsScope: cached.postsScope,
+        monthMediaCount: cached.monthMediaCount,
+        syncedAt: cached.syncedAt
+      });
     }
   }
   try {
-    return await buildInstagramMonthlyData(month);
+    const fresh = await buildInstagramMonthlyData(month);
+    await logInstagramDiagnostic("live_fetch_ok", month, {
+      monthMediaCount: fresh.monthMediaCount,
+      postsScope: fresh.postsScope
+    });
+    return fresh;
   } catch (error) {
     await logApiError("instagram_monthly", error, { month });
     const cached = await readCachedInstagramMonth(month);
     if (cached) {
       cached.source = `${cached.source || "instagram_graph_api"}_cached`;
       cached.cacheWarning = error.message;
+      await logInstagramDiagnostic("live_fetch_failed_used_cache", month, { message: error.message });
       return cached;
     }
+    await logInstagramDiagnostic("live_fetch_failed_no_cache", month, { message: error.message });
     throw error;
+  }
+}
+
+// A current-month cache is only trustworthy if the last live sync actually
+// found media for that month. If it fell back to showing older posts
+// ("recent_media_fallback" / monthMediaCount 0), "cached_first" would
+// otherwise keep serving that stale, empty-for-this-month snapshot forever,
+// even after new posts are uploaded — this was the cause of July 1-6 posts
+// never appearing. Treat that state as stale so a live re-fetch is retried.
+function isStaleCurrentMonthCache(cached) {
+  return cached?.postsScope === "recent_media_fallback" || Number(cached?.monthMediaCount || 0) === 0;
+}
+
+// Instagram 자동 동기화 스케줄러 (2026-07-08): 서버 시작 시 1회, 이후 6시간마다
+// buildInstagramMonthlyDataWithCache(currentMonth(), {refresh:true})를 호출해 실제
+// Graph API에서 최신 게시물을 가져와 work/instagram-<month>.json 캐시를 갱신한다.
+// 실패해도 기존 on-disk 캐시는 그대로 유지된다 — buildInstagramMonthlyDataWithCache의
+// catch 분기가 라이브 호출 실패 시 기존 캐시로 폴백하고 절대 파일을 지우지 않기
+// 때문이다. 이 객체는 마지막 시도/성공/에러만 기록하며 /api/status에서 노출된다
+// (에러 메시지는 safeErrorMessage()로 토큰/시크릿을 마스킹한 뒤에만 저장한다).
+const instagramSyncScheduler = {
+  intervalMs: 6 * 60 * 60 * 1000, // 6시간
+  running: false,
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastError: null
+};
+
+async function runInstagramBackgroundSync() {
+  if (instagramSyncScheduler.running) return;
+  instagramSyncScheduler.running = true;
+  instagramSyncScheduler.lastAttemptAt = new Date().toISOString();
+  const month = currentMonth();
+  try {
+    const result = await buildInstagramMonthlyDataWithCache(month, { refresh: true });
+    if (result?.cacheWarning) {
+      // 라이브 Graph API 호출은 실패했지만 기존 캐시로 안전하게 폴백된 상태.
+      instagramSyncScheduler.lastError = safeErrorMessage({ message: result.cacheWarning });
+      await logInstagramDiagnostic("background_sync_fallback_cache", month, {
+        message: instagramSyncScheduler.lastError
+      });
+    } else {
+      instagramSyncScheduler.lastError = null;
+      instagramSyncScheduler.lastSuccessAt = new Date().toISOString();
+      await logInstagramDiagnostic("background_sync_ok", month, {
+        monthMediaCount: result?.monthMediaCount,
+        postsScope: result?.postsScope
+      });
+    }
+  } catch (error) {
+    // 캐시조차 없는 완전 실패인 경우에만 여기로 온다 — 이 경우도 기존 파일을 지우지
+    // 않으므로 다음 페이지 로드는 여전히 이전 상태(빈 화면이 아니라 마지막 성공 캐시가
+    // 있었다면 그 캐시)를 그대로 보여준다.
+    instagramSyncScheduler.lastError = safeErrorMessage(error);
+    await logApiError("instagram_background_sync", error, { month });
+  } finally {
+    instagramSyncScheduler.running = false;
+  }
+}
+
+// TEMPORARY diagnostic (requested to debug Meta purchase_value/ROAS showing
+// 0 while spend is fine). Logs ONLY the fields needed to see which
+// action_type Meta is actually returning for this ad account — never the
+// access token, request URL, or any auth header. Safe to remove once the
+// actionValue() mapping is fixed for the real action_type name.
+async function logMetaAdsDiagnostic(rows = [], extra = {}) {
+  try {
+    await mkdir(workDir, { recursive: true });
+    const safeRows = rows.map((row) => ({
+      campaign_id: row.campaign_id ?? null,
+      campaign_name: row.campaign_name ?? null,
+      spend: row.spend ?? null,
+      frequency: row.frequency ?? null,
+      actions: row.actions ?? null,
+      action_values: row.action_values ?? null,
+      video_avg_time_watched_actions: row.video_avg_time_watched_actions ?? null,
+      video_p100_watched_actions: row.video_p100_watched_actions ?? null
+    }));
+    const line = `${JSON.stringify({
+      time: new Date().toISOString(),
+      source: "meta_ads_raw_diagnostic",
+      rowCount: safeRows.length,
+      rows: safeRows,
+      ...extra
+    })}\n`;
+    await writeFile(join(workDir, "meta-ads-debug.ndjson"), line, { flag: "a" });
+  } catch {
+    // diagnostics must never break the main request
+  }
+}
+
+async function logInstagramDiagnostic(status, month, extra = {}) {
+  try {
+    await mkdir(workDir, { recursive: true });
+    const line = `${JSON.stringify({
+      time: new Date().toISOString(),
+      source: "instagram_monthly_diagnostic",
+      status,
+      month,
+      ...extra
+    })}\n`;
+    await writeFile(join(workDir, "instagram-insights-debug.ndjson"), line, { flag: "a" });
+  } catch {
+    // diagnostics must never break the main request
   }
 }
 
@@ -2118,7 +3024,12 @@ async function fetchMedia(igId, options = {}) {
     "timestamp",
     "permalink",
     "like_count",
-    "comments_count"
+    "comments_count",
+    // children은 CAROUSEL_ALBUM의 첫 번째 이미지를 정확히 찾기 위해 필요하다 —
+    // 앨범 자체의 media_url은 API/게시물에 따라 비어 있을 수 있어 신뢰할 수 없고,
+    // 실제 첫 장 이미지는 children의 첫 항목에서 가져와야 한다.
+    // (2026-07-08 Reports 썸네일 실제 이미지 교체)
+    "children{media_type,media_url,thumbnail_url}"
   ].join(",");
   const items = [];
   let after = "";
@@ -2202,6 +3113,31 @@ function sumInsightSeries(items) {
   return result;
 }
 
+// Reports 카드 상단 썸네일 규칙 (2026-07-08 Reports 썸네일 실제 이미지 교체):
+//   IMAGE            → media_url
+//   CAROUSEL_ALBUM    → 첫 번째 children 항목의 이미지 (children이 없으면 앨범 자체의
+//                        media_url/thumbnail_url로 폴백)
+//   VIDEO/REELS       → thumbnail_url 우선, 없으면 media_url
+// 이미지가 전혀 없으면 빈 문자열을 반환하고, 프론트가 그 경우에만 기존 Gradient
+// Placeholder를 그대로 사용한다.
+function resolveCoverImage(item) {
+  const mediaType = item.media_type || "";
+  if (mediaType === "CAROUSEL_ALBUM") {
+    const firstChild = item.children?.data?.[0];
+    if (firstChild) {
+      return firstChild.media_type === "VIDEO"
+        ? (firstChild.thumbnail_url || firstChild.media_url || "")
+        : (firstChild.media_url || firstChild.thumbnail_url || "");
+    }
+    return item.media_url || item.thumbnail_url || "";
+  }
+  if (mediaType === "VIDEO" || item.media_product_type === "REELS") {
+    return item.thumbnail_url || item.media_url || "";
+  }
+  // IMAGE 및 그 외 알 수 없는 타입은 media_url을 우선한다.
+  return item.media_url || item.thumbnail_url || "";
+}
+
 function normalizePost(item, insights) {
   const caption = item.caption || "";
   const title = caption.split(/\r?\n/).find(Boolean)?.slice(0, 64) || "Untitled content";
@@ -2218,6 +3154,7 @@ function normalizePost(item, insights) {
     permalink: item.permalink,
     mediaUrl: item.media_url || "",
     thumbnailUrl: item.thumbnail_url || item.media_url || "",
+    coverImageUrl: resolveCoverImage(item),
     reach: metricOrNull(insights.reach),
     views: metricOrNull(insights.views),
     likes: metricOrNull(item.like_count),
@@ -2302,6 +3239,21 @@ function currentMonth() {
 
 function monthFromDate(dateText) {
   return String(dateText || "").slice(0, 7);
+}
+
+// Meta's media "timestamp" is not guaranteed to line up with the report
+// timezone (Asia/Seoul). A naive string prefix match against a KST-computed
+// month key can mis-bucket posts made near the midnight boundary (e.g. a
+// post at 08:00 KST is still the previous day in UTC). Always resolve the
+// month through the same timezone used by currentMonth() to classify posts.
+function monthKeyInReportTimezone(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: env.REPORT_TIMEZONE || "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit"
+  }).format(date);
 }
 
 function isCurrentMonth(month) {

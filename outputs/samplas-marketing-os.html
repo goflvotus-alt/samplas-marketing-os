@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SAMPLAS Instagram Marketing OS</title>
-  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260703-api-health-center" />
+  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260708g-report-thumbnails" />
 </head>
 <body>
   <div class="app-shell">
@@ -19,9 +19,9 @@
       <nav id="nav" class="nav"></nav>
       <div class="sync-panel">
         <p class="eyebrow">Data Sync</p>
-        <div id="instagramSyncRow" class="sync-row loading"><span></span><strong>Instagram</strong><small>서버 연결 확인 중</small><em>20%</em></div>
-        <div id="metaAdsSyncRow" class="sync-row loading"><span></span><strong>Meta Ads</strong><small>서버 연결 확인 중</small><em>20%</em></div>
-        <div id="cafe24SyncRow" class="sync-row loading"><span></span><strong>Cafe24</strong><small>서버 연결 확인 중</small><em>20%</em></div>
+        <div id="instagramSyncRow" class="sync-row loading"><span></span><strong>Instagram</strong><em>확인 중</em></div>
+        <div id="metaAdsSyncRow" class="sync-row loading"><span></span><strong>Meta Ads</strong><em>확인 중</em></div>
+        <div id="cafe24SyncRow" class="sync-row loading"><span></span><strong>Cafe24</strong><em>확인 중</em></div>
         <button id="syncFixBtn" class="sync-fix-button hidden" type="button">오류 해결하기</button>
       </div>
     </aside>
@@ -29,14 +29,11 @@
     <main class="main">
       <section class="topbar">
         <div>
-          <p class="eyebrow">MONTHLY INTELLIGENCE</p>
-          <h2>Marketing Director</h2>
-          <p class="topbar-subtitle">SAMPLAS</p>
+          <h2 id="topbarTitle">Overview</h2>
         </div>
         <div class="controls">
           <select id="monthSelect" aria-label="월 선택"></select>
           <button id="refreshBtn" class="button secondary" type="button">동기화 점검</button>
-          <button id="monthlyReportBtn" class="button primary" type="button">월간 리포트 보기</button>
         </div>
       </section>
 
@@ -48,6 +45,7 @@
           </div>
           <span id="dataModeBadge" class="badge">연결 확인 중</span>
         </div>
+        <div id="apiHealthBanner" class="health-banner loading">연동 상태 확인 중...</div>
         <div class="section-block">
           <div class="section-title compact">
             <div>
@@ -60,42 +58,46 @@
           <div id="todayBriefing" class="today-briefing-list"></div>
         </div>
         <div id="kpiGrid" class="kpi-grid"></div>
-        <div class="section-block">
-          <div class="section-title compact">
-            <div>
-              <p class="eyebrow">Action Center</p>
-              <h3>추가 확인 신호</h3>
+        <details class="section-block director-more">
+          <summary>세부 지표 더 보기 <span>Action Center · 이번 달 KPI · 목표 진행률 · 최근 동기화 기록</span></summary>
+          <div class="section-block">
+            <div class="section-title compact">
+              <div>
+                <p class="eyebrow">Action Center</p>
+                <h3>추가 확인 신호</h3>
+              </div>
             </div>
+            <div id="actions" class="home-action-list"></div>
           </div>
-          <div id="actions" class="home-action-list"></div>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact">
-            <div>
-              <p class="eyebrow">This Month</p>
-              <h3>이번 달 KPI</h3>
+          <div class="section-block">
+            <div class="section-title compact">
+              <div>
+                <p class="eyebrow">This Month</p>
+                <h3>이번 달 KPI</h3>
+              </div>
             </div>
+            <div id="overviewLiveData" class="cards ad-core-kpi-grid"></div>
+            <div id="overviewLiveSupport" class="report-support-row"></div>
           </div>
-          <div id="overviewLiveData" class="home-month-grid"></div>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact">
-            <div>
-              <p class="eyebrow">Goal Progress</p>
-              <h3>이번 달 목표 진행률</h3>
+          <div class="section-block">
+            <div class="section-title compact">
+              <div>
+                <p class="eyebrow">Goal Progress</p>
+                <h3>이번 달 목표 진행률</h3>
+              </div>
             </div>
+            <div id="nextActions" class="home-goal-grid"></div>
           </div>
-          <div id="nextActions" class="home-goal-grid"></div>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact">
-            <div>
-              <p class="eyebrow">Recent Activity</p>
-              <h3>최근 동기화 기록</h3>
+          <div class="section-block">
+            <div class="section-title compact">
+              <div>
+                <p class="eyebrow">Recent Activity</p>
+                <h3>최근 동기화 기록</h3>
+              </div>
             </div>
+            <div id="insightList" class="home-activity-list"></div>
           </div>
-          <div id="insightList" class="home-activity-list"></div>
-        </div>
+        </details>
       </section>
 
       <section id="Content" class="view">
@@ -119,7 +121,7 @@
                 <h3>이번달 콘텐츠 KPI</h3>
               </div>
             </div>
-            <div id="contentKpiGrid" class="content-kpi-grid"></div>
+            <div id="contentKpiGrid" class="content-kpi-summary"></div>
           </div>
           <div class="section-block">
             <div class="section-title compact"><div><p class="eyebrow">Top Content</p><h3>TOP 콘텐츠</h3></div></div>
@@ -173,8 +175,12 @@
           </div>
           <span class="badge">기존 데이터 기반</span>
         </div>
+        <div class="section-block editorial-primary">
+          <div class="section-title compact"><div><p class="eyebrow">Recommendation</p><h3>오늘의 AI 추천 콘텐츠</h3></div></div>
+          <div id="editorialRecommendGrid" class="editorial-recommend-grid"></div>
+        </div>
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Key Insights</p><h3>이번 달 핵심 인사이트</h3></div></div>
+          <div class="section-title compact"><div><p class="eyebrow">Key Insights · 근거 데이터</p><h3>이번 달 핵심 인사이트</h3></div></div>
           <div id="editorialInsightGrid" class="editorial-insight-grid"></div>
         </div>
         <div class="section-block">
@@ -182,16 +188,12 @@
           <div id="editorialWhyGrid" class="editorial-why-grid"></div>
         </div>
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Recommendation</p><h3>AI 추천</h3></div></div>
-          <div id="editorialRecommendGrid" class="editorial-recommend-grid"></div>
+          <div class="section-title compact"><div><p class="eyebrow">추천 브랜드</p><h3>다음에 다룰 브랜드 기회</h3></div></div>
+          <div id="editorialOpportunityGrid" class="editorial-opportunity-grid"></div>
         </div>
         <div class="section-block">
           <div class="section-title compact"><div><p class="eyebrow">Brand Analysis</p><h3>브랜드 분석</h3></div></div>
           <div id="editorialBrandGrid" class="editorial-brand-grid"></div>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Opportunity</p><h3>다음에 다룰 브랜드 기회</h3></div></div>
-          <div id="editorialOpportunityGrid" class="editorial-opportunity-grid"></div>
         </div>
         <div class="section-block">
           <div class="section-title compact"><div><p class="eyebrow">Discover Radar</p><h3>아직 다루지 않은 브랜드 추천</h3></div></div>
@@ -211,97 +213,222 @@
         <div class="section-title">
           <div>
             <p class="eyebrow">Advertising</p>
-            <h3>광고 성과 분석</h3>
+            <h3>미디어 바잉 콘솔</h3>
           </div>
         </div>
+
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Meta Ads Summary</p><h3>Meta 광고 요약</h3></div></div>
-          <div id="advertisingSummary" class="cards"></div>
+          <div class="section-title compact"><div><p class="eyebrow">Today · Top 3</p><h3>오늘 가장 먼저 확인할 광고</h3></div></div>
+          <div id="adAiBriefing" class="ad-ai-briefing"></div>
         </div>
+
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Campaign Performance</p><h3>캠페인별 성과</h3></div></div>
-          <div class="ad-level-tabs" id="adLevelTabs" aria-label="광고 성과 레벨 선택">
-            <button type="button" class="active" data-ad-level="campaign">Campaign</button>
-            <button type="button" data-ad-level="adset">Ad Set</button>
-            <button type="button" data-ad-level="ad">Ad</button>
+          <div id="adTodayStatus" class="ad-status-banner loading"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Ad KPI</p><h3>핵심 광고 지표</h3></div></div>
+          <div id="adCoreKpi" class="cards ad-core-kpi-grid"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Meta ↔ Marketing Director</p><h3>데이터 일치 검증</h3></div></div>
+          <div id="adReconciliationSummary" class="cards"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact">
+            <div><p class="eyebrow">All Campaigns</p><h3>집행 캠페인</h3></div>
+            <button id="adDetailToggleBtn" class="button secondary" type="button">상세 보기</button>
           </div>
-          <div id="campaignPerformance" class="cards"></div>
-          <div class="table-wrap ad-table-wrap">
+          <p class="hint-text">기본으로는 선택한 기간에 광고비·노출·도달 중 하나라도 발생한(실제로 집행된) 캠페인만 보여줍니다. 미집행 캠페인은 아래에 접혀 있습니다. 기간을 바꾸면 그 기간 기준으로 다시 계산됩니다. AI Decision은 Score 기준 5단계 신뢰도(★)와 팀장 코멘트 형식의 근거로 표시합니다.</p>
+          <div class="table-wrap ad-table-wrap ad-full-report-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>이름</th>
-                  <th>광고비</th>
-                  <th>노출</th>
-                  <th>도달</th>
-                  <th>클릭</th>
-                  <th>CTR</th>
-                  <th>CPC</th>
-                  <th>CPM</th>
-                  <th>Meta 구매수</th>
-                  <th>Meta 구매값</th>
+                  <th>Campaign</th>
+                  <th>Status</th>
+                  <th>Objective</th>
+                  <th>Spend</th>
+                  <th>Purchase</th>
+                  <th>Purchase Value</th>
                   <th>Meta ROAS</th>
+                  <th>Score</th>
+                  <th>AI Decision</th>
+                  <th class="ad-detail-col">CTR</th>
+                  <th class="ad-detail-col">CPC</th>
+                  <th class="ad-detail-col">CPM</th>
+                  <th class="ad-detail-col">Frequency</th>
+                  <th class="ad-detail-col">Landing Page View</th>
+                  <th class="ad-detail-col">Profile Visit</th>
+                  <th class="ad-detail-col">Conversion Rate</th>
+                  <th class="ad-detail-col">CPA</th>
+                  <th class="ad-detail-col">실제 집행 기간</th>
                 </tr>
               </thead>
-              <tbody id="adPerformanceRows"></tbody>
+              <tbody id="adFullReportActiveRows"></tbody>
             </table>
           </div>
+          <details class="director-more ad-other-campaigns">
+            <summary id="adGroupOtherHeader">미집행 캠페인 (0)</summary>
+            <div class="table-wrap ad-table-wrap ad-full-report-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Campaign</th>
+                    <th>Status</th>
+                    <th>Objective</th>
+                    <th>Spend</th>
+                    <th>Purchase</th>
+                    <th>Purchase Value</th>
+                    <th>Meta ROAS</th>
+                    <th>Score</th>
+                    <th>AI Decision</th>
+                    <th class="ad-detail-col">CTR</th>
+                    <th class="ad-detail-col">CPC</th>
+                    <th class="ad-detail-col">CPM</th>
+                    <th class="ad-detail-col">Frequency</th>
+                    <th class="ad-detail-col">Landing Page View</th>
+                    <th class="ad-detail-col">Profile Visit</th>
+                    <th class="ad-detail-col">Conversion Rate</th>
+                    <th class="ad-detail-col">CPA</th>
+                    <th class="ad-detail-col">실제 집행 기간</th>
+                  </tr>
+                </thead>
+                <tbody id="adFullReportOtherRows"></tbody>
+              </table>
+            </div>
+          </details>
         </div>
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Ad Ranking</p><h3>우수 광고 TOP 5 / 점검 광고 TOP 5</h3></div></div>
-          <div id="adRanking" class="cards"></div>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Ad + Organic</p><h3>광고와 유기 콘텐츠 비교</h3></div></div>
-          <div id="adOrganicContent" class="cards"></div>
-        </div>
+
+        <details class="section-block director-more">
+          <summary>세부 지표 더 보기 <span>Impressions · CTR · CPM · 캠페인별 성과 · 광고/유기 비교</span></summary>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Meta Ads Detail</p><h3>세부 광고 지표</h3></div></div>
+            <div id="advertisingSummary" class="cards"></div>
+          </div>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Campaign Performance</p><h3>캠페인별 성과</h3></div></div>
+            <div class="ad-level-tabs" id="adLevelTabs" aria-label="광고 성과 레벨 선택">
+              <button type="button" class="active" data-ad-level="campaign">Campaign</button>
+              <button type="button" data-ad-level="adset">Ad Set</button>
+              <button type="button" data-ad-level="ad">Ad</button>
+            </div>
+            <div id="campaignPerformance" class="cards"></div>
+            <div class="table-wrap ad-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>이름</th>
+                    <th>광고비</th>
+                    <th>노출</th>
+                    <th>도달</th>
+                    <th>클릭</th>
+                    <th>CTR</th>
+                    <th>CPC</th>
+                    <th>CPM</th>
+                    <th>Meta 구매수</th>
+                    <th>Meta 구매값</th>
+                    <th>Meta ROAS</th>
+                  </tr>
+                </thead>
+                <tbody id="adPerformanceRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Ad + Organic</p><h3>광고와 유기 콘텐츠 비교</h3></div></div>
+            <div id="adOrganicContent" class="cards"></div>
+          </div>
+        </details>
       </section>
 
       <section id="Sales" class="view">
         <div class="section-title">
           <div>
             <p class="eyebrow">Sales</p>
-            <h3>Cafe24 실제 매출 분석</h3>
+            <h3>Revenue Decision Console</h3>
           </div>
         </div>
+
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Cafe24 Sales</p><h3>Cafe24 실제 주문 기준 매출</h3></div></div>
+          <div id="salesHealthBanner" class="ad-status-banner loading"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Cafe24</p><h3>실제 매출</h3></div></div>
           <div id="salesImpact" class="cards"></div>
         </div>
+
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Meta / Cafe24</p><h3>Meta 구매값과 Cafe24 실제 매출 차이</h3></div></div>
-          <div id="adComparison" class="cards"></div>
+          <div class="section-title compact"><div><p class="eyebrow">Meta</p><h3>Meta 추정 매출</h3></div></div>
+          <div id="salesMetaEstimate" class="cards"></div>
         </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Variance</p><h3>오차 분석</h3></div></div>
+          <div id="salesVariance" class="cards"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Recommended Action</p><h3>추천 Action</h3></div></div>
+          <div id="salesAction" class="cards ad-decision-grid"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Product Decision</p><h3>상품 의사결정 Dashboard</h3></div></div>
+          <p class="hint-text">Cafe24 Orders + Products 데이터를 기준으로 상품별 재고·판매량·매출·판매 속도·AI Action을 보여줍니다. 상품별 ROAS는 만들지 않으며(Product Sales Report 미사용, v1 범위 밖), Meta 광고비/ROAS는 아래에 기간 전체 참고치로만 별도 표시합니다.</p>
+          <div id="productDashboardBanner" class="ad-status-banner loading"></div>
+          <div id="productDashboardMetaRef" class="cards"></div>
+          <div class="table-wrap ad-table-wrap product-dashboard-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>상품명</th>
+                  <th>재고</th>
+                  <th>소진 예상일</th>
+                  <th>판매량</th>
+                  <th>매출</th>
+                  <th>판매 속도(일 평균)</th>
+                  <th>AI Action</th>
+                </tr>
+              </thead>
+              <tbody id="productDashboardRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <details class="section-block director-more">
+          <summary>세부 지표 더 보기 <span>결제수단 · TOP 상품</span></summary>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Detail</p><h3>결제수단 · TOP 상품</h3></div></div>
+            <div id="salesDetail" class="cards"></div>
+          </div>
+        </details>
       </section>
 
       <section id="Reports" class="view">
-        <div class="section-title">
-          <div>
-            <p class="eyebrow">Reports</p>
-            <h3>월간 보고서</h3>
+        <div id="monthRail" class="report-month-switch" aria-label="월별 리포트 선택"></div>
+        <div id="monthlyDashboard" class="monthly-dashboard"></div>
+        <textarea id="reportText" class="report-box collapsed" hidden readonly></textarea>
+        <details class="section-block director-more">
+          <summary>세부 지표 더 보기 <span>팔로워 추이 · 다음 달 콘텐츠 제안 · 월말 데이터 확정 안내</span></summary>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Follower Trend</p><h3>팔로워 추이</h3></div></div>
+            <div class="panel"><div id="growthChart" class="bar-chart"></div></div>
           </div>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Monthly Summary</p><h3>월간 요약</h3></div></div>
-          <div id="monthRail" class="month-rail" aria-label="월별 리포트 선택"></div>
-          <div id="monthlyDashboard" class="monthly-dashboard"></div>
-          <textarea id="reportText" class="report-box collapsed" hidden readonly></textarea>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Follower Trend</p><h3>팔로워 추이</h3></div></div>
-          <div class="panel"><div id="growthChart" class="bar-chart"></div></div>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Content Calendar</p><h3>다음 달 콘텐츠 제안</h3></div></div>
-          <div id="calendarGrid" class="calendar-grid"></div>
-        </div>
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Month-End Data</p><h3>월말 데이터 확정 안내</h3></div></div>
-          <div class="cards">
-            <article class="action-item"><strong>데이터 기준</strong><p>현재 월은 API 기준으로 갱신하고, 지난 월은 저장된 캐시 또는 CSV 기준으로 표시합니다.</p></article>
-            <article class="action-item"><strong>월말 Snapshot</strong><p>월말 데이터 확정 저장 기능은 추후 추가 예정입니다. 아직 이 화면에서 데이터를 잠그거나 저장하지 않습니다.</p></article>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Content Calendar</p><h3>다음 달 콘텐츠 제안</h3></div></div>
+            <div id="calendarGrid" class="calendar-grid"></div>
           </div>
-        </div>
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Month-End Data</p><h3>월말 데이터 확정 안내</h3></div></div>
+            <div class="cards">
+              <article class="action-item"><strong>데이터 기준</strong><p>현재 월은 API 기준으로 갱신하고, 지난 월은 저장된 캐시 또는 CSV 기준으로 표시합니다.</p></article>
+              <article class="action-item"><strong>월말 Snapshot</strong><p>월말 데이터 확정 저장 기능은 추후 추가 예정입니다. 아직 이 화면에서 데이터를 잠그거나 저장하지 않습니다.</p></article>
+            </div>
+          </div>
+        </details>
       </section>
 
       <section id="Settings" class="view">
@@ -330,10 +457,41 @@
           </div>
           <div id="apiHealthActions" class="api-health-actions"></div>
         </div>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Product Dashboard</p>
+              <h3>Cafe24 상품 API 진단</h3>
+            </div>
+          </div>
+          <p class="hint-text">Product Dashboard(Sales 탭)가 필요로 하는 Cafe24 상품 API(Product/Inventory/Images/Categories/Sales)가 로컬 서버 기준으로 정상인지 보여줍니다. mall.read_product 스코프 추가 후 재인증했다면 여기서 다시 확인하세요.</p>
+          <div id="cafe24ProductDiagnostics"></div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Marketing Rule Engine</p>
+              <h3>Objective별 가중치 설정</h3>
+            </div>
+            <button id="scoreWeightsSaveBtn" class="button secondary" type="button">저장</button>
+          </div>
+          <p class="hint-text">Advertising 탭 "전체 캠페인" 표의 Score를 계산할 때 쓰이는 가중치입니다. 값은 상대적 중요도이며 합계가 100이 아니어도 자동으로 정규화됩니다. Preset을 고르면 값이 채워지고, 저장을 눌러야 실제로 반영됩니다.</p>
+          <label class="score-weights-preset">
+            <span>Preset</span>
+            <select id="scoreWeightsPreset">
+              <option value="">직접 설정</option>
+              <option value="balanced">Balanced</option>
+              <option value="sales">Sales</option>
+              <option value="traffic">Traffic</option>
+              <option value="aggressive">Aggressive</option>
+            </select>
+          </label>
+          <div id="scoreWeightsForm" class="score-weights-form"></div>
+        </div>
       </section>
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260703-api-health-center"></script>
+  <script src="./samplas-marketing-os.js?v=20260708g-report-thumbnails"></script>
 </body>
 </html>
