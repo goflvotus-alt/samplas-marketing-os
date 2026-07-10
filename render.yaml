@@ -7,6 +7,10 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/status
+    disk:
+      name: samplas-cafe24-token-store
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: 24
@@ -15,7 +19,9 @@ services:
       - key: REPORT_TIMEZONE
         value: Asia/Seoul
       - key: WORK_DIR
-        value: /tmp/samplas-dashboard/work
+        value: /var/data/samplas-dashboard/work
+      - key: CAFE24_TOKEN_STORE_DIR
+        value: /var/data/samplas-dashboard/secrets
       - key: GRAPH_VERSION
         value: v25.0
       - key: SAMPLAS_INSTAGRAM_USERNAME
@@ -33,12 +39,6 @@ services:
       - key: CAFE24_CLIENT_ID
         sync: false
       - key: CAFE24_CLIENT_SECRET
-        sync: false
-      - key: CAFE24_ACCESS_TOKEN
-        sync: false
-      - key: CAFE24_REFRESH_TOKEN
-        sync: false
-      - key: CAFE24_ACCESS_TOKEN_EXPIRES_AT
         sync: false
       - key: CAFE24_REDIRECT_URI
         sync: false

@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir, readdir as fsReaddir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir as fsReaddir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { URL } from "node:url";
@@ -9,6 +9,8 @@ const root = resolve(".");
 const outputDir = join(root, "outputs");
 const env = await loadEnv();
 const workDir = resolve(env.WORK_DIR || join(root, "work"));
+const cafe24TokenStoreDir = resolve(env.CAFE24_TOKEN_STORE_DIR || join(workDir, "secrets"));
+const cafe24TokenStoreFile = join(cafe24TokenStoreDir, "cafe24-token-store.json");
 const port = Number(env.PORT || 8787);
 const host = env.HOST || "127.0.0.1";
 const graphVersion = env.GRAPH_VERSION || "v25.0";
@@ -34,6 +36,7 @@ createServer(async (req, res) => {
     }
     if (url.pathname === "/api/status") {
       const integrations = integrationStatus();
+      const cafe24Token = await cafe24TokenDiagnostics();
       return json(res, {
         instagram: integrations.instagram.ok,
         metaAds: integrations.metaAds.ok,
@@ -51,6 +54,7 @@ createServer(async (req, res) => {
         cafe24MallId: env.CAFE24_MALL_ID || null,
         cafe24Mode: env.CAFE24_PROXY_BASE_URL ? "proxy" : "local_oauth",
         cafe24ProxyBaseUrl: env.CAFE24_PROXY_BASE_URL || null,
+        cafe24Token,
         username: env.SAMPLAS_INSTAGRAM_USERNAME || "samplaskr",
         graphVersion
       });
@@ -166,6 +170,16 @@ createServer(async (req, res) => {
       } catch (error) {
         return json(res, { ok: false, error: safeErrorMessage(error) }, 400);
       }
+    }
+    if (url.pathname === "/api/diagnostics/cafe24-token-store") {
+      const token = await cafe24TokenDiagnostics();
+      return json(res, {
+        ok: true,
+        mallId: env.CAFE24_MALL_ID || null,
+        clientId: env.CAFE24_CLIENT_ID || null,
+        redirectUri: cafe24RedirectUri(),
+        token
+      });
     }
     if (url.pathname === "/api/cafe24/oauth/callback") {
       // 재인증 성공/실패 어느 쪽이든 토큰/시크릿 값을 화면에 절대 노출하지 않는다.
@@ -917,6 +931,111 @@ async function readJsonBody(req) {
   return JSON.parse(text);
 }
 
+async function readCafe24TokenRecord() {
+  try {
+    const text = await readFile(cafe24TokenStoreFile, "utf8");
+    const record = JSON.parse(text);
+    hydrateCafe24EnvFromTokenRecord(record);
+    return record;
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function writeCafe24TokenRecord(record) {
+  await mkdir(cafe24TokenStoreDir, { recursive: true });
+  const payload = {
+    schema: 1,
+    status: record.status || "active",
+    accessToken: record.accessToken || "",
+    refreshToken: record.refreshToken || "",
+    expiresAt: record.expiresAt || null,
+    updatedAt: record.updatedAt || new Date().toISOString(),
+    lastRefreshAt: record.lastRefreshAt || null,
+    reauthRequiredAt: record.reauthRequiredAt || null,
+    lastError: record.lastError || null
+  };
+  const tempFile = join(cafe24TokenStoreDir, `.cafe24-token-store.${process.pid}.${randomUUID()}.tmp`);
+  await writeFile(tempFile, JSON.stringify(payload, null, 2), { mode: 0o600 });
+  await rename(tempFile, cafe24TokenStoreFile);
+  hydrateCafe24EnvFromTokenRecord(payload);
+  return payload;
+}
+
+function hydrateCafe24EnvFromTokenRecord(record = {}) {
+  if (record.accessToken) env.CAFE24_ACCESS_TOKEN = record.accessToken;
+  if (record.refreshToken) env.CAFE24_REFRESH_TOKEN = record.refreshToken;
+  if (record.expiresAt) env.CAFE24_ACCESS_TOKEN_EXPIRES_AT = record.expiresAt;
+}
+
+function cafe24TokenStoreKind() {
+  const configuredDir = env.CAFE24_TOKEN_STORE_DIR || "";
+  if (configuredDir.startsWith("/var/data")) return "render_persistent_disk";
+  if (configuredDir) return "configured_file_store";
+  return "work_dir_file_store";
+}
+
+function cafe24TokenNeedsRefresh(record, skewMs = 10 * 60 * 1000) {
+  if (!record?.accessToken) return true;
+  if (!record.expiresAt) return false;
+  const expiresAt = new Date(record.expiresAt).getTime();
+  if (!Number.isFinite(expiresAt)) return true;
+  return expiresAt - Date.now() <= skewMs;
+}
+
+function safeCafe24TokenRecord(record) {
+  const status = record?.status || (record ? "active" : "missing");
+  return {
+    source: cafe24TokenStoreKind(),
+    configured: Boolean(env.CAFE24_TOKEN_STORE_DIR),
+    status,
+    hasAccessToken: Boolean(record?.accessToken),
+    hasRefreshToken: Boolean(record?.refreshToken),
+    accessTokenLength: record?.accessToken ? String(record.accessToken).length : 0,
+    refreshTokenLength: record?.refreshToken ? String(record.refreshToken).length : 0,
+    expiresAt: record?.expiresAt || null,
+    updatedAt: record?.updatedAt || null,
+    lastRefreshAt: record?.lastRefreshAt || null,
+    reauthRequiredAt: record?.reauthRequiredAt || null,
+    needsRefresh: cafe24TokenNeedsRefresh(record),
+    reauthRequired: status === "reauth_required",
+    lastError: record?.lastError || null
+  };
+}
+
+async function cafe24TokenDiagnostics() {
+  return safeCafe24TokenRecord(await readCafe24TokenRecord());
+}
+
+async function markCafe24ReauthRequired(error) {
+  const existing = await readCafe24TokenRecord();
+  const record = await writeCafe24TokenRecord({
+    ...(existing || {}),
+    status: "reauth_required",
+    reauthRequiredAt: new Date().toISOString(),
+    updatedAt: existing?.updatedAt || new Date().toISOString(),
+    lastError: safeErrorMessage(error)
+  });
+  return safeCafe24TokenRecord(record);
+}
+
+async function ensureCafe24AccessToken() {
+  const record = await readCafe24TokenRecord();
+  if (!record?.accessToken || !record?.refreshToken) {
+    throw new Error("Cafe24 토큰 저장소에 access token 또는 refresh token이 없습니다. 재인증 필요");
+  }
+  if (record.status === "reauth_required") {
+    throw new Error("Cafe24 token 상태가 reauth_required입니다. 재인증 필요");
+  }
+  if (cafe24TokenNeedsRefresh(record)) {
+    await refreshCafe24Token();
+  } else {
+    hydrateCafe24EnvFromTokenRecord(record);
+  }
+  return env.CAFE24_ACCESS_TOKEN;
+}
+
 function isAuthorizedInternalRequest(req) {
   if (!env.CAFE24_PROXY_SECRET && !env.CAFE24_PROXY_BASIC_AUTH) return host === "127.0.0.1" || host === "localhost";
   if (env.CAFE24_PROXY_SECRET && req.headers["x-samplas-internal-token"] === env.CAFE24_PROXY_SECRET) return true;
@@ -957,9 +1076,10 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
   if (env.CAFE24_PROXY_BASE_URL) {
     return await fetchCafe24OrdersFromProxy(startDate, endDate, options);
   }
-  if (!env.CAFE24_MALL_ID || !env.CAFE24_ACCESS_TOKEN) {
-    throw new Error(".env에 CAFE24_MALL_ID와 CAFE24_ACCESS_TOKEN이 필요합니다.");
+  if (!env.CAFE24_MALL_ID) {
+    throw new Error("Cafe24 API 호출에 CAFE24_MALL_ID가 필요합니다.");
   }
+  await ensureCafe24AccessToken();
   let body;
   try {
     body = await cafe24GetOrders(startDate, endDate, options);
@@ -1497,7 +1617,64 @@ function metaReferenceFromSummary(meta = {}) {
   };
 }
 
+// 로컬(proxy 모드)에서는 상품 카탈로그를 Cafe24에 직접 요청하지 않는다 — 로컬 .env의
+// Cafe24 토큰은 재인증(콜백이 Render로 감) 이후 더 이상 갱신되지 않아 invalid_token이 난다.
+// Orders와 동일하게 CAFE24_PROXY_BASE_URL(Render)로 위임하고, 실패 시에만 로컬 캐시로
+// 폴백한다. (2026-07-10 Product Dashboard invalid_token 수정)
+async function fetchProductDashboardFromProxy(since, until, options = {}) {
+  const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
+  const url = new URL(`${base}/api/products/dashboard`);
+  url.searchParams.set("since", since);
+  url.searchParams.set("until", until);
+  if (options.refresh) url.searchParams.set("refresh", "1");
+  if (options.productLimit) url.searchParams.set("productLimit", String(options.productLimit));
+  if (options.orderLimit) url.searchParams.set("orderLimit", String(options.orderLimit));
+  const cacheFile = join(workDir, `product-dashboard-proxy-${since}_${until}.json`);
+  try {
+    const response = await fetch(url, { headers: cafe24ProxyHeaders() });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      const hint = response.status === 404
+        ? "Render 배포본에 /api/products/dashboard가 아직 없습니다. 최신 코드를 push/배포하세요."
+        : text.slice(0, 80);
+      throw Object.assign(new Error(`Product Dashboard proxy가 JSON이 아닌 응답을 보냈습니다: ${response.status} ${hint}`), { status: response.status });
+    }
+    if (!response.ok || body.error) {
+      const error = new Error(body.error || body.message || `Product Dashboard proxy error ${response.status}`);
+      error.status = response.status;
+      error.body = body;
+      throw error;
+    }
+    const result = { ...body, source: "product_dashboard_proxy", proxyBaseUrl: base };
+    await mkdir(workDir, { recursive: true });
+    await writeFile(cacheFile, JSON.stringify(result, null, 2));
+    return result;
+  } catch (error) {
+    await logApiError("product_dashboard_proxy", error, { since, until });
+    if (existsSync(cacheFile)) {
+      try {
+        const cached = JSON.parse(await readFile(cacheFile, "utf8"));
+        return {
+          ...cached,
+          source: "product_dashboard_proxy_cached",
+          cacheMode: "fallback_after_error",
+          cacheWarning: safeErrorMessage(error)
+        };
+      } catch {
+        // 캐시 파일이 깨졌으면 원 오류를 그대로 던진다.
+      }
+    }
+    throw error;
+  }
+}
+
 async function buildProductDashboardWithCache(since, until, options = {}) {
+  if (env.CAFE24_PROXY_BASE_URL) {
+    return await fetchProductDashboardFromProxy(since, until, options);
+  }
   const days = daysBetweenDateKeys(since, until);
   const [ordersResult, catalogResult, metaResult] = await Promise.all([
     fetchCafe24Orders(since, until, { limit: options.orderLimit || 500 }).catch((error) => ({ error: error.message, orders: [], totals: {} })),
@@ -1754,22 +1931,29 @@ async function checkCafe24Health() {
       };
     }
     const token = body.cafe24Token || {};
+    const ready = Boolean(token.hasAccessToken && token.hasRefreshToken && !token.reauthRequired);
     return {
-      ok: Boolean(token.hasAccessToken && token.hasRefreshToken),
+      ok: ready,
       source: "cafe24_proxy_status",
-      message: token.hasAccessToken && token.hasRefreshToken ? "Render Cafe24 토큰 확인" : "Render Cafe24 토큰 정보 부족",
+      message: ready ? "Render Cafe24 토큰 확인" : token.reauthRequired ? "Render Cafe24 재인증 필요" : "Render Cafe24 토큰 정보 부족",
       detail: {
         tokenSource: token.source || null,
+        status: token.status || null,
         updatedAt: token.updatedAt || null,
-        needsRefresh: Boolean(token.needsRefresh)
+        expiresAt: token.expiresAt || null,
+        needsRefresh: Boolean(token.needsRefresh),
+        reauthRequired: Boolean(token.reauthRequired)
       }
     };
   }
 
+  const token = await cafe24TokenDiagnostics();
+  const ready = Boolean(env.CAFE24_MALL_ID && token.hasAccessToken && token.hasRefreshToken && !token.reauthRequired);
   return {
-    ok: Boolean(env.CAFE24_MALL_ID && env.CAFE24_ACCESS_TOKEN),
-    source: "local_env",
-    message: env.CAFE24_MALL_ID && env.CAFE24_ACCESS_TOKEN ? "로컬 Cafe24 토큰 확인" : "Cafe24 토큰 정보 부족"
+    ok: ready,
+    source: "token_store",
+    message: ready ? "Cafe24 토큰 저장소 확인" : token.reauthRequired ? "Cafe24 재인증 필요" : "Cafe24 토큰 정보 부족",
+    detail: token
   };
 }
 
@@ -1883,7 +2067,8 @@ async function logCafe24OrdersDebug(stage, data = {}) {
   }
 }
 
-async function cafe24FetchJson(url) {
+async function cafe24FetchJson(url, options = {}) {
+  await ensureCafe24AccessToken();
   await logCafe24OrdersDebug("request", cafe24OrdersDebugContext(url));
   const response = await fetch(url, {
     headers: cafe24OrdersHeaders()
@@ -1909,6 +2094,17 @@ async function cafe24FetchJson(url) {
       statusCode: response.status,
       responseBody: compactCafe24Body(body)
     });
+    // invalid_token(401)이면 refresh 후 원 요청을 정확히 1회만 재시도한다.
+    // retriedAfterRefresh 플래그로 재귀를 1단계로 제한 — 무한 재시도 금지.
+    // (2026-07-10 Cafe24 401 refresh-retry — Products 경로에도 동일 적용)
+    if (!options.retriedAfterRefresh && isCafe24InvalidToken(error)) {
+      try {
+        await refreshCafe24Token();
+        return await cafe24FetchJson(url, { retriedAfterRefresh: true });
+      } catch (refreshError) {
+        await logApiError("cafe24_refresh", refreshError, { stage: "cafe24_fetch_json_refresh" });
+      }
+    }
     return { error };
   }
   return body;
@@ -1930,6 +2126,7 @@ async function attachCafe24OrderItems(orders = []) {
 
 async function cafe24GetOrderItems(orderId) {
   const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/orders/${encodeURIComponent(orderId)}/items`);
+  await ensureCafe24AccessToken();
   await logCafe24OrdersDebug("items_request", cafe24OrdersDebugContext(url, { orderId }));
   const response = await fetch(url, {
     headers: cafe24OrdersHeaders()
@@ -1963,13 +2160,24 @@ async function cafe24GetOrderItems(orderId) {
 // 무엇이 아직 안 됐는지 한눈에 보여줍니다.
 async function diagnoseCafe24ProductAccess() {
   const mallId = env.CAFE24_MALL_ID || null;
-  if (!mallId || !env.CAFE24_ACCESS_TOKEN) {
+  if (!mallId) {
     return {
       mallId,
       apiChecks: [],
       requestedFieldCheck: {},
       dashboardReady: {},
-      message: ".env에 CAFE24_MALL_ID / CAFE24_ACCESS_TOKEN이 없습니다."
+      message: "CAFE24_MALL_ID가 없습니다."
+    };
+  }
+  try {
+    await ensureCafe24AccessToken();
+  } catch (error) {
+    return {
+      mallId,
+      apiChecks: [],
+      requestedFieldCheck: {},
+      dashboardReady: {},
+      message: safeErrorMessage(error)
     };
   }
 
@@ -1981,6 +2189,7 @@ async function diagnoseCafe24ProductAccess() {
   const call = async (path, params = {}) => {
     const url = new URL(`https://${mallId}.cafe24api.com/api/v2/admin${path}`);
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+    await ensureCafe24AccessToken();
     const response = await fetch(url, { headers: cafe24OrdersHeaders() });
     const body = await response.json().catch(() => ({}));
     return { ok: response.ok, status: response.status, body };
@@ -2106,52 +2315,63 @@ async function diagnoseCafe24ProductAccess() {
 }
 
 async function refreshCafe24Token() {
-  const required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID", "CAFE24_CLIENT_SECRET", "CAFE24_REFRESH_TOKEN"];
+  const record = await readCafe24TokenRecord();
+  const required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID", "CAFE24_CLIENT_SECRET"];
   const missing = required.filter((key) => !env[key]);
   if (missing.length) {
     throw new Error(`Cafe24 token refresh에 필요한 값이 없습니다: ${missing.join(", ")}`);
+  }
+  if (!record?.refreshToken) {
+    throw new Error("Cafe24 token refresh에 필요한 refresh token이 저장소에 없습니다. 재인증 필요");
   }
 
   const url = `https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/oauth/token`;
   const credentials = Buffer.from(`${env.CAFE24_CLIENT_ID}:${env.CAFE24_CLIENT_SECRET}`).toString("base64");
   const params = new URLSearchParams({
     grant_type: "refresh_token",
-    refresh_token: env.CAFE24_REFRESH_TOKEN
+    refresh_token: record.refreshToken
   });
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: params.toString()
-  });
-  const body = await response.json();
-  if (!response.ok || body.error) {
-    const message = body.error_description || body.error?.message || body.message || `Cafe24 token refresh failed ${response.status}`;
-    throw new Error(`${message} refresh token도 만료됐으면 Cafe24 OAuth 재인증이 필요합니다.`);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params.toString()
+    });
+    const body = await response.json();
+    if (!response.ok || body.error) {
+      const message = body.error_description || body.error?.message || body.message || `Cafe24 token refresh failed ${response.status}`;
+      throw new Error(`${message} refresh token도 만료됐으면 Cafe24 OAuth 재인증이 필요합니다.`);
+    }
+
+    if (!body.access_token) {
+      throw new Error("Cafe24 refresh 응답에 access_token이 없습니다.");
+    }
+
+    const updatedAt = new Date().toISOString();
+    const saved = await writeCafe24TokenRecord({
+      schema: 1,
+      status: "active",
+      accessToken: body.access_token,
+      refreshToken: body.refresh_token || record.refreshToken,
+      expiresAt: body.expires_at || record.expiresAt || null,
+      updatedAt,
+      lastRefreshAt: updatedAt,
+      reauthRequiredAt: null,
+      lastError: null
+    });
+
+    return {
+      ok: true,
+      updated: ["access_token", body.refresh_token ? "refresh_token" : null, body.expires_at ? "expires_at" : null].filter(Boolean),
+      token: safeCafe24TokenRecord(saved)
+    };
+  } catch (error) {
+    await markCafe24ReauthRequired(error);
+    throw error;
   }
-
-  if (!body.access_token) {
-    throw new Error("Cafe24 refresh 응답에 access_token이 없습니다.");
-  }
-
-  env.CAFE24_ACCESS_TOKEN = body.access_token;
-  if (body.refresh_token) env.CAFE24_REFRESH_TOKEN = body.refresh_token;
-  if (body.expires_at) env.CAFE24_ACCESS_TOKEN_EXPIRES_AT = body.expires_at;
-  await updateEnvFile({
-    CAFE24_ACCESS_TOKEN: env.CAFE24_ACCESS_TOKEN,
-    CAFE24_REFRESH_TOKEN: env.CAFE24_REFRESH_TOKEN,
-    CAFE24_ACCESS_TOKEN_EXPIRES_AT: env.CAFE24_ACCESS_TOKEN_EXPIRES_AT || ""
-  });
-
-  return {
-    ok: true,
-    updated: ["CAFE24_ACCESS_TOKEN", body.refresh_token ? "CAFE24_REFRESH_TOKEN" : null, body.expires_at ? "CAFE24_ACCESS_TOKEN_EXPIRES_AT" : null].filter(Boolean),
-    accessTokenLength: env.CAFE24_ACCESS_TOKEN.length,
-    refreshTokenLength: env.CAFE24_REFRESH_TOKEN.length,
-    expiresAt: env.CAFE24_ACCESS_TOKEN_EXPIRES_AT || null
-  };
 }
 
 function buildCafe24AuthorizeUrl() {
@@ -2223,22 +2443,21 @@ async function handleCafe24OAuthCallback(callbackUrl) {
     throw new Error("Cafe24 OAuth 응답에 access_token 또는 refresh_token이 없습니다.");
   }
 
-  env.CAFE24_ACCESS_TOKEN = body.access_token;
-  env.CAFE24_REFRESH_TOKEN = body.refresh_token;
-  if (body.expires_at) env.CAFE24_ACCESS_TOKEN_EXPIRES_AT = body.expires_at;
-  await updateEnvFile({
-    CAFE24_ACCESS_TOKEN: env.CAFE24_ACCESS_TOKEN,
-    CAFE24_REFRESH_TOKEN: env.CAFE24_REFRESH_TOKEN,
-    CAFE24_ACCESS_TOKEN_EXPIRES_AT: env.CAFE24_ACCESS_TOKEN_EXPIRES_AT || ""
+  const saved = await writeCafe24TokenRecord({
+    schema: 1,
+    status: "active",
+    accessToken: body.access_token,
+    refreshToken: body.refresh_token,
+    expiresAt: body.expires_at || null,
+    updatedAt: new Date().toISOString(),
+    lastRefreshAt: null,
+    reauthRequiredAt: null,
+    lastError: null
   });
 
   return {
     ok: true,
-    accessToken: env.CAFE24_ACCESS_TOKEN,
-    refreshToken: env.CAFE24_REFRESH_TOKEN,
-    accessTokenLength: env.CAFE24_ACCESS_TOKEN.length,
-    refreshTokenLength: env.CAFE24_REFRESH_TOKEN.length,
-    expiresAt: env.CAFE24_ACCESS_TOKEN_EXPIRES_AT || null
+    token: safeCafe24TokenRecord(saved)
   };
 }
 
@@ -2298,11 +2517,11 @@ function missingEnv(keys) {
 function integrationStatus() {
   const instagramRequired = ["META_ACCESS_TOKEN", "FACEBOOK_PAGE_ID", "INSTAGRAM_BUSINESS_ACCOUNT_ID"];
   const metaAdsRequired = ["META_ACCESS_TOKEN", "META_AD_ACCOUNT_ID"];
-  const cafe24Required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID", "CAFE24_CLIENT_SECRET", "CAFE24_ACCESS_TOKEN", "CAFE24_REFRESH_TOKEN"];
+  const cafe24Required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID", "CAFE24_CLIENT_SECRET", "CAFE24_TOKEN_STORE_DIR"];
   const cafe24ProxyRequired = ["CAFE24_PROXY_BASE_URL", "CAFE24_PROXY_ORDERS_PATH"];
   const cafe24DirectMissing = missingEnv(cafe24Required);
   const cafe24ProxyMissing = missingEnv(cafe24ProxyRequired);
-  const cafe24Mode = cafe24DirectMissing.length === 0 ? "local_oauth" : cafe24ProxyMissing.length === 0 ? "proxy" : "not_configured";
+  const cafe24Mode = cafe24ProxyMissing.length === 0 ? "proxy" : cafe24DirectMissing.length === 0 ? "local_oauth" : "not_configured";
 
   return {
     instagram: {

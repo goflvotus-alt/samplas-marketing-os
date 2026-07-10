@@ -2844,12 +2844,19 @@ async function renderAdComparison(data) {
   const cafeTotals = cafe.totals || {};
   const metaPurchaseValue = hasApiValue(metaTotals.purchaseValue) ? Number(metaTotals.purchaseValue) : null;
   const cafeOrderAmount = hasApiValue(cafeTotals.orderAmount) ? Number(cafeTotals.orderAmount) : null;
-  const unmatchedValue = meta.error || cafe.error || metaPurchaseValue === null || cafeOrderAmount === null ? null : Math.max(0, metaPurchaseValue - cafeOrderAmount);
-  const mismatchRate = (!meta.error && !cafe.error && metaPurchaseValue !== null && cafeOrderAmount !== null && cafeOrderAmount > 0)
+  // source readiness 판정: 라이브 데이터가 정상으로 왔을 때만 Meta↔Cafe24 비교를 계산한다.
+  // Cafe24가 실패했거나(error) 오류 후 캐시 폴백(cacheWarning)이면 값을 0으로 간주하거나
+  // 오차율을 만들지 않는다 — "오차 100%" 오경보 방지. Meta 구매값이 0이어도 오차율은
+  // 자동으로 100%가 되므로 계산하지 않고 판단 보류로 안내한다. (2026-07-10)
+  const cafeReady = !cafe.error && !cafe.cacheWarning && cafeOrderAmount !== null;
+  const metaReady = !meta.error && metaPurchaseValue !== null;
+  const comparable = cafeReady && metaReady && cafeOrderAmount > 0 && metaPurchaseValue > 0;
+  const unmatchedValue = comparable ? Math.max(0, metaPurchaseValue - cafeOrderAmount) : null;
+  const mismatchRate = comparable
     ? Math.abs(metaPurchaseValue - cafeOrderAmount) / cafeOrderAmount * 100
     : null;
 
-  const decision = salesDecisionState({ meta, cafe, mismatchRate });
+  const decision = salesDecisionState({ meta, cafe, mismatchRate, cafeReady, metaReady, metaPurchaseValue, cafeOrderAmount });
 
   healthTarget.className = `ad-status-banner ${esc(decision.tone)}`;
   healthTarget.innerHTML = `<span class="status-dot"></span><strong>Sales Health · ${esc(decision.label)}</strong><span class="note">${esc(decision.reason)}</span>`;
@@ -2967,16 +2974,35 @@ async function renderCafe24ProductDiagnostics() {
   <p class="hint-text">이 결과는 로컬 8787 서버 기준입니다. mall.read_product 스코프 추가 후 재인증했다면, Render 배포본(samplas-marketing-os.onrender.com/api/diagnostics/cafe24-product-check)도 함께 확인해보세요.</p>`;
 }
 
-function salesDecisionState({ meta, cafe, mismatchRate }) {
+function salesDecisionState({ meta, cafe, mismatchRate, cafeReady, metaReady, metaPurchaseValue, cafeOrderAmount }) {
   if (cafe.error) {
     const state = bannerState(cafe, "cafe24");
     return { tone: state.tone === "error" ? "error" : state.tone, label: state.label, reason: state.reason || "Cafe24 데이터를 불러오지 못했습니다.", action: state.action || "Cafe24 연결을 확인하세요." };
+  }
+  // Cafe24가 라이브로 오지 않은 상태(오류 후 캐시 폴백 등)에서는 오차율을 만들지 않는다.
+  if (cafeReady === false) {
+    return {
+      tone: "warn",
+      label: "비교 불가",
+      reason: "Cafe24 데이터를 불러오지 못해 비교할 수 없습니다.",
+      action: cafe.cacheWarning ? "현재 캐시 데이터가 표시 중입니다. Cafe24 연결 복구 후 새로고침하세요." : "Cafe24 연결을 확인하세요."
+    };
   }
   if (meta.error) {
     const state = bannerState(meta, "meta");
     return { tone: state.tone === "error" ? "error" : state.tone, label: state.label, reason: state.reason || "Meta 데이터를 불러오지 못했습니다.", action: state.action || "Meta Ads 연결을 확인하세요." };
   }
+  if (metaReady === false) {
+    return { tone: "warn", label: "비교 불가", reason: "Meta 구매값 데이터를 불러오지 못해 비교할 수 없습니다.", action: "Meta Ads 연결을 확인하세요." };
+  }
   if (mismatchRate === null) {
+    // 여기 도달 = 양쪽 API는 정상이지만 비교 가능한 값이 아직 없음 (구매값/매출 0 등).
+    if (metaPurchaseValue === 0) {
+      return { tone: "warn", label: "판단 보류", reason: "Meta 구매값이 0이라 오차율을 계산하지 않습니다.", action: "Meta 전환(픽셀) 설정 또는 기여 기간을 확인하세요." };
+    }
+    if (cafeOrderAmount === 0) {
+      return { tone: "warn", label: "판단 보류", reason: "Cafe24 매출이 0이라 오차율을 계산하지 않습니다.", action: "이번 달 주문이 쌓이면 다시 확인하세요." };
+    }
     return { tone: "warn", label: "판단 보류", reason: "비교할 매출 데이터가 아직 부족합니다.", action: "이번 달 주문이 쌓이면 다시 확인하세요." };
   }
   const rounded = mismatchRate < 1 ? mismatchRate.toFixed(1) : Math.round(mismatchRate);
@@ -3089,7 +3115,7 @@ async function updateSync(data) {
   setSyncRow("metaAdsSyncRow", metaSidebar.tone, "Meta Ads", metaSidebar.badge);
 
   const cafeStatus = await getCafe24Status(`${data.month}-01`, monthEnd(data.month));
-  const cafeReauth = /refresh_token|재인증/i.test(String(cafeStatus.detail || ""));
+  const cafeReauth = /refresh_token|재인증|reauth_required/i.test(String(cafeStatus.detail || ""));
   const cafeSidebar = cafeStatus.ok ? { tone: "good", badge: "정상" } : { tone: "error", badge: cafeReauth ? "재인증 필요" : "실패" };
   setSyncRow("cafe24SyncRow", cafeSidebar.tone, "Cafe24", cafeSidebar.badge);
   // Sidebar에도 재인증 버튼을 노출한다(요청: Sidebar Cafe24 상태 배지 또는 관련 영역에서
