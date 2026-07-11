@@ -356,12 +356,13 @@
         </div>
 
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Cafe24</p><h3>실제 매출</h3></div></div>
+          <div class="section-title compact"><div><p class="eyebrow">Cafe24</p><h3>실제 판매</h3></div></div>
+          <p class="hint-text">Cafe24는 실제 주문 기준이며, Meta는 광고 귀속 기준입니다. 두 수치는 동일한 집계 기준이 아닙니다.</p>
           <div id="salesImpact" class="cards"></div>
         </div>
 
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Meta</p><h3>Meta 추정 매출</h3></div></div>
+          <div class="section-title compact"><div><p class="eyebrow">Meta</p><h3>Meta 광고 성과</h3></div></div>
           <div id="salesMetaEstimate" class="cards"></div>
         </div>
 
@@ -376,21 +377,24 @@
         </div>
 
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Product Decision</p><h3>상품 의사결정 Dashboard</h3></div></div>
+          <div class="section-title compact"><div><p class="eyebrow">Catalog / Product Action</p><h3>전체 카탈로그 · Product Action 보조 뷰</h3></div></div>
           <p class="hint-text">Cafe24 Orders + Products 데이터를 기준으로 상품별 재고·판매량·매출·판매 속도·AI Action을 보여줍니다. 상품별 ROAS는 만들지 않으며(Product Sales Report 미사용, v1 범위 밖), Meta 광고비/ROAS는 아래에 기간 전체 참고치로만 별도 표시합니다.</p>
           <div id="productDashboardBanner" class="ad-status-banner loading"></div>
           <div id="productDashboardMetaRef" class="cards"></div>
+          <div id="productDashboardActions" class="cards product-action-summary"></div>
+          <div id="productDashboardFilters" class="product-action-filters"></div>
           <div class="table-wrap ad-table-wrap product-dashboard-wrap">
             <table>
               <thead>
                 <tr>
                   <th>상품명</th>
+                  <th>액션</th>
                   <th>재고</th>
-                  <th>소진 예상일</th>
-                  <th>판매량</th>
+                  <th>판매/주문</th>
                   <th>매출</th>
-                  <th>판매 속도(일 평균)</th>
-                  <th>AI Action</th>
+                  <th>마지막 판매</th>
+                  <th>Meta</th>
+                  <th>판정 이유</th>
                 </tr>
               </thead>
               <tbody id="productDashboardRows"></tbody>

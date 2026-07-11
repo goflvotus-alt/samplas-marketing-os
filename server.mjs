@@ -1582,12 +1582,136 @@ function normalizeCafe24ProductRow(item = {}, detail = {}, variants = []) {
 const CAFE24_CATALOG_TTL_MS = Math.max(60000, Number(env.CAFE24_CATALOG_TTL_MS || 6 * 60 * 60 * 1000));
 const CAFE24_PRODUCT_FETCH_CONCURRENCY = 3;
 const cafe24ProductCatalogFile = () => join(workDir, "cafe24-product-catalog.json");
+const productSalesHistoryFile = () => join(workDir, "product-sales-history.json");
 
 async function writeJsonAtomic(file, data) {
   await mkdir(workDir, { recursive: true });
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
   await writeFile(tmp, JSON.stringify(data, null, 2));
   await rename(tmp, file);
+}
+
+function validIsoDateOrNull(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const time = new Date(text).getTime();
+  if (!Number.isFinite(time)) return null;
+  return new Date(time).toISOString();
+}
+
+function maxIsoDate(left, right) {
+  const leftIso = validIsoDateOrNull(left);
+  const rightIso = validIsoDateOrNull(right);
+  if (!leftIso) return rightIso;
+  if (!rightIso) return leftIso;
+  return rightIso > leftIso ? rightIso : leftIso;
+}
+
+function productSalesHistoryKey(product = {}) {
+  if (product.productNo !== undefined && product.productNo !== null && String(product.productNo).trim()) return String(product.productNo);
+  if (product.productCode) return String(product.productCode);
+  return null;
+}
+
+async function readProductSalesHistoryCache() {
+  const file = productSalesHistoryFile();
+  if (!existsSync(file)) {
+    return { updatedAt: null, seededFromOrderCaches: false, products: {} };
+  }
+  try {
+    const parsed = JSON.parse(await readFile(file, "utf8"));
+    return {
+      updatedAt: parsed.updatedAt || null,
+      seededFromOrderCaches: Boolean(parsed.seededFromOrderCaches),
+      seededAt: parsed.seededAt || null,
+      products: parsed.products && typeof parsed.products === "object" ? parsed.products : {}
+    };
+  } catch {
+    return { updatedAt: null, seededFromOrderCaches: false, products: {} };
+  }
+}
+
+async function writeProductSalesHistoryCache(history) {
+  await writeJsonAtomic(productSalesHistoryFile(), {
+    updatedAt: new Date().toISOString(),
+    seededFromOrderCaches: Boolean(history.seededFromOrderCaches),
+    seededAt: history.seededAt || null,
+    products: history.products || {}
+  });
+}
+
+function mergeProductSalesHistoryDate(history, key, dateValue) {
+  if (!key) return false;
+  const nextDate = validIsoDateOrNull(dateValue);
+  if (!nextDate) return false;
+  const products = history.products || (history.products = {});
+  const existing = products[key] || {};
+  const merged = maxIsoDate(existing.lastSaleDate, nextDate);
+  if (!merged || merged === existing.lastSaleDate) return false;
+  products[key] = { ...existing, lastSaleDate: merged };
+  return true;
+}
+
+function productHistoryLookupMaps(catalog = []) {
+  const byNo = new Map();
+  const byCode = new Map();
+  for (const product of catalog) {
+    const key = productSalesHistoryKey(product);
+    if (!key) continue;
+    if (product.productNo !== undefined && product.productNo !== null) byNo.set(String(product.productNo), key);
+    if (product.productCode) byCode.set(String(product.productCode), key);
+  }
+  return { byNo, byCode };
+}
+
+function productHistoryKeyFromOrderItem(item = {}, maps = {}) {
+  const productNo = item.product_no || item.productNo || "";
+  const productCode = item.product_code || item.productCode || "";
+  return (productNo && maps.byNo?.get(String(productNo))) || (productCode && maps.byCode?.get(String(productCode))) || null;
+}
+
+function cafe24OrderCacheFileName(name = "") {
+  return /^(cafe24-orders|cafe24-proxy-orders|cafe24-csv-orders)-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.json$/.test(name);
+}
+
+async function seedProductSalesHistoryFromOrderCaches(history, catalog = []) {
+  if (history.seededFromOrderCaches) {
+    return { scanned: false, scannedFiles: 0, updatedProducts: 0, skippedInvalidJson: 0 };
+  }
+  const maps = productHistoryLookupMaps(catalog);
+  const files = (await readdirSafe(workDir)).filter(cafe24OrderCacheFileName).sort();
+  let updatedProducts = 0;
+  let skippedInvalidJson = 0;
+  for (const fileName of files) {
+    let cached;
+    try {
+      cached = JSON.parse(await readFile(join(workDir, fileName), "utf8"));
+    } catch {
+      skippedInvalidJson += 1;
+      continue;
+    }
+    const orders = cached.orders || cached.data || [];
+    for (const order of orders) {
+      if (isCafe24CanceledOrRefunded(order)) continue;
+      const orderDate = trustedCafe24OrderDate(order);
+      if (!orderDate) continue;
+      for (const item of cafe24OrderItems(order)) {
+        const key = productHistoryKeyFromOrderItem(item, maps);
+        if (mergeProductSalesHistoryDate(history, key, orderDate)) updatedProducts += 1;
+      }
+    }
+  }
+  history.seededFromOrderCaches = true;
+  history.seededAt = new Date().toISOString();
+  return { scanned: true, scannedFiles: files.length, updatedProducts, skippedInvalidJson };
+}
+
+function mergeCurrentSalesIntoProductHistory(history, salesByProduct = new Map()) {
+  let updatedProducts = 0;
+  for (const [key, sales] of salesByProduct.entries()) {
+    if (mergeProductSalesHistoryDate(history, key, sales.lastSaleDate)) updatedProducts += 1;
+  }
+  return { updatedProducts };
 }
 
 // 동시성 실행은 기존 mapWithConcurrency() 헬퍼(Instagram 경로에서 사용 중)를 그대로 재사용한다.
@@ -1854,9 +1978,13 @@ function matchCafe24OrdersToProducts(orders = [], catalog = [], context = {}) {
       }
       matchedCount += 1;
       const key = product.productNo;
-      const entry = salesByProduct.get(key) || { quantity: 0, amount: 0 };
+      const entry = salesByProduct.get(key) || { quantity: 0, amount: 0, orderIds: new Set(), lastSaleDate: null };
       entry.quantity += quantity;
       entry.amount += amount;
+      const orderId = order.order_id || order.orderId || order.order_no || order.id || "";
+      if (orderId) entry.orderIds.add(String(orderId));
+      const orderDate = trustedCafe24OrderDate(order);
+      if (orderDate && (!entry.lastSaleDate || orderDate > entry.lastSaleDate)) entry.lastSaleDate = orderDate;
       salesByProduct.set(key, entry);
     }
   }
@@ -1879,15 +2007,209 @@ function daysBetweenDateKeys(since, until) {
   return Math.max(1, days);
 }
 
+const PRODUCT_ACTION_THRESHOLDS = {
+  salesWindowDays: 30,
+  recentWindowDays: 7,
+  criticalStockUnits: 0,
+  lowStockUnits: 3,
+  healthyStockUnits: 6,
+  noSalesDays: 30,
+  minimumSalesForPush: 2,
+  minimumRevenueForPush: 150000,
+  minimumSalesForObserve: 1,
+  minimumRoasForPush: 2,
+  minimumCtrForInterest: 1,
+  minimumSpendForStop: 30000
+};
+
+const PRODUCT_ACTION_LABELS = {
+  push_now: "Push Now",
+  observe: "Observe",
+  hold: "Hold",
+  stop_promotion: "Stop Promotion"
+};
+
+function trustedCafe24OrderDate(order = {}) {
+  const candidates = [
+    order.order_date,
+    order.orderDate,
+    order.ordered_date,
+    order.order_timestamp,
+    order.payment_date,
+    order.paid_date,
+    order.created_date
+  ];
+  for (const value of candidates) {
+    const text = String(value || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(text) && Number.isFinite(new Date(text).getTime())) return text.slice(0, 10);
+  }
+  return null;
+}
+
+function daysSinceDate(dateText, now = new Date()) {
+  if (!dateText) return null;
+  const time = new Date(`${String(dateText).slice(0, 10)}T00:00:00Z`).getTime();
+  if (!Number.isFinite(time)) return null;
+  return Math.max(0, Math.floor((now.getTime() - time) / 86400000));
+}
+
+function productAgeDays(row) {
+  if (!row.createdDate) return null;
+  const time = new Date(row.createdDate).getTime();
+  if (!Number.isFinite(time)) return null;
+  return Math.max(0, Math.floor((Date.now() - time) / 86400000));
+}
+
+function productActionBase(action, confidence, reasons = [], warnings = [], subReason = null) {
+  return {
+    action,
+    label: PRODUCT_ACTION_LABELS[action] || action,
+    confidence,
+    subReason,
+    reasons,
+    warnings,
+    dataQuality: {
+      cafe24: "confirmed",
+      meta: "unavailable"
+    }
+  };
+}
+
+function productStockRisk(inventoryQuantity, thresholds = PRODUCT_ACTION_THRESHOLDS) {
+  if (inventoryQuantity <= thresholds.criticalStockUnits) return "out_of_stock";
+  if (inventoryQuantity <= thresholds.lowStockUnits) return "low";
+  if (inventoryQuantity >= thresholds.healthyStockUnits) return "healthy";
+  return "limited";
+}
+
+function formatKrwShort(value) {
+  return `${Math.round(Number(value || 0)).toLocaleString("ko-KR")}원`;
+}
+
+function computeProductAction(row, thresholds = PRODUCT_ACTION_THRESHOLDS) {
+  const inventoryQuantity = Number(row.inventoryQuantity || 0);
+  const quantitySold = Number(row.quantitySold || 0);
+  const salesAmount = Number(row.salesAmount || 0);
+  const orderCount = Number(row.orderCount || 0);
+  const daysOfStockLeft = row.daysOfStockLeft === null || row.daysOfStockLeft === undefined ? null : Number(row.daysOfStockLeft);
+  const options = Array.isArray(row.options) ? row.options : [];
+  const hasOptions = options.length > 0;
+  const allOptionQuantitiesZero = hasOptions && options.every((option) => Number(option.quantity || 0) <= 0);
+  const soldOutFlagConflict = (row.soldOut === true && inventoryQuantity > 0)
+    || options.some((option) => option.soldOut === true && Number(option.quantity || 0) > 0);
+  const warnings = [];
+  if (soldOutFlagConflict) warnings.push("옵션 품절 플래그와 실제 재고 수량이 일치하지 않습니다.");
+
+  const baseReasons = [
+    `선택 기간 ${quantitySold.toLocaleString("ko-KR")}개 판매`,
+    `매출 ${formatKrwShort(salesAmount)}`,
+    `현재 재고 ${inventoryQuantity.toLocaleString("ko-KR")}개`
+  ];
+
+  if (row.display === "F") {
+    return productActionBase("stop_promotion", "high", ["진열 중지 상태", ...baseReasons.slice(0, 2)], warnings);
+  }
+  if (row.selling === "F") {
+    return productActionBase("stop_promotion", "high", ["판매 중지 상태", ...baseReasons.slice(0, 2)], warnings);
+  }
+  if (inventoryQuantity <= thresholds.criticalStockUnits) {
+    return productActionBase("stop_promotion", "high", ["실제 총재고 0개", ...baseReasons.slice(0, 2)], warnings);
+  }
+  if (allOptionQuantitiesZero) {
+    return productActionBase("stop_promotion", "high", ["모든 옵션 수량 0개", ...baseReasons.slice(0, 2)], warnings);
+  }
+
+  if (quantitySold >= 1 && inventoryQuantity <= thresholds.lowStockUnits) {
+    return productActionBase("hold", "high", [
+      `선택 기간 ${quantitySold.toLocaleString("ko-KR")}개 판매`,
+      `현재 재고 ${inventoryQuantity.toLocaleString("ko-KR")}개`,
+      "판매는 있으나 재고 부족"
+    ], warnings);
+  }
+  if (Number.isFinite(daysOfStockLeft) && daysOfStockLeft <= thresholds.recentWindowDays) {
+    return productActionBase("hold", "high", [
+      `소진 예상 ${daysOfStockLeft.toLocaleString("ko-KR")}일`,
+      `현재 재고 ${inventoryQuantity.toLocaleString("ko-KR")}개`,
+      "품절 위험 높음"
+    ], warnings);
+  }
+
+  if (
+    quantitySold >= thresholds.minimumSalesForPush
+    && salesAmount >= thresholds.minimumRevenueForPush
+    && inventoryQuantity >= thresholds.healthyStockUnits
+  ) {
+    return productActionBase("push_now", "medium", [
+      `선택 기간 ${quantitySold.toLocaleString("ko-KR")}개 판매`,
+      `매출 ${formatKrwShort(salesAmount)}`,
+      `현재 재고 ${inventoryQuantity.toLocaleString("ko-KR")}개`
+    ], warnings);
+  }
+
+  const ageDays = productAgeDays(row);
+  const isNewProduct = ageDays !== null && ageDays <= thresholds.salesWindowDays;
+  if (quantitySold >= thresholds.minimumSalesForObserve) {
+    return productActionBase("observe", "medium", [
+      `선택 기간 ${quantitySold.toLocaleString("ko-KR")}개 판매`,
+      `주문 ${orderCount.toLocaleString("ko-KR")}건`,
+      "Push 기준에는 아직 미달"
+    ], warnings, "single_sale");
+  }
+  if (isNewProduct) {
+    return productActionBase("observe", "low", [
+      `신규 상품 (${ageDays.toLocaleString("ko-KR")}일 경과)`,
+      `현재 재고 ${inventoryQuantity.toLocaleString("ko-KR")}개`,
+      "판매 데이터 축적 필요"
+    ], warnings, "new_product");
+  }
+
+  const daysSinceLastSale = daysSinceDate(row.lastSaleDate);
+  if (
+    quantitySold === 0
+    && inventoryQuantity >= thresholds.healthyStockUnits
+    && daysSinceLastSale !== null
+    && daysSinceLastSale >= thresholds.noSalesDays
+    && !isNewProduct
+  ) {
+    return productActionBase("stop_promotion", "medium", [
+      `${daysSinceLastSale.toLocaleString("ko-KR")}일 이상 판매 없음`,
+      `현재 재고 ${inventoryQuantity.toLocaleString("ko-KR")}개`,
+      "재고 충분하나 장기간 무판매"
+    ], warnings);
+  }
+
+  return productActionBase("observe", "low", [
+    "판매 이력 부족",
+    `현재 재고 ${inventoryQuantity.toLocaleString("ko-KR")}개`,
+    row.lastSaleDate ? `마지막 판매일 ${row.lastSaleDate}` : "마지막 판매일 확인 불가"
+  ], warnings, row.lastSaleDate ? null : "no_history");
+}
+
 function computeCafe24ProductAiAction(row) {
-  const { quantitySold, inventoryQuantity, salesVelocityPerDay, daysOfStockLeft } = row;
-  if (inventoryQuantity <= 0 && quantitySold === 0) return { action: "Stop", reason: "재고 없음 · 선택 기간 판매 없음" };
-  if (inventoryQuantity <= 0) return { action: "Stop", reason: "재고 소진" };
-  if (quantitySold === 0) return { action: "Hold", reason: "선택 기간 판매 없음" };
-  if (daysOfStockLeft !== null && daysOfStockLeft <= 7) return { action: "Push", reason: `재고 소진 임박 (약 ${daysOfStockLeft}일 남음)` };
-  if (salesVelocityPerDay >= 1) return { action: "Push", reason: `판매 속도 높음 (일 평균 ${salesVelocityPerDay.toFixed(1)}개)` };
-  if (daysOfStockLeft !== null && daysOfStockLeft > 60) return { action: "Hold", reason: `재고 과다 (소진까지 약 ${daysOfStockLeft}일)` };
-  return { action: "Observe", reason: "판매 흐름 관찰 필요" };
+  const productAction = row.productAction || computeProductAction(row);
+  const legacy = {
+    push_now: "Push",
+    observe: "Observe",
+    hold: "Hold",
+    stop_promotion: "Stop"
+  };
+  return {
+    action: legacy[productAction.action] || productAction.label,
+    reason: productAction.reasons?.[0] || productAction.label
+  };
+}
+
+function emptyProductActionSummary() {
+  return { push_now: 0, observe: 0, hold: 0, stop_promotion: 0 };
+}
+
+function summarizeProductActions(products = []) {
+  const summary = emptyProductActionSummary();
+  for (const product of products) {
+    const action = product.productAction?.action;
+    if (Object.prototype.hasOwnProperty.call(summary, action)) summary[action] += 1;
+  }
+  return summary;
 }
 
 function metaReferenceFromSummary(meta = {}) {
@@ -1896,7 +2218,10 @@ function metaReferenceFromSummary(meta = {}) {
     error: meta.error || null,
     spend: Number(totals.spend || 0),
     roas: totals.roas === null || totals.roas === undefined ? null : Number(totals.roas),
+    purchases: Number(totals.purchases || totals.metaPurchases || 0),
     purchaseValue: Number(totals.purchaseValue || 0),
+    ctr: Number(totals.ctr || 0),
+    cpc: Number(totals.cpc || 0),
     note: "기간 참고치입니다 — 상품별로 배분된 값이 아닙니다."
   };
 }
@@ -1974,6 +2299,7 @@ async function buildProductDashboardWithCache(since, until, options = {}) {
       since,
       until,
       metaReference: metaReferenceFromSummary(metaResult),
+      actionSummary: emptyProductActionSummary(),
       products: [],
       unmatched: { count: 0, amount: 0 }
     };
@@ -1997,23 +2323,44 @@ async function buildProductDashboardWithCache(since, until, options = {}) {
     negativeProducts: catalogResult.missingProducts || {},
     failedProductNos: onDemand.failedProductNos
   });
+  let salesHistoryDiagnostics = { source: "product_sales_history", cacheFile: "product-sales-history.json", seeded: null, currentPeriodMerge: null };
+  let productSalesHistory = await readProductSalesHistoryCache();
+  try {
+    const seeded = await seedProductSalesHistoryFromOrderCaches(productSalesHistory, catalog);
+    const currentPeriodMerge = mergeCurrentSalesIntoProductHistory(productSalesHistory, salesByProduct);
+    if (seeded.scanned || currentPeriodMerge.updatedProducts > 0) {
+      await writeProductSalesHistoryCache(productSalesHistory);
+    }
+    salesHistoryDiagnostics = { ...salesHistoryDiagnostics, seeded, currentPeriodMerge };
+  } catch (error) {
+    salesHistoryDiagnostics = { ...salesHistoryDiagnostics, error: safeErrorMessage(error) };
+    await logApiError("product_sales_history", error, { stage: "merge" });
+  }
 
   const products = catalog.map((product) => {
-    const sales = salesByProduct.get(product.productNo) || { quantity: 0, amount: 0 };
+    const sales = salesByProduct.get(product.productNo) || { quantity: 0, amount: 0, orderIds: new Set(), lastSaleDate: null };
+    const historyKey = productSalesHistoryKey(product);
+    const historyLastSaleDate = historyKey ? productSalesHistory.products?.[historyKey]?.lastSaleDate || null : null;
+    const lastSaleDate = maxIsoDate(historyLastSaleDate, sales.lastSaleDate);
     const salesVelocityPerDay = sales.quantity / days;
     const daysOfStockLeft = salesVelocityPerDay > 0 ? Math.round(product.inventoryQuantity / salesVelocityPerDay) : null;
     const row = {
       ...product,
       quantitySold: sales.quantity,
       salesAmount: sales.amount,
+      orderCount: sales.orderIds?.size || 0,
+      lastSaleDate,
       salesVelocityPerDay,
-      daysOfStockLeft
+      daysOfStockLeft,
+      stockRisk: productStockRisk(Number(product.inventoryQuantity || 0))
     };
+    row.productAction = computeProductAction(row);
     const ai = computeCafe24ProductAiAction(row);
     row.aiAction = ai.action;
     row.aiActionReason = ai.reason;
     return row;
   });
+  const actionSummary = summarizeProductActions(products);
 
   return {
     ok: true,
@@ -2036,6 +2383,8 @@ async function buildProductDashboardWithCache(since, until, options = {}) {
       successRate: itemCount ? Math.round((matchedCount / itemCount) * 1000) / 10 : null
     },
     metaReference: metaReferenceFromSummary(metaResult),
+    salesHistory: salesHistoryDiagnostics,
+    actionSummary,
     products,
     unmatched: { count: unmatchedCount, amount: unmatchedAmount },
     unmatchedDetail: {

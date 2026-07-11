@@ -360,6 +360,78 @@ select,
   font-size: 11px;
 }
 
+.product-action-summary {
+  margin-top: 12px;
+}
+
+.product-action-card {
+  cursor: pointer;
+  text-align: left;
+}
+
+.product-action-card.active,
+.product-action-filter.active {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.product-action-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.product-action-filter {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 900;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.product-action-filter span {
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.product-action-subreason,
+.product-action-filter-note {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.product-action-filter-note {
+  align-self: center;
+}
+
+.product-action-reasons {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 3px;
+}
+
+.product-action-warnings {
+  display: grid;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.product-action-warnings span {
+  color: var(--yellow);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.product-dashboard-wrap .hint-text.urgent {
+  color: var(--red);
+  font-weight: 900;
+}
+
 .cafe24-diagnostics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

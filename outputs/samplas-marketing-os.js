@@ -13,6 +13,10 @@ let monthlyData = [];
 let storyData = { stories: [], totals: {} };
 let activeContentTab = "All";
 let activeAdLevel = "campaign";
+let activeProductActionFilter = "all";
+let activeProductScopeFilter = "sold";
+let activeProductStockFilter = "all";
+let activeProductSort = "salesAmount_desc";
 let currentTodayBriefingItems = [];
 // Cafe24 재인증 콜백이 실패로 돌아왔을 때만 채워진다(handleCafe24OAuthRedirect() 참고).
 // (2026-07-08 Cafe24 재인증 흐름 개선)
@@ -1527,6 +1531,7 @@ function renderOtherSections(data) {
   $("#salesHealthBanner").innerHTML = `<span class="status-dot"></span><strong>Sales Health 확인 중</strong><span class="note">Meta · Cafe24 데이터를 불러오고 있습니다.</span>`;
   $("#salesImpact").classList.add("cards");
   $("#salesImpact").classList.remove("instagram-feed");
+  delete $("#salesImpact").dataset.productSalesLocked;
   $("#salesImpact").innerHTML = `<article class="action-item"><strong>Cafe24 주문 데이터 확인 중</strong><p>CSV 또는 저장 캐시를 읽고 있습니다.</p></article>`;
   $("#salesDetail").innerHTML = `<article class="action-item"><strong>결제수단 · TOP 상품 확인 중</strong><p>Cafe24 주문 데이터를 불러오고 있습니다.</p></article>`;
   renderCafe24Sales(data);
@@ -2642,15 +2647,17 @@ async function renderCafe24Sales(data) {
   const sales = await getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=500`, 8000);
   if (sales.error) {
     const state = salesConnectionState(sales.error);
-    target.classList.add("cards");
-    target.classList.remove("instagram-feed");
-    target.innerHTML = [
-      salesWarningCard(state),
-      salesKpiCard("오늘(선택기간) 매출", "연결 필요", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
-      salesKpiCard("정상 주문", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
-      salesKpiCard("제외 주문", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
-      salesKpiCard("평균 객단가", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled")
-    ].join("");
+    if (target.dataset.productSalesLocked !== "1") {
+      target.classList.add("cards");
+      target.classList.remove("instagram-feed");
+      target.innerHTML = [
+        salesWarningCard(state),
+        salesKpiCard("오늘(선택기간) 매출", "연결 필요", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
+        salesKpiCard("정상 주문", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
+        salesKpiCard("제외 주문", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
+        salesKpiCard("평균 객단가", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled")
+      ].join("");
+    }
     detailTarget.innerHTML = [
       salesPaymentCard([], 0),
       salesTopProductsCard([])
@@ -2662,14 +2669,16 @@ async function renderCafe24Sales(data) {
   const topProducts = normalizeCafe24TopProducts(sales.topProducts, orders);
   const payments = normalizeCafe24PaymentMethods(sales.paymentMethods, orders);
   const source = cafe24SourceLabel(sales);
-  target.classList.add("cards");
-  target.classList.remove("instagram-feed");
-  target.innerHTML = [
-    salesKpiCard("오늘(선택기간) 매출", apiWon(totals.orderAmount), `${source} · ${sales.startDate || startDate} ~ ${sales.endDate || endDate}`),
-    salesKpiCard("정상 주문", `${apiNum(totals.orderCount)}건`, "취소/환불 주문 제외"),
-    salesKpiCard("제외 주문", `${apiNum(totals.excludedOrderCount)}건`, "취소/환불로 매출 집계에서 제외"),
-    salesKpiCard("평균 객단가", apiWon(totals.averageOrderAmount), "Cafe24 실제 결제 기준")
-  ].join("");
+  if (target.dataset.productSalesLocked !== "1") {
+    target.classList.add("cards");
+    target.classList.remove("instagram-feed");
+    target.innerHTML = [
+      salesKpiCard("오늘(선택기간) 매출", apiWon(totals.orderAmount), `${source} · ${sales.startDate || startDate} ~ ${sales.endDate || endDate}`),
+      salesKpiCard("정상 주문", `${apiNum(totals.orderCount)}건`, "취소/환불 주문 제외"),
+      salesKpiCard("제외 주문", `${apiNum(totals.excludedOrderCount)}건`, "취소/환불로 매출 집계에서 제외"),
+      salesKpiCard("평균 객단가", apiWon(totals.averageOrderAmount), "Cafe24 실제 결제 기준")
+    ].join("");
+  }
   detailTarget.innerHTML = [
     salesPaymentCard(payments, Number(totals.orderAmount || 0)),
     salesTopProductsCard(topProducts)
@@ -2883,6 +2892,8 @@ const PRODUCT_SCOPE_BANNER_TEXT = "Cafe24 상품 데이터 접근 권한이 부�
 async function renderProductDashboard(data) {
   const bannerTarget = $("#productDashboardBanner");
   const metaRefTarget = $("#productDashboardMetaRef");
+  const actionTarget = $("#productDashboardActions");
+  const filterTarget = $("#productDashboardFilters");
   const rowsTarget = $("#productDashboardRows");
   if (!bannerTarget || !metaRefTarget || !rowsTarget) return;
   const startDate = `${data.month}-01`;
@@ -2893,7 +2904,9 @@ async function renderProductDashboard(data) {
     bannerTarget.className = "ad-status-banner error";
     bannerTarget.innerHTML = `<span class="status-dot"></span><strong>상품 Dashboard 오류</strong><span class="note">${esc(result.error)}</span>`;
     metaRefTarget.innerHTML = "";
-    rowsTarget.innerHTML = `<tr><td colspan="7">상품 데이터를 불러오지 못했습니다.</td></tr>`;
+    if (actionTarget) actionTarget.innerHTML = "";
+    if (filterTarget) filterTarget.innerHTML = "";
+    rowsTarget.innerHTML = `<tr><td colspan="8">상품 데이터를 불러오지 못했습니다.</td></tr>`;
     return;
   }
 
@@ -2901,33 +2914,249 @@ async function renderProductDashboard(data) {
     bannerTarget.className = "ad-status-banner error";
     bannerTarget.innerHTML = `<span class="status-dot"></span><strong>권한 부족</strong><span class="note">${esc(PRODUCT_SCOPE_BANNER_TEXT)}</span>`;
     metaRefTarget.innerHTML = "";
-    rowsTarget.innerHTML = `<tr><td colspan="7">mall.read_product 스코프 추가 후 재인증하면 이 표가 채워집니다.</td></tr>`;
+    if (actionTarget) actionTarget.innerHTML = "";
+    if (filterTarget) filterTarget.innerHTML = "";
+    rowsTarget.innerHTML = `<tr><td colspan="8">mall.read_product 스코프 추가 후 재인증하면 이 표가 채워집니다.</td></tr>`;
     return;
   }
 
   const products = result.products || [];
+  const ordersError = result.ordersError || null;
   const metaRef = result.metaReference || {};
   const joinInfo = result.join || null;
   const joinNote = joinInfo && joinInfo.itemCount ? ` · Join ${apiNum(joinInfo.matched)}/${apiNum(joinInfo.itemCount)} (${joinInfo.successRate ?? "-"}%)` : "";
   const syncNote = result.catalogSyncedAt ? `상품 데이터 동기화 ${esc(formatRelativeMinutes(result.catalogSyncedAt))}` : "상품 데이터 동기화 시각 확인 불가";
-  bannerTarget.className = "ad-status-banner good";
-  bannerTarget.innerHTML = `<span class="status-dot"></span><strong>상품 Dashboard 정상</strong><span class="note">${syncNote} · 상품 ${apiNum(products.length)}개${result.unmatched?.count ? ` · 미매칭 주문항목 ${apiNum(result.unmatched.count)}건` : ""}${joinNote}</span>`;
+  bannerTarget.className = `ad-status-banner ${ordersError ? "warn" : "good"}`;
+  bannerTarget.innerHTML = ordersError
+    ? `<span class="status-dot"></span><strong>주문 데이터 확인 필요</strong><span class="note">주문 데이터를 불러오지 못해 판매 수치가 0으로 보일 수 있습니다.</span>`
+    : `<span class="status-dot"></span><strong>상품 Dashboard 정상</strong><span class="note">${syncNote} · 상품 ${apiNum(products.length)}개${result.unmatched?.count ? ` · 미매칭 주문항목 ${apiNum(result.unmatched.count)}건` : ""}${joinNote}</span>`;
+  renderProductSalesSummary(result, products);
 
   metaRefTarget.innerHTML = [
-    salesCompareCard("Meta 광고비 (기간 참고치)", metaRef.error ? "확인 필요" : apiWon(metaRef.spend), "상품별 배분값 아님 · 기간 전체 합계", { status: Boolean(metaRef.error) }),
-    salesCompareCard("Meta ROAS (기간 참고치)", metaRef.error || metaRef.roas === null ? "확인 필요" : `${multiple(metaRef.roas)}`, "상품별 ROAS는 v1에서 만들지 않습니다.", { status: Boolean(metaRef.error) }),
+    salesCompareCard("광고비", metaRef.error ? "확인 필요" : apiWon(metaRef.spend), "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
+    salesCompareCard("구매", metaRef.error ? "확인 필요" : `${apiNum(metaRef.purchases)}건`, "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
+    salesCompareCard("구매값", metaRef.error ? "확인 필요" : apiWon(metaRef.purchaseValue), "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
+    salesCompareCard("ROAS", metaRef.error || metaRef.roas === null ? "확인 필요" : `${multiple(metaRef.roas)}`, "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
+    salesCompareCard("CTR", metaRef.error ? "확인 필요" : pct(Number(metaRef.ctr || 0) * 100), "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
+    salesCompareCard("CPC", metaRef.error ? "확인 필요" : apiWon(metaRef.cpc), "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
     productUnmatchedCardHtml(result)
   ].join("");
+  if (actionTarget) actionTarget.innerHTML = productActionSummaryHtml(result.actionSummary || {}, products);
+  if (filterTarget) filterTarget.innerHTML = productActionFiltersHtml(products);
 
   if (products.length === 0) {
-    rowsTarget.innerHTML = `<tr><td colspan="7">표시할 상품이 없습니다.</td></tr>`;
+    rowsTarget.innerHTML = `<tr><td colspan="8">표시할 상품이 없습니다.</td></tr>`;
     return;
   }
 
-  rowsTarget.innerHTML = [...products]
-    .sort((a, b) => Number(b.salesAmount || 0) - Number(a.salesAmount || 0))
-    .map(productDashboardRowHtml)
+  const scopeProducts = productFilterBase(products);
+  const filteredProducts = activeProductActionFilter === "all"
+    ? scopeProducts
+    : scopeProducts.filter((product) => productActionKey(product) === activeProductActionFilter);
+  if (filteredProducts.length === 0) {
+    rowsTarget.innerHTML = ordersError
+      ? `<tr><td colspan="8">주문 데이터를 불러오지 못해 판매 발생 상품을 확정할 수 없습니다.</td></tr>`
+      : `<tr><td colspan="8">선택한 조건에 해당하는 상품이 없습니다.</td></tr>`;
+    return;
+  }
+
+  rowsTarget.innerHTML = productSortRows(filteredProducts)
+    .map((product) => productDashboardRowHtml(product, { ordersError }))
     .join("");
+}
+
+function productHasSales(product = {}) {
+  return Number(product.quantitySold || 0) > 0 || Number(product.orderCount || 0) > 0 || Number(product.salesAmount || 0) > 0;
+}
+
+function productActionKey(product = {}) {
+  return product.productAction?.action || "observe";
+}
+
+function productHasStock(product = {}) {
+  return Number(product.inventoryQuantity || 0) > 0;
+}
+
+function productMatchesSalesScope(product = {}) {
+  if (activeProductScopeFilter === "sold") return productHasSales(product);
+  if (activeProductScopeFilter === "no_orders") return !productHasSales(product);
+  return true;
+}
+
+function productMatchesStockScope(product = {}) {
+  const stock = Number(product.inventoryQuantity || 0);
+  if (activeProductStockFilter === "in_stock") return stock > 0;
+  if (activeProductStockFilter === "low_stock") return stock > 0 && stock <= 3;
+  if (activeProductStockFilter === "out_stock") return stock <= 0;
+  return true;
+}
+
+function productFilterBase(products = []) {
+  return products.filter((product) => productMatchesSalesScope(product) && productMatchesStockScope(product));
+}
+
+function productSortRows(products = []) {
+  const dateValue = (value) => {
+    const time = value ? new Date(value).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
+  };
+  const sorters = {
+    salesAmount_desc: (a, b) => Number(b.salesAmount || 0) - Number(a.salesAmount || 0),
+    quantity_desc: (a, b) => Number(b.quantitySold || 0) - Number(a.quantitySold || 0),
+    orders_desc: (a, b) => Number(b.orderCount || 0) - Number(a.orderCount || 0),
+    lastSale_desc: (a, b) => dateValue(b.lastSaleDate) - dateValue(a.lastSaleDate),
+    stock_asc: (a, b) => Number(a.inventoryQuantity || 0) - Number(b.inventoryQuantity || 0)
+  };
+  const sorter = sorters[activeProductSort] || sorters.salesAmount_desc;
+  return [...products].sort((a, b) => sorter(a, b) || Number(b.salesAmount || 0) - Number(a.salesAmount || 0));
+}
+
+function productSalesSummary(products = [], result = {}) {
+  const soldProducts = products.filter(productHasSales);
+  return {
+    orderCount: Number(result.join?.orderCount || 0),
+    soldProductCount: soldProducts.length,
+    quantitySold: soldProducts.reduce((total, product) => total + Number(product.quantitySold || 0), 0),
+    salesAmount: soldProducts.reduce((total, product) => total + Number(product.salesAmount || 0), 0)
+  };
+}
+
+function renderProductSalesSummary(result = {}, products = []) {
+  const target = $("#salesImpact");
+  if (!target) return;
+  const ordersError = result.ordersError || null;
+  const summary = productSalesSummary(products, result);
+  target.dataset.productSalesLocked = "1";
+  target.classList.add("cards");
+  target.classList.remove("instagram-feed");
+  target.innerHTML = [
+    ordersError ? salesWarningCard({
+      title: "주문 데이터 확인 필요",
+      note: "주문 데이터를 불러오지 못해 판매 수치가 0으로 보일 수 있습니다.",
+      detail: ordersError
+    }) : "",
+    salesKpiCard("총 주문 수", ordersError ? "확인 필요" : `${apiNum(summary.orderCount)}건`, "Cafe24 결제 완료 주문 기준", ordersError ? "is-disabled" : ""),
+    salesKpiCard("판매 상품 수", ordersError ? "확인 필요" : `${apiNum(summary.soldProductCount)}개`, "판매 발생 상품 기준", ordersError ? "is-disabled" : ""),
+    salesKpiCard("총 판매 수량", ordersError ? "확인 필요" : `${apiNum(summary.quantitySold)}개`, "상품별 quantitySold 합계", ordersError ? "is-disabled" : ""),
+    salesKpiCard("총 실매출", ordersError ? "확인 필요" : apiWon(summary.salesAmount), "상품별 salesAmount 합계 · Cafe24 결제 완료 주문 기준과 차이 가능", ordersError ? "is-disabled" : "")
+  ].filter(Boolean).join("");
+}
+
+function productScopeFiltersHtml(products = []) {
+  const soldCount = products.filter(productHasSales).length;
+  const noOrderCount = products.length - soldCount;
+  return `<button class="product-action-filter ${activeProductScopeFilter === "sold" ? "active" : ""}" type="button" data-product-scope-filter="sold">
+    판매 발생 <span>${apiNum(soldCount)}</span>
+  </button>
+  <button class="product-action-filter ${activeProductScopeFilter === "no_orders" ? "active" : ""}" type="button" data-product-scope-filter="no_orders">
+    주문 없음 <span>${apiNum(noOrderCount)}</span>
+  </button>
+  <button class="product-action-filter ${activeProductScopeFilter === "all" ? "active" : ""}" type="button" data-product-scope-filter="all">
+    전체 카탈로그 <span>${apiNum(products.length)}</span>
+  </button>`;
+}
+
+function productStockFiltersHtml(products = []) {
+  const inStock = products.filter(productHasStock).length;
+  const lowStock = products.filter((product) => {
+    const stock = Number(product.inventoryQuantity || 0);
+    return stock > 0 && stock <= 3;
+  }).length;
+  const outStock = products.length - inStock;
+  const filters = [
+    ["all", "재고 전체", products.length],
+    ["in_stock", "재고 있음", inStock],
+    ["low_stock", "재고 부족", lowStock],
+    ["out_stock", "재고 없음", outStock]
+  ];
+  return filters.map(([value, label, count]) => `<button class="product-action-filter ${activeProductStockFilter === value ? "active" : ""}" type="button" data-product-stock-filter="${esc(value)}">
+    ${esc(label)} <span>${apiNum(count)}</span>
+  </button>`).join("");
+}
+
+function productSortControlsHtml() {
+  const sorts = [
+    ["salesAmount_desc", "매출순"],
+    ["quantity_desc", "판매수량"],
+    ["orders_desc", "주문수"],
+    ["lastSale_desc", "마지막 판매일"],
+    ["stock_asc", "재고 적은 순"]
+  ];
+  return sorts.map(([value, label]) => `<button class="product-action-filter ${activeProductSort === value ? "active" : ""}" type="button" data-product-sort="${esc(value)}">
+    ${esc(label)}
+  </button>`).join("");
+}
+
+const PRODUCT_ACTIONS = [
+  ["push_now", "Push Now"],
+  ["observe", "Observe"],
+  ["hold", "Hold"],
+  ["stop_promotion", "Stop Promotion"]
+];
+
+function productActionTone(action) {
+  return { push_now: "good", observe: "", hold: "warn", stop_promotion: "urgent" }[action] || "";
+}
+
+function productActionSummaryFromProducts(products = []) {
+  return products.reduce((summary, product) => {
+    const action = productActionKey(product);
+    summary[action] = (summary[action] || 0) + 1;
+    return summary;
+  }, { push_now: 0, observe: 0, hold: 0, stop_promotion: 0 });
+}
+
+function observeSubReasonCounts(products = []) {
+  return products.reduce((summary, product) => {
+    const action = productActionKey(product);
+    if (action !== "observe") return summary;
+    const subReason = product.productAction?.subReason || null;
+    if (subReason === "new_product") summary.new_product += 1;
+    if (subReason === "single_sale") summary.single_sale += 1;
+    if (subReason === "no_history") summary.no_history += 1;
+    return summary;
+  }, { new_product: 0, single_sale: 0, no_history: 0 });
+}
+
+function observeSubReasonText(products = []) {
+  const counts = observeSubReasonCounts(products);
+  return `신규 ${apiNum(counts.new_product)} · 판매 신호 ${apiNum(counts.single_sale)} · 이력 없음 ${apiNum(counts.no_history)}`;
+}
+
+function productActionSummaryHtml(summary = {}, products = []) {
+  const counts = { ...productActionSummaryFromProducts(products), ...summary };
+  const observeDetail = observeSubReasonText(products);
+  return PRODUCT_ACTIONS.map(([action, label]) => {
+    const tone = productActionTone(action);
+    const active = activeProductActionFilter === action ? " active" : "";
+    return `<button class="action-item sales-kpi-card product-action-card ${esc(tone)}${active}" type="button" data-product-action-filter="${esc(action)}">
+      <span>${esc(label)}</span>
+      <strong>${apiNum(counts[action] || 0)}</strong>
+      <p>${esc(productActionNote(action))}</p>
+      ${action === "observe" ? `<small class="product-action-subreason">${esc(observeDetail)}</small>` : ""}
+    </button>`;
+  }).join("");
+}
+
+function productActionFiltersHtml(products = []) {
+  const baseProducts = productFilterBase(products);
+  const counts = productActionSummaryFromProducts(baseProducts);
+  const filters = [["all", "All", baseProducts.length], ...PRODUCT_ACTIONS.map(([action, label]) => [action, label, counts[action] || 0])];
+  const buttons = filters.map(([action, label, count]) => (
+    `<button class="product-action-filter ${activeProductActionFilter === action ? "active" : ""}" type="button" data-product-action-filter="${esc(action)}">
+      ${esc(label)} <span>${apiNum(count)}</span>
+    </button>`
+  )).join("");
+  return `${productScopeFiltersHtml(products)}${productStockFiltersHtml(products)}${buttons}${productSortControlsHtml()}<small class="product-action-filter-note">${esc(observeSubReasonText(baseProducts))}</small>`;
+}
+
+function productActionNote(action) {
+  return {
+    push_now: "노출 확대 가능",
+    observe: "추가 관찰",
+    hold: "재고 주의",
+    stop_promotion: "홍보 중단 검토"
+  }[action] || "";
 }
 
 // 미매칭 주문항목이 "왜" 미매칭인지 사유별로 보여주는 카드. (2026-07-10 상품 Join 구조 개선)
@@ -2958,16 +3187,25 @@ function productUnmatchedCardHtml(result = {}) {
   </article>`;
 }
 
-function productDashboardRowHtml(row) {
-  const actionClass = { Push: "good", Observe: "", Hold: "warn", Stop: "urgent" }[row.aiAction] || "";
+function productDashboardRowHtml(row, options = {}) {
+  const productAction = row.productAction || { action: "observe", label: row.aiAction || "Observe", confidence: "low", reasons: [row.aiActionReason || ""], warnings: [], dataQuality: { meta: "unavailable" } };
+  const actionClass = productActionTone(productAction.action);
+  const reasons = (productAction.reasons || []).filter(Boolean).slice(0, 3);
+  const warnings = (productAction.warnings || []).filter(Boolean).slice(0, 2);
+  const lastSaleDate = row.lastSaleDate ? String(row.lastSaleDate).slice(0, 10) : "";
+  const salesWarning = options.ordersError ? '<div class="hint-text urgent">주문 데이터 확인 필요</div>' : "";
   return `<tr>
     <td>${esc(row.productName)}<div class="hint-text">${esc(row.productCode || "")}</div></td>
-    <td>${apiNum(row.inventoryQuantity)}${row.soldOut ? ' <span class="badge urgent">품절</span>' : ""}</td>
-    <td>${row.daysOfStockLeft === null || row.daysOfStockLeft === undefined ? "-" : `${apiNum(row.daysOfStockLeft)}일`}</td>
-    <td>${apiNum(row.quantitySold)}</td>
+    <td><span class="badge ${actionClass}">${esc(productAction.label)}</span><div class="hint-text">Confidence · ${esc(productAction.confidence || "-")}</div></td>
+    <td>${apiNum(row.inventoryQuantity)}<div class="hint-text">${row.daysOfStockLeft === null || row.daysOfStockLeft === undefined ? "소진일 미확인" : `소진 예상 ${apiNum(row.daysOfStockLeft)}일`}</div>${row.soldOut ? '<div class="hint-text">품절 플래그 있음</div>' : ""}</td>
+    <td>${apiNum(row.quantitySold)}개<div class="hint-text">주문 ${apiNum(row.orderCount)}건</div>${salesWarning}</td>
     <td>${apiWon(row.salesAmount)}</td>
-    <td>${Number(row.salesVelocityPerDay || 0).toFixed(2)}개</td>
-    <td><span class="badge ${actionClass}">${esc(row.aiAction)}</span><div class="hint-text">${esc(row.aiActionReason || "")}</div></td>
+    <td>${lastSaleDate ? esc(lastSaleDate) : "-"}<div class="hint-text">일 평균 ${Number(row.salesVelocityPerDay || 0).toFixed(2)}개</div></td>
+    <td><span class="badge">Unavailable</span><div class="hint-text">상품 단위 광고 귀속 확인 불가</div></td>
+    <td>
+      <ul class="product-action-reasons">${reasons.map((reason) => `<li>${esc(reason)}</li>`).join("")}</ul>
+      ${warnings.length ? `<div class="product-action-warnings">${warnings.map((warning) => `<span>${esc(warning)}</span>`).join("")}</div>` : ""}
+    </td>
   </tr>`;
 }
 
@@ -3252,6 +3490,30 @@ function bind() {
       toast("연동 상태를 다시 확인합니다.");
       renderApiHealthCenter(selectedMonth());
     }
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-product-action-filter]");
+    if (!button) return;
+    activeProductActionFilter = button.dataset.productActionFilter || "all";
+    renderProductDashboard(selectedMonth());
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-product-scope-filter]");
+    if (!button) return;
+    activeProductScopeFilter = button.dataset.productScopeFilter || "sold";
+    renderProductDashboard(selectedMonth());
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-product-stock-filter]");
+    if (!button) return;
+    activeProductStockFilter = button.dataset.productStockFilter || "all";
+    renderProductDashboard(selectedMonth());
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-product-sort]");
+    if (!button) return;
+    activeProductSort = button.dataset.productSort || "salesAmount_desc";
+    renderProductDashboard(selectedMonth());
   });
   $$("[data-content-tab]").forEach((button) => {
     button.addEventListener("click", () => {
