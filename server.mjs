@@ -122,6 +122,16 @@ createServer(async (req, res) => {
       });
       return json(res, data);
     }
+    if (url.pathname === "/api/brand-master") {
+      if (req.method === "POST") {
+        if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+        const payload = await readJsonBody(req);
+        const data = await saveBrandMasterUpdates(payload.brands || []);
+        return json(res, data);
+      }
+      const data = await readBrandMasterWithSeed();
+      return json(res, data);
+    }
     if (url.pathname === "/api/diagnostics/product-join-report") {
       // 상품 Join 진단용 읽기 전용 API. 토큰/시크릿은 포함하지 않는다.
       // (2026-07-10 상품 Join 구조 개선)
@@ -1137,6 +1147,11 @@ function isAuthorizedInternalRequest(req) {
   return false;
 }
 
+function isLocalRequest(req) {
+  const requestHost = String(req.headers.host || "").split(":")[0];
+  return requestHost === "127.0.0.1" || requestHost === "localhost" || requestHost === "::1";
+}
+
 async function fetchCafe24Orders(startDate, endDate, options = {}) {
   await logCafe24OrdersDebug("flow_start", {
     startDate,
@@ -1583,12 +1598,233 @@ const CAFE24_CATALOG_TTL_MS = Math.max(60000, Number(env.CAFE24_CATALOG_TTL_MS |
 const CAFE24_PRODUCT_FETCH_CONCURRENCY = 3;
 const cafe24ProductCatalogFile = () => join(workDir, "cafe24-product-catalog.json");
 const productSalesHistoryFile = () => join(workDir, "product-sales-history.json");
+const brandMasterFile = () => join(workDir, "brand-master.json");
 
 async function writeJsonAtomic(file, data) {
   await mkdir(workDir, { recursive: true });
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
   await writeFile(tmp, JSON.stringify(data, null, 2));
   await rename(tmp, file);
+}
+
+function normalizeBrandCode(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeBrandName(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function parseBrandAliases(value) {
+  if (Array.isArray(value)) {
+    return value.map(normalizeBrandName).filter(Boolean);
+  }
+  return String(value ?? "")
+    .split(/[\n,]/)
+    .map(normalizeBrandName)
+    .filter(Boolean);
+}
+
+function suggestBrandNameFromProductName(productName) {
+  const match = String(productName || "").match(/^\s*\[([^\]:\]]+)(?:\s*:\s*([^\]]+))?\]/);
+  return normalizeBrandName(match?.[2] || match?.[1] || "");
+}
+
+function normalizeBrandMasterEntry(entry = {}, fallbackCode = "") {
+  const brand_code = normalizeBrandCode(entry.brand_code || fallbackCode);
+  if (!brand_code) return null;
+  return {
+    brand_code,
+    brand_name: normalizeBrandName(entry.brand_name),
+    name_aliases: parseBrandAliases(entry.name_aliases),
+    instagram_tag: normalizeBrandName(entry.instagram_tag),
+    active: entry.active === undefined ? true : Boolean(entry.active),
+    nameSource: entry.nameSource === "confirmed" ? "confirmed" : "suggested"
+  };
+}
+
+function brandMasterEntriesToMap(entries = []) {
+  const map = new Map();
+  for (const entry of entries) {
+    const normalized = normalizeBrandMasterEntry(entry);
+    if (normalized) map.set(normalized.brand_code, normalized);
+  }
+  return map;
+}
+
+async function readBrandMasterFile() {
+  const file = brandMasterFile();
+  if (!existsSync(file)) return { updatedAt: null, brands: [] };
+  try {
+    const parsed = JSON.parse(await readFile(file, "utf8"));
+    const brands = Array.isArray(parsed) ? parsed : Array.isArray(parsed.brands) ? parsed.brands : [];
+    return {
+      updatedAt: parsed.updatedAt || null,
+      brands: brands.map((entry) => normalizeBrandMasterEntry(entry)).filter(Boolean)
+    };
+  } catch {
+    return { updatedAt: null, brands: [] };
+  }
+}
+
+async function writeBrandMasterFile(brands) {
+  const normalized = brands
+    .map((entry) => normalizeBrandMasterEntry(entry))
+    .filter(Boolean)
+    .sort((left, right) => left.brand_code.localeCompare(right.brand_code));
+  await writeJsonAtomic(brandMasterFile(), {
+    updatedAt: new Date().toISOString(),
+    brands: normalized
+  });
+  return normalized;
+}
+
+function extractProductsFromCatalogPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.products)) return payload.products;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (payload?.products && typeof payload.products === "object") return Object.values(payload.products);
+  return [];
+}
+
+async function readBrandSeedProducts() {
+  const catalogFile = cafe24ProductCatalogFile();
+  if (existsSync(catalogFile)) {
+    try {
+      const parsed = JSON.parse(await readFile(catalogFile, "utf8"));
+      const products = extractProductsFromCatalogPayload(parsed);
+      if (products.length) return { products, source: "cafe24-product-catalog" };
+    } catch {
+      // Fall through to the dashboard cache. A corrupt cache should not block seed generation.
+    }
+  }
+
+  try {
+    const files = (await fsReaddir(workDir))
+      .filter((name) => /^product-dashboard-proxy-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.json$/.test(name))
+      .sort()
+      .reverse();
+    for (const file of files) {
+      try {
+        const parsed = JSON.parse(await readFile(join(workDir, file), "utf8"));
+        if (Array.isArray(parsed.products) && parsed.products.length) {
+          return { products: parsed.products, source: file };
+        }
+      } catch {
+        // Ignore invalid dashboard caches and continue looking for a usable cache.
+      }
+    }
+  } catch {
+    // No readable work directory yet.
+  }
+
+  return { products: [], source: null };
+}
+
+function productBrandCode(product = {}) {
+  return normalizeBrandCode(product.brand_code || product.brandCode || product.brand || product.mall_brand_code);
+}
+
+function productDisplayName(product = {}) {
+  return product.product_name || product.productName || product.name || "";
+}
+
+function buildSuggestedBrandMaster(products = []) {
+  const byCode = new Map();
+  for (const product of products) {
+    const brand_code = productBrandCode(product);
+    if (!brand_code) continue;
+    const bucket = byCode.get(brand_code) || { brand_code, productCount: 0, candidates: new Map() };
+    bucket.productCount += 1;
+    const candidate = suggestBrandNameFromProductName(productDisplayName(product));
+    if (candidate) bucket.candidates.set(candidate, (bucket.candidates.get(candidate) || 0) + 1);
+    byCode.set(brand_code, bucket);
+  }
+
+  return Array.from(byCode.values())
+    .map((bucket) => {
+      const candidates = Array.from(bucket.candidates.entries()).sort((left, right) => {
+        if (right[1] !== left[1]) return right[1] - left[1];
+        return left[0].localeCompare(right[0]);
+      });
+      return {
+        brand_code: bucket.brand_code,
+        brand_name: candidates[0]?.[0] || "",
+        name_aliases: [],
+        instagram_tag: "",
+        active: true,
+        nameSource: "suggested"
+      };
+    })
+    .sort((left, right) => left.brand_code.localeCompare(right.brand_code));
+}
+
+async function readBrandMasterWithSeed() {
+  const existing = await readBrandMasterFile();
+  const existingMap = brandMasterEntriesToMap(existing.brands);
+  const seed = await readBrandSeedProducts();
+  const suggested = buildSuggestedBrandMaster(seed.products);
+  let changed = !existsSync(brandMasterFile());
+
+  for (const entry of suggested) {
+    if (!existingMap.has(entry.brand_code)) {
+      existingMap.set(entry.brand_code, entry);
+      changed = true;
+    }
+  }
+
+  const brands = Array.from(existingMap.values()).sort((left, right) => left.brand_code.localeCompare(right.brand_code));
+  const savedBrands = changed ? await writeBrandMasterFile(brands) : brands;
+  const withBrandCode = seed.products.filter((product) => productBrandCode(product)).length;
+  const confirmedCount = savedBrands.filter((brand) => brand.nameSource === "confirmed").length;
+
+  return {
+    ok: true,
+    updatedAt: changed ? new Date().toISOString() : existing.updatedAt,
+    source: "brand-master",
+    seedSource: seed.source,
+    brandCount: savedBrands.length,
+    suggestedCount: savedBrands.length - confirmedCount,
+    confirmedCount,
+    brandCodeCoverage: {
+      productCount: seed.products.length,
+      withBrandCode,
+      missingBrandCode: seed.products.length - withBrandCode
+    },
+    brands: savedBrands
+  };
+}
+
+async function saveBrandMasterUpdates(updates = []) {
+  const current = await readBrandMasterWithSeed();
+  const map = brandMasterEntriesToMap(current.brands);
+
+  for (const update of updates) {
+    const brand_code = normalizeBrandCode(update.brand_code);
+    if (!brand_code || !map.has(brand_code)) continue;
+    const existing = map.get(brand_code);
+    map.set(brand_code, {
+      ...existing,
+      brand_name: normalizeBrandName(update.brand_name),
+      name_aliases: parseBrandAliases(update.name_aliases),
+      instagram_tag: normalizeBrandName(update.instagram_tag),
+      active: update.active === undefined ? existing.active : Boolean(update.active),
+      nameSource: "confirmed"
+    });
+  }
+
+  const brands = await writeBrandMasterFile(Array.from(map.values()));
+  const confirmedCount = brands.filter((brand) => brand.nameSource === "confirmed").length;
+  return {
+    ok: true,
+    saved: true,
+    updatedAt: new Date().toISOString(),
+    source: "brand-master",
+    brandCount: brands.length,
+    suggestedCount: brands.length - confirmedCount,
+    confirmedCount,
+    brands
+  };
 }
 
 function validIsoDateOrNull(value) {
