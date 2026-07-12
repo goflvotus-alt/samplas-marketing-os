@@ -1599,6 +1599,25 @@ async function fetchCafe24BrandList() {
   return brands;
 }
 
+async function fetchCafe24ManufacturerList() {
+  const manufacturers = [];
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/manufacturers`);
+    url.searchParams.set("limit", String(pageSize));
+    url.searchParams.set("offset", String(offset));
+    const body = await cafe24FetchJson(url);
+    if (body.error) throw body.error;
+    const page = body.manufacturers || [];
+    manufacturers.push(...page.map((item) => ({
+      manufacturer_code: String(item.manufacturer_code || "").trim(),
+      manufacturer_name: String(item.manufacturer_name || "").trim()
+    })).filter((item) => item.manufacturer_code));
+    if (page.length < pageSize) break;
+  }
+  return manufacturers;
+}
+
 async function fetchCafe24ProductDetail(productNo) {
   if (env.CAFE24_PROXY_BASE_URL) {
     const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
@@ -1662,6 +1681,7 @@ function normalizeCafe24ProductRow(item = {}, detail = {}, variants = []) {
     productCode: merged.product_code || merged.custom_product_code || "",
     productName: merged.product_name || merged.eng_product_name || "상품명 없음",
     brand: merged.brand_code || merged.brand || "",
+    manufacturer_code: merged.manufacturer_code || "",
     categoryNos: (merged.category || []).map((category) => category.category_no).filter((no) => no !== undefined),
     mainImage: merged.list_image || merged.small_image || merged.tiny_image || merged.detail_image || "",
     display: merged.display || "F",
