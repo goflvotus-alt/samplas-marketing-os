@@ -132,6 +132,12 @@ createServer(async (req, res) => {
       const data = await readBrandMasterWithSeed();
       return json(res, data);
     }
+    if (url.pathname === "/api/diagnostics/brand-sales") {
+      const since = url.searchParams.get("since") || "2026-07-01";
+      const until = url.searchParams.get("until") || "2026-07-31";
+      const data = await buildBrandSalesDiagnostics(since, until);
+      return json(res, data);
+    }
     if (url.pathname === "/api/diagnostics/product-join-report") {
       // 상품 Join 진단용 읽기 전용 API. 토큰/시크릿은 포함하지 않는다.
       // (2026-07-10 상품 Join 구조 개선)
@@ -1599,6 +1605,7 @@ const CAFE24_PRODUCT_FETCH_CONCURRENCY = 3;
 const cafe24ProductCatalogFile = () => join(workDir, "cafe24-product-catalog.json");
 const productSalesHistoryFile = () => join(workDir, "product-sales-history.json");
 const brandMasterFile = () => join(workDir, "brand-master.json");
+const productBrandMapFile = () => join(workDir, "product-brand-map.json");
 
 async function writeJsonAtomic(file, data) {
   await mkdir(workDir, { recursive: true });
@@ -1825,6 +1832,102 @@ async function saveBrandMasterUpdates(updates = []) {
     confirmedCount,
     brands
   };
+}
+
+async function readProductBrandMap() {
+  const file = productBrandMapFile();
+  if (!existsSync(file)) return { updatedAt: null, products: {}, negative: {} };
+  try {
+    const parsed = JSON.parse(await readFile(file, "utf8"));
+    return {
+      updatedAt: parsed.updatedAt || null,
+      products: parsed.products && typeof parsed.products === "object" ? parsed.products : {},
+      negative: parsed.negative && typeof parsed.negative === "object" ? parsed.negative : {}
+    };
+  } catch {
+    return { updatedAt: null, products: {}, negative: {} };
+  }
+}
+
+async function writeProductBrandMap(productBrandMap) {
+  await writeJsonAtomic(productBrandMapFile(), {
+    updatedAt: new Date().toISOString(),
+    products: productBrandMap.products || {},
+    negative: productBrandMap.negative || {}
+  });
+}
+
+function productBrandMapCode(productBrandMap, productNo) {
+  const entry = productBrandMap?.products?.[String(productNo || "").trim()];
+  if (!entry) return "";
+  return normalizeBrandCode(typeof entry === "string" ? entry : entry.brand_code);
+}
+
+function isCafe24ProductNotFound(error) {
+  const status = Number(error?.status || error?.statusCode || 0);
+  const message = String(error?.message || "").toLowerCase();
+  const code = String(error?.body?.error?.code ?? error?.body?.error_code ?? "").toLowerCase();
+  return status === 404 || message.includes("not found") || message.includes("not_exist") || code === "404";
+}
+
+function collectMissingBrandMapProductNos(orders = [], catalog = [], productBrandMap = {}) {
+  const catalogProductNos = new Set(catalog.map((product) => String(product.productNo || "")).filter(Boolean));
+  const wanted = new Set();
+  for (const order of orders) {
+    if (isCafe24CanceledOrRefunded(order)) continue;
+    for (const item of cafe24OrderItems(order)) {
+      const productNo = String(item.product_no || item.productNo || "").trim();
+      if (!productNo || catalogProductNos.has(productNo)) continue;
+      if (productBrandMap.products?.[productNo] || productBrandMap.negative?.[productNo]) continue;
+      wanted.add(productNo);
+    }
+  }
+  return [...wanted];
+}
+
+async function backfillProductBrandMap(orders = [], catalog = []) {
+  const productBrandMap = await readProductBrandMap();
+  const targets = collectMissingBrandMapProductNos(orders, catalog, productBrandMap);
+  const diagnostics = {
+    targetCount: targets.length,
+    successCount: 0,
+    negativeCount: 0,
+    failedCount: 0
+  };
+  if (!targets.length) return { productBrandMap, diagnostics };
+
+  await mapWithConcurrency(targets, CAFE24_PRODUCT_FETCH_CONCURRENCY, async (productNo) => {
+    try {
+      const detail = await fetchCafe24ProductDetail(productNo);
+      const brand_code = normalizeBrandCode(detail.brand_code || detail.brand || "");
+      if (brand_code) {
+        productBrandMap.products[productNo] = {
+          brand_code,
+          updatedAt: new Date().toISOString()
+        };
+        diagnostics.successCount += 1;
+      } else {
+        productBrandMap.negative[productNo] = {
+          status: "missing_brand_code",
+          updatedAt: new Date().toISOString()
+        };
+        diagnostics.negativeCount += 1;
+      }
+    } catch (error) {
+      if (isCafe24ProductNotFound(error)) {
+        productBrandMap.negative[productNo] = {
+          status: "not_found",
+          updatedAt: new Date().toISOString()
+        };
+        diagnostics.negativeCount += 1;
+      } else {
+        diagnostics.failedCount += 1;
+      }
+    }
+  });
+
+  if (diagnostics.successCount || diagnostics.negativeCount || !existsSync(productBrandMapFile())) await writeProductBrandMap(productBrandMap);
+  return { productBrandMap, diagnostics };
 }
 
 function validIsoDateOrNull(value) {
@@ -2233,6 +2336,210 @@ function matchCafe24OrdersToProducts(orders = [], catalog = [], context = {}) {
     matchedCount,
     unmatchedItems,
     unmatchedReasons: [...reasonTotals.values()].sort((a, b) => b.amount - a.amount)
+  };
+}
+
+function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new Map(), brandMasterResult = {}, productBrandMap = {}) {
+  const masterMap = brandMasterEntriesToMap(brandMasterResult.brands || []);
+  const brandBuckets = new Map();
+
+  for (const product of catalog) {
+    const productNo = product.productNo === undefined || product.productNo === null ? "" : String(product.productNo);
+    if (!productNo) continue;
+    const sales = salesByProduct.get(product.productNo) || salesByProduct.get(productNo);
+    if (!sales) continue;
+
+    const quantitySold = Number(sales.quantity || 0);
+    const salesAmount = Number(sales.amount || 0);
+    const orderIds = sales.orderIds instanceof Set ? sales.orderIds : new Set();
+    const hasSales = quantitySold > 0 || salesAmount > 0 || orderIds.size > 0;
+    if (!hasSales) continue;
+
+    const brand_code = productBrandCode(product) || productBrandMapCode(productBrandMap, productNo) || "UNASSIGNED";
+    const master = masterMap.get(brand_code);
+    const bucket = brandBuckets.get(brand_code) || {
+      brand_code,
+      brand_name: master?.brand_name || brand_code,
+      salesAmount: 0,
+      quantitySold: 0,
+      orderIds: new Set(),
+      soldProductNos: new Set()
+    };
+
+    bucket.salesAmount += salesAmount;
+    bucket.quantitySold += quantitySold;
+    for (const orderId of orderIds) bucket.orderIds.add(orderId);
+    bucket.soldProductNos.add(productNo);
+    brandBuckets.set(brand_code, bucket);
+  }
+
+  return Array.from(brandBuckets.values())
+    .map((bucket) => ({
+      brand_code: bucket.brand_code,
+      brand_name: bucket.brand_name || bucket.brand_code,
+      salesAmount: bucket.salesAmount,
+      quantitySold: bucket.quantitySold,
+      orderCount: bucket.orderIds.size,
+      soldProductCount: bucket.soldProductNos.size
+    }))
+    .sort((left, right) => {
+      if (right.salesAmount !== left.salesAmount) return right.salesAmount - left.salesAmount;
+      return left.brand_code.localeCompare(right.brand_code);
+    });
+}
+
+function cafe24BrandSalesItemAmount(item = {}, quantity = 1) {
+  const fixedAmount = firstCafe24Money([
+    item.itemAmount,
+    item.item_amount,
+    item.total_item_amount
+  ]);
+  if (fixedAmount) return fixedAmount;
+  const unitAmount = firstCafe24Money([
+    item.actual_payment_amount,
+    item.order_price_amount,
+    item.product_price,
+    item.price,
+    item.salePrice,
+    item.sale_price,
+    item.supply_price
+  ]);
+  return unitAmount * quantity;
+}
+
+function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
+  const catalogForBrandSales = [...catalog];
+  const byProductNo = new Map();
+  for (const product of catalogForBrandSales) {
+    const productNo = product.productNo === undefined || product.productNo === null ? "" : String(product.productNo);
+    if (productNo) byProductNo.set(productNo, product);
+  }
+
+  const salesByProduct = new Map();
+  const unassignedProducts = new Map();
+  for (const order of orders) {
+    if (isCafe24CanceledOrRefunded(order)) continue;
+    const orderId = order.order_id || order.orderId || order.order_no || order.id || "";
+    for (const item of cafe24OrderItems(order)) {
+      const productNo = String(item.product_no || item.productNo || "").trim();
+      if (!productNo) continue;
+      const product = byProductNo.get(productNo);
+      const productKey = product ? product.productNo : productNo;
+      if (!product) {
+        if (!unassignedProducts.has(productKey)) {
+          unassignedProducts.set(productKey, {
+            productNo,
+            productCode: item.product_code || item.productCode || "",
+            productName: item.product_name || item.productName || item.item_name || ""
+          });
+        }
+      }
+      const quantity = cafe24ItemQuantity(item);
+      const amount = cafe24BrandSalesItemAmount(item, quantity);
+      const entry = salesByProduct.get(productKey) || { quantity: 0, amount: 0, orderIds: new Set() };
+      entry.quantity += quantity;
+      entry.amount += amount;
+      if (orderId) entry.orderIds.add(String(orderId));
+      salesByProduct.set(productKey, entry);
+    }
+  }
+
+  return {
+    catalog: [...catalogForBrandSales, ...unassignedProducts.values()],
+    salesByProduct
+  };
+}
+
+async function buildBrandSalesDiagnostics(since, until) {
+  if (env.CAFE24_PROXY_BASE_URL) {
+    const [dashboard, ordersResult, brandMaster] = await Promise.all([
+      buildProductDashboardWithCache(since, until, {}),
+      fetchCafe24Orders(since, until, { limit: 500 }).catch((error) => ({ error: error.message, orders: [], totals: {} })),
+      readBrandMasterWithSeed()
+    ]);
+    const catalog = dashboard.products || [];
+    let orders = ordersResult.orders || ordersResult.data || [];
+    if (!orders.length) {
+      const cachedOrders = await readCachedCafe24Orders(since, until);
+      orders = cachedOrders?.orders || cachedOrders?.data || [];
+    }
+    const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
+    const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
+    const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap);
+    const productsWithBrandCode = catalog.filter((product) => productBrandCode(product)).length;
+    const matchedOrderIds = new Set();
+    for (const sales of brandSalesInput.salesByProduct.values()) {
+      if (sales.orderIds instanceof Set) {
+        for (const orderId of sales.orderIds) matchedOrderIds.add(orderId);
+      }
+    }
+    const totals = brands.reduce((acc, brand) => {
+      acc.salesAmount += Number(brand.salesAmount || 0);
+      acc.quantitySold += Number(brand.quantitySold || 0);
+      acc.soldProductCount += Number(brand.soldProductCount || 0);
+      return acc;
+    }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0 });
+    return {
+      period: { since, until },
+      brandCodeCoverage: {
+        totalProducts: catalog.length,
+        productsWithBrandCode,
+        productsWithoutBrandCode: catalog.length - productsWithBrandCode
+      },
+      brandMaster: {
+        totalBrands: brandMaster.brandCount || 0,
+        suggestedCount: brandMaster.suggestedCount || 0,
+        confirmedCount: brandMaster.confirmedCount || 0
+      },
+      totals,
+      productBrandBackfill,
+      brands
+    };
+  }
+
+  const [ordersResult, catalogResult, brandMaster] = await Promise.all([
+    fetchCafe24Orders(since, until, { limit: 500 }).catch((error) => ({ error: error.message, orders: [], totals: {} })),
+    buildCafe24ProductCatalogWithCache({ refresh: false }),
+    readBrandMasterWithSeed()
+  ]);
+  let orders = ordersResult.orders || ordersResult.data || [];
+  if (!orders.length) {
+    const cachedOrders = await readCachedCafe24Orders(since, until);
+    orders = cachedOrders?.orders || cachedOrders?.data || [];
+  }
+  const catalog = catalogResult.products || [];
+  const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
+  const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
+  const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap);
+  const productsWithBrandCode = catalog.filter((product) => productBrandCode(product)).length;
+  const matchedOrderIds = new Set();
+  for (const sales of brandSalesInput.salesByProduct.values()) {
+    if (sales.orderIds instanceof Set) {
+      for (const orderId of sales.orderIds) matchedOrderIds.add(orderId);
+    }
+  }
+  const totals = brands.reduce((acc, brand) => {
+    acc.salesAmount += Number(brand.salesAmount || 0);
+    acc.quantitySold += Number(brand.quantitySold || 0);
+    acc.soldProductCount += Number(brand.soldProductCount || 0);
+    return acc;
+  }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0 });
+
+  return {
+    period: { since, until },
+    brandCodeCoverage: {
+      totalProducts: catalog.length,
+      productsWithBrandCode,
+      productsWithoutBrandCode: catalog.length - productsWithBrandCode
+    },
+    brandMaster: {
+      totalBrands: brandMaster.brandCount || 0,
+      suggestedCount: brandMaster.suggestedCount || 0,
+      confirmedCount: brandMaster.confirmedCount || 0
+    },
+    totals,
+    productBrandBackfill,
+    brands
   };
 }
 
