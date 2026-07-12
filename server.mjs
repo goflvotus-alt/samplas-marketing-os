@@ -123,6 +123,15 @@ createServer(async (req, res) => {
         return json(res, { error: safeErrorMessage(error) }, error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
       }
     }
+    if (url.pathname === "/api/cafe24/brands") {
+      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      try {
+        const brands = await fetchCafe24BrandList();
+        return json(res, { brands });
+      } catch (error) {
+        return json(res, { error: safeErrorMessage(error) }, error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
+      }
+    }
     if (url.pathname === "/api/products/dashboard") {
       const since = url.searchParams.get("since") || `${currentMonth()}-01`;
       const until = url.searchParams.get("until") || todayKey();
@@ -1552,6 +1561,44 @@ async function fetchCafe24ProductList(options = {}) {
   return products;
 }
 
+async function fetchCafe24BrandList() {
+  if (env.CAFE24_PROXY_BASE_URL) {
+    const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
+    const url = new URL(`${base}/api/cafe24/brands`);
+    const response = await fetch(url, { headers: cafe24ProxyHeaders() });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      const error = new Error(`Cafe24 brands proxy가 JSON이 아닌 응답을 보냈습니다: ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    if (!response.ok || body.error) {
+      const error = new Error(body.error || body.message || `Cafe24 brands proxy error ${response.status}`);
+      error.status = response.status;
+      error.body = body;
+      throw error;
+    }
+    return body.brands || [];
+  }
+
+  const brands = [];
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/brands`);
+    url.searchParams.set("limit", String(pageSize));
+    url.searchParams.set("offset", String(offset));
+    const body = await cafe24FetchJson(url);
+    if (body.error) throw body.error;
+    const page = body.brands || [];
+    brands.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return brands;
+}
+
 async function fetchCafe24ProductDetail(productNo) {
   if (env.CAFE24_PROXY_BASE_URL) {
     const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
@@ -1772,6 +1819,7 @@ function buildSuggestedBrandMaster(products = []) {
   const byCode = new Map();
   for (const product of products) {
     const brand_code = productBrandCode(product);
+    if (brand_code === "B0000000") continue;
     if (!brand_code) continue;
     const bucket = byCode.get(brand_code) || { brand_code, productCount: 0, candidates: new Map() };
     bucket.productCount += 1;
@@ -1804,6 +1852,28 @@ async function readBrandMasterWithSeed() {
   const seed = await readBrandSeedProducts();
   const suggested = buildSuggestedBrandMaster(seed.products);
   let changed = !existsSync(brandMasterFile());
+
+  try {
+    const cafe24Brands = await fetchCafe24BrandList();
+    for (const brand of cafe24Brands) {
+      const brand_code = normalizeBrandCode(brand.brand_code || brand.brandCode || brand.code);
+      if (!brand_code || brand_code === "B0000000" || existingMap.has(brand_code)) continue;
+      const entry = normalizeBrandMasterEntry({
+        brand_code,
+        brand_name: brand.brand_name || brand.brandName || brand.name || "",
+        name_aliases: [],
+        instagram_tag: "",
+        active: true,
+        nameSource: "suggested"
+      });
+      if (entry) {
+        existingMap.set(brand_code, entry);
+        changed = true;
+      }
+    }
+  } catch (error) {
+    await logApiError("cafe24_brand_master_seed", error, { stage: "brands_api_seed" });
+  }
 
   for (const entry of suggested) {
     if (!existingMap.has(entry.brand_code)) {
