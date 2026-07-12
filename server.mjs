@@ -112,6 +112,17 @@ createServer(async (req, res) => {
       );
       return json(res, data);
     }
+    if (url.pathname.startsWith("/api/cafe24/products/")) {
+      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      const productNo = decodeURIComponent(url.pathname.slice("/api/cafe24/products/".length)).trim();
+      if (!/^\d+$/.test(productNo)) return json(res, { error: "Invalid product_no" }, 400);
+      try {
+        const product = await fetchCafe24ProductDetail(productNo);
+        return json(res, { product });
+      } catch (error) {
+        return json(res, { error: safeErrorMessage(error) }, error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
+      }
+    }
     if (url.pathname === "/api/products/dashboard") {
       const since = url.searchParams.get("since") || `${currentMonth()}-01`;
       const until = url.searchParams.get("until") || todayKey();
@@ -1542,6 +1553,27 @@ async function fetchCafe24ProductList(options = {}) {
 }
 
 async function fetchCafe24ProductDetail(productNo) {
+  if (env.CAFE24_PROXY_BASE_URL) {
+    const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
+    const url = new URL(`${base}/api/cafe24/products/${encodeURIComponent(productNo)}`);
+    const response = await fetch(url, { headers: cafe24ProxyHeaders() });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      const error = new Error(`Cafe24 product proxy가 JSON이 아닌 응답을 보냈습니다: ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    if (!response.ok || body.error) {
+      const error = new Error(body.error || body.message || `Cafe24 product proxy error ${response.status}`);
+      error.status = response.status;
+      error.body = body;
+      throw error;
+    }
+    return body.product || {};
+  }
   const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products/${productNo}`);
   const body = await cafe24FetchJson(url);
   if (body.error) throw body.error;
@@ -1922,6 +1954,13 @@ async function backfillProductBrandMap(orders = [], catalog = []) {
         diagnostics.negativeCount += 1;
       } else {
         diagnostics.failedCount += 1;
+        if (!diagnostics.firstFailure) {
+          diagnostics.firstFailure = {
+            productNo,
+            status: error.status || null,
+            message: safeErrorMessage(error)
+          };
+        }
       }
     }
   });
