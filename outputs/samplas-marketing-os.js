@@ -19,6 +19,7 @@ let activeProductScopeFilter = "sold";
 let activeProductStockFilter = "all";
 let activeProductSort = "salesAmount_desc";
 let productBrandSalesRows = [];
+let productBrandSalesProducts = [];
 let productBrandSalesCacheKey = "";
 let productBrandSalesRange = "month";
 let productBrandSalesCustomSince = "";
@@ -2905,75 +2906,14 @@ async function renderProductDashboard(data) {
   const actionTarget = $("#productDashboardActions");
   const filterTarget = $("#productDashboardFilters");
   const rowsTarget = $("#productDashboardRows");
-  if (!bannerTarget || !metaRefTarget || !rowsTarget) return;
-  renderProductBrandSales(data);
-  const startDate = `${data.month}-01`;
-  const endDate = monthEnd(data.month);
-  const result = await getJson(`/api/products/dashboard?since=${startDate}&until=${endDate}`, 15000);
-
-  if (result.error) {
-    bannerTarget.className = "ad-status-banner error";
-    bannerTarget.innerHTML = `<span class="status-dot"></span><strong>상품 Dashboard 오류</strong><span class="note">${esc(result.error)}</span>`;
-    metaRefTarget.innerHTML = "";
-    if (actionTarget) actionTarget.innerHTML = "";
-    if (filterTarget) filterTarget.innerHTML = "";
-    rowsTarget.innerHTML = `<tr><td colspan="8">상품 데이터를 불러오지 못했습니다.</td></tr>`;
-    return;
-  }
-
-  if (result.ok === false && result.reason === "insufficient_scope") {
-    bannerTarget.className = "ad-status-banner error";
-    bannerTarget.innerHTML = `<span class="status-dot"></span><strong>권한 부족</strong><span class="note">${esc(PRODUCT_SCOPE_BANNER_TEXT)}</span>`;
-    metaRefTarget.innerHTML = "";
-    if (actionTarget) actionTarget.innerHTML = "";
-    if (filterTarget) filterTarget.innerHTML = "";
-    rowsTarget.innerHTML = `<tr><td colspan="8">mall.read_product 스코프 추가 후 재인증하면 이 표가 채워집니다.</td></tr>`;
-    return;
-  }
-
-  const products = result.products || [];
-  const ordersError = result.ordersError || null;
-  const metaRef = result.metaReference || {};
-  const joinInfo = result.join || null;
-  const joinNote = joinInfo && joinInfo.itemCount ? ` · Join ${apiNum(joinInfo.matched)}/${apiNum(joinInfo.itemCount)} (${joinInfo.successRate ?? "-"}%)` : "";
-  const syncNote = result.catalogSyncedAt ? `상품 데이터 동기화 ${esc(formatRelativeMinutes(result.catalogSyncedAt))}` : "상품 데이터 동기화 시각 확인 불가";
-  bannerTarget.className = `ad-status-banner ${ordersError ? "warn" : "good"}`;
-  bannerTarget.innerHTML = ordersError
-    ? `<span class="status-dot"></span><strong>주문 데이터 확인 필요</strong><span class="note">주문 데이터를 불러오지 못해 판매 수치가 0으로 보일 수 있습니다.</span>`
-    : `<span class="status-dot"></span><strong>상품 Dashboard 정상</strong><span class="note">${syncNote} · 상품 ${apiNum(products.length)}개${result.unmatched?.count ? ` · 미매칭 주문항목 ${apiNum(result.unmatched.count)}건` : ""}${joinNote}</span>`;
-  renderProductSalesSummary(result, products);
-
-  metaRefTarget.innerHTML = [
-    salesCompareCard("광고비", metaRef.error ? "확인 필요" : apiWon(metaRef.spend), "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
-    salesCompareCard("구매", metaRef.error ? "확인 필요" : `${apiNum(metaRef.purchases)}건`, "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
-    salesCompareCard("구매값", metaRef.error ? "확인 필요" : apiWon(metaRef.purchaseValue), "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
-    salesCompareCard("ROAS", metaRef.error || metaRef.roas === null ? "확인 필요" : `${multiple(metaRef.roas)}`, "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
-    salesCompareCard("CTR", metaRef.error ? "확인 필요" : pct(Number(metaRef.ctr || 0) * 100), "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
-    salesCompareCard("CPC", metaRef.error ? "확인 필요" : apiWon(metaRef.cpc), "광고 귀속 기준 · 상품별 데이터 아님", { status: Boolean(metaRef.error) }),
-    productUnmatchedCardHtml(result)
-  ].join("");
-  if (actionTarget) actionTarget.innerHTML = productActionSummaryHtml(result.actionSummary || {}, products);
-  if (filterTarget) filterTarget.innerHTML = productActionFiltersHtml(products);
-
-  if (products.length === 0) {
-    rowsTarget.innerHTML = `<tr><td colspan="8">표시할 상품이 없습니다.</td></tr>`;
-    return;
-  }
-
-  const scopeProducts = productFilterBase(products);
-  const filteredProducts = activeProductActionFilter === "all"
-    ? scopeProducts
-    : scopeProducts.filter((product) => productActionKey(product) === activeProductActionFilter);
-  if (filteredProducts.length === 0) {
-    rowsTarget.innerHTML = ordersError
-      ? `<tr><td colspan="8">주문 데이터를 불러오지 못해 판매 발생 상품을 확정할 수 없습니다.</td></tr>`
-      : `<tr><td colspan="8">선택한 조건에 해당하는 상품이 없습니다.</td></tr>`;
-    return;
-  }
-
-  rowsTarget.innerHTML = productSortRows(filteredProducts)
-    .map((product) => productDashboardRowHtml(product, { ordersError }))
-    .join("");
+  if (!bannerTarget || !rowsTarget) return;
+  bannerTarget.className = "ad-status-banner loading";
+  bannerTarget.innerHTML = `<span class="status-dot"></span><strong>판매 현황 확인 중</strong><span class="note">선택 기간의 브랜드별 매출과 판매 제품을 불러오고 있습니다.</span>`;
+  if (metaRefTarget) metaRefTarget.innerHTML = "";
+  if (actionTarget) actionTarget.innerHTML = "";
+  if (filterTarget) filterTarget.innerHTML = "";
+  rowsTarget.innerHTML = `<tr><td colspan="6">판매 제품 데이터를 불러오고 있습니다.</td></tr>`;
+  await renderProductBrandSales(data);
 }
 
 function productBrandSalesDateRange(data = selectedMonth()) {
@@ -3012,6 +2952,7 @@ async function renderProductBrandSales(data) {
   const cacheKey = `${range.since}_${range.until}`;
   if (productBrandSalesCacheKey === cacheKey && productBrandSalesRows.length) {
     renderProductBrandSalesTable();
+    renderProductSoldProductsTable();
     return;
   }
   rowsTarget.innerHTML = `<tr><td colspan="5">브랜드 매출 데이터를 불러오고 있습니다.</td></tr>`;
@@ -3019,15 +2960,19 @@ async function renderProductBrandSales(data) {
   const result = await getJson(`/api/diagnostics/brand-sales?since=${range.since}&until=${range.until}`, 12000);
   if (result.error || !Array.isArray(result.brands)) {
     productBrandSalesRows = [];
+    productBrandSalesProducts = [];
     productBrandSalesCacheKey = cacheKey;
     rowsTarget.innerHTML = `<tr><td colspan="5">${esc(result.error || "데이터 없음")}</td></tr>`;
+    $("#productDashboardRows").innerHTML = `<tr><td colspan="6">${esc(result.error || "데이터 없음")}</td></tr>`;
     metaTarget.textContent = `${range.label} · ${range.since} ~ ${range.until} · 데이터 없음`;
     renderContentBrandSalesTop3();
     return;
   }
   productBrandSalesRows = result.brands;
+  productBrandSalesProducts = Array.isArray(result.products) ? result.products : [];
   productBrandSalesCacheKey = cacheKey;
   renderProductBrandSalesTable();
+  renderProductSoldProductsTable();
   renderContentBrandSalesTop3();
 }
 
@@ -3061,6 +3006,29 @@ function renderProductBrandSalesTable() {
       <td>${apiNum(row.soldProductCount)}</td>
     </tr>`;
   }).join("") : `<tr><td colspan="5">데이터 없음</td></tr>`;
+}
+
+function renderProductSoldProductsTable() {
+  const rowsTarget = $("#productDashboardRows");
+  const bannerTarget = $("#productDashboardBanner");
+  if (!rowsTarget) return;
+  const rows = productBrandSalesProducts.filter((product) => Number(product.quantitySold || 0) > 0);
+  if (bannerTarget) {
+    const range = productBrandSalesDateRange(selectedMonth());
+    bannerTarget.className = "ad-status-banner good";
+    bannerTarget.innerHTML = `<span class="status-dot"></span><strong>판매 현황</strong><span class="note">${range.label} · ${range.since} ~ ${range.until} · 판매 제품 ${apiNum(rows.length)}개</span>`;
+  }
+  rowsTarget.innerHTML = rows.length ? rows.map((product) => {
+    const brandName = product.brand_name && product.brand_name !== product.brand_code ? product.brand_name : "미분류";
+    return `<tr>
+      <td>${esc(brandName)}</td>
+      <td><strong>${esc(product.productName || "상품명 없음")}</strong></td>
+      <td>${esc(product.productCode || product.productNo || "-")}</td>
+      <td>${apiNum(product.quantitySold)}</td>
+      <td>${apiNum(product.orderCount)}</td>
+      <td>${apiWon(product.salesAmount)}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="6">선택 기간에 판매된 상품이 없습니다.</td></tr>`;
 }
 
 function productHasSales(product = {}) {

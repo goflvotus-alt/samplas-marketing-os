@@ -1183,7 +1183,7 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
     startDate,
     endDate,
     requestedLimit: options.limit || null,
-    isCurrentMonth: isCurrentMonth(monthFromDate(startDate)),
+    isCurrentMonth: isCurrentMonth(monthFromDate(endDate)),
     mode: env.CAFE24_PROXY_BASE_URL ? "proxy" : "direct",
     mallId: env.CAFE24_MALL_ID || null,
     configuredScopes: env.CAFE24_SCOPES || null,
@@ -1194,7 +1194,7 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
     hasProxySecret: Boolean(env.CAFE24_PROXY_SECRET),
     hasProxyBasicAuth: Boolean(env.CAFE24_PROXY_BASIC_AUTH)
   });
-  if (!isCurrentMonth(monthFromDate(startDate))) {
+  if (!isCurrentMonth(monthFromDate(endDate))) {
     const cached = await readCachedCafe24Orders(startDate, endDate);
     if (cached) return decorateCachedSource(cached, "cafe24_orders", "past_month_cache_only");
     return pastMonthCsvRequired("cafe24_orders", monthFromDate(startDate), {
@@ -2648,6 +2648,23 @@ async function buildBrandSalesDiagnostics(since, until) {
     const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
     const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
     const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode);
+    const brandNameByCode = new Map(brands.map((brand) => [brand.brand_code, brand.brand_name]));
+    const soldProducts = brandSalesInput.catalog.map((product) => {
+      const productNo = product.productNo === undefined || product.productNo === null ? "" : String(product.productNo);
+      const sales = brandSalesInput.salesByProduct.get(product.productNo) || brandSalesInput.salesByProduct.get(productNo);
+      if (!sales || Number(sales.quantity || 0) <= 0) return null;
+      const brand_code = productBrandCode(product) || productBrandMapCode(productBrandMap, productNo) || "UNASSIGNED";
+      return {
+        productNo,
+        productCode: product.productCode || product.product_code || "",
+        productName: product.productName || product.product_name || "상품명 없음",
+        brand_code,
+        brand_name: brandNameByCode.get(brand_code) || brand_code,
+        quantitySold: Number(sales.quantity || 0),
+        orderCount: sales.orderIds instanceof Set ? sales.orderIds.size : 0,
+        salesAmount: Number(sales.amount || 0)
+      };
+    }).filter(Boolean).sort((left, right) => Number(right.salesAmount || 0) - Number(left.salesAmount || 0));
     const productsWithBrandCode = catalog.filter((product) => productBrandCode(product)).length;
     const matchedOrderIds = new Set();
     for (const sales of brandSalesInput.salesByProduct.values()) {
@@ -2675,7 +2692,8 @@ async function buildBrandSalesDiagnostics(since, until) {
       },
       totals,
       productBrandBackfill,
-      brands
+      brands,
+      products: soldProducts
     };
   }
 
@@ -2693,6 +2711,23 @@ async function buildBrandSalesDiagnostics(since, until) {
   const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
   const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
   const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode);
+  const brandNameByCode = new Map(brands.map((brand) => [brand.brand_code, brand.brand_name]));
+  const soldProducts = brandSalesInput.catalog.map((product) => {
+    const productNo = product.productNo === undefined || product.productNo === null ? "" : String(product.productNo);
+    const sales = brandSalesInput.salesByProduct.get(product.productNo) || brandSalesInput.salesByProduct.get(productNo);
+    if (!sales || Number(sales.quantity || 0) <= 0) return null;
+    const brand_code = productBrandCode(product) || productBrandMapCode(productBrandMap, productNo) || "UNASSIGNED";
+    return {
+      productNo,
+      productCode: product.productCode || product.product_code || "",
+      productName: product.productName || product.product_name || "상품명 없음",
+      brand_code,
+      brand_name: brandNameByCode.get(brand_code) || brand_code,
+      quantitySold: Number(sales.quantity || 0),
+      orderCount: sales.orderIds instanceof Set ? sales.orderIds.size : 0,
+      salesAmount: Number(sales.amount || 0)
+    };
+  }).filter(Boolean).sort((left, right) => Number(right.salesAmount || 0) - Number(left.salesAmount || 0));
   const productsWithBrandCode = catalog.filter((product) => productBrandCode(product)).length;
   const matchedOrderIds = new Set();
   for (const sales of brandSalesInput.salesByProduct.values()) {
@@ -2721,7 +2756,8 @@ async function buildBrandSalesDiagnostics(since, until) {
     },
     totals,
     productBrandBackfill,
-    brands
+    brands,
+    products: soldProducts
   };
 }
 
