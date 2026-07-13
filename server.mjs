@@ -2693,7 +2693,7 @@ async function buildBrandSalesDiagnostics(since, until) {
         brand_code,
         brand_name: brandNameByCode.get(brand_code) || brand_code,
         quantitySold: Number(sales.quantity || 0),
-        salesVelocityPerDay: Number(sales.quantity || 0) / periodDays,
+        salesVelocityPerDay: Number(sales.quantity || 0) / activeDaysForProduct(since, until, product.createdDate),
         orderCount: sales.orderIds instanceof Set ? sales.orderIds.size : 0,
         salesAmount: Number(sales.amount || 0)
       };
@@ -2758,7 +2758,7 @@ async function buildBrandSalesDiagnostics(since, until) {
       brand_code,
       brand_name: brandNameByCode.get(brand_code) || brand_code,
       quantitySold: Number(sales.quantity || 0),
-      salesVelocityPerDay: Number(sales.quantity || 0) / periodDays,
+      salesVelocityPerDay: Number(sales.quantity || 0) / activeDaysForProduct(since, until, product.createdDate),
       orderCount: sales.orderIds instanceof Set ? sales.orderIds.size : 0,
       salesAmount: Number(sales.amount || 0)
     };
@@ -2801,6 +2801,16 @@ function daysBetweenDateKeys(since, until) {
   const end = new Date(`${until}T00:00:00Z`);
   const days = Math.round((end - start) / 86400000) + 1;
   return Math.max(1, days);
+}
+
+function activeDaysForProduct(since, until, createdDate, today = new Date()) {
+  const periodDays = daysBetweenDateKeys(since, until);
+  const createdKey = String(createdDate || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(createdKey)) return periodDays;
+  const todayKey = today.toISOString().slice(0, 10);
+  const effectiveStart = createdKey > since ? createdKey : since;
+  const effectiveEnd = todayKey < until ? todayKey : until;
+  return daysBetweenDateKeys(effectiveStart, effectiveEnd);
 }
 
 const PRODUCT_ACTION_THRESHOLDS = {
@@ -3138,7 +3148,7 @@ async function buildProductDashboardWithCache(since, until, options = {}) {
     const historyKey = productSalesHistoryKey(product);
     const historyLastSaleDate = historyKey ? productSalesHistory.products?.[historyKey]?.lastSaleDate || null : null;
     const lastSaleDate = maxIsoDate(historyLastSaleDate, sales.lastSaleDate);
-    const salesVelocityPerDay = sales.quantity / days;
+    const salesVelocityPerDay = sales.quantity / activeDaysForProduct(since, until, product.createdDate);
     const daysOfStockLeft = salesVelocityPerDay > 0 ? Math.round(product.inventoryQuantity / salesVelocityPerDay) : null;
     const row = {
       ...product,
