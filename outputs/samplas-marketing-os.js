@@ -1,5 +1,6 @@
 const navItems = [
   "Overview",
+  "Product",
   "Content",
   "Editorial AI",
   "Advertising",
@@ -17,10 +18,22 @@ let activeProductActionFilter = "all";
 let activeProductScopeFilter = "sold";
 let activeProductStockFilter = "all";
 let activeProductSort = "salesAmount_desc";
+let productBrandSalesRows = [];
+let productBrandSalesCacheKey = "";
+let productBrandSalesRange = "month";
+let productBrandSalesCustomSince = "";
+let productBrandSalesCustomUntil = "";
+let productBrandSalesSort = "brand_asc";
+let productBrandSalesSearch = "";
 let currentTodayBriefingItems = [];
 // Cafe24 재인증 콜백이 실패로 돌아왔을 때만 채워진다(handleCafe24OAuthRedirect() 참고).
 // (2026-07-08 Cafe24 재인증 흐름 개선)
 let cafe24OAuthErrorReason = null;
+// Brand Master "의심 항목만 보기" 토글 상태. 서버 값이 아니라 화면 표시 필터일 뿐이므로
+// 클라이언트에만 보관하고, 저장/재조회 후 다시 렌더링될 때도 이전 선택을 유지한다.
+// (2026-07-10 Brand Master 승인 UX 최소 구현)
+let brandMasterSuspectOnly = false;
+let brandMasterCatalogOnly = true;
 
 const nf = new Intl.NumberFormat("ko-KR");
 const $ = (selector) => document.querySelector(selector);
@@ -363,10 +376,10 @@ function renderKpis(data) {
   const postCount = (data.posts || []).length;
   const instagramErrors = instagramApiErrors(data);
   const items = [
-    ["오늘 매출", "확인 중", "Cafe24 확인 중"],
-    ["오늘 광고비", "확인 중", "Meta Ads 확인 중"],
-    ["오늘 주문", "확인 중", "Cafe24 확인 중"],
-    ["오늘 인기상품", "-", "Cafe24 확인 중"]
+    ["선택 기간 매출", "확인 중", "Cafe24 확인 중"],
+    ["선택 기간 광고비", "확인 중", "Meta Ads 확인 중"],
+    ["선택 기간 주문", "확인 중", "Cafe24 확인 중"],
+    ["선택 기간 인기상품", "-", "Cafe24 확인 중"]
   ];
   $("#kpiGrid").innerHTML = items.map(([label, value, delta]) => (
     `<article class="kpi"><span>${label}</span><strong>${value}</strong><p class="delta">${delta}</p></article>`
@@ -411,10 +424,10 @@ async function renderOverviewLiveData(data) {
   renderHealthBanner({ instagram: data, meta, cafe });
 
   $("#kpiGrid").innerHTML = [
-    homeTopMetric("오늘 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 연결 후 표시" : "선택기간 기준", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderAmount))),
-    homeTopMetric("오늘 광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 연결 후 표시" : "선택기간 기준", cardBadge("meta", meta, hasApiValue(metaTotals.spend))),
-    homeTopMetric("오늘 주문", cafe.error ? "데이터 없음" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderCount))),
-    homeTopMetric("오늘 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음", cardBadge("cafe24", cafe, Boolean(topProduct)))
+    homeTopMetric("선택 기간 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 연결 후 표시" : "선택기간 기준", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderAmount))),
+    homeTopMetric("선택 기간 광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 연결 후 표시" : "선택기간 기준", cardBadge("meta", meta, hasApiValue(metaTotals.spend))),
+    homeTopMetric("선택 기간 주문", cafe.error ? "데이터 없음" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderCount))),
+    homeTopMetric("선택 기간 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음", cardBadge("cafe24", cafe, Boolean(topProduct)))
   ].join("");
 
   currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account: a, topSaved, topCampaign, topProduct, roas });
@@ -540,21 +553,6 @@ function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSave
     cta: "전략 보기",
     projectKey: "editorial"
   });
-  if (!items.some((item) => item.level === "critical") && !items.some((item) => item.level === "warning")) {
-    items.unshift({
-      level: "opportunity",
-      icon: "✓",
-      title: "오늘은 반복 가능한 성과 찾기",
-      why: "큰 연결 오류가 없으니 성과가 좋은 콘텐츠와 상품을 반복할 수 있습니다.",
-      evidence: topCampaign ? `상위 캠페인 ${topCampaign.campaignName || topCampaign.name || "성과 좋은 캠페인"}` : "운영 데이터 정상 확인",
-      score: 74,
-      basis: ["연결 오류 없음", topCampaign ? "상위 캠페인 확인" : "운영 데이터 정상", "반복 소재 탐색"],
-      expected: { reach: apiNum(avgReach), saves: apiNum(avgSaves), shares: apiNum(avgShares) },
-      view: "Overview",
-      cta: "홈 보기",
-      projectKey: "overview"
-    });
-  }
   return items
     .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
     .slice(0, 4)
@@ -657,8 +655,7 @@ function todayBriefProgressBar(items) {
   </div>`;
 }
 
-// Score (0-100) -> 1~5 stars, so the busiest reader sees priority at a glance
-// without reading the numeric Recommendation Score.
+// Legacy priority helper kept for compatibility with older local state.
 function starRating(score) {
   const stars = Math.max(1, Math.min(5, Math.round(Number(score || 0) / 20)));
   return "★".repeat(stars) + "☆".repeat(5 - stars);
@@ -669,19 +666,13 @@ function todayBriefCard(item) {
   const done = state.status === "done";
   return `<article class="today-brief-card ${esc(item.level)} ${esc(state.status)}" data-brief-id="${esc(item.id)}">
     <div class="today-brief-top">
-      <div class="today-brief-head"><span>${done ? "✓" : esc(item.icon)}</span><div class="today-brief-title-row"><strong>${esc(item.title)}</strong><em class="today-brief-stars" title="Recommendation Score ${apiNum(item.score)}/100">${starRating(item.score)}</em></div></div>
+      <div class="today-brief-head"><span>${done ? "✓" : esc(item.icon)}</span><div class="today-brief-title-row"><strong>${esc(item.title)}</strong></div></div>
       <button class="today-status-button" type="button" data-brief-status="${esc(item.id)}">${todayStatusIcon(state.status)} ${todayStatusLabel(state.status)}</button>
     </div>
-    <div class="today-score-row"><span>Recommendation Score</span><strong>${apiNum(item.score)}/100</strong></div>
     <p>${esc(item.why)}</p>
     <small>${esc(item.evidence)}</small>
     <div class="today-brief-basis">
       ${(item.basis || []).slice(0, 3).map((value) => `<span>${esc(value)}</span>`).join("")}
-    </div>
-    <div class="today-expected">
-      <span>예상 Reach <strong>${esc(item.expected?.reach || "-")}</strong></span>
-      <span>예상 저장 <strong>${esc(item.expected?.saves || "-")}</strong></span>
-      <span>예상 공유 <strong>${esc(item.expected?.shares || "-")}</strong></span>
     </div>
     ${done ? `<time>완료 시간 ${esc(state.doneAt)}</time>` : ""}
     <div class="today-brief-buttons">
@@ -1082,8 +1073,21 @@ function contentRecommendationCards(posts) {
     contentAiCard("가장 성과가 좋았던 콘텐츠", best ? best.title || "Untitled" : "데이터 없음", best ? explainPost(best) : "콘텐츠 데이터가 쌓이면 표시됩니다."),
     contentAiCard("저장률이 높은 이유", saved ? saved.title || "Untitled" : "데이터 없음", saved ? "저장률이 높은 콘텐츠는 다시 볼 이유가 명확한 정보형 구성이 많습니다." : "저장률 판단 데이터가 없습니다."),
     contentAiCard("다음 콘텐츠 추천", saved ? `${saved.type || "콘텐츠"} 포맷 반복` : "릴스/카드뉴스 테스트", saved ? "성과가 나온 포맷을 같은 브랜드 또는 유사 상품으로 반복하세요." : "이번 주에는 릴스와 카드뉴스를 각각 1개씩 테스트하세요."),
-    contentAiCard("비슷한 브랜드 추천", brand || "데이터 없음", brand ? `${brand}와 비슷한 톤의 브랜드 콘텐츠를 추가로 기획하세요.` : "브랜드 태그가 쌓이면 추천이 더 정확해집니다.")
+    renderContentBrandSalesTop3()
   ].join("");
+}
+
+function renderContentBrandSalesTop3() {
+  const rows = [...productBrandSalesRows]
+    .sort((left, right) => Number(right.salesAmount || 0) - Number(left.salesAmount || 0))
+    .slice(0, 3);
+  const html = `<article id="contentBrandSalesCard" class="content-ai-card"><span>브랜드 실매출</span>${rows.length ? `<ol>${rows.map((row, index) => {
+    const brandName = row.brand_name && row.brand_name !== row.brand_code ? row.brand_name : "미분류";
+    return `<li><mark>${index + 1}</mark><strong>${esc(brandName)}</strong><em>${apiWon(row.salesAmount)}</em></li>`;
+  }).join("")}</ol>` : `<strong>데이터 없음</strong>`}<p>선택 월 · 매출 기준</p></article>`;
+  const target = $("#contentBrandSalesCard");
+  if (target) target.outerHTML = html;
+  return html;
 }
 
 function contentAiCard(title, value, note) {
@@ -1112,6 +1116,7 @@ function renderEditorialAi(data) {
   const titleLength = Math.round(avg(posts.map((post) => String(post.title || "").length)));
   const recommendedBrands = editorialOpportunityBrands(brandRows);
   const discoverRows = editorialDiscoverRows({ posts, brandRows, bestType, bestDay, bestHour });
+  hideEditorialUnreadySections();
 
   $("#editorialInsightGrid").innerHTML = [
     editorialInsightCard("저장률 최고", topSaved?.title || "데이터 없음", topSaved ? `저장률 ${pct(postMetrics(topSaved).saveRate)} · 저장 ${apiNum(topSaved.saves)}` : "콘텐츠 데이터가 필요합니다."),
@@ -1124,44 +1129,42 @@ function renderEditorialAi(data) {
     editorialWhyCard("카드뉴스 비중", editorialTypeShare(posts, "카드뉴스"), "저장형 콘텐츠 비중"),
     editorialWhyCard("릴스 비중", editorialTypeShare(posts, "릴스"), "조회와 신규 도달 비중"),
     editorialWhyCard("브랜드", bestBrand?.brand || "데이터 없음", bestBrand ? `평균 Reach ${apiNum(Math.round(bestBrand.reach))}` : "브랜드 태그가 필요합니다."),
-    editorialWhyCard("업로드 요일", bestDay.label, `평균 성과 ${apiNum(bestDay.score)}`),
-    editorialWhyCard("업로드 시간", bestHour.label, `평균 성과 ${apiNum(bestHour.score)}`),
     editorialWhyCard("제목 길이", titleLength ? `${apiNum(titleLength)}자` : "데이터 없음", "콘텐츠 제목 평균"),
     editorialWhyCard("평균 저장률", posts.length ? pct(avgSaveRate) : "데이터 없음", "이번 달 콘텐츠 평균")
   ].join("");
 
-  $("#editorialRecommendGrid").innerHTML = [
-    editorialRecommendCard("다음 카드뉴스 추천", best ? `${bestBrand?.brand || brandFromProduct(best.title || "")} 디테일 분석` : "브랜드 히스토리 카드뉴스", best ? "성과가 좋았던 브랜드를 정보형 카드뉴스로 반복하세요." : "데이터가 적을 때는 저장 가능한 정보형 콘텐츠부터 시작하세요."),
-    editorialRecommendCard("추천 브랜드", recommendedBrands[0] || bestBrand?.brand || "GOOMHEO", "최근 성과와 기회 브랜드를 함께 반영했습니다."),
-    editorialRecommendCard("추천 업로드 시간", bestHour.label, "현재 월 게시 시간대 성과 기준입니다."),
-    editorialRecommendCard("추천 요일", bestDay.label, "현재 월 요일별 평균 성과 기준입니다."),
-    editorialRecommendCard("추천 콘텐츠 형식", bestType.type || "카드뉴스", bestType.note || "저장률과 공유율을 높이기 좋은 포맷입니다."),
-    editorialRecommendCard("추천 이유", best ? explainPost(best) : "저장/공유가 쌓이는 콘텐츠가 구매 전환 전에 브랜드 관심을 만듭니다.", "현재 콘텐츠 지표 기반 자동 제안")
-  ].join("");
+  $("#editorialRecommendGrid").innerHTML = editorialPendingNotice();
 
-  $("#editorialBrandGrid").innerHTML = brandRows.length ? brandRows.slice(0, 8).map((row) => `<article class="editorial-brand-card">
+  $("#editorialBrandGrid").innerHTML = `${editorialMeasuredNote()}${brandRows.length ? brandRows.slice(0, 8).map((row) => `<article class="editorial-brand-card">
     <strong>${esc(row.brand)}</strong>
     <span>${apiNum(row.count)} posts</span>
     <p>평균 Reach ${apiNum(Math.round(row.reach))}</p>
     <p>Saves ${apiNum(Math.round(row.saves))} · Shares ${apiNum(Math.round(row.shares))}</p>
     <p>저장률 ${pct(row.saveRate)}</p>
-  </article>`).join("") : editorialEmpty("브랜드별 분석 데이터가 없습니다.");
+  </article>`).join("") : editorialEmpty("브랜드별 분석 데이터가 없습니다.")}`;
 
-  $("#editorialOpportunityGrid").innerHTML = recommendedBrands.map((brand) => `<article class="editorial-opportunity-card">
-    <span>Opportunity</span>
-    <strong>${esc(brand)}</strong>
-    <p>아직 많이 다루지 않았지만 다음 달 테스트 후보로 적합합니다.</p>
-  </article>`).join("");
+  $("#editorialOpportunityGrid").innerHTML = "";
 
-  $("#editorialDiscoverRadar").innerHTML = discoverRows.map((row) => editorialDiscoverCard(row)).join("");
+  $("#editorialDiscoverRadar").innerHTML = "";
 
-  $("#editorialContentStrategy").innerHTML = `<ol>
-    ${editorialStrategyLines({ posts, bestType, bestBrand, bestDay, bestHour, best, discoverRows, avgSaveRate }).map((line) => `<li>${esc(line)}</li>`).join("")}
-  </ol>`;
+  $("#editorialContentStrategy").innerHTML = editorialPendingNotice();
 
-  $("#editorialSummary").innerHTML = `<ol>
-    ${editorialSummaryLines({ posts, bestType, bestBrand, bestDay, bestHour, best, recommendedBrands, account }).map((line) => `<li>${esc(line)}</li>`).join("")}
-  </ol>`;
+  $("#editorialSummary").innerHTML = editorialPendingNotice();
+}
+
+function editorialPendingNotice() {
+  return `<div class="content-empty">브랜드 마스터 등록 후 제공</div>`;
+}
+
+function editorialMeasuredNote() {
+  return `<p class="hint-text">포스트 제목 기반 자동 분류</p>`;
+}
+
+function hideEditorialUnreadySections() {
+  ["#editorialOpportunityGrid", "#editorialDiscoverRadar"].forEach((selector) => {
+    const block = $(selector)?.closest(".section-block");
+    if (block) block.hidden = true;
+  });
 }
 
 function editorialBrandRows(posts) {
@@ -1526,7 +1529,7 @@ function renderOtherSections(data) {
   $("#campaignPerformance").innerHTML = `<article class="action-item"><strong>캠페인 성과 확인 중</strong><p>Meta 캠페인 기준으로 불러옵니다.</p></article>`;
   $("#adReconciliationSummary").innerHTML = `<article class="action-item"><strong>데이터 일치 검증 확인 중</strong><p>Meta 계정 전체 합계와 비교하고 있습니다.</p></article>`;
   $("#adFullReportActiveRows").innerHTML = `<tr><td colspan="18">전체 캠페인 데이터를 확인하고 있습니다.</td></tr>`;
-  $("#adOrganicContent").innerHTML = `<article class="action-item"><strong>광고 / 유기 콘텐츠 비교 확인 중</strong><p>콘텐츠의 광고 집행 여부를 기준으로 비교합니다.</p></article>`;
+  hideAdOrganicSection();
   renderAdvertising(data);
   $("#salesHealthBanner").innerHTML = `<span class="status-dot"></span><strong>Sales Health 확인 중</strong><span class="note">Meta · Cafe24 데이터를 불러오고 있습니다.</span>`;
   $("#salesImpact").classList.add("cards");
@@ -1548,6 +1551,7 @@ function renderOtherSections(data) {
   renderApiHealthCenter(data);
   renderScoreWeightsSettings();
   renderCafe24ProductDiagnostics();
+  renderBrandMasterSettings();
 }
 
 const SCORE_FACTOR_LABELS = {
@@ -2064,6 +2068,7 @@ async function renderAdvertising(data) {
   };
   bindAdFullReportToggles();
   if (!briefingTarget || !statusTarget || !coreKpiTarget || !summaryTarget || !campaignTarget || !contentTarget || !tableTarget || !reconTarget || !fullReportTargets.active || !fullReportTargets.other) return;
+  hideAdOrganicSection();
 
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
@@ -2095,7 +2100,7 @@ async function renderAdvertising(data) {
     reconTarget.innerHTML = `<article class="action-item"><strong>검증 불가</strong><p>Meta API 오류가 해결되면 표시됩니다.</p></article>`;
     fullReportTargets.active.innerHTML = `<tr><td colspan="18">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
     fullReportTargets.other.innerHTML = "";
-    contentTarget.innerHTML = renderAdOrganicCards(adPosts, organicPosts);
+    contentTarget.innerHTML = "";
     return;
   }
 
@@ -2135,7 +2140,12 @@ async function renderAdvertising(data) {
   tableTarget.innerHTML = renderMetaAdsRows(metaAdsRowsForLevel(meta));
   renderMetaAdsReconciliation(fullReport, reconTarget);
   renderMetaAdsFullReportGroups(fullReport, scoreWeights, fullReportTargets);
-  contentTarget.innerHTML = renderAdOrganicCards(adPosts, organicPosts);
+  contentTarget.innerHTML = "";
+}
+
+function hideAdOrganicSection() {
+  const block = $("#adOrganicContent")?.closest(".section-block");
+  if (block) block.hidden = true;
 }
 
 function metaAdsSummaryCard(label, value, note, emphasize = false) {
@@ -2896,6 +2906,7 @@ async function renderProductDashboard(data) {
   const filterTarget = $("#productDashboardFilters");
   const rowsTarget = $("#productDashboardRows");
   if (!bannerTarget || !metaRefTarget || !rowsTarget) return;
+  renderProductBrandSales(data);
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
   const result = await getJson(`/api/products/dashboard?since=${startDate}&until=${endDate}`, 15000);
@@ -2963,6 +2974,93 @@ async function renderProductDashboard(data) {
   rowsTarget.innerHTML = productSortRows(filteredProducts)
     .map((product) => productDashboardRowHtml(product, { ordersError }))
     .join("");
+}
+
+function productBrandSalesDateRange(data = selectedMonth()) {
+  const today = new Date();
+  const dateKey = (date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
+  const addDays = (date, days) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+  };
+  if (productBrandSalesRange === "today") {
+    const day = dateKey(today);
+    return { since: day, until: day, label: "오늘" };
+  }
+  if (productBrandSalesRange === "7d") return { since: dateKey(addDays(today, -6)), until: dateKey(today), label: "최근 7일" };
+  if (productBrandSalesRange === "30d") return { since: dateKey(addDays(today, -29)), until: dateKey(today), label: "최근 30일" };
+  if (productBrandSalesRange === "prev_month") {
+    const [year, month] = String(data.month || selectedMonth().month).split("-").map(Number);
+    const prev = new Date(year, month - 2, 1);
+    const monthKey = dateKey(prev).slice(0, 7);
+    return { since: `${monthKey}-01`, until: monthEnd(monthKey), label: "지난 달" };
+  }
+  if (productBrandSalesRange === "custom") {
+    const fallbackSince = `${data.month}-01`;
+    const fallbackUntil = monthEnd(data.month);
+    return { since: productBrandSalesCustomSince || fallbackSince, until: productBrandSalesCustomUntil || fallbackUntil, label: "직접 선택" };
+  }
+  return { since: `${data.month}-01`, until: monthEnd(data.month), label: "이번 달" };
+}
+
+async function renderProductBrandSales(data) {
+  const rowsTarget = $("#productBrandSalesRows");
+  const metaTarget = $("#productBrandSalesMeta");
+  if (!rowsTarget || !metaTarget) return;
+  const range = productBrandSalesDateRange(data);
+  const cacheKey = `${range.since}_${range.until}`;
+  if (productBrandSalesCacheKey === cacheKey && productBrandSalesRows.length) {
+    renderProductBrandSalesTable();
+    return;
+  }
+  rowsTarget.innerHTML = `<tr><td colspan="5">브랜드 매출 데이터를 불러오고 있습니다.</td></tr>`;
+  metaTarget.textContent = `${range.label} · ${range.since} ~ ${range.until} · 확인 중`;
+  const result = await getJson(`/api/diagnostics/brand-sales?since=${range.since}&until=${range.until}`, 12000);
+  if (result.error || !Array.isArray(result.brands)) {
+    productBrandSalesRows = [];
+    productBrandSalesCacheKey = cacheKey;
+    rowsTarget.innerHTML = `<tr><td colspan="5">${esc(result.error || "데이터 없음")}</td></tr>`;
+    metaTarget.textContent = `${range.label} · ${range.since} ~ ${range.until} · 데이터 없음`;
+    renderContentBrandSalesTop3();
+    return;
+  }
+  productBrandSalesRows = result.brands;
+  productBrandSalesCacheKey = cacheKey;
+  renderProductBrandSalesTable();
+  renderContentBrandSalesTop3();
+}
+
+function renderProductBrandSalesTable() {
+  const rowsTarget = $("#productBrandSalesRows");
+  const metaTarget = $("#productBrandSalesMeta");
+  if (!rowsTarget || !metaTarget) return;
+  const query = productBrandSalesSearch.trim().toLowerCase();
+  const rows = productBrandSalesRows.filter((row) => {
+    if (!query) return true;
+    return `${row.brand_name || ""} ${row.brand_code || ""}`.toLowerCase().includes(query);
+  }).sort((left, right) => {
+    if (productBrandSalesSort === "brand_desc") return (right.manufacturer_name || right.brand_name || right.brand_code || "").localeCompare(left.manufacturer_name || left.brand_name || left.brand_code || "");
+    if (productBrandSalesSort === "salesAmount_desc") return Number(right.salesAmount || 0) - Number(left.salesAmount || 0);
+    if (productBrandSalesSort === "salesAmount_asc") return Number(left.salesAmount || 0) - Number(right.salesAmount || 0);
+    if (productBrandSalesSort === "quantity_desc") return Number(right.quantitySold || 0) - Number(left.quantitySold || 0);
+    if (productBrandSalesSort === "quantity_asc") return Number(left.quantitySold || 0) - Number(right.quantitySold || 0);
+    if (productBrandSalesSort === "orders_desc") return Number(right.orderCount || 0) - Number(left.orderCount || 0);
+    if (productBrandSalesSort === "orders_asc") return Number(left.orderCount || 0) - Number(right.orderCount || 0);
+    return (left.manufacturer_name || left.brand_name || left.brand_code || "").localeCompare(right.manufacturer_name || right.brand_name || right.brand_code || "");
+  });
+  const range = productBrandSalesDateRange(selectedMonth());
+  metaTarget.textContent = `${range.label} · ${range.since} ~ ${range.until} · ${apiNum(rows.length)}개 브랜드 표시`;
+  rowsTarget.innerHTML = rows.length ? rows.map((row) => {
+    const brandName = row.brand_name && row.brand_name !== row.brand_code ? row.brand_name : "미분류";
+    return `<tr>
+      <td><strong>${esc(brandName)}</strong><br><span class="muted">${esc(row.brand_code || "-")}</span></td>
+      <td>${apiWon(row.salesAmount)}</td>
+      <td>${apiNum(row.quantitySold)}</td>
+      <td>${apiNum(row.orderCount)}</td>
+      <td>${apiNum(row.soldProductCount)}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="5">데이터 없음</td></tr>`;
 }
 
 function productHasSales(product = {}) {
@@ -3091,7 +3189,7 @@ const PRODUCT_ACTIONS = [
   ["push_now", "Push Now"],
   ["observe", "Observe"],
   ["hold", "Hold"],
-  ["stop_promotion", "Stop Promotion"]
+  ["stop_promotion", "재고 소진"]
 ];
 
 function productActionTone(action) {
@@ -3155,7 +3253,7 @@ function productActionNote(action) {
     push_now: "노출 확대 가능",
     observe: "추가 관찰",
     hold: "재고 주의",
-    stop_promotion: "홍보 중단 검토"
+    stop_promotion: "광고 상태 미확인"
   }[action] || "";
 }
 
@@ -3241,6 +3339,201 @@ async function renderCafe24ProductDiagnostics() {
     `<article class="action-item"><strong>${ready[key]} ${esc(key)}</strong></article>`
   )).join("")}</div>
   <p class="hint-text">이 결과는 로컬 8787 서버 기준입니다. mall.read_product 스코프 추가 후 재인증했다면, Render 배포본(samplas-marketing-os.onrender.com/api/diagnostics/cafe24-product-check)도 함께 확인해보세요.</p>`;
+}
+
+// Brand Master "의심 항목만 보기"용 의심 판정. 서버 데이터는 건드리지 않고 화면에서만
+// 계산한다. 조건: 이름 비어있음 / HTML entity가 남아있음 / 같은 이름 중복 / trim 기준
+// 2자 이하 / 숫자·기호 비중이 50% 이상. (2026-07-10 Brand Master 승인 UX 최소 구현)
+const BRAND_MASTER_ENTITY_RE = /&[#A-Za-z0-9]+;/;
+
+function brandMasterSymbolRatio(name) {
+  const noSpace = name.replace(/\s/g, "");
+  if (!noSpace.length) return 0;
+  const symbolCount = (noSpace.match(/[^\p{L}]/gu) || []).length;
+  return symbolCount / noSpace.length;
+}
+
+function computeBrandMasterSuspectSet(brands) {
+  const nameCounts = new Map();
+  for (const brand of brands) {
+    const name = String(brand.brand_name || "").trim();
+    if (!name) continue;
+    nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
+  }
+  const suspects = new Set();
+  for (const brand of brands) {
+    const rawName = String(brand.brand_name || "");
+    const name = rawName.trim();
+    const isBlank = !name;
+    const hasEntity = BRAND_MASTER_ENTITY_RE.test(rawName);
+    const isDuplicate = !isBlank && nameCounts.get(name) > 1;
+    const isTooShort = !isBlank && name.length <= 2;
+    const isSymbolHeavy = !isBlank && brandMasterSymbolRatio(name) >= 0.5;
+    if (isBlank || hasEntity || isDuplicate || isTooShort || isSymbolHeavy) {
+      suspects.add(brand.brand_code);
+    }
+  }
+  return suspects;
+}
+
+function applyBrandMasterSuspectFilter() {
+  $$("#brandMasterTable tr[data-brand-code]").forEach((row) => {
+    const isSuspect = row.dataset.suspect === "1";
+    const isInCatalog = row.dataset.inCatalog === "1";
+    row.style.display = ((brandMasterSuspectOnly && !isSuspect) || (brandMasterCatalogOnly && !isInCatalog)) ? "none" : "";
+  });
+}
+
+function applyBrandMasterCatalogFilter() {
+  applyBrandMasterSuspectFilter();
+}
+
+function brandMasterRowHtml(brand, isSuspect, isInCatalog) {
+  const aliases = Array.isArray(brand.name_aliases) ? brand.name_aliases.join(", ") : "";
+  return `<tr data-brand-code="${esc(brand.brand_code)}" data-original-name="${esc(brand.brand_name || "")}" data-original-aliases="${esc(aliases)}" data-original-instagram="${esc(brand.instagram_tag || "")}" data-original-active="${brand.active === false ? "0" : "1"}" data-name-source="${esc(brand.nameSource || "suggested")}" data-suspect="${isSuspect ? "1" : "0"}" data-in-catalog="${isInCatalog ? "1" : "0"}">
+    <td><code>${esc(brand.brand_code)}</code></td>
+    <td><input type="text" data-field="brand_name" value="${esc(brand.brand_name || "")}" placeholder="${esc(brand.brand_code)}" /></td>
+    <td><textarea data-field="name_aliases" rows="2" placeholder="쉼표 또는 줄바꿈">${esc(aliases)}</textarea></td>
+    <td><input type="text" data-field="instagram_tag" value="${esc(brand.instagram_tag || "")}" placeholder="@instagram" /></td>
+    <td><span class="badge ${brand.nameSource === "confirmed" ? "good" : "warn"}">${esc(brand.nameSource || "suggested")}</span>${isSuspect ? ' <span class="badge warn" title="의심 항목">CHECK</span>' : ""}</td>
+    <td><label class="brand-master-active"><input type="checkbox" data-field="active" ${brand.active === false ? "" : "checked"} /> active</label></td>
+  </tr>`;
+}
+
+async function renderBrandMasterSettings() {
+  const summaryTarget = $("#brandMasterSummary");
+  const tableTarget = $("#brandMasterTable");
+  const saveBtn = $("#brandMasterSaveBtn");
+  if (!summaryTarget || !tableTarget) return;
+  summaryTarget.innerHTML = `<article class="action-item"><strong>브랜드 마스터 확인 중</strong><p>Cafe24 brand_code 기준으로 불러오고 있습니다.</p></article>`;
+  tableTarget.innerHTML = "";
+  const month = selectedMonth();
+  const [result, dashboard] = await Promise.all([
+    getJson("/api/brand-master", 12000),
+    getJson(`/api/products/dashboard?since=${month.month}-01&until=${monthEnd(month.month)}`, 15000)
+  ]);
+  if (result.error) {
+    summaryTarget.innerHTML = `<article class="action-item"><strong>브랜드 마스터 오류</strong><p>${esc(result.error)}</p></article>`;
+    return;
+  }
+  const brands = Array.isArray(result.brands) ? result.brands : [];
+  const catalogBrandSet = new Set((dashboard.products || []).map((product) => product.brand).filter(Boolean));
+  const suggestedBrands = brands.filter((brand) => brand.nameSource === "suggested");
+  const suspectSet = computeBrandMasterSuspectSet(brands);
+  summaryTarget.innerHTML = `<div class="mini-kpi-grid">
+    ${miniMetric("브랜드", apiNum(result.brandCount || brands.length), "brand_code 기준")}
+    ${miniMetric("suggested", apiNum(result.suggestedCount || 0), "자동 후보")}
+    ${miniMetric("confirmed", apiNum(result.confirmedCount || 0), "사용자 확정")}
+    ${miniMetric("coverage", `${apiNum(result.brandCodeCoverage?.withBrandCode || 0)}/${apiNum(result.brandCodeCoverage?.productCount || 0)}`, "상품 brand_code")}
+  </div>
+  <div class="brand-master-bulk-controls" style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+    <button id="brandMasterBulkConfirmBtn" class="button secondary" type="button">SUGGESTED 일괄 확정 (${suggestedBrands.length})</button>
+    <label style="display:inline-flex;align-items:center;gap:6px;">
+      <input type="checkbox" id="brandMasterCatalogToggle" ${brandMasterCatalogOnly ? "checked" : ""} />
+      카탈로그 외 브랜드 숨기기 (${catalogBrandSet.size})
+    </label>
+    <label style="display:inline-flex;align-items:center;gap:6px;">
+      <input type="checkbox" id="brandMasterSuspectToggle" ${brandMasterSuspectOnly ? "checked" : ""} />
+      의심 항목만 보기 (${suspectSet.size})
+    </label>
+  </div>`;
+  tableTarget.innerHTML = `<div class="brand-master-table-wrap">
+    <table class="brand-master-table">
+      <thead>
+        <tr>
+          <th>brand_code</th>
+          <th>brand_name</th>
+          <th>name_aliases</th>
+          <th>instagram_tag</th>
+          <th>nameSource</th>
+          <th>active</th>
+        </tr>
+      </thead>
+      <tbody>${brands.map((brand) => brandMasterRowHtml(brand, suspectSet.has(brand.brand_code), catalogBrandSet.has(brand.brand_code))).join("")}</tbody>
+    </table>
+  </div>`;
+  applyBrandMasterSuspectFilter();
+
+  // SUGGESTED 일괄 확정: nameSource가 "suggested"인 행 전체를 changed 여부와 무관하게
+  // 현재 화면(DOM)에 표시 중인 값 그대로 POST한다. 기존 "저장 / 확정" 버튼의 changed
+  // 비교 로직은 건드리지 않고 그대로 둔다. 이 버튼/토글은 매 렌더링마다 새로 생성되는
+  // 요소라(#brandMasterSaveBtn과 달리 HTML에 고정 배치된 요소가 아님) dataset.bound
+  // 가드 없이 매번 새로 바인딩한다. (2026-07-10 Brand Master 승인 UX 최소 구현)
+  const bulkConfirmBtn = $("#brandMasterBulkConfirmBtn");
+  if (bulkConfirmBtn) {
+    bulkConfirmBtn.addEventListener("click", async () => {
+      const rows = $$("#brandMasterTable tr[data-brand-code]").filter((row) => row.dataset.nameSource === "suggested");
+      if (!rows.length) {
+        toast("SUGGESTED 상태인 브랜드가 없습니다.");
+        return;
+      }
+      if (!confirm(`SUGGESTED ${rows.length}개 브랜드를 현재 이름 그대로 확정합니다.`)) return;
+      const payload = rows.map((row) => {
+        const brand_name = row.querySelector('[data-field="brand_name"]')?.value || "";
+        const name_aliases = row.querySelector('[data-field="name_aliases"]')?.value || "";
+        const instagram_tag = row.querySelector('[data-field="instagram_tag"]')?.value || "";
+        const active = Boolean(row.querySelector('[data-field="active"]')?.checked);
+        // changed 여부를 확인하지 않는다 — 이 버튼의 목적 자체가 "값이 바뀌었든 아니든
+        // 현재 값 그대로 확정"이므로 기존 저장 핸들러의 changed 필터를 의도적으로 생략한다.
+        return { brand_code: row.dataset.brandCode, brand_name, name_aliases, instagram_tag, active };
+      });
+      bulkConfirmBtn.disabled = true;
+      const label = bulkConfirmBtn.textContent;
+      bulkConfirmBtn.textContent = "확정 중...";
+      const saved = await postJson("/api/brand-master", { brands: payload }, 12000);
+      bulkConfirmBtn.disabled = false;
+      bulkConfirmBtn.textContent = label;
+      toast(saved.error ? "일괄 확정에 실패했습니다." : `SUGGESTED ${rows.length}개를 확정했습니다.`);
+      if (!saved.error) renderBrandMasterSettings();
+    });
+  }
+
+
+  const catalogToggle = $("#brandMasterCatalogToggle");
+  if (catalogToggle) {
+    catalogToggle.addEventListener("change", () => {
+      brandMasterCatalogOnly = catalogToggle.checked;
+      applyBrandMasterCatalogFilter();
+    });
+  }
+
+  const suspectToggle = $("#brandMasterSuspectToggle");
+  if (suspectToggle) {
+    suspectToggle.addEventListener("change", () => {
+      brandMasterSuspectOnly = suspectToggle.checked;
+      applyBrandMasterSuspectFilter();
+    });
+  }
+
+  if (saveBtn && !saveBtn.dataset.bound) {
+    saveBtn.dataset.bound = "1";
+    saveBtn.addEventListener("click", async () => {
+      const rows = $$("#brandMasterTable tr[data-brand-code]");
+      const payload = rows.map((row) => {
+        const brand_name = row.querySelector('[data-field="brand_name"]')?.value || "";
+        const name_aliases = row.querySelector('[data-field="name_aliases"]')?.value || "";
+        const instagram_tag = row.querySelector('[data-field="instagram_tag"]')?.value || "";
+        const active = Boolean(row.querySelector('[data-field="active"]')?.checked);
+        const changed = brand_name !== (row.dataset.originalName || "")
+          || name_aliases !== (row.dataset.originalAliases || "")
+          || instagram_tag !== (row.dataset.originalInstagram || "")
+          || (active ? "1" : "0") !== (row.dataset.originalActive || "1");
+        return changed ? { brand_code: row.dataset.brandCode, brand_name, name_aliases, instagram_tag, active } : null;
+      }).filter(Boolean);
+      if (!payload.length) {
+        toast("변경된 브랜드가 없습니다.");
+        return;
+      }
+      saveBtn.disabled = true;
+      const label = saveBtn.textContent;
+      saveBtn.textContent = "저장 중...";
+      const saved = await postJson("/api/brand-master", { brands: payload }, 12000);
+      saveBtn.disabled = false;
+      saveBtn.textContent = label;
+      toast(saved.error ? "브랜드 마스터 저장에 실패했습니다." : "브랜드 마스터를 저장했습니다.");
+      if (!saved.error) renderBrandMasterSettings();
+    });
+  }
 }
 
 function salesDecisionState({ meta, cafe, mismatchRate, cafeReady, metaReady, metaPurchaseValue, cafeOrderAmount }) {
@@ -3514,6 +3807,28 @@ function bind() {
     if (!button) return;
     activeProductSort = button.dataset.productSort || "salesAmount_desc";
     renderProductDashboard(selectedMonth());
+  });
+  $("#productBrandSalesSort")?.addEventListener("change", (event) => {
+    productBrandSalesSort = event.target.value || "brand_asc";
+    renderProductBrandSalesTable();
+  });
+  $("#productBrandSalesSearch")?.addEventListener("input", (event) => {
+    productBrandSalesSearch = event.target.value || "";
+    renderProductBrandSalesTable();
+  });
+  $("#productBrandSalesRange")?.addEventListener("change", (event) => {
+    productBrandSalesRange = event.target.value || "month";
+    const isCustom = productBrandSalesRange === "custom";
+    $("#productBrandSalesCustomRange")?.toggleAttribute("hidden", !isCustom);
+    renderProductBrandSales(selectedMonth());
+  });
+  $("#productBrandSalesSince")?.addEventListener("change", (event) => {
+    productBrandSalesCustomSince = event.target.value || "";
+    if (productBrandSalesRange === "custom") renderProductBrandSales(selectedMonth());
+  });
+  $("#productBrandSalesUntil")?.addEventListener("change", (event) => {
+    productBrandSalesCustomUntil = event.target.value || "";
+    if (productBrandSalesRange === "custom") renderProductBrandSales(selectedMonth());
   });
   $$("[data-content-tab]").forEach((button) => {
     button.addEventListener("click", () => {

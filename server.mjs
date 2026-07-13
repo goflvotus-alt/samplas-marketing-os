@@ -1718,7 +1718,24 @@ function normalizeBrandCode(value) {
 }
 
 function normalizeBrandName(value) {
-  return String(value ?? "").replace(/\s+/g, " ").trim();
+  const namedEntities = {
+    amp: "&",
+    apos: "'",
+    Ccedil: "Ç",
+    ccedil: "ç",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: "\""
+  };
+  return String(value ?? "")
+    .replace(/&(#(\d+)|#x([0-9a-fA-F]+)|[A-Za-z][A-Za-z0-9]+);/g, (entity, name, decimal, hex) => {
+      if (decimal) return String.fromCodePoint(Number(decimal));
+      if (hex) return String.fromCodePoint(parseInt(hex, 16));
+      return namedEntities[name] || entity;
+    })
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseBrandAliases(value) {
@@ -1890,6 +1907,25 @@ async function readBrandMasterWithSeed() {
         existingMap.set(brand_code, entry);
         changed = true;
       }
+    }
+
+    // (2026-07-10 Cafe24 비활성 동기화) 기존 brand_code 중 현재 Cafe24 제조사 목록에
+    // 더 이상 없는 항목은 삭제하지 않고 active=false만 반영한다. brand_name/
+    // name_aliases/instagram_tag/nameSource는 그대로 둔다. 현재 목록에 여전히 있는
+    // brand_code나 이미 active=false인 항목, 그리고 항상 별도 취급되는 미분류 코드
+    // B0000000은 건드리지 않는다 — 사용자가 수동으로 false로 바꾼 것을 다시 true로
+    // 되돌리는 로직이 아니며, 애초에 여기서는 active를 true로 되돌리지 않는다.
+    const liveBrandCodes = new Set(
+      cafe24Brands
+        .map((brand) => normalizeBrandCode(brand.brand_code || brand.brandCode || brand.code))
+        .filter(Boolean)
+    );
+    for (const [brand_code, entry] of existingMap) {
+      if (brand_code === "B0000000") continue;
+      if (liveBrandCodes.has(brand_code)) continue;
+      if (entry.active === false) continue;
+      existingMap.set(brand_code, { ...entry, active: false });
+      changed = true;
     }
   } catch (error) {
     await logApiError("cafe24_brand_master_seed", error, { stage: "brands_api_seed" });
@@ -2225,7 +2261,8 @@ async function buildCafe24ProductCatalog(options = {}) {
     for (const old of previous.products || []) {
       if (!old.fetchedOnDemand || listedNos.has(String(old.productNo))) continue;
       const age = now - (Date.parse(old.onDemandSyncedAt || 0) || 0);
-      if (age < CAFE24_CATALOG_TTL_MS) products.push(old);
+      const isStaleSchema = !old.manufacturer_code;
+      if (!isStaleSchema && age < CAFE24_CATALOG_TTL_MS) products.push(old);
     }
   }
   const result = {
@@ -2468,7 +2505,7 @@ function matchCafe24OrdersToProducts(orders = [], catalog = [], context = {}) {
   };
 }
 
-function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new Map(), brandMasterResult = {}, productBrandMap = {}) {
+function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new Map(), brandMasterResult = {}, productBrandMap = {}, manufacturerNameByCode = new Map()) {
   const masterMap = brandMasterEntriesToMap(brandMasterResult.brands || []);
   const brandBuckets = new Map();
 
@@ -2489,12 +2526,16 @@ function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new
     const bucket = brandBuckets.get(brand_code) || {
       brand_code,
       brand_name: master?.brand_name || brand_code,
+      manufacturer_code: "",
       salesAmount: 0,
       quantitySold: 0,
       orderIds: new Set(),
       soldProductNos: new Set()
     };
 
+    if (!bucket.manufacturer_code && product.manufacturer_code) {
+      bucket.manufacturer_code = product.manufacturer_code;
+    }
     bucket.salesAmount += salesAmount;
     bucket.quantitySold += quantitySold;
     for (const orderId of orderIds) bucket.orderIds.add(orderId);
@@ -2506,6 +2547,8 @@ function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new
     .map((bucket) => ({
       brand_code: bucket.brand_code,
       brand_name: bucket.brand_name || bucket.brand_code,
+      manufacturer_code: bucket.manufacturer_code,
+      manufacturer_name: manufacturerNameByCode.get(bucket.manufacturer_code) || "",
       salesAmount: bucket.salesAmount,
       quantitySold: bucket.quantitySold,
       orderCount: bucket.orderIds.size,
@@ -2550,6 +2593,7 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
     if (isCafe24CanceledOrRefunded(order)) continue;
     const orderId = order.order_id || order.orderId || order.order_no || order.id || "";
     for (const item of cafe24OrderItems(order)) {
+      if (item.status_code === "C2" || item.status_text === "취소완료") continue;
       const productNo = String(item.product_no || item.productNo || "").trim();
       if (!productNo) continue;
       const product = byProductNo.get(productNo);
@@ -2580,6 +2624,15 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
 }
 
 async function buildBrandSalesDiagnostics(since, until) {
+  let manufacturerNameByCode = new Map();
+  try {
+    const manufacturers = await fetchCafe24ManufacturerList();
+    manufacturerNameByCode = new Map(manufacturers.map((manufacturer) => [manufacturer.manufacturer_code, manufacturer.manufacturer_name]));
+  } catch (error) {
+    await logApiError("cafe24_manufacturer_seed", error, { stage: "manufacturer_list" });
+    manufacturerNameByCode = new Map();
+  }
+
   if (env.CAFE24_PROXY_BASE_URL) {
     const [dashboard, ordersResult, brandMaster] = await Promise.all([
       buildProductDashboardWithCache(since, until, {}),
@@ -2594,7 +2647,7 @@ async function buildBrandSalesDiagnostics(since, until) {
     }
     const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
     const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
-    const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap);
+    const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode);
     const productsWithBrandCode = catalog.filter((product) => productBrandCode(product)).length;
     const matchedOrderIds = new Set();
     for (const sales of brandSalesInput.salesByProduct.values()) {
@@ -2639,7 +2692,7 @@ async function buildBrandSalesDiagnostics(since, until) {
   const catalog = catalogResult.products || [];
   const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
   const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
-  const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap);
+  const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode);
   const productsWithBrandCode = catalog.filter((product) => productBrandCode(product)).length;
   const matchedOrderIds = new Set();
   for (const sales of brandSalesInput.salesByProduct.values()) {
@@ -2698,7 +2751,7 @@ const PRODUCT_ACTION_LABELS = {
   push_now: "Push Now",
   observe: "Observe",
   hold: "Hold",
-  stop_promotion: "Stop Promotion"
+  stop_promotion: "재고 소진"
 };
 
 function trustedCafe24OrderDate(order = {}) {

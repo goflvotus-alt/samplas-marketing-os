@@ -100,6 +100,91 @@
         </details>
       </section>
 
+      <section id="Product" class="view">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Product</p>
+            <h3>Product Dashboard</h3>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Catalog / Product Action</p><h3>전체 카탈로그 · Product Action 보조 뷰</h3></div></div>
+          <p class="hint-text">Cafe24 Orders + Products 데이터를 기준으로 상품별 재고·판매량·매출·판매 속도·AI Action을 보여줍니다. 상품별 ROAS는 만들지 않으며(Product Sales Report 미사용, v1 범위 밖), Meta 광고비/ROAS는 아래에 기간 전체 참고치로만 별도 표시합니다.</p>
+          <div id="productDashboardBanner" class="ad-status-banner loading"></div>
+          <div id="productDashboardActions" class="cards product-action-summary"></div>
+
+          <div id="productBrandSalesSection" class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">Cafe24</p><h3>브랜드별 매출</h3></div><span id="productBrandSalesMeta" class="note">선택 월 기준 Cafe24 실매출</span></div>
+            <p class="hint-text">선택 월 기준 Cafe24 실매출</p>
+            <div class="product-action-filters">
+              <select id="productBrandSalesRange">
+                <option value="today">오늘</option>
+                <option value="7d">최근 7일</option>
+                <option value="30d">최근 30일</option>
+                <option value="month" selected>이번 달</option>
+                <option value="prev_month">지난 달</option>
+                <option value="custom">직접 선택</option>
+              </select>
+              <span id="productBrandSalesCustomRange" hidden>
+                <input id="productBrandSalesSince" type="date" aria-label="브랜드 매출 시작일">
+                <input id="productBrandSalesUntil" type="date" aria-label="브랜드 매출 종료일">
+              </span>
+              <input id="productBrandSalesSearch" type="search" placeholder="브랜드 검색">
+              <select id="productBrandSalesSort">
+                <option value="brand_asc">브랜드명 A → Z</option>
+                <option value="brand_desc">브랜드명 Z → A</option>
+                <option value="salesAmount_desc">매출 높은 순</option>
+                <option value="salesAmount_asc">매출 낮은 순</option>
+                <option value="quantity_desc">판매수량 높은 순</option>
+                <option value="quantity_asc">판매수량 낮은 순</option>
+                <option value="orders_desc">주문수 높은 순</option>
+                <option value="orders_asc">주문수 낮은 순</option>
+              </select>
+            </div>
+            <div class="table-wrap ad-table-wrap product-dashboard-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>브랜드</th>
+                    <th>매출</th>
+                    <th>판매수량</th>
+                    <th>주문수</th>
+                    <th>판매상품수</th>
+                  </tr>
+                </thead>
+                <tbody id="productBrandSalesRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="productDashboardFilters" class="product-action-filters"></div>
+          <div class="table-wrap ad-table-wrap product-dashboard-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>상품명</th>
+                  <th>액션</th>
+                  <th>재고</th>
+                  <th>판매/주문</th>
+                  <th>매출</th>
+                  <th>마지막 판매</th>
+                  <th>Meta</th>
+                  <th>판정 이유</th>
+                </tr>
+              </thead>
+              <tbody id="productDashboardRows"></tbody>
+            </table>
+          </div>
+
+          <details class="section-block director-more">
+            <summary>광고 귀속 참고 지표 보기</summary>
+            <div id="productDashboardMetaRef" class="cards"></div>
+          </details>
+        </div>
+
+      </section>
+
       <section id="Content" class="view">
         <div class="section-title">
           <div>
@@ -187,7 +272,7 @@
           <div class="section-title compact"><div><p class="eyebrow">Why It Worked</p><h3>왜 성과가 좋았는가</h3></div></div>
           <div id="editorialWhyGrid" class="editorial-why-grid"></div>
         </div>
-        <div class="section-block">
+        <div class="section-block" hidden>
           <div class="section-title compact"><div><p class="eyebrow">추천 브랜드</p><h3>다음에 다룰 브랜드 기회</h3></div></div>
           <div id="editorialOpportunityGrid" class="editorial-opportunity-grid"></div>
         </div>
@@ -195,7 +280,7 @@
           <div class="section-title compact"><div><p class="eyebrow">Brand Analysis</p><h3>브랜드 분석</h3></div></div>
           <div id="editorialBrandGrid" class="editorial-brand-grid"></div>
         </div>
-        <div class="section-block">
+        <div class="section-block" hidden>
           <div class="section-title compact"><div><p class="eyebrow">Discover Radar</p><h3>아직 다루지 않은 브랜드 추천</h3></div></div>
           <div id="editorialDiscoverRadar" class="editorial-discover-grid"></div>
         </div>
@@ -302,7 +387,7 @@
         </div>
 
         <details class="section-block director-more">
-          <summary>세부 지표 더 보기 <span>Impressions · CTR · CPM · 캠페인별 성과 · 광고/유기 비교</span></summary>
+          <summary>세부 지표 더 보기 <span>Impressions · CTR · CPM · 캠페인별 성과</span></summary>
           <div class="section-block">
             <div class="section-title compact"><div><p class="eyebrow">Meta Ads Detail</p><h3>세부 광고 지표</h3></div></div>
             <div id="advertisingSummary" class="cards"></div>
@@ -336,7 +421,7 @@
               </table>
             </div>
           </div>
-          <div class="section-block">
+          <div class="section-block" hidden>
             <div class="section-title compact"><div><p class="eyebrow">Ad + Organic</p><h3>광고와 유기 콘텐츠 비교</h3></div></div>
             <div id="adOrganicContent" class="cards"></div>
           </div>
@@ -374,32 +459,6 @@
         <div class="section-block">
           <div class="section-title compact"><div><p class="eyebrow">Recommended Action</p><h3>추천 Action</h3></div></div>
           <div id="salesAction" class="cards ad-decision-grid"></div>
-        </div>
-
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Catalog / Product Action</p><h3>전체 카탈로그 · Product Action 보조 뷰</h3></div></div>
-          <p class="hint-text">Cafe24 Orders + Products 데이터를 기준으로 상품별 재고·판매량·매출·판매 속도·AI Action을 보여줍니다. 상품별 ROAS는 만들지 않으며(Product Sales Report 미사용, v1 범위 밖), Meta 광고비/ROAS는 아래에 기간 전체 참고치로만 별도 표시합니다.</p>
-          <div id="productDashboardBanner" class="ad-status-banner loading"></div>
-          <div id="productDashboardMetaRef" class="cards"></div>
-          <div id="productDashboardActions" class="cards product-action-summary"></div>
-          <div id="productDashboardFilters" class="product-action-filters"></div>
-          <div class="table-wrap ad-table-wrap product-dashboard-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>상품명</th>
-                  <th>액션</th>
-                  <th>재고</th>
-                  <th>판매/주문</th>
-                  <th>매출</th>
-                  <th>마지막 판매</th>
-                  <th>Meta</th>
-                  <th>판정 이유</th>
-                </tr>
-              </thead>
-              <tbody id="productDashboardRows"></tbody>
-            </table>
-          </div>
         </div>
 
         <details class="section-block director-more">
@@ -470,6 +529,18 @@
           </div>
           <p class="hint-text">Product Dashboard(Sales 탭)가 필요로 하는 Cafe24 상품 API(Product/Inventory/Images/Categories/Sales)가 로컬 서버 기준으로 정상인지 보여줍니다. mall.read_product 스코프 추가 후 재인증했다면 여기서 다시 확인하세요.</p>
           <div id="cafe24ProductDiagnostics"></div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Brand Master</p>
+              <h3>브랜드 관리</h3>
+            </div>
+            <button id="brandMasterSaveBtn" class="button secondary" type="button">저장 / 확정</button>
+          </div>
+          <p class="hint-text">Cafe24 brand_code를 기준으로 만든 브랜드 마스터입니다. 이름을 저장하면 confirmed 상태로 확정됩니다.</p>
+          <div id="brandMasterSummary" class="brand-master-summary"></div>
+          <div id="brandMasterTable"></div>
         </div>
         <div class="section-block">
           <div class="section-title compact">
