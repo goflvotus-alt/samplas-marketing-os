@@ -2080,10 +2080,11 @@ async function renderAdvertising(data) {
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
   renderAdLevelTabs();
-  const [meta, fullReport, weightsResp] = await Promise.all([
+  const [meta, fullReport, weightsResp, commerce] = await Promise.all([
     getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}&level=${activeAdLevel}`, 9000),
     getJson(`/api/meta-ads/full-report?since=${startDate}&until=${endDate}`, 12000),
-    getJson("/api/meta-ads/score-weights", 5000)
+    getJson("/api/meta-ads/score-weights", 5000),
+    getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 9000)
   ]);
   const scoreWeights = weightsResp.weights || {};
   const posts = data.posts || [];
@@ -2117,6 +2118,9 @@ async function renderAdvertising(data) {
   const spend = Number(totals.spend || 0);
   const purchaseValue = Number(totals.purchaseValue || 0);
   const roas = spend ? purchaseValue / spend : null;
+  const commerceTotals = commerce?.totals || {};
+  const commercePaidAmount = Number(commerceTotals.paidAmount || 0);
+  const adSpendShare = commercePaidAmount > 0 ? spend / commercePaidAmount * 100 : null;
   const badge = metaAdsSourceBadge(meta);
 
   statusTarget.className = `ad-status-banner ${badge.tone}`;
@@ -2125,7 +2129,8 @@ async function renderAdvertising(data) {
   coreKpiTarget.innerHTML = [
     metaAdsSummaryCard("광고비", apiWon(totals.spend), "선택 기간 집행 금액", true),
     metaAdsSummaryCard("ROAS", roas === null ? "-" : multiple(roas), "Meta 구매값 / 광고비", true),
-    metaAdsSummaryCard("실매출", "Cafe24 연동 예정", "추후 Cafe24 실제 매출과 연결됩니다.", true)
+    metaAdsSummaryCard("실제 매출(Commerce)", apiWon(commerceTotals.paidAmount), "Cafe24 canonical 기준", true),
+    metaAdsSummaryCard("광고비 비중", adSpendShare === null ? "-" : pct(adSpendShare), "광고비 / 실제 매출", true)
   ].join("");
 
   summaryTarget.innerHTML = [
