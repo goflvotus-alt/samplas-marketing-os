@@ -1529,7 +1529,7 @@ function renderOtherSections(data) {
   renderCards("reelsReport", posts.filter((post) => post.type === "릴스"), "feed");
   renderCards("cardnewsReport", posts.filter((post) => post.type === "카드뉴스"), "cardnews");
   renderCards("conversionGrid", [...posts].sort((a, b) => Number(b.websiteClicks || 0) - Number(a.websiteClicks || 0)).slice(0, 6));
-  $("#adAiBriefing").innerHTML = `<article class="action-item"><strong>오늘 AI 브리핑 확인 중</strong><p>Objective별 Score를 계산하고 있습니다.</p></article>`;
+  $("#adAiBriefing").innerHTML = `<article class="action-item"><strong>관리 필요 캠페인 확인 중</strong><p>Meta 자체 귀속 지표 기준으로 확인하고 있습니다.</p></article>`;
   $("#adTodayStatus").innerHTML = `<span class="status-dot"></span><strong>오늘 광고 상태 확인 중</strong><span class="note">Meta Ads 데이터를 불러오고 있습니다.</span>`;
   $("#adCoreKpi").innerHTML = `<article class="action-item"><strong>핵심 지표 확인 중</strong><p>광고비, ROAS, 실매출을 확인합니다.</p></article>`;
   $("#advertisingSummary").innerHTML = `<article class="action-item"><strong>Meta 광고 데이터 확인 중</strong><p>광고비, 도달, 클릭, 구매값, ROAS를 확인합니다.</p></article>`;
@@ -2250,51 +2250,50 @@ function metaAdsNarrative(row = {}) {
   const objective = row.objective || "unknown";
   const impressions = Number(row.impressions || 0);
   const frequency = Number(row.frequency || 0);
+  const suffix = " Meta 자체 귀속 지표 기준, Commerce 매출 미반영";
 
   if (objective === "sales") {
     const purchases = Number(row.purchases || 0);
     const roas = Number(row.roas || 0);
-    if (purchases <= 0) return "구매 전환이 발생하지 않아 광고비만 소진되고 있습니다. 소재 또는 타겟 점검을 추천합니다.";
-    const aov = purchases ? Number(row.purchaseValue || 0) / purchases : 0;
-    const cpaEfficient = aov > 0 && Number(row.cpa || 0) / aov <= 0.5;
-    if (roas >= 8) return `ROAS는 매우 우수합니다.${cpaEfficient ? " CPA도 낮으므로 예산을 20% 증액해도 좋습니다." : " 예산 확대를 검토해도 좋습니다."}`;
-    if (roas >= 3) return "ROAS가 안정적으로 유지되고 있습니다. 현재 예산으로 계속 운영하세요.";
-    if (roas >= 1) return "ROAS가 다소 낮은 편입니다. 소재나 타겟 조정을 검토하세요.";
-    return "광고비 대비 매출 전환이 낮습니다. 예산 축소 또는 타겟 재설정이 필요합니다.";
+    if (purchases <= 0) return `Meta 기준 구매 전환이 아직 확인되지 않았습니다.${suffix}`;
+    if (roas >= 8) return `Meta 기준 ROAS가 높게 집계되고 있습니다.${suffix}`;
+    if (roas >= 3) return `Meta 기준 구매 성과가 확인되고 있습니다.${suffix}`;
+    if (roas >= 1) return `Meta 기준 구매 효율이 낮게 집계되고 있습니다.${suffix}`;
+    return `Meta 기준 구매 효율이 매우 낮게 집계되고 있습니다.${suffix}`;
   }
 
   if (objective === "traffic") {
     const ctr = Number(row.ctr || 0);
-    if (ctr >= 0.02 && frequency > 3.5) return "CTR은 우수하지만 Frequency가 높아져 피로도가 발생하고 있습니다. 새 크리에이티브 교체를 추천합니다.";
-    if (ctr >= 0.02) return "CTR이 우수하고 광고 피로도도 낮습니다. 현재 세팅을 유지하세요.";
-    if (ctr >= 0.01) return "CTR이 보통 수준입니다. 소재 테스트로 개선 여지가 있습니다.";
-    return "CTR이 낮아 클릭을 충분히 만들지 못하고 있습니다. 타겟 또는 소재 변경이 필요합니다.";
+    if (ctr >= 0.02 && frequency > 3.5) return `CTR은 높지만 Frequency도 높게 집계되어 추가 확인이 필요합니다.${suffix}`;
+    if (ctr >= 0.02) return `CTR이 높게 집계되고 있습니다.${suffix}`;
+    if (ctr >= 0.01) return `CTR이 보통 수준으로 집계되고 있습니다.${suffix}`;
+    return `CTR이 낮게 집계되고 있어 추가 확인이 필요합니다.${suffix}`;
   }
 
   if (objective === "engagement") {
     const rate = impressions ? Number(row.postEngagement || 0) / impressions : 0;
-    if (rate >= 0.05) return "참여율이 우수합니다. 반응이 좋은 소재이니 유사한 콘텐츠로 확장해도 좋습니다.";
-    if (rate >= 0.02) return "참여율이 보통 수준입니다. 소재 톤이나 CTA 문구를 조정해보세요.";
-    return "참여율이 낮습니다. 콘텐츠 포맷이나 메시지를 재검토하세요.";
+    if (rate >= 0.05) return `참여율이 높게 집계되고 있습니다.${suffix}`;
+    if (rate >= 0.02) return `참여율이 보통 수준으로 집계되고 있습니다.${suffix}`;
+    return `참여율이 낮게 집계되어 추가 확인이 필요합니다.${suffix}`;
   }
 
   if (objective === "video") {
     const videoViews = Number(row.videoViews || 0);
-    if (!videoViews) return "Video 조회 데이터가 아직 없습니다. 집행 기간을 조금 더 지켜보세요.";
+    if (!videoViews) return `Video 조회 데이터가 아직 확인되지 않았습니다.${suffix}`;
     const completionRate = Number(row.videoCompletion || 0) / videoViews;
-    if (completionRate >= 0.3) return "완주율이 높아 소재 몰입도가 좋습니다. 예산 확대를 고려해도 좋습니다.";
-    if (completionRate >= 0.15) return "완주율이 보통 수준입니다. 영상 초반 3초의 후킹을 강화해보세요.";
-    return "완주율이 낮아 초반 이탈이 많습니다. 도입부 크리에이티브 교체를 추천합니다.";
+    if (completionRate >= 0.3) return `완주율이 높게 집계되고 있습니다.${suffix}`;
+    if (completionRate >= 0.15) return `완주율이 보통 수준으로 집계되고 있습니다.${suffix}`;
+    return `완주율이 낮게 집계되어 추가 확인이 필요합니다.${suffix}`;
   }
 
   if (objective === "awareness") {
     const cpm = Number(row.cpm || 0);
-    if (frequency > 4) return "Frequency가 높아 동일 사용자에게 반복 노출되고 있습니다. 타겟을 넓히거나 소재를 교체하세요.";
-    if (cpm > 12000) return "CPM이 높은 편이라 노출 효율이 낮습니다. 타겟 범위를 재검토하세요.";
-    return "Reach가 안정적으로 확대되고 있고 광고 피로도도 낮습니다. 현재 설정을 유지하세요.";
+    if (frequency > 4) return `Frequency가 높게 집계되어 추가 확인이 필요합니다.${suffix}`;
+    if (cpm > 12000) return `CPM이 높게 집계되어 노출 효율 추가 확인이 필요합니다.${suffix}`;
+    return `Reach가 안정적으로 집계되고 있습니다.${suffix}`;
   }
 
-  return "Objective 정보를 확인할 수 없어 자동 판단이 어렵습니다. 직접 확인이 필요합니다.";
+  return `Objective 정보를 확인할 수 없어 추가 확인이 필요합니다.${suffix}`;
 }
 
 // 표에서 보여줄 핵심 지표 한 줄(스캔용). 문장형 근거(metaAdsNarrative)와 함께 씁니다.
@@ -2308,14 +2307,14 @@ function metaAdsKeyMetricLine(row = {}) {
   return "";
 }
 
-// 별점 라벨(확대/유지/관찰/점검/중지)을 실제 액션 문구로 바꿉니다.
+// 내부 decision label을 사용자에게 보이는 중립 상태 문구로 바꿉니다.
 function metaAdsDecisionActionText(label) {
   const map = {
-    확대: "예산 확대 추천",
-    유지: "현행 유지",
-    관찰: "관찰 필요",
-    점검: "점검 필요",
-    중지: "중지 추천"
+    확대: "Meta 성과 높음",
+    유지: "Meta 성과 안정",
+    관찰: "Meta 성과 보통",
+    점검: "Meta 성과 낮음",
+    중지: "Meta 성과 매우 낮음"
   };
   return map[label] || label;
 }
@@ -2477,7 +2476,7 @@ function metaAdsDecisionCellHtml(row, weights) {
   const score = metaAdsPerformanceScore(row, weights);
   const decision = metaAdsStarDecision(score);
   return `<div class="ad-decision-cell ${esc(decision.tone)}">
-    <span class="ad-decision-stars">${esc(decision.stars)} ${esc(metaAdsDecisionActionText(decision.label))}</span>
+    <span class="ad-decision-stars">${esc(metaAdsDecisionActionText(decision.label))}</span>
     <span class="ad-decision-line">${esc(metaAdsNarrative(row))}</span>
   </div>`;
 }
@@ -2492,7 +2491,7 @@ function metaAdsFullReportRowHtml(row, weights) {
     <td>${apiNum(row.purchases)}</td>
     <td>${apiWon(row.purchaseValue)}</td>
     <td>${row.roas === null ? "-" : multiple(row.roas)}</td>
-    <td>${score === null ? "-" : `${score}점`}</td>
+    <td>${score === null ? "-" : `<span title="Meta 자체 귀속 지표 기준">Meta 성과 점수(참고) ${score}점</span>`}</td>
     <td>${metaAdsDecisionCellHtml(row, weights)}</td>
     <td class="ad-detail-col">${pct(Number(row.ctr || 0) * 100)}</td>
     <td class="ad-detail-col">${apiWon(row.cpc)}</td>
@@ -2583,11 +2582,11 @@ function renderAdAiBriefing(fullReport = {}, weights = {}, target) {
     <article class="ad-ai-briefing-card ${esc(decision.tone)}">
       <div class="ad-ai-briefing-head">
         <span class="ad-ai-briefing-rank">${index + 1}</span>
-        <strong>${esc(decision.stars)} ${esc(metaAdsDecisionActionText(decision.label))}</strong>
+        <strong>관리 필요 캠페인</strong>
       </div>
       <p class="ad-ai-briefing-name" title="${esc(row.campaignName || "-")}">${esc(row.campaignName || "-")}</p>
       <p class="ad-ai-briefing-narrative">${esc(metaAdsNarrative(row))}</p>
-      <p class="ad-ai-briefing-metric">${esc(metaAdsKeyMetricLine(row))} · 광고비 ${apiWon(row.spend)}</p>
+      <p class="ad-ai-briefing-metric">관리가 필요한 순서로 표시됩니다. · ${esc(metaAdsKeyMetricLine(row))} · 광고비 ${apiWon(row.spend)}</p>
     </article>
   `).join("");
 }
