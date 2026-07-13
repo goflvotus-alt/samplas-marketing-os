@@ -2969,7 +2969,7 @@ async function renderProductBrandSales(data) {
     productBrandSalesProducts = [];
     productBrandSalesCacheKey = cacheKey;
     rowsTarget.innerHTML = `<tr><td colspan="5">${esc(result.error || "데이터 없음")}</td></tr>`;
-    $("#productDashboardRows").innerHTML = `<tr><td colspan="6">${esc(result.error || "데이터 없음")}</td></tr>`;
+    $("#productDashboardRows").innerHTML = `<tr><td colspan="7">${esc(result.error || "데이터 없음")}</td></tr>`;
     metaTarget.textContent = `${range.label} · ${range.since} ~ ${range.until} · 데이터 없음`;
     renderContentBrandSalesTop3();
     return;
@@ -3099,15 +3099,18 @@ function renderProductSoldProductsTable() {
   }
   rowsTarget.innerHTML = rows.length ? rows.map((product) => {
     const brandName = product.brand_name && product.brand_name !== product.brand_code ? product.brand_name : "미분류";
+    const velocity = Number(product.salesVelocityPerDay || 0);
+    const velocityLabel = Number.isFinite(velocity) ? Number(velocity.toFixed(2)).toString() : "0";
     return `<tr>
       <td>${esc(brandName)}</td>
       <td><strong>${esc(product.productName || "상품명 없음")}</strong></td>
       <td>${esc(product.productCode || product.productNo || "-")}</td>
       <td>${apiNum(product.quantitySold)}</td>
+      <td>${velocityLabel}개/일</td>
       <td>${apiNum(product.orderCount)}</td>
       <td>${apiWon(product.salesAmount)}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="6">조건에 맞는 판매 상품이 없습니다.</td></tr>`;
+  }).join("") : `<tr><td colspan="7">조건에 맞는 판매 상품이 없습니다.</td></tr>`;
 }
 
 function productHasSales(product = {}) {

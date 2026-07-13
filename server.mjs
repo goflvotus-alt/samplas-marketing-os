@@ -2654,6 +2654,7 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
 }
 
 async function buildBrandSalesDiagnostics(since, until) {
+  const periodDays = daysBetweenDateKeys(since, until);
   let manufacturerNameByCode = new Map();
   try {
     const manufacturers = await fetchCafe24ManufacturerList();
@@ -2692,6 +2693,7 @@ async function buildBrandSalesDiagnostics(since, until) {
         brand_code,
         brand_name: brandNameByCode.get(brand_code) || brand_code,
         quantitySold: Number(sales.quantity || 0),
+        salesVelocityPerDay: Number(sales.quantity || 0) / periodDays,
         orderCount: sales.orderIds instanceof Set ? sales.orderIds.size : 0,
         salesAmount: Number(sales.amount || 0)
       };
@@ -2756,6 +2758,7 @@ async function buildBrandSalesDiagnostics(since, until) {
       brand_code,
       brand_name: brandNameByCode.get(brand_code) || brand_code,
       quantitySold: Number(sales.quantity || 0),
+      salesVelocityPerDay: Number(sales.quantity || 0) / periodDays,
       orderCount: sales.orderIds instanceof Set ? sales.orderIds.size : 0,
       salesAmount: Number(sales.amount || 0)
     };
