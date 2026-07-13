@@ -2588,6 +2588,7 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
   }
 
   const salesByProduct = new Map();
+  const brandOrderHistory = new Map();
   const unassignedProducts = new Map();
   for (const order of orders) {
     if (isCafe24CanceledOrRefunded(order)) continue;
@@ -2614,12 +2615,41 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
       entry.amount += amount;
       if (orderId) entry.orderIds.add(String(orderId));
       salesByProduct.set(productKey, entry);
+
+      const brand_code = product ? productBrandCode(product) || "UNASSIGNED" : "UNASSIGNED";
+      const orderKey = String(orderId || "");
+      if (orderKey) {
+        const brandOrders = brandOrderHistory.get(brand_code) || new Map();
+        const orderEntry = brandOrders.get(orderKey) || {
+          orderId: orderKey,
+          orderDate: String(order.order_date || "").slice(0, 10),
+          products: []
+        };
+        const historyQuantity = Number(item.quantity || 0);
+        const productPrice = firstCafe24Money([item.product_price]);
+        const discountUnit = firstCafe24Money([item.additional_discount_price]);
+        const rrpAmount = productPrice * historyQuantity;
+        const discountAmount = discountUnit * historyQuantity;
+        orderEntry.products.push({
+          productNo,
+          productCode: item.product_code || item.productCode || "",
+          productName: item.product_name || item.productName || item.item_name || "상품명 없음",
+          quantity: historyQuantity,
+          rrpAmount,
+          discountAmount,
+          discountRate: productPrice > 0 ? Math.round(discountUnit / productPrice * 100) : 0,
+          paidAmount: rrpAmount - discountAmount
+        });
+        brandOrders.set(orderKey, orderEntry);
+        brandOrderHistory.set(brand_code, brandOrders);
+      }
     }
   }
 
   return {
     catalog: [...catalogForBrandSales, ...unassignedProducts.values()],
-    salesByProduct
+    salesByProduct,
+    brandOrderHistory: Object.fromEntries([...brandOrderHistory.entries()].map(([brand_code, ordersById]) => [brand_code, [...ordersById.values()]]))
   };
 }
 
@@ -2647,7 +2677,8 @@ async function buildBrandSalesDiagnostics(since, until) {
     }
     const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
     const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
-    const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode);
+    const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode)
+      .map((brand) => ({ ...brand, orderHistory: brandSalesInput.brandOrderHistory?.[brand.brand_code] || [] }));
     const brandNameByCode = new Map(brands.map((brand) => [brand.brand_code, brand.brand_name]));
     const soldProducts = brandSalesInput.catalog.map((product) => {
       const productNo = product.productNo === undefined || product.productNo === null ? "" : String(product.productNo);
@@ -2710,7 +2741,8 @@ async function buildBrandSalesDiagnostics(since, until) {
   const catalog = catalogResult.products || [];
   const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
   const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
-  const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode);
+  const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode)
+    .map((brand) => ({ ...brand, orderHistory: brandSalesInput.brandOrderHistory?.[brand.brand_code] || [] }));
   const brandNameByCode = new Map(brands.map((brand) => [brand.brand_code, brand.brand_name]));
   const soldProducts = brandSalesInput.catalog.map((product) => {
     const productNo = product.productNo === undefined || product.productNo === null ? "" : String(product.productNo);

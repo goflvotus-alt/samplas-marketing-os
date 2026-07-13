@@ -3463,3 +3463,60 @@ td {
     flex: 1 1 45%;
   }
 }
+
+
+.brand-order-history-trigger {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.brand-order-popover {
+  position: fixed;
+  z-index: 20;
+  max-height: min(520px, calc(100vh - 32px));
+  overflow-y: auto;
+  background: #fff;
+  color: #111;
+  border: 1px solid rgba(17, 17, 17, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+  padding: 14px;
+}
+
+.brand-order-popover-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+
+.brand-order-popover-order {
+  border-top: 1px solid rgba(17, 17, 17, 0.1);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.brand-order-popover-order h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.brand-order-popover-product {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.brand-order-popover-product p,
+.brand-order-popover-product span {
+  margin: 0;
+  color: #666;
+  font-size: 12px;
+}

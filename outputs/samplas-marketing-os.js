@@ -26,6 +26,12 @@ let productBrandSalesCustomSince = "";
 let productBrandSalesCustomUntil = "";
 let productBrandSalesSort = "brand_asc";
 let productBrandSalesSearch = "";
+let productSoldFilterBrand = "all";
+let productSoldFilterQty = "all";
+let productSoldFilterAmount = "all";
+let productSoldSearch = "";
+let productSoldSort = "amount_desc";
+let activeBrandOrderPopoverCode = "";
 let currentTodayBriefingItems = [];
 // Cafe24 재인증 콜백이 실패로 돌아왔을 때만 채워진다(handleCafe24OAuthRedirect() 참고).
 // (2026-07-08 Cafe24 재인증 흐름 개선)
@@ -2977,6 +2983,7 @@ async function renderProductBrandSales(data) {
 }
 
 function renderProductBrandSalesTable() {
+  closeProductBrandOrderPopover();
   const rowsTarget = $("#productBrandSalesRows");
   const metaTarget = $("#productBrandSalesMeta");
   if (!rowsTarget || !metaTarget) return;
@@ -3002,21 +3009,93 @@ function renderProductBrandSalesTable() {
       <td><strong>${esc(brandName)}</strong><br><span class="muted">${esc(row.brand_code || "-")}</span></td>
       <td>${apiWon(row.salesAmount)}</td>
       <td>${apiNum(row.quantitySold)}</td>
-      <td>${apiNum(row.orderCount)}</td>
+      <td><button class="brand-order-history-trigger" type="button" data-brand-order-history="${esc(row.brand_code || "")}">${apiNum(row.orderCount)}</button></td>
       <td>${apiNum(row.soldProductCount)}</td>
     </tr>`;
   }).join("") : `<tr><td colspan="5">데이터 없음</td></tr>`;
 }
 
+function closeProductBrandOrderPopover() {
+  const popover = $("#productBrandOrderPopover");
+  if (!popover) return;
+  popover.hidden = true;
+  popover.innerHTML = "";
+  activeBrandOrderPopoverCode = "";
+}
+
+function productBrandOrderHistoryHtml(brand = {}) {
+  const brandName = brand.brand_name && brand.brand_name !== brand.brand_code ? brand.brand_name : "미분류";
+  const orders = Array.isArray(brand.orderHistory) ? brand.orderHistory : [];
+  return `<div class="brand-order-popover-head"><strong>${esc(brandName)}</strong><span>주문 ${apiNum(orders.length)}건</span></div>${orders.length ? orders.map((order) => `<section class="brand-order-popover-order">
+    <h4>${esc(order.orderDate || "날짜 없음")}</h4>
+    ${(order.products || []).map((product) => `<div class="brand-order-popover-product">
+      <strong>${esc(product.productName || "상품명 없음")}</strong>
+      <span>${apiNum(product.quantity)}개</span>
+      <p>RRP ${apiWon(product.rrpAmount)}</p>
+      <p>할인율 ${apiNum(product.discountRate)}%</p>
+      <p>실결제 ${apiWon(product.paidAmount)}</p>
+    </div>`).join("")}
+  </section>`).join("") : `<p class="hint-text">주문 이력이 없습니다.</p>`}`;
+}
+
+function showProductBrandOrderPopover(trigger) {
+  const brandCode = trigger?.dataset.brandOrderHistory || "";
+  const popover = $("#productBrandOrderPopover");
+  if (!brandCode || !popover) return;
+  const brand = productBrandSalesRows.find((row) => row.brand_code === brandCode);
+  if (!brand) return;
+  popover.innerHTML = productBrandOrderHistoryHtml(brand);
+  popover.hidden = false;
+  activeBrandOrderPopoverCode = brandCode;
+  const rect = trigger.getBoundingClientRect();
+  const width = Math.min(360, window.innerWidth - 24);
+  popover.style.width = `${width}px`;
+  let left = rect.left;
+  if (left + width + 12 > window.innerWidth) left = Math.max(12, rect.right - width);
+  const top = Math.min(window.innerHeight - 80, rect.bottom + 8);
+  popover.style.left = `${Math.max(12, left)}px`;
+  popover.style.top = `${Math.max(12, top)}px`;
+}
+
+function filterAndSortSoldProducts(products) {
+  const search = productSoldSearch.trim().toLowerCase();
+  return products.filter((product) => {
+    const quantity = Number(product.quantitySold || 0);
+    const amount = Number(product.salesAmount || 0);
+    const brandName = product.brand_name && product.brand_name !== product.brand_code ? product.brand_name : "미분류";
+    if (quantity <= 0) return false;
+    if (productSoldFilterBrand !== "all" && brandName !== productSoldFilterBrand) return false;
+    if (productSoldFilterQty === "1" && quantity !== 1) return false;
+    if (productSoldFilterQty === "2_3" && (quantity < 2 || quantity > 3)) return false;
+    if (productSoldFilterQty === "4_plus" && quantity < 4) return false;
+    if (productSoldFilterAmount === "300000" && amount < 300000) return false;
+    if (productSoldFilterAmount === "500000" && amount < 500000) return false;
+    if (productSoldFilterAmount === "1000000" && amount < 1000000) return false;
+    if (search && !`${product.productName || ""} ${product.productCode || ""}`.toLowerCase().includes(search)) return false;
+    return true;
+  }).sort((left, right) => {
+    if (productSoldSort === "quantity_desc") return Number(right.quantitySold || 0) - Number(left.quantitySold || 0);
+    if (productSoldSort === "orders_desc") return Number(right.orderCount || 0) - Number(left.orderCount || 0);
+    if (productSoldSort === "brand_asc") return (left.brand_name || left.brand_code || "").localeCompare(right.brand_name || right.brand_code || "");
+    return Number(right.salesAmount || 0) - Number(left.salesAmount || 0);
+  });
+}
+
 function renderProductSoldProductsTable() {
   const rowsTarget = $("#productDashboardRows");
   const bannerTarget = $("#productDashboardBanner");
+  const filterTarget = $("#productSoldFilters");
   if (!rowsTarget) return;
-  const rows = productBrandSalesProducts.filter((product) => Number(product.quantitySold || 0) > 0);
+  const allRows = productBrandSalesProducts.filter((product) => Number(product.quantitySold || 0) > 0);
+  const brandOptions = [...new Set(allRows.map((product) => product.brand_name && product.brand_name !== product.brand_code ? product.brand_name : "미분류"))].sort((left, right) => left.localeCompare(right));
+  if (filterTarget) {
+    filterTarget.querySelector("#productSoldFilterBrand").innerHTML = `<option value="all">브랜드 전체</option>${brandOptions.map((brand) => `<option value="${esc(brand)}" ${productSoldFilterBrand === brand ? "selected" : ""}>${esc(brand)}</option>`).join("")}`;
+  }
+  const rows = filterAndSortSoldProducts(productBrandSalesProducts);
   if (bannerTarget) {
     const range = productBrandSalesDateRange(selectedMonth());
     bannerTarget.className = "ad-status-banner good";
-    bannerTarget.innerHTML = `<span class="status-dot"></span><strong>판매 현황</strong><span class="note">${range.label} · ${range.since} ~ ${range.until} · 판매 제품 ${apiNum(rows.length)}개</span>`;
+    bannerTarget.innerHTML = `<span class="status-dot"></span><strong>판매 현황</strong><span class="note">${range.label} · ${range.since} ~ ${range.until} · ${apiNum(rows.length)}개 상품</span>`;
   }
   rowsTarget.innerHTML = rows.length ? rows.map((product) => {
     const brandName = product.brand_name && product.brand_name !== product.brand_code ? product.brand_name : "미분류";
@@ -3028,7 +3107,7 @@ function renderProductSoldProductsTable() {
       <td>${apiNum(product.orderCount)}</td>
       <td>${apiWon(product.salesAmount)}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="6">선택 기간에 판매된 상품이 없습니다.</td></tr>`;
+  }).join("") : `<tr><td colspan="6">조건에 맞는 판매 상품이 없습니다.</td></tr>`;
 }
 
 function productHasSales(product = {}) {
@@ -3797,6 +3876,42 @@ function bind() {
   $("#productBrandSalesUntil")?.addEventListener("change", (event) => {
     productBrandSalesCustomUntil = event.target.value || "";
     if (productBrandSalesRange === "custom") renderProductBrandSales(selectedMonth());
+  });
+
+  $("#productSoldFilterBrand")?.addEventListener("change", (event) => {
+    productSoldFilterBrand = event.target.value || "all";
+    renderProductSoldProductsTable();
+  });
+  $("#productSoldFilterQty")?.addEventListener("change", (event) => {
+    productSoldFilterQty = event.target.value || "all";
+    renderProductSoldProductsTable();
+  });
+  $("#productSoldFilterAmount")?.addEventListener("change", (event) => {
+    productSoldFilterAmount = event.target.value || "all";
+    renderProductSoldProductsTable();
+  });
+  $("#productSoldSearch")?.addEventListener("input", (event) => {
+    productSoldSearch = event.target.value || "";
+    renderProductSoldProductsTable();
+  });
+  $("#productSoldSort")?.addEventListener("change", (event) => {
+    productSoldSort = event.target.value || "amount_desc";
+    renderProductSoldProductsTable();
+  });
+  document.addEventListener("mouseover", (event) => {
+    const trigger = event.target.closest("[data-brand-order-history]");
+    if (trigger) showProductBrandOrderPopover(trigger);
+  });
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-brand-order-history]");
+    const popover = $("#productBrandOrderPopover");
+    if (trigger) {
+      event.preventDefault();
+      if (!popover?.hidden && activeBrandOrderPopoverCode === trigger.dataset.brandOrderHistory) closeProductBrandOrderPopover();
+      else showProductBrandOrderPopover(trigger);
+      return;
+    }
+    if (popover && !popover.hidden && !popover.contains(event.target)) closeProductBrandOrderPopover();
   });
   $$("[data-content-tab]").forEach((button) => {
     button.addEventListener("click", () => {

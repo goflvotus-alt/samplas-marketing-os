@@ -159,6 +159,28 @@
           </div>
 
           <div id="productDashboardFilters" class="product-action-filters" hidden></div>
+          <div id="productSoldFilters" class="product-action-filters">
+            <select id="productSoldFilterBrand"><option value="all">브랜드 전체</option></select>
+            <select id="productSoldFilterQty">
+              <option value="all">판매수량 전체</option>
+              <option value="1">1개</option>
+              <option value="2_3">2~3개</option>
+              <option value="4_plus">4개 이상</option>
+            </select>
+            <select id="productSoldFilterAmount">
+              <option value="all">금액 전체</option>
+              <option value="300000">30만원 이상</option>
+              <option value="500000">50만원 이상</option>
+              <option value="1000000">100만원 이상</option>
+            </select>
+            <input id="productSoldSearch" type="search" placeholder="제품명 / 상품코드 검색">
+            <select id="productSoldSort">
+              <option value="amount_desc">판매금액 높은순</option>
+              <option value="quantity_desc">판매수량 높은순</option>
+              <option value="orders_desc">주문수 높은순</option>
+              <option value="brand_asc">브랜드명순</option>
+            </select>
+          </div>
           <div class="table-wrap ad-table-wrap product-dashboard-wrap">
             <table>
               <thead>
@@ -168,7 +190,7 @@
                   <th>상품코드</th>
                   <th>판매수량</th>
                   <th>주문수</th>
-                  <th>실매출</th>
+                  <th>판매금액</th>
                 </tr>
               </thead>
               <tbody id="productDashboardRows"></tbody>
@@ -564,6 +586,7 @@
       </section>
     </main>
   </div>
+  <div id="productBrandOrderPopover" class="brand-order-popover" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="./samplas-marketing-os.js?v=20260708g-report-thumbnails"></script>
 </body>
