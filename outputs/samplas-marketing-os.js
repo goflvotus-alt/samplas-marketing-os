@@ -410,7 +410,7 @@ async function renderOverviewLiveData(data) {
   const [status, meta, cafe, cardnewsStatus] = await Promise.all([
     getJson("/api/status", 6000),
     getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
-    getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=500`, 7000),
+    getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 7000),
     getJson("/api/contents/cardnews-status", 6000)
   ]);
 
@@ -423,7 +423,7 @@ async function renderOverviewLiveData(data) {
   const topContent = topPosts(posts, purposeScore, 1)[0];
   const topSaved = topPosts(posts, (post) => postMetrics(post).saveRate, 1)[0];
   const topCampaign = [...(meta.campaigns || [])].sort((left, right) => Number(right.purchaseValue || 0) - Number(left.purchaseValue || 0))[0];
-  const topProduct = (cafe.topProducts || [])[0];
+  const topProduct = normalizeCafe24TopProducts((cafe.products || []).map((product) => ({ productName: product.productName, quantity: product.quantitySold, itemAmount: product.salesAmount })), [])[0];
   const roas = Number(metaTotals.spend || 0) ? Number(metaTotals.purchaseValue || 0) / Number(metaTotals.spend || 0) : null;
   const avgSaveRate = avg(posts.map((post) => postMetrics(post).saveRate));
   const followerDelta = Number(a.followerDelta || 0);
@@ -431,7 +431,7 @@ async function renderOverviewLiveData(data) {
   renderHealthBanner({ instagram: data, meta, cafe });
 
   $("#kpiGrid").innerHTML = [
-    homeTopMetric("선택 기간 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 연결 후 표시" : "선택기간 기준", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderAmount))),
+    homeTopMetric("선택 기간 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.paidAmount), cafe.error ? "Cafe24 연결 후 표시" : "선택기간 기준", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.paidAmount))),
     homeTopMetric("선택 기간 광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 연결 후 표시" : "선택기간 기준", cardBadge("meta", meta, hasApiValue(metaTotals.spend))),
     homeTopMetric("선택 기간 주문", cafe.error ? "데이터 없음" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderCount))),
     homeTopMetric("선택 기간 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음", cardBadge("cafe24", cafe, Boolean(topProduct)))
@@ -441,7 +441,7 @@ async function renderOverviewLiveData(data) {
   renderTodayBriefing();
 
   target.innerHTML = [
-    homeMonthPrimaryCard("매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.orderAmount), cafe.error ? "Cafe24 확인 필요" : `주문 ${apiNum(cafeTotals.orderCount)}건`, cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderAmount))),
+    homeMonthPrimaryCard("매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.paidAmount), cafe.error ? "Cafe24 확인 필요" : `주문 ${apiNum(cafeTotals.orderCount)}건`, cardBadge("cafe24", cafe, hasApiValue(cafeTotals.paidAmount))),
     homeMonthPrimaryCard("ROAS", roas === null ? "확인 중" : multiple(roas), "Meta 기준 추정 구매값", cardBadge("meta", meta, roas !== null)),
     homeMonthPrimaryCard("평균 저장률", posts.length ? pct(avgSaveRate) : "데이터 없음", posts.length ? "콘텐츠 평균" : "콘텐츠 데이터 없음", cardBadge("instagram", data, posts.length > 0))
   ].join("");
@@ -454,7 +454,7 @@ async function renderOverviewLiveData(data) {
 
   const actions = buildOverviewActions({ data, meta, cafe, account: a, topSaved, roas });
   $("#actions").innerHTML = actions.map((item) => homeActionCard(item)).join("");
-  $("#nextActions").innerHTML = homeGoalCards({ cafeTotals, metaTotals, postCount, followerDelta });
+  $("#nextActions").innerHTML = homeGoalCards({ cafeTotals: { ...cafeTotals, orderAmount: cafeTotals.paidAmount }, metaTotals, postCount, followerDelta });
   $("#insightList").innerHTML = homeActivityCards({ status, meta, cafe, data });
 }
 
@@ -2661,7 +2661,7 @@ async function renderCafe24Sales(data) {
   if (!target || !detailTarget) return;
   const startDate = `${data.month}-01`;
   const endDate = monthEnd(data.month);
-  const sales = await getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=500`, 8000);
+  const sales = await getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000);
   if (sales.error) {
     const state = salesConnectionState(sales.error);
     if (target.dataset.productSalesLocked !== "1") {
@@ -2682,22 +2682,21 @@ async function renderCafe24Sales(data) {
     return;
   }
   const totals = sales.totals || {};
-  const orders = sales.orders || sales.data || [];
-  const topProducts = normalizeCafe24TopProducts(sales.topProducts, orders);
-  const payments = normalizeCafe24PaymentMethods(sales.paymentMethods, orders);
-  const source = cafe24SourceLabel(sales);
+  const topProducts = normalizeCafe24TopProducts((sales.products || []).map((product) => ({ productName: product.productName, quantity: product.quantitySold, itemAmount: product.salesAmount })), []);
+  const payments = sales.paymentMethods || [];
+  const source = "canonical commerce";
   if (target.dataset.productSalesLocked !== "1") {
     target.classList.add("cards");
     target.classList.remove("instagram-feed");
     target.innerHTML = [
-      salesKpiCard("오늘(선택기간) 매출", apiWon(totals.orderAmount), `${source} · ${sales.startDate || startDate} ~ ${sales.endDate || endDate}`),
+      salesKpiCard("오늘(선택기간) 매출", apiWon(totals.paidAmount), `${source} · ${sales.period?.since || startDate} ~ ${sales.period?.until || endDate}`),
       salesKpiCard("정상 주문", `${apiNum(totals.orderCount)}건`, "취소/환불 주문 제외"),
-      salesKpiCard("제외 주문", `${apiNum(totals.excludedOrderCount)}건`, "취소/환불로 매출 집계에서 제외"),
-      salesKpiCard("평균 객단가", apiWon(totals.averageOrderAmount), "Cafe24 실제 결제 기준")
+      salesKpiCard("제외 주문", `${apiNum(sales.excludedOrderCount)}건`, "취소/환불로 매출 집계에서 제외"),
+      salesKpiCard("평균 객단가", apiWon(totals.averageOrderValue), "Cafe24 실제 결제 기준")
     ].join("");
   }
   detailTarget.innerHTML = [
-    salesPaymentCard(payments, Number(totals.orderAmount || 0)),
+    salesPaymentCard(payments, Number(totals.paidAmount || 0)),
     salesTopProductsCard(topProducts)
   ].join("");
 }
@@ -2864,12 +2863,12 @@ async function renderAdComparison(data) {
   const endDate = monthEnd(data.month);
   const [meta, cafe] = await Promise.all([
     getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
-    getJson(`/api/cafe24/orders?start_date=${startDate}&end_date=${endDate}&limit=500`, 8000)
+    getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000)
   ]);
   const metaTotals = meta.totals || {};
   const cafeTotals = cafe.totals || {};
   const metaPurchaseValue = hasApiValue(metaTotals.purchaseValue) ? Number(metaTotals.purchaseValue) : null;
-  const cafeOrderAmount = hasApiValue(cafeTotals.orderAmount) ? Number(cafeTotals.orderAmount) : null;
+  const cafeOrderAmount = hasApiValue(cafeTotals.paidAmount) ? Number(cafeTotals.paidAmount) : null;
   // source readiness 판정: 라이브 데이터가 정상으로 왔을 때만 Meta↔Cafe24 비교를 계산한다.
   // Cafe24가 실패했거나(error) 오류 후 캐시 폴백(cacheWarning)이면 값을 0으로 간주하거나
   // 오차율을 만들지 않는다 — "오차 100%" 오경보 방지. Meta 구매값이 0이어도 오차율은

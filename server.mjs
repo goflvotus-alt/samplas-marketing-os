@@ -1431,6 +1431,24 @@ function summarizeCafe24Orders(orders = []) {
   };
 }
 
+function computeCafe24OrderTotals(orders = []) {
+  const paymentMap = new Map();
+  let paidAmount = 0;
+  for (const order of orders) {
+    const paymentMethod = normalizeCafe24PaymentMethod(order);
+    const orderAmount = cafe24OrderAmount(order);
+    paidAmount += orderAmount;
+    const payment = paymentMap.get(paymentMethod) || { paymentMethod, orderCount: 0, orderAmount: 0 };
+    payment.orderCount += 1;
+    payment.orderAmount += orderAmount;
+    paymentMap.set(paymentMethod, payment);
+  }
+  return {
+    paidAmount,
+    paymentMethods: [...paymentMap.values()].sort((left, right) => right.orderAmount - left.orderAmount)
+  };
+}
+
 function cafe24OrderAmount(order = {}) {
   if (isCafe24CanceledOrRefunded(order)) return 0;
   return firstCafe24Money([
@@ -2654,7 +2672,6 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
 }
 
 async function buildBrandSalesDiagnostics(since, until) {
-  const periodDays = daysBetweenDateKeys(since, until);
   let manufacturerNameByCode = new Map();
   try {
     const manufacturers = await fetchCafe24ManufacturerList();
@@ -2705,12 +2722,15 @@ async function buildBrandSalesDiagnostics(since, until) {
         for (const orderId of sales.orderIds) matchedOrderIds.add(orderId);
       }
     }
+    const rawOrderIds = new Set(orders.map((order) => String(order.order_id || order.orderId || order.order_no || order.id || "")).filter(Boolean));
+    const canonicalOrders = orders.filter((order) => matchedOrderIds.has(String(order.order_id || order.orderId || order.order_no || order.id || "")));
+    const commerceTotals = computeCafe24OrderTotals(canonicalOrders);
     const totals = brands.reduce((acc, brand) => {
       acc.salesAmount += Number(brand.salesAmount || 0);
       acc.quantitySold += Number(brand.quantitySold || 0);
       acc.soldProductCount += Number(brand.soldProductCount || 0);
       return acc;
-    }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0 });
+    }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0, paidAmount: commerceTotals.paidAmount, averageOrderValue: matchedOrderIds.size ? commerceTotals.paidAmount / matchedOrderIds.size : 0 });
     return {
       period: { since, until },
       brandCodeCoverage: {
@@ -2724,6 +2744,8 @@ async function buildBrandSalesDiagnostics(since, until) {
         confirmedCount: brandMaster.confirmedCount || 0
       },
       totals,
+      excludedOrderCount: Math.max(0, rawOrderIds.size - matchedOrderIds.size),
+      paymentMethods: commerceTotals.paymentMethods,
       productBrandBackfill,
       brands,
       products: soldProducts
@@ -2770,12 +2792,15 @@ async function buildBrandSalesDiagnostics(since, until) {
       for (const orderId of sales.orderIds) matchedOrderIds.add(orderId);
     }
   }
+  const rawOrderIds = new Set(orders.map((order) => String(order.order_id || order.orderId || order.order_no || order.id || "")).filter(Boolean));
+  const canonicalOrders = orders.filter((order) => matchedOrderIds.has(String(order.order_id || order.orderId || order.order_no || order.id || "")));
+  const commerceTotals = computeCafe24OrderTotals(canonicalOrders);
   const totals = brands.reduce((acc, brand) => {
     acc.salesAmount += Number(brand.salesAmount || 0);
     acc.quantitySold += Number(brand.quantitySold || 0);
     acc.soldProductCount += Number(brand.soldProductCount || 0);
     return acc;
-  }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0 });
+  }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0, paidAmount: commerceTotals.paidAmount, averageOrderValue: matchedOrderIds.size ? commerceTotals.paidAmount / matchedOrderIds.size : 0 });
 
   return {
     period: { since, until },
@@ -2790,6 +2815,8 @@ async function buildBrandSalesDiagnostics(since, until) {
       confirmedCount: brandMaster.confirmedCount || 0
     },
     totals,
+    excludedOrderCount: Math.max(0, rawOrderIds.size - matchedOrderIds.size),
+    paymentMethods: commerceTotals.paymentMethods,
     productBrandBackfill,
     brands,
     products: soldProducts
