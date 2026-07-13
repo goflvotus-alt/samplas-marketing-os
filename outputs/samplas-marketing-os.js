@@ -1,12 +1,12 @@
 const navItems = [
-  "Overview",
-  "Product",
-  "Content",
-  "Editorial AI",
-  "Advertising",
-  "Sales",
-  "Reports",
-  "Settings"
+  { view: "Overview", label: "Today", hidden: false },
+  { view: "Sales", label: "Commerce", hidden: false },
+  { view: "Advertising", label: "Marketing", hidden: false },
+  { view: "Content", label: "Content", hidden: false },
+  { view: "Settings", label: "Settings", hidden: false },
+  { view: "Product", label: "Product", hidden: true },
+  { view: "Editorial AI", label: "Editorial AI", hidden: true },
+  { view: "Reports", label: "Reports", hidden: true }
 ];
 
 const months = ["2026-07", "2026-06", "2026-05", "2026-04", "2026-03", "2026-02", "2026-01"];
@@ -292,9 +292,9 @@ function toast(message) {
 function renderNav() {
   const nav = $("#nav");
   nav.innerHTML = navItems.map((item, index) => (
-    `<button type="button" class="${index === 0 ? "active" : ""}" data-view="${esc(item)}">${esc(item)}</button>`
+    `<button type="button" class="${index === 0 ? "active" : ""}" data-view="${esc(item.view)}" ${item.hidden ? "hidden" : ""}>${esc(item.label)}</button>`
   )).join("");
-  setTopbarTitle(navItems[0]);
+  setTopbarTitle(navItems[0].view);
   nav.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-view]");
     if (!button) return;
