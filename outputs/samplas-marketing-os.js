@@ -1543,7 +1543,7 @@ function renderOtherSections(data) {
   $("#salesImpact").classList.remove("instagram-feed");
   delete $("#salesImpact").dataset.productSalesLocked;
   $("#salesImpact").innerHTML = `<article class="action-item"><strong>Cafe24 주문 데이터 확인 중</strong><p>CSV 또는 저장 캐시를 읽고 있습니다.</p></article>`;
-  $("#salesDetail").innerHTML = `<article class="action-item"><strong>결제수단 · TOP 상품 확인 중</strong><p>Cafe24 주문 데이터를 불러오고 있습니다.</p></article>`;
+  $("#salesDetail").innerHTML = `<article class="action-item"><strong>결제수단 확인 중</strong><p>Cafe24 주문 데이터를 불러오고 있습니다.</p></article>`;
   renderCafe24Sales(data);
   $("#salesMetaEstimate").innerHTML = `<article class="action-item"><strong>Meta 추정 매출 확인 중</strong><p>Meta 구매값을 불러오고 있습니다.</p></article>`;
   $("#salesVariance").innerHTML = `<article class="action-item"><strong>오차 분석 확인 중</strong><p>Meta 구매값과 Cafe24 실제 매출을 비교합니다.</p></article>`;
@@ -2679,14 +2679,10 @@ async function renderCafe24Sales(data) {
         salesKpiCard("평균 객단가", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled")
       ].join("");
     }
-    detailTarget.innerHTML = [
-      salesPaymentCard([], 0),
-      salesTopProductsCard([])
-    ].join("");
+    detailTarget.innerHTML = salesPaymentCard([], 0);
     return;
   }
   const totals = sales.totals || {};
-  const topProducts = normalizeCafe24TopProducts((sales.products || []).map((product) => ({ productName: product.productName, quantity: product.quantitySold, itemAmount: product.salesAmount })), []);
   const payments = sales.paymentMethods || [];
   const source = "canonical commerce";
   if (target.dataset.productSalesLocked !== "1") {
@@ -2699,10 +2695,7 @@ async function renderCafe24Sales(data) {
       salesKpiCard("평균 객단가", apiWon(totals.averageOrderValue), "Cafe24 실제 결제 기준")
     ].join("");
   }
-  detailTarget.innerHTML = [
-    salesPaymentCard(payments, Number(totals.paidAmount || 0)),
-    salesTopProductsCard(topProducts)
-  ].join("");
+  detailTarget.innerHTML = salesPaymentCard(payments, Number(totals.paidAmount || 0));
 }
 
 function salesConnectionState(error) {
