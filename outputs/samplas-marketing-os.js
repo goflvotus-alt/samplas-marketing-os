@@ -1040,6 +1040,19 @@ function renderContentTable(posts, data = selectedMonth()) {
 }
 
 async function renderContentOperations(data) {
+  const setPending = (selector, html) => {
+    const target = $(selector);
+    if (target) target.innerHTML = html;
+  };
+  setPending("#contentSummaryHero", `<article class="action-item"><strong>Content 데이터 확인 중</strong><p>선택 기간 게시물 지표를 불러오고 있습니다.</p></article>`);
+  setPending("#contentSummaryPerformance", `<article class="action-item"><strong>콘텐츠 성과 확인 중</strong><p>저장과 공유 상위 콘텐츠를 정리합니다.</p></article>`);
+  setPending("#contentSummaryFormat", `<article class="action-item"><strong>Format Mix 확인 중</strong><p>콘텐츠 유형별 구성을 불러오고 있습니다.</p></article>`);
+  setPending("#contentKpiGrid", `<article class="action-item"><strong>콘텐츠 KPI 확인 중</strong><p>선택 기간 콘텐츠 지표를 불러오고 있습니다.</p></article>`);
+  setPending("#contentTopGrid", `<article class="action-item"><strong>TOP 콘텐츠 확인 중</strong><p>선택 기간 상위 콘텐츠를 정리합니다.</p></article>`);
+  setPending("#contentTypeGrid", `<article class="action-item"><strong>콘텐츠 유형 확인 중</strong><p>Format Mix를 불러오고 있습니다.</p></article>`);
+  setPending("#contentHeatmap", `<article class="action-item"><strong>게시시간 확인 중</strong><p>시간대별 성과를 정리합니다.</p></article>`);
+  setPending("#contentBrandGrid", `<article class="action-item"><strong>브랜드별 성과 확인 중</strong><p>콘텐츠 브랜드 신호를 정리합니다.</p></article>`);
+  setPending("#contentAiGrid", `<article class="action-item"><strong>AI 추천 확인 중</strong><p>콘텐츠 추천 근거를 정리합니다.</p></article>`);
   const range = operationsDateRange(data);
   const rangeData = await getJson(`/api/instagram/range?since=${range.since}&until=${range.until}`, 9000);
   if (rangeData.error) {
