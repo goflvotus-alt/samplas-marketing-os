@@ -3185,10 +3185,10 @@ async function renderCampaignPeriodComparison(target) {
   let comparisonMeta = null;
   try {
     const [executionResult, comparisonResult, executionMetaResult, comparisonMetaResult] = await Promise.allSettled([
-      getJson(`/api/diagnostics/brand-sales?since=${executionStart}&until=${executionEnd}`, 15000),
-      getJson(`/api/diagnostics/brand-sales?since=${comparisonStart}&until=${comparisonEnd}`, 15000),
-      getJson(`/api/meta-ads/summary?since=${executionStart}&until=${executionEnd}`, 9000),
-      getJson(`/api/meta-ads/summary?since=${comparisonStart}&until=${comparisonEnd}`, 9000)
+      getSharedJson(`/api/diagnostics/brand-sales?since=${executionStart}&until=${executionEnd}`, 15000),
+      getSharedJson(`/api/diagnostics/brand-sales?since=${comparisonStart}&until=${comparisonEnd}`, 15000),
+      getSharedJson(`/api/meta-ads/summary?since=${executionStart}&until=${executionEnd}`, 9000),
+      getSharedJson(`/api/meta-ads/summary?since=${comparisonStart}&until=${comparisonEnd}`, 9000)
     ]);
     execution = executionResult.status === "fulfilled" ? executionResult.value : { error: executionResult.reason?.message || "실행 기간 데이터 오류" };
     comparison = comparisonResult.status === "fulfilled" ? comparisonResult.value : { error: comparisonResult.reason?.message || "비교 기간 데이터 오류" };
@@ -5031,6 +5031,7 @@ function renderOperationsSections() {
     const target = $(selector);
     if (target) target.innerHTML = html;
   };
+  setPending("#adAiBriefing", `<article class="action-item"><strong>관리 필요 캠페인 확인 중</strong><p>Meta 자체 귀속 지표 기준으로 확인하고 있습니다.</p></article>`);
   setPending("#marketingSummaryHero", `<article class="action-item"><strong>Marketing 데이터 확인 중</strong><p>Meta Ads와 Commerce 매출을 불러오고 있습니다.</p></article>`);
   setPending("#marketingSummaryBriefing", `<article class="action-item"><strong>관리 필요 캠페인 확인 중</strong><p>Meta 자체 귀속 지표 기준으로 확인하고 있습니다.</p></article>`);
   setPending("#marketingSummaryStatus", `<article class="action-item"><strong>광고 상태 확인 중</strong><p>집행·미집행·일치 검증 결과를 정리합니다.</p></article>`);
@@ -5041,6 +5042,7 @@ function renderOperationsSections() {
   setPending("#adReconciliationSummary", `<article class="action-item"><strong>데이터 일치 검증 확인 중</strong><p>Meta 계정 전체 합계와 비교하고 있습니다.</p></article>`);
   setPending("#adFullReportActiveRows", `<tr><td colspan="18">전체 캠페인 데이터를 확인하고 있습니다.</td></tr>`);
   commerceSummaryState = { cafe: null, comparison: null };
+  setPending("#salesHealthBanner", `<span class="status-dot"></span><strong>Sales Health 확인 중</strong><span class="note">Meta · Cafe24 데이터를 불러오고 있습니다.</span>`);
   setPending("#commerceSummaryHero", `<article class="action-item"><strong>Commerce 데이터 확인 중</strong><p>Cafe24 canonical 데이터를 불러오고 있습니다.</p></article>`);
   setPending("#commerceSummaryCompare", `<article class="action-item"><strong>Meta 비교 확인 중</strong><p>Meta 구매값과 Cafe24 실제 판매를 비교합니다.</p></article>`);
   setPending("#commerceSummaryPayments", `<article class="action-item"><strong>결제수단 확인 중</strong><p>결제수단 구성을 불러오고 있습니다.</p></article>`);
@@ -5094,22 +5096,38 @@ function bind() {
     renderOverviewLiveData(selectedMonth());
   });
   $("#operationsSince")?.addEventListener("change", (event) => {
-    operationsRangeCustomSince = event.target.value || "";
-    if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince > operationsRangeCustomUntil) {
+    const nextSince = event.target.value || "";
+    const validSince = /^\d{4}-\d{2}-\d{2}$/.test(nextSince) && event.target.validity?.valid !== false;
+    if (operationsRange === "custom" && !validSince) {
+      event.target.value = operationsRangeCustomSince;
+      toast("날짜를 확인해주세요.");
+      return;
+    }
+    if (operationsRange === "custom" && operationsRangeCustomUntil && nextSince > operationsRangeCustomUntil) {
+      event.target.value = operationsRangeCustomSince;
       toast("시작일이 종료일보다 늦을 수 없습니다.");
       return;
     }
+    operationsRangeCustomSince = nextSince;
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
       renderOperationsSections();
       renderOverviewLiveData(selectedMonth());
     }
   });
   $("#operationsUntil")?.addEventListener("change", (event) => {
-    operationsRangeCustomUntil = event.target.value || "";
-    if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince > operationsRangeCustomUntil) {
+    const nextUntil = event.target.value || "";
+    const validUntil = /^\d{4}-\d{2}-\d{2}$/.test(nextUntil) && event.target.validity?.valid !== false;
+    if (operationsRange === "custom" && !validUntil) {
+      event.target.value = operationsRangeCustomUntil;
+      toast("날짜를 확인해주세요.");
+      return;
+    }
+    if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomSince > nextUntil) {
+      event.target.value = operationsRangeCustomUntil;
       toast("시작일이 종료일보다 늦을 수 없습니다.");
       return;
     }
+    operationsRangeCustomUntil = nextUntil;
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
       renderOperationsSections();
       renderOverviewLiveData(selectedMonth());
