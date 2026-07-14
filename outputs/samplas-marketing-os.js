@@ -1795,23 +1795,73 @@ function annualArchiveFormat(value, type) {
   return apiNum(value);
 }
 
-function annualArchiveMetricBlock(title, rows, key, type = "number") {
+function annualArchiveRawValue(archive, key) {
+  if (key === "paidAmount") return archive.commerce?.paidAmount;
+  if (key === "spend") return archive.marketing?.spend;
+  if (key === "purchaseValue") return archive.marketing?.purchaseValue;
+  if (key === "totalViews") return archive.content?.totalViews;
+  if (key === "totalSaves") return archive.content?.totalSaves;
+  if (key === "followerDelta") return archive.content?.followerDelta;
+  return undefined;
+}
+
+function annualArchiveHasValue(archive, key) {
+  return hasApiValue(annualArchiveRawValue(archive, key));
+}
+
+function annualArchiveSum(rows, key) {
+  return rows.reduce((total, row) => {
+    if (row.failed || !annualArchiveHasValue(row.archive, key)) return total;
+    const value = annualArchiveValue(row.archive, key);
+    return Number.isFinite(value) ? total + value : total;
+  }, 0);
+}
+
+const annualArchiveMetrics = [
+  { key: "paidAmount", title: "실제 매출", category: "commerce", type: "money" },
+  { key: "spend", title: "광고비", category: "marketing", type: "money" },
+  { key: "purchaseValue", title: "Meta 추정 구매값", category: "marketing", type: "money" },
+  { key: "totalViews", title: "콘텐츠 조회", category: "content", type: "number" },
+  { key: "totalSaves", title: "콘텐츠 저장", category: "content", type: "number" },
+  { key: "followerDelta", title: "팔로워 증감", category: "content", type: "follower" }
+];
+
+function annualArchiveKpi(metric, rows) {
+  const total = annualArchiveSum(rows, metric.key);
+  return `<article class="annual-flow-kpi" data-annual-category="${esc(metric.category)}">
+    <span>${esc(metric.title)}</span>
+    <strong>${esc(annualArchiveFormat(total, metric.type))}</strong>
+    <em>연간 누적</em>
+  </article>`;
+}
+
+function annualArchiveMetricBlock(metric, rows) {
   const values = rows
-    .map((row) => row.failed ? NaN : annualArchiveValue(row.archive, key))
+    .map((row) => row.failed || !annualArchiveHasValue(row.archive, metric.key) ? NaN : annualArchiveValue(row.archive, metric.key))
     .filter((value) => Number.isFinite(value));
   const max = Math.max(1, ...values.map((value) => Math.abs(value)));
-  return `<section class="monthly-report-block">
-    <div class="monthly-report-block-head"><h4>${esc(title)}</h4><span>월별 archive 기준</span></div>
-    <div class="compact-list">
+  const total = annualArchiveSum(rows, metric.key);
+  return `<section class="annual-flow-card" data-annual-category="${esc(metric.category)}">
+    <div class="annual-flow-card-head">
+      <div><h4>${esc(metric.title)}</h4><span>월별 archive 기준</span></div>
+      <strong>${esc(annualArchiveFormat(total, metric.type))}</strong>
+    </div>
+    <div class="annual-flow-bars">
       ${rows.map((row) => {
-        const value = row.failed ? NaN : annualArchiveValue(row.archive, key);
+        const missing = row.failed || !annualArchiveHasValue(row.archive, metric.key);
+        const value = missing ? NaN : annualArchiveValue(row.archive, metric.key);
         const width = Number.isFinite(value) ? Math.max(value === 0 ? 0 : 4, Math.min(100, Math.abs(value) / max * 100)) : 0;
-        return `<div class="bar-row ${row.failed ? "monthly-report-muted" : ""}">
-          <span>${esc(row.month.slice(5, 7))}월</span>
-          <div class="bar"><i style="width:${width}%"></i></div>
-          <em>${esc(row.failed ? "-" : annualArchiveFormat(value, type))}</em>
+        const label = `${Number(row.month.slice(5, 7))}월`;
+        const formatted = missing ? "-" : annualArchiveFormat(value, metric.type);
+        const tooltip = `${label} · ${metric.title} ${missing ? "데이터 없음" : formatted}`;
+        return `<div class="annual-flow-bar" data-empty="${missing ? "true" : "false"}" data-tooltip="${esc(tooltip)}" title="${esc(tooltip)}">
+          <i style="height:${width}%"></i>
+          <span>${esc(label)}</span>
         </div>`;
       }).join("")}
+    </div>
+    <div class="annual-flow-axis" style="grid-template-columns:repeat(${rows.length}, minmax(0, 1fr))">
+      ${rows.map((row) => `<span>${Number(row.month.slice(5, 7))}</span>`).join("")}
     </div>
   </section>`;
 }
@@ -1836,20 +1886,25 @@ async function renderAnnualArchiveFlow(month) {
     target.innerHTML = `<article class="action-item"><strong>연간 흐름을 불러오지 못했습니다.</strong><p>${esc(year)}년 월별 아카이브를 확인할 수 없습니다.</p></article>`;
     return;
   }
-  target.innerHTML = `<section class="monthly-report-chapter">
+  target.innerHTML = `<section class="monthly-report-chapter annual-flow">
     <div class="monthly-report-chapter-head">
       <span>Y</span>
       <div><p class="eyebrow">Annual Flow</p><h3>${esc(year)}년 연간 흐름</h3></div>
     </div>
     <p class="monthly-report-fnote">월별 아카이브 기준입니다. 실패한 월은 -로 표시합니다.</p>
-    <div class="monthly-report-grid2">
-      ${annualArchiveMetricBlock("실제 매출", rows, "paidAmount", "money")}
-      ${annualArchiveMetricBlock("광고비", rows, "spend", "money")}
-      ${annualArchiveMetricBlock("Meta 추정 구매값", rows, "purchaseValue", "money")}
-      ${annualArchiveMetricBlock("콘텐츠 조회", rows, "totalViews")}
-      ${annualArchiveMetricBlock("콘텐츠 저장", rows, "totalSaves")}
-      ${annualArchiveMetricBlock("팔로워 증감", rows, "followerDelta", "follower")}
+    <div class="annual-flow-filters" aria-label="Annual Flow filter">
+      <button class="segment active" type="button" data-annual-filter="all">전체</button>
+      <button class="segment" type="button" data-annual-filter="commerce">Commerce</button>
+      <button class="segment" type="button" data-annual-filter="marketing">Marketing</button>
+      <button class="segment" type="button" data-annual-filter="content">Content</button>
     </div>
+    <div class="annual-flow-kpis">
+      ${annualArchiveMetrics.map((metric) => annualArchiveKpi(metric, rows)).join("")}
+    </div>
+    <div class="annual-flow-grid">
+      ${annualArchiveMetrics.map((metric) => annualArchiveMetricBlock(metric, rows)).join("")}
+    </div>
+    <div class="annual-flow-tooltip" role="tooltip" hidden></div>
   </section>`;
 }
 
@@ -2120,6 +2175,19 @@ function reportLane(title, posts, helper) {
       ${posts.length ? posts.map((post) => `<div class="compact-row"><strong>${esc(post.title || "-")}</strong><span>${esc(helper(post))}</span></div>`).join("") : `<div class="compact-row"><strong>데이터 없음</strong><span>해당 월에 표시할 콘텐츠가 없습니다.</span></div>`}
     </div>
   </section>`;
+}
+
+function positionAnnualFlowTooltip(event, tooltip) {
+  const margin = 12;
+  const gap = 14;
+  const width = tooltip.offsetWidth || 180;
+  const height = tooltip.offsetHeight || 34;
+  let left = event.clientX + gap;
+  let top = event.clientY + gap;
+  if (left + width + margin > window.innerWidth) left = event.clientX - width - gap;
+  if (top + height + margin > window.innerHeight) top = event.clientY - height - gap;
+  tooltip.style.left = `${Math.max(margin, left)}px`;
+  tooltip.style.top = `${Math.max(margin, top)}px`;
 }
 
 function formatBar(item, posts) {
@@ -5050,7 +5118,43 @@ function bind() {
     writeTodayBriefingState(state);
     renderTodayBriefing();
   });
+  document.addEventListener("pointerover", (event) => {
+    const bar = event.target.closest(".annual-flow-bar");
+    if (!bar) return;
+    const flow = bar.closest("#annualArchiveFlow");
+    const tooltip = flow?.querySelector(".annual-flow-tooltip");
+    if (!tooltip) return;
+    tooltip.textContent = bar.dataset.tooltip || bar.title || "";
+    tooltip.hidden = false;
+    tooltip.classList.add("is-visible");
+    positionAnnualFlowTooltip(event, tooltip);
+  });
+  document.addEventListener("pointermove", (event) => {
+    const bar = event.target.closest(".annual-flow-bar");
+    if (!bar) return;
+    const tooltip = bar.closest("#annualArchiveFlow")?.querySelector(".annual-flow-tooltip");
+    if (tooltip && !tooltip.hidden) positionAnnualFlowTooltip(event, tooltip);
+  });
+  document.addEventListener("pointerout", (event) => {
+    const bar = event.target.closest(".annual-flow-bar");
+    if (!bar || bar.contains(event.relatedTarget)) return;
+    const tooltip = bar.closest("#annualArchiveFlow")?.querySelector(".annual-flow-tooltip");
+    if (!tooltip) return;
+    tooltip.hidden = true;
+    tooltip.classList.remove("is-visible");
+  });
   document.addEventListener("click", (event) => {
+    const annualFilter = event.target.closest("[data-annual-filter]");
+    if (annualFilter) {
+      const flow = annualFilter.closest("#annualArchiveFlow");
+      if (!flow) return;
+      const filter = annualFilter.dataset.annualFilter || "all";
+      flow.querySelectorAll("[data-annual-filter]").forEach((button) => button.classList.toggle("active", button === annualFilter));
+      flow.querySelectorAll("[data-annual-category]").forEach((item) => {
+        item.classList.toggle("annual-flow-hidden", filter !== "all" && item.dataset.annualCategory !== filter);
+      });
+      return;
+    }
     const button = event.target.closest("[data-jump-view]");
     if (!button) return;
     document.querySelector(`[data-view="${button.dataset.jumpView}"]`)?.click();
