@@ -1972,8 +1972,8 @@ async function renderMonthlyArchiveReport(month) {
     saved: "Saved Archive",
     draft: "Unsaved Draft"
   }[archive.archiveStatus] || String(archive.status || "Draft");
-  const archiveSaveButton = archive.archiveStatus === "draft"
-    ? `<button type="button" class="button secondary" data-archive-save="${esc(month)}">아카이브 저장</button>`
+  const archiveSaveButton = archive.archiveStatus === "draft" || archive.archiveStatus === "saved"
+    ? `<button type="button" class="button secondary" data-archive-save="${esc(month)}">${archive.archiveStatus === "saved" ? "최신 값으로 다시 저장" : "아카이브 저장"}</button>`
     : "";
   const paymentTotal = Number(commerce.paidAmount || 0);
   const compareBase = Math.max(Number(marketing.spend || 0), Number(marketing.purchaseValue || 0), 1);
