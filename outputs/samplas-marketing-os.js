@@ -1061,10 +1061,10 @@ async function renderContentOperations(data) {
     const performanceTarget = $("#contentSummaryPerformance");
     const formatTarget = $("#contentSummaryFormat");
     const rowsTarget = $("#contentRows");
-    const errorCard = `<article class="action-item"><strong>Instagram 게시물 데이터를 불러오지 못했습니다.</strong><p>${esc(message)}</p></article>`;
+    const errorCard = `<article class="action-item"><strong>Instagram 게시물 데이터를 불러오지 못했습니다.</strong><p>${esc(message)} 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     if (heroTarget) heroTarget.innerHTML = errorCard;
-    if (performanceTarget) performanceTarget.innerHTML = `<article class="action-item"><strong>선택 기간 성과 확인 불가</strong><p>이전 월 데이터는 유지되지만 선택 기간 게시물 지표를 확인할 수 없습니다.</p></article>`;
-    if (formatTarget) formatTarget.innerHTML = `<article class="action-item"><strong>Format Mix 확인 불가</strong><p>선택 기간 게시물 데이터를 불러오지 못했습니다.</p></article>`;
+    if (performanceTarget) performanceTarget.innerHTML = `<article class="action-item"><strong>선택 기간 성과 확인 불가</strong><p>이전 월 데이터는 유지되지만 선택 기간 게시물 지표를 확인할 수 없습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
+    if (formatTarget) formatTarget.innerHTML = `<article class="action-item"><strong>Format Mix 확인 불가</strong><p>선택 기간 게시물 데이터를 불러오지 못했습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     [
       "#contentKpiGrid",
       "#contentTopGrid",
@@ -1074,7 +1074,7 @@ async function renderContentOperations(data) {
       "#contentAiGrid"
     ].forEach((selector) => {
       const target = $(selector);
-      if (target) target.innerHTML = `<article class="action-item"><strong>Content 데이터 확인 불가</strong><p>Instagram 선택 기간 데이터를 불러오지 못했습니다.</p></article>`;
+      if (target) target.innerHTML = `<article class="action-item"><strong>Content 데이터 확인 불가</strong><p>Instagram 선택 기간 데이터를 불러오지 못했습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     });
     if (rowsTarget) rowsTarget.innerHTML = `<tr><td colspan="10">Instagram 게시물 데이터를 불러오지 못했습니다.</td></tr>`;
     return;
@@ -1879,7 +1879,7 @@ function annualArchiveMetricBlock(metric, rows) {
                 : "전월과 증가폭 동일"
             : monthlyReportDelta(value, previousValue, metric.type === "money" ? apiWon : apiNum);
         const tooltip = `${label} · ${metric.title} ${missing ? "데이터 없음" : formatted} · ${deltaText}`;
-        return `<div class="annual-flow-bar" data-empty="${missing ? "true" : "false"}" data-tooltip="${esc(tooltip)}">
+        return `<div class="annual-flow-bar" data-annual-month="${esc(row.month)}" data-empty="${missing ? "true" : "false"}" data-tooltip="${esc(tooltip)}">
           <i style="height:${width}%"></i>
           <span>${esc(label)}</span>
         </div>`;
@@ -1897,7 +1897,7 @@ async function renderAnnualArchiveFlow(month) {
   const months = annualArchiveMonths(month);
   const year = String(month || "").slice(0, 4);
   if (!months.length) {
-    target.innerHTML = `<article class="action-item"><strong>연간 흐름을 불러오지 못했습니다.</strong><p>선택된 월의 연도를 확인할 수 없습니다.</p></article>`;
+    target.innerHTML = `<article class="action-item"><strong>연간 흐름을 불러오지 못했습니다.</strong><p>선택된 월의 연도를 확인할 수 없습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     return;
   }
   target.innerHTML = `<article class="action-item"><strong>연간 흐름 확인 중</strong><p>${esc(year)}년 월별 아카이브를 불러오고 있습니다.</p></article>`;
@@ -1908,7 +1908,7 @@ async function renderAnnualArchiveFlow(month) {
     return { month: item, archive, failed: result.status !== "fulfilled" || Boolean(archive.error) };
   });
   if (rows.every((row) => row.failed)) {
-    target.innerHTML = `<article class="action-item"><strong>연간 흐름을 불러오지 못했습니다.</strong><p>${esc(year)}년 월별 아카이브를 확인할 수 없습니다.</p></article>`;
+    target.innerHTML = `<article class="action-item"><strong>연간 흐름을 불러오지 못했습니다.</strong><p>${esc(year)}년 월별 아카이브를 확인할 수 없습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     return;
   }
   target.innerHTML = `<section class="monthly-report-chapter annual-flow">
@@ -2817,17 +2817,17 @@ async function renderAdvertising(data) {
   if (meta.error) {
     const status = statusTextForError(meta);
     const badge = metaAdsSourceBadge(meta);
-    briefingTarget.innerHTML = `<article class="action-item"><strong>브리핑 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다.</p></article>`;
+    briefingTarget.innerHTML = `<article class="action-item"><strong>브리핑 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     statusTarget.className = "ad-status-banner error";
     statusTarget.innerHTML = `<span class="status-dot"></span><strong>${esc(badge.icon)} ${esc(badge.label)} · ${esc(status)}</strong><span class="note">${esc(startDate)} ~ ${esc(endDate)} · ${esc(meta.error)}</span>`;
-    coreKpiTarget.innerHTML = `<article class="action-item"><strong>핵심 지표 확인 불가</strong><p>Meta API 오류가 해결되면 광고비 · ROAS · 실매출이 표시됩니다.</p></article>`;
+    coreKpiTarget.innerHTML = `<article class="action-item"><strong>핵심 지표 확인 불가</strong><p>Meta API 오류가 해결되면 광고비 · ROAS · 실매출이 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     summaryTarget.innerHTML = [
       `<article class="action-item"><strong>Meta API 상태</strong><span>${esc(status)}</span><p>${esc(meta.error)}</p></article>`,
-      `<article class="action-item"><strong>권한 오류 안내</strong><p>Meta API 권한 또는 토큰 권한이 막히면 광고 성과를 불러올 수 없습니다. Settings의 Meta Ads 연결 상태를 확인하세요.</p></article>`
+      `<article class="action-item"><strong>권한 오류 안내</strong><p>Meta API 권한 또는 토큰 권한이 막히면 광고 성과를 불러올 수 없습니다. Settings의 Meta Ads 연결 상태를 확인하세요. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`
     ].join("");
-    campaignTarget.innerHTML = `<article class="action-item"><strong>캠페인별 성과</strong><p>Meta API 오류가 해결되면 캠페인 기준 성과가 표시됩니다.</p></article>`;
+    campaignTarget.innerHTML = `<article class="action-item"><strong>캠페인별 성과</strong><p>Meta API 오류가 해결되면 캠페인 기준 성과가 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     tableTarget.innerHTML = `<tr><td colspan="11">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
-    reconTarget.innerHTML = `<article class="action-item"><strong>검증 불가</strong><p>Meta API 오류가 해결되면 표시됩니다.</p></article>`;
+    reconTarget.innerHTML = `<article class="action-item"><strong>검증 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     fullReportTargets.active.innerHTML = `<tr><td colspan="18">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
     fullReportTargets.other.innerHTML = "";
     contentTarget.innerHTML = "";
@@ -3142,7 +3142,7 @@ async function renderCampaignPeriodComparison(target) {
     if (monthError || !baseMonthRange || !targetMonthRange) {
       target.innerHTML = [
         campaignComparisonSettingsHtml(autoRange),
-        `<article class="action-item"><strong>기간 비교 확인 불가</strong><p>${esc(monthError || "유효한 월을 선택해주세요.")}</p></article>`
+        `<article class="action-item"><strong>기간 비교 확인 불가</strong><p>${esc(monthError || "유효한 월을 선택해주세요.")} 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`
       ].join("");
       return;
     }
@@ -3199,15 +3199,15 @@ async function renderCampaignPeriodComparison(target) {
     campaignPeriodComparisonState.loading = false;
   }
   if (execution.error || comparison.error) {
-    target.innerHTML = `<article class="action-item"><strong>기간 비교 확인 불가</strong><p>일부 데이터를 불러오지 못해 기간 비교를 표시할 수 없습니다.</p></article>`;
+    target.innerHTML = `<article class="action-item"><strong>기간 비교 확인 불가</strong><p>일부 데이터를 불러오지 못해 기간 비교를 표시할 수 없습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     return;
   }
   if (execution.source === "csv_required" || comparison.source === "csv_required") {
-    target.innerHTML = `<article class="action-item"><strong>기간 비교 준비 필요</strong><p>비교 기간의 Cafe24 데이터가 아직 준비되지 않았습니다. 과거 데이터 CSV 업로드가 필요할 수 있습니다.</p></article>`;
+    target.innerHTML = `<article class="action-item"><strong>기간 비교 준비 필요</strong><p>비교 기간의 Cafe24 데이터가 아직 준비되지 않았습니다. 과거 데이터 CSV 업로드가 필요할 수 있습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     return;
   }
   if (!Array.isArray(execution.brands) || !Array.isArray(comparison.brands) || (!execution.brands.length && !comparison.brands.length)) {
-    target.innerHTML = `<article class="action-item"><strong>브랜드 매출 데이터 없음</strong><p>비교 대상 기간에 브랜드 매출 데이터가 없습니다.</p></article>`;
+    target.innerHTML = `<article class="action-item"><strong>브랜드 매출 데이터 없음</strong><p>비교 대상 기간에 브랜드 매출 데이터가 없습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     return;
   }
 
@@ -5160,6 +5160,17 @@ function bind() {
     tooltip.classList.remove("is-visible");
   });
   document.addEventListener("click", (event) => {
+    const annualBar = event.target.closest("[data-annual-month]");
+    if (annualBar) {
+      const month = annualBar.dataset.annualMonth || "";
+      if (!monthlyData.some((item) => item.month === month)) return;
+      reportsMonth = month;
+      renderMonthRail();
+      renderMonthlyArchiveReport(reportsMonth).then(() => {
+        $("#monthlyArchiveReport")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return;
+    }
     const annualFilter = event.target.closest("[data-annual-filter]");
     if (annualFilter) {
       const flow = annualFilter.closest("#annualArchiveFlow");
