@@ -43,6 +43,7 @@ let todayOverviewState = null;
 let campaignPeriodComparisonState = { comparisonMode: "month", manualRange: null, manualComparisonRange: null, monthBase: "", monthTarget: "", settingsOpen: false, loading: false };
 let reportsMonth = "";
 let reportsRenderSeq = 0;
+let apiHealthRefreshInFlight = false;
 let currentTodayBriefingItems = [];
 // Cafe24 재인증 콜백이 실패로 돌아왔을 때만 채워진다(handleCafe24OAuthRedirect() 참고).
 // (2026-07-08 Cafe24 재인증 흐름 개선)
@@ -2539,6 +2540,27 @@ function healthTime() {
   return new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
 
+function setApiHealthRefreshLoading(loading) {
+  const buttons = [$("#healthRefreshBtn"), ...$$(`[data-health-action="refresh"]`)];
+  buttons.filter(Boolean).forEach((button) => {
+    button.disabled = loading;
+    button.textContent = loading ? "동기화 중..." : "지금 동기화";
+  });
+}
+
+async function refreshApiHealthCenter() {
+  if (apiHealthRefreshInFlight) return;
+  apiHealthRefreshInFlight = true;
+  setApiHealthRefreshLoading(true);
+  toast("연동 상태를 다시 확인합니다.");
+  try {
+    await renderApiHealthCenter(selectedMonth());
+  } finally {
+    apiHealthRefreshInFlight = false;
+    setApiHealthRefreshLoading(false);
+  }
+}
+
 // --- Real sync-time / cache-vs-live helpers (1차 신뢰도 패치) ---
 // Data payloads from server.mjs already carry a real syncedAt (when the cache
 // file was last written by a live fetch). Previously the UI ignored that and
@@ -2800,7 +2822,7 @@ function apiHealthActionCards() {
   ].map(([title, note, href, action, newTab]) => `<article class="api-health-action">
     <strong>${esc(title)}</strong>
     <p>${esc(note)}</p>
-    ${href ? `<a class="button secondary" href="${href}"${newTab ? ' target="_blank" rel="noreferrer"' : ""}>${esc(title)}</a>` : `<button class="button secondary" type="button" data-health-action="${esc(action)}">${esc(title)}</button>`}
+    ${href ? `<a class="button secondary" href="${href}"${newTab ? ' target="_blank" rel="noreferrer"' : ""}>${esc(title)}</a>` : `<button class="button secondary" type="button" data-health-action="${esc(action)}"${apiHealthRefreshInFlight && action === "refresh" ? " disabled" : ""}>${esc(apiHealthRefreshInFlight && action === "refresh" ? "동기화 중..." : title)}</button>`}
   </article>`).join("");
 }
 
@@ -4685,7 +4707,7 @@ async function renderCafe24ProductDiagnostics() {
   const ready = result.dashboardReady || {};
   const keys = Object.keys(ready);
   if (keys.length === 0) {
-    target.innerHTML = `<article class="action-item"><strong>진단 결과 없음</strong><p>${esc(result.message || "진단 API 응답을 확인할 수 없습니다.")}</p></article>`;
+    target.innerHTML = `<article class="action-item"><strong>직접 진단 확인 불가</strong><p>${esc(result.message || "진단 API 응답을 확인할 수 없습니다.")}</p><p class="hint-text">현재 Commerce/Product 데이터는 기존 캐시 또는 프록시 경로로 표시될 수 있습니다. 이 메시지는 로컬 Product Dashboard 직접 진단이 실행되지 않았다는 의미이며 전체 Product 기능 장애를 뜻하지 않습니다.</p></article>`;
     return;
   }
   target.innerHTML = `<div class="cafe24-diagnostics-grid">${keys.map((key) => (
@@ -5130,10 +5152,7 @@ function bind() {
   $("#syncFixBtn")?.addEventListener("click", () => {
     window.location.href = "/api/cafe24/oauth/start";
   });
-  $("#healthRefreshBtn")?.addEventListener("click", () => {
-    toast("연동 상태를 다시 확인합니다.");
-    renderApiHealthCenter(selectedMonth());
-  });
+  $("#healthRefreshBtn")?.addEventListener("click", refreshApiHealthCenter);
   $("#operationsRange")?.addEventListener("change", (event) => {
     operationsRange = event.target.value || "month";
     const isCustom = operationsRange === "custom";
@@ -5368,8 +5387,7 @@ function bind() {
     const button = event.target.closest("[data-health-action]");
     if (!button) return;
     if (button.dataset.healthAction === "refresh") {
-      toast("연동 상태를 다시 확인합니다.");
-      renderApiHealthCenter(selectedMonth());
+      refreshApiHealthCenter();
     }
   });
   document.addEventListener("click", (event) => {
