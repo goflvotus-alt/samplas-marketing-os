@@ -3914,6 +3914,7 @@ function renderCommerceSummary(cafe, comparisonResult) {
     const percentage = paidAmount > 0 ? Number(item.orderAmount || 0) / paidAmount * 100 : 0;
     return { ...item, percentage };
   });
+  const paymentRowsTotal = paymentRows.reduce((total, item) => total + Number(item.orderAmount || 0), 0);
   const leadPayment = paymentRows.reduce((best, item) => Number(item.percentage || 0) > Number(best.percentage || 0) ? item : best, paymentRows[0] || null);
   paymentsTarget.innerHTML = paymentRows.length ? `<section class="ops-summary-block">
     <div class="ops-summary-block-head"><h4>결제수단</h4><span>orderAmount / paidAmount</span></div>
@@ -3927,6 +3928,11 @@ function renderCommerceSummary(cafe, comparisonResult) {
       <strong>${apiWon(item.orderAmount)}</strong>
       <em>${apiNum(item.orderCount)}건 · ${pct(item.percentage)}</em>
     </div>`).join("")}
+    <div class="ops-summary-srow">
+      <span>합계</span>
+      <strong>${apiWon(paymentRowsTotal)}</strong>
+      <em>결제수단 합계</em>
+    </div>
   </section>` : `<article class="action-item sales-empty-card"><strong>결제수단 데이터 없음</strong><p>Commerce 데이터가 쌓이면 표시됩니다.</p></article>`;
   renderTodaySummary({ cafe: commerceSummaryState.cafe, comparison: commerceSummaryState.comparison });
 }
