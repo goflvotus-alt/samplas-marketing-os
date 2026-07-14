@@ -1847,14 +1847,26 @@ function annualArchiveMetricBlock(metric, rows) {
       <strong>${esc(annualArchiveFormat(total, metric.type))}</strong>
     </div>
     <div class="annual-flow-bars">
-      ${rows.map((row) => {
+      ${rows.map((row, index) => {
         const missing = row.failed || !annualArchiveHasValue(row.archive, metric.key);
         const value = missing ? NaN : annualArchiveValue(row.archive, metric.key);
         const width = Number.isFinite(value) ? Math.max(value === 0 ? 0 : 4, Math.min(100, Math.abs(value) / max * 100)) : 0;
         const label = `${Number(row.month.slice(5, 7))}월`;
         const formatted = missing ? "-" : annualArchiveFormat(value, metric.type);
-        const tooltip = `${label} · ${metric.title} ${missing ? "데이터 없음" : formatted}`;
-        return `<div class="annual-flow-bar" data-empty="${missing ? "true" : "false"}" data-tooltip="${esc(tooltip)}" title="${esc(tooltip)}">
+        const previousRow = rows[index - 1];
+        const previousMissing = !previousRow || previousRow.failed || !annualArchiveHasValue(previousRow.archive, metric.key);
+        const previousValue = previousMissing ? null : annualArchiveValue(previousRow.archive, metric.key);
+        const deltaText = index === 0 || missing || previousMissing
+          ? "전월 대비 비교 불가"
+          : metric.key === "followerDelta"
+            ? Number(value - previousValue) > 0
+              ? `전월보다 증가폭 ${apiNum(Math.abs(value - previousValue))}명 확대`
+              : Number(value - previousValue) < 0
+                ? `전월보다 증가폭 ${apiNum(Math.abs(value - previousValue))}명 축소`
+                : "전월과 증가폭 동일"
+            : monthlyReportDelta(value, previousValue, metric.type === "money" ? apiWon : apiNum);
+        const tooltip = `${label} · ${metric.title} ${missing ? "데이터 없음" : formatted} · ${deltaText}`;
+        return `<div class="annual-flow-bar" data-empty="${missing ? "true" : "false"}" data-tooltip="${esc(tooltip)}">
           <i style="height:${width}%"></i>
           <span>${esc(label)}</span>
         </div>`;
