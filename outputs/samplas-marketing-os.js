@@ -42,6 +42,7 @@ let todaySummaryState = { data: null, cafe: null, meta: null, comparison: null, 
 let todayOverviewState = null;
 let campaignPeriodComparisonState = { comparisonMode: "month", manualRange: null, manualComparisonRange: null, monthBase: "", monthTarget: "", settingsOpen: false, loading: false };
 let reportsMonth = "";
+let reportsRenderSeq = 0;
 let currentTodayBriefingItems = [];
 // Cafe24 재인증 콜백이 실패로 돌아왔을 때만 채워진다(handleCafe24OAuthRedirect() 참고).
 // (2026-07-08 Cafe24 재인증 흐름 개선)
@@ -422,22 +423,29 @@ function renderMonthRail() {
     if (!older) return;
     reportsMonth = older.month;
     renderMonthRail();
-    renderMonthlyArchiveReport(reportsMonth);
-    renderAnnualArchiveFlow(reportsMonth);
+    renderReportsMonth(reportsMonth);
   });
   rail.querySelector('[data-nav="next"]')?.addEventListener("click", () => {
     if (!newer) return;
     reportsMonth = newer.month;
     renderMonthRail();
-    renderMonthlyArchiveReport(reportsMonth);
-    renderAnnualArchiveFlow(reportsMonth);
+    renderReportsMonth(reportsMonth);
   });
   rail.querySelector("#monthRailSelect")?.addEventListener("change", (event) => {
     reportsMonth = event.target.value;
     renderMonthRail();
-    renderMonthlyArchiveReport(reportsMonth);
-    renderAnnualArchiveFlow(reportsMonth);
+    renderReportsMonth(reportsMonth);
   });
+}
+
+function renderReportsMonth(month, options = {}) {
+  const renderSeq = ++reportsRenderSeq;
+  renderMonthlyArchiveReport(month, renderSeq).then(() => {
+    if (options.scrollToReport && renderSeq === reportsRenderSeq) {
+      $("#monthlyArchiveReport")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+  renderAnnualArchiveFlow(month, renderSeq);
 }
 
 function renderKpis(data) {
@@ -1904,7 +1912,7 @@ function annualArchiveMetricBlock(metric, rows) {
   </section>`;
 }
 
-async function renderAnnualArchiveFlow(month) {
+async function renderAnnualArchiveFlow(month, renderSeq) {
   const target = $("#annualArchiveFlow");
   if (!target) return;
   const months = annualArchiveMonths(month);
@@ -1915,6 +1923,7 @@ async function renderAnnualArchiveFlow(month) {
   }
   target.innerHTML = `<article class="action-item"><strong>연간 흐름 확인 중</strong><p>${esc(year)}년 월별 아카이브를 불러오고 있습니다.</p></article>`;
   const settled = await Promise.allSettled(months.map((item) => getJson(`/api/reports/monthly?month=${item}`, 8000)));
+  if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
   const rows = months.map((item, index) => {
     const result = settled[index];
     const archive = result.status === "fulfilled" ? result.value : {};
@@ -1946,7 +1955,7 @@ async function renderAnnualArchiveFlow(month) {
   </section>`;
 }
 
-async function renderMonthlyArchiveReport(month) {
+async function renderMonthlyArchiveReport(month, renderSeq) {
   const target = $("#monthlyArchiveReport");
   if (!target) return;
 
@@ -1957,6 +1966,7 @@ async function renderMonthlyArchiveReport(month) {
     getJson(`/api/reports/monthly?month=${month}`, 8000),
     previousMonth ? getJson(`/api/reports/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" })
   ]);
+  if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
 
   if (archive.error) {
     target.innerHTML = `<article class="action-item"><strong>Monthly Report 생성 실패</strong><p>${esc(archive.error)}</p></article>`;
@@ -5050,8 +5060,7 @@ function renderAll() {
   renderMonthRail();
   renderKpis(data);
   renderOverviewLiveData(data);
-  renderMonthlyArchiveReport(reportsMonth);
-  renderAnnualArchiveFlow(reportsMonth);
+  renderReportsMonth(reportsMonth);
   renderContentTabs();
   renderContentOperations(data);
   renderEditorialAi(data);
@@ -5221,9 +5230,7 @@ function bind() {
       if (!monthlyData.some((item) => item.month === month)) return;
       reportsMonth = month;
       renderMonthRail();
-      renderMonthlyArchiveReport(reportsMonth).then(() => {
-        $("#monthlyArchiveReport")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
+      renderReportsMonth(reportsMonth, { scrollToReport: true });
       return;
     }
     const annualFilter = event.target.closest("[data-annual-filter]");
@@ -5345,8 +5352,7 @@ function bind() {
       return;
     }
     toast("아카이브를 저장했습니다.");
-    renderMonthlyArchiveReport(month);
-    renderAnnualArchiveFlow(month);
+    renderReportsMonth(month);
   });
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-project-key]");
