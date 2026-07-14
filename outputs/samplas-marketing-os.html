@@ -33,6 +33,18 @@
         </div>
         <div class="controls">
           <select id="monthSelect" aria-label="월 선택"></select>
+          <select id="operationsRange" aria-label="Commerce / Marketing 기간">
+            <option value="month">이번 달</option>
+            <option value="today">오늘</option>
+            <option value="7d">최근 7일</option>
+            <option value="30d">최근 30일</option>
+            <option value="prev_month">지난 달</option>
+            <option value="custom">직접 선택</option>
+          </select>
+          <span id="operationsCustomRange" hidden>
+            <input id="operationsSince" type="date" aria-label="운영 기간 시작일">
+            <input id="operationsUntil" type="date" aria-label="운영 기간 종료일">
+          </span>
           <button id="refreshBtn" class="button secondary" type="button">동기화 점검</button>
         </div>
       </section>
@@ -49,6 +61,16 @@
         <div class="section-block">
           <div class="section-title compact">
             <div>
+              <p class="eyebrow">Today Summary</p>
+              <h3>오늘 운영 요약</h3>
+            </div>
+          </div>
+          <div id="todaySummaryBriefing" class="cards"></div>
+          <div id="todaySummarySections" class="cards"></div>
+        </div>
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
               <p class="eyebrow">Today Briefing</p>
               <h3>오늘 해야 할 일</h3>
             </div>
@@ -59,7 +81,7 @@
         </div>
         <div id="kpiGrid" class="kpi-grid"></div>
         <details class="section-block director-more">
-          <summary>세부 지표 더 보기 <span>Action Center · 이번 달 KPI · 목표 진행률 · 최근 동기화 기록</span></summary>
+          <summary>세부 지표 더 보기 <span>Action Center · 선택 기간 KPI · 목표 진행률 · 최근 동기화 기록</span></summary>
           <div class="section-block">
             <div class="section-title compact">
               <div>
@@ -72,8 +94,8 @@
           <div class="section-block">
             <div class="section-title compact">
               <div>
-                <p class="eyebrow">This Month</p>
-                <h3>이번 달 KPI</h3>
+                <p id="overviewRangeEyebrow" class="eyebrow">선택 기간</p>
+                <h3 id="overviewRangeTitle">선택 기간 KPI</h3>
               </div>
             </div>
             <div id="overviewLiveData" class="cards ad-core-kpi-grid"></div>
@@ -223,9 +245,28 @@
         <div class="content-panel active" data-content-panel="All">
           <div class="section-block">
             <div class="section-title compact">
+              <div><p class="eyebrow">Content Summary</p><h3>Content</h3></div>
+              <div class="ops-summary-action">
+                <span>CONTENT ▸ EDITORIAL AI</span>
+                <button class="today-jump-button" type="button" data-jump-view="Editorial AI">Editorial AI 분석</button>
+              </div>
+            </div>
+            <div id="contentSummaryHero" class="cards"></div>
+            <div class="ops-summary-content-row">
+              <div id="contentSummaryPerformance" class="cards"></div>
+              <div id="contentSummaryFormat" class="cards"></div>
+            </div>
+            <div id="contentSummaryDetailLink">
+              <span class="ops-summary-drill-cap">CONTENT ▸ EDITORIAL AI</span>
+              <button class="today-jump-button" type="button" data-jump-view="Editorial AI">Editorial AI 분석</button>
+              <p class="ops-summary-fnote">콘텐츠 전략 제안 · 게시물 단위 상세 분석</p>
+            </div>
+          </div>
+          <div class="section-block">
+            <div class="section-title compact">
               <div>
                 <p class="eyebrow">Instagram KPI</p>
-                <h3>이번달 콘텐츠 KPI</h3>
+                <h3>선택 기간 콘텐츠 KPI</h3>
               </div>
             </div>
             <div id="contentKpiGrid" class="content-kpi-summary"></div>
@@ -330,15 +371,22 @@
         </div>
 
         <div class="section-block">
-          <div id="adTodayStatus" class="ad-status-banner loading"></div>
+          <div class="section-title compact"><div><p class="eyebrow">Marketing Summary</p><h3>Marketing</h3></div></div>
+          <div id="marketingSummaryHero" class="cards"></div>
+          <div id="marketingSummaryBriefing" class="cards"></div>
+          <div id="marketingSummaryStatus" class="cards"></div>
         </div>
 
         <div class="section-block">
+          <div id="adTodayStatus" class="ad-status-banner loading"></div>
+        </div>
+
+        <div class="section-block ad-detail-panel" hidden>
           <div class="section-title compact"><div><p class="eyebrow">Ad KPI</p><h3>핵심 광고 지표</h3></div></div>
           <div id="adCoreKpi" class="cards ad-core-kpi-grid"></div>
         </div>
 
-        <div class="section-block">
+        <div class="section-block ad-detail-panel" hidden>
           <div class="section-title compact"><div><p class="eyebrow">Meta ↔ Marketing Director</p><h3>데이터 일치 검증</h3></div></div>
           <div id="adReconciliationSummary" class="cards"></div>
         </div>
@@ -463,58 +511,36 @@
         </div>
 
         <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Cafe24</p><h3>실제 판매</h3></div></div>
-          <p class="hint-text">Cafe24는 실제 주문 기준이며, Meta는 광고 귀속 기준입니다. 두 수치는 동일한 집계 기준이 아닙니다.</p>
-          <div id="salesImpact" class="cards"></div>
-          <button class="today-jump-button" type="button" data-jump-view="Product">상품별 판매 보기</button>
-        </div>
-
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Meta</p><h3>Meta 광고 성과</h3></div></div>
-          <div id="salesMetaEstimate" class="cards"></div>
-        </div>
-
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Variance</p><h3>오차 분석</h3></div></div>
-          <div id="salesVariance" class="cards"></div>
-        </div>
-
-        <div class="section-block">
-          <div class="section-title compact"><div><p class="eyebrow">Recommended Action</p><h3>추천 Action</h3></div></div>
-          <div id="salesAction" class="cards ad-decision-grid"></div>
-        </div>
-
-        <details class="section-block director-more">
-          <summary>세부 지표 더 보기 <span>결제수단</span></summary>
-          <div class="section-block">
-            <div class="section-title compact"><div><p class="eyebrow">Detail</p><h3>결제수단</h3></div></div>
-            <div id="salesDetail" class="cards"></div>
+          <div class="section-title compact">
+            <div><p class="eyebrow">Commerce Summary</p><h3>Commerce</h3></div>
+            <div class="ops-summary-action">
+              <span>COMMERCE ▸ PRODUCT</span>
+              <button class="today-jump-button" type="button" data-jump-view="Product">상품별 판매 보기</button>
+            </div>
           </div>
-        </details>
+          <div id="commerceSummaryHero" class="cards"></div>
+          <div id="commerceSummaryCompare" class="cards"></div>
+          <div id="commerceSummaryPayments" class="cards"></div>
+          <div id="commerceSummaryDetailLink" class="ops-summary-drill">
+            <span class="ops-summary-drill-cap">COMMERCE ▸ PRODUCT</span>
+            <button class="today-jump-button" type="button" data-jump-view="Product">상품별 판매 보기</button>
+            <p class="ops-summary-fnote">전체 카탈로그 · 상품 단위 raw 데이터</p>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Period Comparison · 참고용</p><h3>실제 매출 기간 비교</h3></div><button id="campaignPeriodToggle" class="button secondary" type="button" data-campaign-period-toggle>기간 변경</button></div>
+          <p class="hint-text">Cafe24 실제 매출 기준으로 기준 기간과 대상 기간을 비교합니다. 광고와 매출의 인과관계를 의미하지 않습니다.</p>
+          <div id="campaignPeriodComparison"></div>
+        </div>
       </section>
 
       <section id="Reports" class="view">
-        <div id="monthRail" class="report-month-switch" aria-label="월별 리포트 선택"></div>
-        <div id="monthlyDashboard" class="monthly-dashboard"></div>
+        <div class="monthly-report-toolbar-row">
+          <div id="monthRail" class="report-month-switch" aria-label="월별 리포트 선택"></div>
+        </div>
+        <div id="monthlyArchiveReport" class="monthly-archive-report"></div>
         <textarea id="reportText" class="report-box collapsed" hidden readonly></textarea>
-        <details class="section-block director-more">
-          <summary>세부 지표 더 보기 <span>팔로워 추이 · 다음 달 콘텐츠 제안 · 월말 데이터 확정 안내</span></summary>
-          <div class="section-block">
-            <div class="section-title compact"><div><p class="eyebrow">Follower Trend</p><h3>팔로워 추이</h3></div></div>
-            <div class="panel"><div id="growthChart" class="bar-chart"></div></div>
-          </div>
-          <div class="section-block">
-            <div class="section-title compact"><div><p class="eyebrow">Content Calendar</p><h3>다음 달 콘텐츠 제안</h3></div></div>
-            <div id="calendarGrid" class="calendar-grid"></div>
-          </div>
-          <div class="section-block">
-            <div class="section-title compact"><div><p class="eyebrow">Month-End Data</p><h3>월말 데이터 확정 안내</h3></div></div>
-            <div class="cards">
-              <article class="action-item"><strong>데이터 기준</strong><p>현재 월은 API 기준으로 갱신하고, 지난 월은 저장된 캐시 또는 CSV 기준으로 표시합니다.</p></article>
-              <article class="action-item"><strong>월말 Snapshot</strong><p>월말 데이터 확정 저장 기능은 추후 추가 예정입니다. 아직 이 화면에서 데이터를 잠그거나 저장하지 않습니다.</p></article>
-            </div>
-          </div>
-        </details>
       </section>
 
       <section id="Settings" class="view">

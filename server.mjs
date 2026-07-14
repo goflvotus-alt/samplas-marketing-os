@@ -65,6 +65,16 @@ createServer(async (req, res) => {
       const data = await buildInstagramMonthlyDataWithCache(month, { refresh });
       return json(res, data);
     }
+    if (url.pathname === "/api/instagram/range") {
+      const since = url.searchParams.get("since");
+      const until = url.searchParams.get("until");
+      try {
+        const data = await buildInstagramRangeData(since, until);
+        return json(res, data);
+      } catch (error) {
+        return json(res, { error: safeErrorMessage(error) }, error.status === 400 ? 400 : 500);
+      }
+    }
     if (url.pathname === "/api/instagram/stories") {
       const refresh = url.searchParams.get("refresh") === "1";
       const data = await buildInstagramStoriesDataWithCache({ refresh });
@@ -157,6 +167,30 @@ createServer(async (req, res) => {
       const until = url.searchParams.get("until") || "2026-07-31";
       const data = await buildBrandSalesDiagnostics(since, until);
       return json(res, data);
+    }
+    if (url.pathname === "/api/reports/monthly") {
+      const month = url.searchParams.get("month") || currentMonth();
+      if (!isValidMonthKey(month)) return json(res, { error: "Invalid month" }, 400);
+      if (month > currentMonth()) return json(res, { error: "Future month is not available" }, 400);
+      if (month === currentMonth()) {
+        const archive = await buildMonthlyArchive(month);
+        return json(res, { ...archive, archiveStatus: "live" });
+      }
+      const cached = await readMonthlyArchive(month);
+      if (cached) return json(res, { ...cached, archiveStatus: "saved" });
+      const archive = await buildMonthlyArchive(month);
+      return json(res, { ...archive, archiveStatus: "draft" });
+    }
+    if (url.pathname === "/api/reports/monthly/archive") {
+      if (req.method !== "POST") return json(res, { error: "POST만 지원합니다." }, 405);
+      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      const payload = await readJsonBody(req);
+      const month = payload.month;
+      if (!month || !isValidMonthKey(month)) return json(res, { error: "Invalid month" }, 400);
+      if (month >= currentMonth()) return json(res, { error: "Only past months can be archived" }, 400);
+      const archive = await buildMonthlyArchive(month);
+      const saved = await writeMonthlyArchive(month, { ...archive, archiveStatus: "saved" });
+      return json(res, saved);
     }
     if (url.pathname === "/api/diagnostics/product-join-report") {
       // 상품 Join 진단용 읽기 전용 API. 토큰/시크릿은 포함하지 않는다.
@@ -715,7 +749,13 @@ async function buildMetaAdsFullReportWithCache(since, until, options = {}) {
   if (!options.refresh) {
     const cached = await readCachedMetaAdsFullReport(since, until);
     if (cached) {
-      return decorateCachedSource(cached, "meta_marketing_api", isCurrentMonth(monthFromDate(since)) ? "cached_first" : "past_month_cached");
+      const cacheAgeMs = metaAdsSummaryCacheAgeMs(cached);
+      if (cacheAgeMs <= META_ADS_SUMMARY_TTL_MS) {
+        const decorated = decorateCachedSource(cached, "meta_marketing_api", isCurrentMonth(monthFromDate(since)) ? "cached_first" : "past_month_cached");
+        decorated.cacheAgeMs = cacheAgeMs;
+        decorated.ttlMs = META_ADS_SUMMARY_TTL_MS;
+        return decorated;
+      }
     }
   }
 
@@ -902,7 +942,7 @@ function metaAdsFieldsForLevel(level) {
 async function fetchCampaignObjectives(campaignIds = []) {
   if (!campaignIds.length) return {};
   try {
-    const body = await graphGet("", { ids: campaignIds.join(","), fields: "objective,effective_status" });
+    const body = await graphGet("", { ids: campaignIds.join(","), fields: "objective,effective_status,promoted_object" });
     return body || {};
   } catch {
     return {};
@@ -1338,13 +1378,44 @@ async function fetchCafe24OrdersFromProxy(startDate, endDate, options = {}) {
 }
 
 async function readCachedCafe24Orders(startDate, endDate) {
+  const filterCachedOrders = (cached) => {
+    const orders = (cached.orders || []).filter((order) => {
+      const orderDate = trustedCafe24OrderDate(order);
+      return orderDate && startDate <= orderDate && orderDate <= endDate;
+    });
+    if (!orders.length) return null;
+    return { ...cached, orders, ...summarizeCafe24Orders(orders) };
+  };
+  const cachedOrderDateRange = (cached) => {
+    const dates = (cached.orders || []).map((order) => trustedCafe24OrderDate(order)).filter(Boolean).sort();
+    return { actualMin: dates[0] || "", actualMax: dates.at(-1) || "", orderCount: cached.orders?.length || 0 };
+  };
+  const nextMonthKey = (month) => {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const next = new Date(Date.UTC(year, monthNumber, 1));
+    return next.toISOString().slice(0, 7);
+  };
+  const requestedMonthSegments = () => {
+    const segments = [];
+    for (let month = startDate.slice(0, 7); month <= endDate.slice(0, 7); month = nextMonthKey(month)) {
+      segments.push({
+        start: month === startDate.slice(0, 7) ? startDate : `${month}-01`,
+        end: month === endDate.slice(0, 7) ? endDate : monthEndKey(month)
+      });
+    }
+    return segments;
+  };
+  const orderIdentity = (order, fallback) => String(order.order_id || order.orderId || order.order_no || order.id || fallback);
   const exactFiles = [
     join(workDir, `cafe24-csv-orders-${startDate}_${endDate}.json`),
     join(workDir, `cafe24-proxy-orders-${startDate}_${endDate}.json`),
     join(workDir, `cafe24-orders-${startDate}_${endDate}.json`)
   ];
   for (const file of exactFiles) {
-    if (existsSync(file)) return JSON.parse(await readFile(file, "utf8"));
+    if (existsSync(file)) {
+      const filtered = filterCachedOrders(JSON.parse(await readFile(file, "utf8")));
+      if (filtered) return filtered;
+    }
   }
 
   const candidates = await readdirSafe(workDir);
@@ -1357,14 +1428,54 @@ async function readCachedCafe24Orders(startDate, endDate) {
       .at(-1);
     if (latest) break;
   }
-  if (!latest) return null;
-  const cached = JSON.parse(await readFile(join(workDir, latest), "utf8"));
-  return {
-    ...cached,
+  if (latest) {
+    const cached = JSON.parse(await readFile(join(workDir, latest), "utf8"));
+    const filtered = filterCachedOrders({
+      ...cached,
+      requestedStartDate: startDate,
+      requestedEndDate: endDate,
+      cacheFile: latest
+    });
+    if (filtered) return filtered;
+  }
+
+  const csvCaches = [];
+  const csvCandidates = candidates.filter((name) => /^cafe24-csv-orders-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.json$/.test(name)).sort();
+  for (const name of csvCandidates) {
+    const cached = JSON.parse(await readFile(join(workDir, name), "utf8"));
+    const range = cachedOrderDateRange(cached);
+    if (!range.orderCount || !range.actualMin || !range.actualMax) continue;
+    csvCaches.push({ name, cached, ...range });
+  }
+  const selectedByName = new Map();
+  for (const segment of requestedMonthSegments()) {
+    const covering = csvCaches
+      .filter((cache) => cache.actualMin <= segment.start && cache.actualMax >= segment.end)
+      .sort((left, right) => {
+        const rangeDiff = (Date.parse(left.actualMax) - Date.parse(left.actualMin)) - (Date.parse(right.actualMax) - Date.parse(right.actualMin));
+        if (rangeDiff !== 0) return rangeDiff;
+        return left.name.localeCompare(right.name);
+      });
+    if (!covering.length) return null;
+    selectedByName.set(covering[0].name, covering[0]);
+  }
+  const mergedOrders = new Map();
+  for (const selected of selectedByName.values()) {
+    for (const [index, order] of (selected.cached.orders || []).entries()) {
+      const orderDate = trustedCafe24OrderDate(order);
+      if (!orderDate || orderDate < startDate || orderDate > endDate) continue;
+      mergedOrders.set(orderIdentity(order, `${selected.name}:${index}`), order);
+    }
+  }
+  if (!mergedOrders.size) return null;
+  return filterCachedOrders({
+    source: "cafe24_csv_import",
     requestedStartDate: startDate,
     requestedEndDate: endDate,
-    cacheFile: latest
-  };
+    cacheFile: [...selectedByName.keys()].join(","),
+    cacheFallback: selectedByName.size > 1 ? "covering_csv_multi" : "covering_csv",
+    orders: [...mergedOrders.values()].sort((left, right) => String(trustedCafe24OrderDate(left)).localeCompare(String(trustedCafe24OrderDate(right))) || orderIdentity(left, "").localeCompare(orderIdentity(right, "")))
+  });
 }
 
 function summarizeCafe24Orders(orders = []) {
@@ -2683,15 +2794,17 @@ async function buildBrandSalesDiagnostics(since, until) {
 
   if (env.CAFE24_PROXY_BASE_URL) {
     const [dashboard, ordersResult, brandMaster] = await Promise.all([
-      buildProductDashboardWithCache(since, until, {}),
+      buildProductDashboardWithCache(since, until, {}).catch((error) => ({ error: error.message, products: [] })),
       fetchCafe24Orders(since, until, { limit: 500 }).catch((error) => ({ error: error.message, orders: [], totals: {} })),
       readBrandMasterWithSeed()
     ]);
     const catalog = dashboard.products || [];
     let orders = ordersResult.orders || ordersResult.data || [];
+    let ordersSource = ordersResult.source || null;
     if (!orders.length) {
       const cachedOrders = await readCachedCafe24Orders(since, until);
       orders = cachedOrders?.orders || cachedOrders?.data || [];
+      ordersSource = cachedOrders?.source || ordersSource;
     }
     const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
     const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
@@ -2733,6 +2846,7 @@ async function buildBrandSalesDiagnostics(since, until) {
     }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0, paidAmount: commerceTotals.paidAmount, averageOrderValue: matchedOrderIds.size ? commerceTotals.paidAmount / matchedOrderIds.size : 0 });
     return {
       period: { since, until },
+      source: ordersSource,
       brandCodeCoverage: {
         totalProducts: catalog.length,
         productsWithBrandCode,
@@ -2758,9 +2872,11 @@ async function buildBrandSalesDiagnostics(since, until) {
     readBrandMasterWithSeed()
   ]);
   let orders = ordersResult.orders || ordersResult.data || [];
+  let ordersSource = ordersResult.source || null;
   if (!orders.length) {
     const cachedOrders = await readCachedCafe24Orders(since, until);
     orders = cachedOrders?.orders || cachedOrders?.data || [];
+    ordersSource = cachedOrders?.source || ordersSource;
   }
   const catalog = catalogResult.products || [];
   const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
@@ -2804,6 +2920,7 @@ async function buildBrandSalesDiagnostics(since, until) {
 
   return {
     period: { since, until },
+    source: ordersSource,
     brandCodeCoverage: {
       totalProducts: catalog.length,
       productsWithBrandCode,
@@ -2821,6 +2938,147 @@ async function buildBrandSalesDiagnostics(since, until) {
     brands,
     products: soldProducts
   };
+}
+
+async function buildMonthlyArchive(month) {
+  if (!isValidMonthKey(month)) {
+    throw new Error("month는 YYYY-MM 형식이어야 합니다.");
+  }
+
+  const monthStart = `${month}-01`;
+  const monthEnd = monthEndKey(month);
+  const [commerceSource, metaSummary, metaFullReport, instagram] = await Promise.all([
+    buildBrandSalesDiagnostics(monthStart, monthEnd),
+    buildMetaAdsSummaryWithCache(monthStart, monthEnd),
+    buildMetaAdsFullReportWithCache(monthStart, monthEnd),
+    buildInstagramMonthlyDataWithCache(month)
+  ]);
+
+  const commerceTotals = commerceSource.totals || {};
+  const commerce = {
+    paidAmount: commerceTotals.paidAmount,
+    orderCount: commerceTotals.orderCount,
+    averageOrderValue: commerceTotals.averageOrderValue,
+    excludedOrderCount: commerceSource.excludedOrderCount,
+    paymentMethods: commerceSource.paymentMethods || [],
+    brandSales: commerceSource.brands || [],
+    productSales: commerceSource.products || []
+  };
+
+  const metaTotals = metaSummary.totals || {};
+  const spend = Number(metaTotals.spend || 0);
+  const purchaseValue = Number(metaTotals.purchaseValue || 0);
+  const paidAmount = Number(commerce.paidAmount || 0);
+  const cafeReady = !commerceSource.error && !commerceSource.cacheWarning && Number.isFinite(paidAmount);
+  const metaReady = !metaSummary.error && metaTotals.purchaseValue !== null && metaTotals.purchaseValue !== undefined && metaTotals.purchaseValue !== "";
+  const comparable = cafeReady && metaReady && paidAmount > 0 && purchaseValue > 0;
+  const reconciliation = metaFullReport.reconciliation || {};
+  const spendTolerance = Math.max(100, Math.abs(Number(reconciliation.metaAccountSpend || 0)) * 0.005);
+  const purchaseValueTolerance = Math.max(100, Math.abs(Number(reconciliation.metaAccountPurchaseValue || 0)) * 0.005);
+  const reconciliationStatus = reconciliation.metaAccountSpend === undefined || reconciliation.metaAccountPurchaseValue === undefined
+    ? null
+    : (Math.abs(Number(reconciliation.spendDiff || 0)) <= spendTolerance && Math.abs(Number(reconciliation.purchaseValueDiff || 0)) <= purchaseValueTolerance ? "matched" : "mismatch");
+  const fullReportRows = metaFullReport.rows || [];
+  const marketing = {
+    spend,
+    purchaseValue,
+    adSpendShare: paidAmount > 0 ? spend / paidAmount * 100 : null,
+    mismatchRate: comparable ? Math.abs(purchaseValue - paidAmount) / paidAmount * 100 : null,
+    comparable,
+    activeCampaignCount: fullReportRows.filter(isMetaAdsExecutedRow).length,
+    inactiveCampaignCount: fullReportRows.filter((row) => !isMetaAdsExecutedRow(row)).length,
+    unlistedCampaignCount: Number(reconciliation.unlistedCampaignCount || 0),
+    reconciliationStatus,
+    attentionCampaigns: []
+  };
+
+  const posts = instagram.posts || [];
+  const account = instagram.account || {};
+  const rate = (value, base) => {
+    const denominator = Number(base || 0);
+    return denominator ? Number(value || 0) / denominator * 100 : 0;
+  };
+  const postMetrics = (post) => {
+    const reach = Number(post.reach || 0);
+    const views = Number(post.views || 0);
+    return {
+      saveRate: rate(post.saves, reach || views),
+      shareRate: rate(post.shares, reach || views)
+    };
+  };
+  const average = (values) => {
+    const usable = (values || []).filter((value) => Number.isFinite(Number(value)));
+    return usable.length ? usable.reduce((total, value) => total + Number(value), 0) / usable.length : 0;
+  };
+  const postSum = (items, key) => (items || []).reduce((total, item) => total + Number(item?.[key] || 0), 0);
+  const topPostsBy = (selector, count = 3) => [...posts].sort((left, right) => Number(selector(right) || 0) - Number(selector(left) || 0)).slice(0, count);
+  const averageSaveRate = average(posts.map((post) => postMetrics(post).saveRate));
+  const contentTypes = ["릴스", "카드뉴스", "피드"];
+  const formatMix = contentTypes.map((type) => {
+    const group = posts.filter((post) => (post.type || "피드") === type);
+    return {
+      type,
+      count: group.length,
+      percentage: posts.length ? group.length / posts.length * 100 : 0,
+      reach: postSum(group, "reach"),
+      saves: postSum(group, "saves"),
+      shares: postSum(group, "shares"),
+      avgSaveRate: average(group.map((post) => postMetrics(post).saveRate))
+    };
+  });
+  const content = {
+    totalViews: postSum(posts, "views"),
+    totalShares: postSum(posts, "shares"),
+    totalLikes: postSum(posts, "likes"),
+    totalSaves: postSum(posts, "saves"),
+    averageSaveRate,
+    postCount: posts.length,
+    followerDelta: account.followerDelta ?? null,
+    formatMix,
+    topContent: topPostsBy((post) => post.views, 3),
+    aboveAverageSaveRatePosts: posts.filter((post) => postMetrics(post).saveRate > averageSaveRate).slice(0, 3)
+  };
+
+  return {
+    month,
+    generatedAt: new Date().toISOString(),
+    dataVersion: 1,
+    status: "draft",
+    commerce,
+    marketing,
+    content
+  };
+}
+
+function isValidMonthKey(month) {
+  const text = String(month || "");
+  if (!/^\d{4}-\d{2}$/.test(text)) return false;
+  const monthNumber = Number(text.slice(5, 7));
+  return monthNumber >= 1 && monthNumber <= 12;
+}
+
+function monthlyArchivePath(month) {
+  if (!isValidMonthKey(month)) throw new Error("Invalid month");
+  return join(workDir, "monthly", `${month}.json`);
+}
+
+async function readMonthlyArchive(month) {
+  const file = monthlyArchivePath(month);
+  try {
+    return JSON.parse(await readFile(file, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function writeMonthlyArchive(month, archive) {
+  if (!isValidMonthKey(month)) throw new Error("Invalid month");
+  if (!archive || archive.month !== month) throw new Error("Archive month mismatch");
+  const file = monthlyArchivePath(month);
+  await mkdir(join(workDir, "monthly"), { recursive: true });
+  await writeJsonAtomic(file, archive);
+  return archive;
 }
 
 function daysBetweenDateKeys(since, until) {
@@ -4434,6 +4692,7 @@ async function buildInstagramMonthlyData(month) {
   if (accountInsights.unavailableReason) {
     errors.push({ source: "instagram_account_insights", message: accountInsights.unavailableReason });
   }
+  const followerDelta = await instagramFollowerDeltaFromPreviousSnapshot(month, account.followers_count);
 
   const result = {
     month,
@@ -4456,7 +4715,7 @@ async function buildInstagramMonthlyData(month) {
       username: account.username || env.SAMPLAS_INSTAGRAM_USERNAME || "",
       mediaCount: account.media_count ?? null,
       followers: account.followers_count ?? null,
-      followerDelta: 0,
+      followerDelta,
       reach: hasMetric(accountInsights.reach) ? Number(accountInsights.reach) : sumMetricOrNull(posts, "reach"),
       reachDelta: 0,
       views: hasMetric(accountInsights.views) ? Number(accountInsights.views) : sumMetricOrNull(posts, "views"),
@@ -4475,6 +4734,101 @@ async function buildInstagramMonthlyData(month) {
   await mkdir(workDir, { recursive: true });
   await writeFile(join(workDir, `instagram-${month}.json`), JSON.stringify(result, null, 2));
   return result;
+}
+
+function previousMonthKey(month) {
+  const [year, monthNumber] = String(month || "").split("-").map((value) => Number(value));
+  if (!Number.isInteger(year) || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) return null;
+  const previous = new Date(Date.UTC(year, monthNumber - 2, 1));
+  return `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+async function instagramFollowerDeltaFromPreviousSnapshot(month, currentFollowers) {
+  const current = Number(currentFollowers);
+  if (!Number.isFinite(current)) return null;
+  const previousMonth = previousMonthKey(month);
+  if (!previousMonth) return null;
+  const previous = await readCachedInstagramMonth(previousMonth);
+  const previousFollowers = Number(previous?.account?.followers);
+  if (!Number.isFinite(previousFollowers)) return null;
+  return current - previousFollowers;
+}
+
+function assertInstagramRangeDate(value, fieldName) {
+  const text = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const error = new Error(`${fieldName} must be YYYY-MM-DD`);
+    error.status = 400;
+    throw error;
+  }
+  const time = Date.parse(`${text}T00:00:00.000Z`);
+  if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== text) {
+    const error = new Error(`${fieldName} must be a valid calendar date`);
+    error.status = 400;
+    throw error;
+  }
+  return text;
+}
+
+function instagramRangeMonthKeys(since, until) {
+  const keys = [];
+  const cursor = new Date(`${since.slice(0, 7)}-01T00:00:00.000Z`);
+  const endMonth = until.slice(0, 7);
+  while (true) {
+    const key = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`;
+    keys.push(key);
+    if (key === endMonth) break;
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return keys;
+}
+
+function instagramPostDateKey(post = {}) {
+  const value = post.date || post.timestamp || post.permalinkTimestamp || post.createdAt || "";
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return String(value);
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return String(value).slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: env.REPORT_TIMEZONE || "Asia/Seoul" }).format(new Date(time));
+}
+
+async function buildInstagramRangeData(sinceValue, untilValue) {
+  const since = assertInstagramRangeDate(sinceValue, "since");
+  const until = assertInstagramRangeDate(untilValue, "until");
+  if (since > until) {
+    const error = new Error("since must be before or equal to until");
+    error.status = 400;
+    throw error;
+  }
+
+  const monthKeys = instagramRangeMonthKeys(since, until);
+  const payloads = await Promise.all(monthKeys.map((month) => buildInstagramMonthlyDataWithCache(month)));
+  const posts = [];
+  const seen = new Set();
+  for (const payload of payloads) {
+    for (const post of payload.posts || []) {
+      const date = instagramPostDateKey(post);
+      if (!date || date < since || date > until) continue;
+      const key = post.id || post.mediaId || post.permalink || `${date}:${post.title || post.caption || posts.length}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      posts.push(post);
+    }
+  }
+  const newestPayload = payloads[payloads.length - 1] || {};
+  const syncedAt = payloads
+    .map((payload) => payload?.syncedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null;
+  return {
+    since,
+    until,
+    source: "instagram_range_from_monthly_cache",
+    syncedAt,
+    posts,
+    account: newestPayload.account || emptyInstagramAccount()
+  };
 }
 
 function hasMetric(value) {
@@ -4661,7 +5015,7 @@ function emptyInstagramAccount() {
     username: env.SAMPLAS_INSTAGRAM_USERNAME || "",
     mediaCount: null,
     followers: null,
-    followerDelta: 0,
+    followerDelta: null,
     reach: null,
     reachDelta: 0,
     views: null,

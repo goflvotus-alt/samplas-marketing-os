@@ -3,10 +3,10 @@ const navItems = [
   { view: "Sales", label: "Commerce", hidden: false },
   { view: "Advertising", label: "Marketing", hidden: false },
   { view: "Content", label: "Content", hidden: false },
+  { view: "Reports", label: "Monthly Report", hidden: false },
   { view: "Settings", label: "Settings", hidden: false },
   { view: "Product", label: "Product", hidden: true },
-  { view: "Editorial AI", label: "Editorial AI", hidden: true },
-  { view: "Reports", label: "Reports", hidden: true }
+  { view: "Editorial AI", label: "Editorial AI", hidden: true }
 ];
 
 const months = ["2026-07", "2026-06", "2026-05", "2026-04", "2026-03", "2026-02", "2026-01"];
@@ -24,6 +24,9 @@ let productBrandSalesCacheKey = "";
 let productBrandSalesRange = "month";
 let productBrandSalesCustomSince = "";
 let productBrandSalesCustomUntil = "";
+let operationsRange = "month";
+let operationsRangeCustomSince = "";
+let operationsRangeCustomUntil = "";
 let productBrandSalesSort = "brand_asc";
 let productBrandSalesSearch = "";
 let productSoldFilterBrand = "all";
@@ -32,6 +35,11 @@ let productSoldFilterAmount = "all";
 let productSoldSearch = "";
 let productSoldSort = "amount_desc";
 let activeBrandOrderPopoverCode = "";
+let commerceSummaryState = { cafe: null, comparison: null };
+let todaySummaryState = { data: null, cafe: null, meta: null, comparison: null, marketing: null };
+let todayOverviewState = null;
+let campaignPeriodComparisonState = { comparisonMode: "month", manualRange: null, manualComparisonRange: null, monthBase: "", monthTarget: "", settingsOpen: false, loading: false };
+let reportsMonth = "";
 let currentTodayBriefingItems = [];
 // Cafe24 재인증 콜백이 실패로 돌아왔을 때만 채워진다(handleCafe24OAuthRedirect() 참고).
 // (2026-07-08 Cafe24 재인증 흐름 개선)
@@ -118,6 +126,39 @@ function monthEnd(month) {
   const [year, m] = month.split("-").map(Number);
   const day = new Date(Date.UTC(year, m, 0)).getUTCDate();
   return `${month}-${String(day).padStart(2, "0")}`;
+}
+
+function operationsDateRange(data = selectedMonth()) {
+  const today = new Date();
+  const dateKey = (date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
+  const addDays = (date, days) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+  };
+  const monthSince = `${data.month}-01`;
+  const monthUntil = monthEnd(data.month);
+  if (operationsRange === "today") {
+    const day = dateKey(today);
+    return { since: day, until: day, label: "오늘" };
+  }
+  if (operationsRange === "7d") return { since: dateKey(addDays(today, -6)), until: dateKey(today), label: "최근 7일" };
+  if (operationsRange === "30d") return { since: dateKey(addDays(today, -29)), until: dateKey(today), label: "최근 30일" };
+  if (operationsRange === "prev_month") {
+    const [year, month] = String(data.month || selectedMonth().month).split("-").map(Number);
+    const prev = new Date(year, month - 2, 1);
+    const monthKey = dateKey(prev).slice(0, 7);
+    return { since: `${monthKey}-01`, until: monthEnd(monthKey), label: "지난 달" };
+  }
+  if (operationsRange === "custom") {
+    const validSince = /^\d{4}-\d{2}-\d{2}$/.test(operationsRangeCustomSince);
+    const validUntil = /^\d{4}-\d{2}-\d{2}$/.test(operationsRangeCustomUntil);
+    if (validSince && validUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
+      return { since: operationsRangeCustomSince, until: operationsRangeCustomUntil, label: "직접 선택" };
+    }
+    return { since: monthSince, until: monthUntil, label: "이번 달" };
+  }
+  return { since: monthSince, until: monthUntil, label: "이번 달" };
 }
 
 async function getJson(url, timeoutMs = 8000) {
@@ -259,12 +300,12 @@ function metaAdsSourceBadge(meta = {}) {
 // carries dot color + a 4-word badge (정상 / Cache / 실패 / 재인증 필요).
 // Full reasons/actions live in the Overview Health Banner and the Settings
 // API Health Center — kept out of this function on purpose.
-function setSyncRow(id, tone, label, badge) {
+function setSyncRow(id, tone, label, badge, detail = "") {
   const row = $(`#${id}`);
   if (!row) return;
   row.classList.remove("loading", "good", "warn", "error");
   row.classList.add(tone);
-  row.innerHTML = `<span></span><strong>${esc(label)}</strong><em>${esc(badge)}</em>`;
+  row.innerHTML = `<span></span><strong>${esc(label)}</strong><em>${esc(badge)}</em>${detail ? `<small>${esc(detail)}</small>` : ""}`;
 }
 
 // Condenses the richer bannerState() classification (used by the Overview
@@ -337,9 +378,13 @@ function renderMonthSelect() {
 // one compact "‹ [month] ›" switcher, no repeated titles, so the report's
 // own headline ("2026-07 SAMPLAS MONTHLY REPORT" from renderMonthlyDashboard)
 // is what the operator actually sees first.
-function renderMonthRail(data) {
+function renderMonthRail() {
   const rail = $("#monthRail");
   if (!rail) return;
+  const fallback = selectedMonth();
+  if (!reportsMonth) reportsMonth = fallback.month;
+  let data = monthlyData.find((item) => item.month === reportsMonth) || fallback;
+  if (reportsMonth !== data.month) reportsMonth = data.month;
   const index = monthlyData.findIndex((item) => item.month === data.month);
   const older = index >= 0 ? monthlyData[index + 1] : null;
   const newer = index > 0 ? monthlyData[index - 1] : null;
@@ -353,17 +398,20 @@ function renderMonthRail(data) {
   `;
   rail.querySelector('[data-nav="prev"]')?.addEventListener("click", () => {
     if (!older) return;
-    $("#monthSelect").value = older.month;
-    renderAll();
+    reportsMonth = older.month;
+    renderMonthRail();
+    renderMonthlyArchiveReport(reportsMonth);
   });
   rail.querySelector('[data-nav="next"]')?.addEventListener("click", () => {
     if (!newer) return;
-    $("#monthSelect").value = newer.month;
-    renderAll();
+    reportsMonth = newer.month;
+    renderMonthRail();
+    renderMonthlyArchiveReport(reportsMonth);
   });
   rail.querySelector("#monthRailSelect")?.addEventListener("change", (event) => {
-    $("#monthSelect").value = event.target.value;
-    renderAll();
+    reportsMonth = event.target.value;
+    renderMonthRail();
+    renderMonthlyArchiveReport(reportsMonth);
   });
 }
 
@@ -397,65 +445,106 @@ async function renderOverviewLiveData(data) {
   const target = $("#overviewLiveData");
   const supportTarget = $("#overviewLiveSupport");
   if (!target || !supportTarget) return;
-  target.innerHTML = `<article class="action-item"><strong>이번 달 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`;
+  target.innerHTML = `<article class="action-item"><strong>선택 기간 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`;
   supportTarget.innerHTML = "";
   $("#todayBriefProgress").innerHTML = todayBriefProgressBar([]);
   $("#todayBriefing").innerHTML = `<article class="today-brief-card warning"><div class="today-brief-head"><span>!</span><strong>오늘 해야 할 일을 정리 중입니다.</strong></div><p>연결 상태와 성과 데이터를 확인하고 있습니다.</p></article>`;
+  $("#todaySummaryBriefing").innerHTML = `<article class="action-item"><strong>오늘 요약 확인 중</strong><p>검증된 Commerce / Marketing 데이터를 정리합니다.</p></article>`;
+  $("#todaySummarySections").innerHTML = `<article class="action-item"><strong>섹션 요약 확인 중</strong><p>대표 숫자를 불러오고 있습니다.</p></article>`;
   $("#actions").innerHTML = `<article class="home-action-card warn"><span>!</span><div><strong>확인 중</strong><p>중요 알림을 정리합니다.</p></div></article>`;
   $("#nextActions").innerHTML = homeGoalCards();
   $("#insightList").innerHTML = homeActivityCards({ status: {}, meta: {}, cafe: {}, data });
 
-  const startDate = `${data.month}-01`;
-  const endDate = monthEnd(data.month);
-  const [status, meta, cafe, cardnewsStatus] = await Promise.all([
+  const range = operationsDateRange(data);
+  const startDate = range.since;
+  const endDate = range.until;
+  const [status, meta, cafe, contentRange, cardnewsStatus] = await Promise.all([
     getJson("/api/status", 6000),
     getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
     getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 7000),
+    getJson(`/api/instagram/range?since=${startDate}&until=${endDate}`, 7000),
     getJson("/api/contents/cardnews-status", 6000)
   ]);
+  const contentData = {
+    ...data,
+    source: contentRange.error ? data.source : contentRange.source || data.source,
+    syncedAt: contentRange.error ? data.syncedAt : contentRange.syncedAt || data.syncedAt,
+    account: contentRange.error ? data.account || {} : contentRange.account || {},
+    posts: contentRange.error ? data.posts || [] : contentRange.posts || [],
+    contentRangeError: contentRange.error || ""
+  };
+  const contentRangeError = contentRange.error || "";
 
-  const a = data.account || {};
+  const a = contentData.account || {};
   const metaTotals = meta.totals || {};
   const cafeTotals = cafe.totals || {};
-  const instagramErrors = instagramApiErrors(data);
-  const posts = data.posts || [];
+  const instagramErrors = instagramApiErrors(contentData);
+  const posts = contentData.posts || [];
   const postCount = posts.length;
   const topContent = topPosts(posts, purposeScore, 1)[0];
   const topSaved = topPosts(posts, (post) => postMetrics(post).saveRate, 1)[0];
   const topCampaign = [...(meta.campaigns || [])].sort((left, right) => Number(right.purchaseValue || 0) - Number(left.purchaseValue || 0))[0];
   const topProduct = normalizeCafe24TopProducts((cafe.products || []).map((product) => ({ productName: product.productName, quantity: product.quantitySold, itemAmount: product.salesAmount })), [])[0];
-  const roas = Number(metaTotals.spend || 0) ? Number(metaTotals.purchaseValue || 0) / Number(metaTotals.spend || 0) : null;
   const avgSaveRate = avg(posts.map((post) => postMetrics(post).saveRate));
   const followerDelta = Number(a.followerDelta || 0);
+  const metaCanonical = todayCanonicalMetaTotals(meta, `${startDate} ~ ${endDate}`);
+  const roas = metaCanonical.reportingSpend > 0 ? metaCanonical.reportingPurchaseValue / metaCanonical.reportingSpend : null;
 
-  renderHealthBanner({ instagram: data, meta, cafe });
-
-  $("#kpiGrid").innerHTML = [
-    homeTopMetric("선택 기간 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.paidAmount), cafe.error ? "Cafe24 연결 후 표시" : "선택기간 기준", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.paidAmount))),
-    homeTopMetric("선택 기간 광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 연결 후 표시" : "선택기간 기준", cardBadge("meta", meta, hasApiValue(metaTotals.spend))),
-    homeTopMetric("선택 기간 주문", cafe.error ? "데이터 없음" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderCount))),
-    homeTopMetric("선택 기간 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음", cardBadge("cafe24", cafe, Boolean(topProduct)))
-  ].join("");
+  renderHealthBanner({ instagram: contentData, meta, cafe });
+  renderTodaySummary({ data: contentData, cafe, meta });
+  todayOverviewState = { data, meta, cafe, contentData, contentRangeError, posts, topProduct, avgSaveRate, followerDelta, range };
+  $("#overviewRangeEyebrow").textContent = range.label;
+  $("#overviewRangeTitle").textContent = `${range.label} KPI`;
+  renderTodayOverviewCards();
 
   currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account: a, topSaved, topCampaign, topProduct, roas });
   renderTodayBriefing();
 
-  target.innerHTML = [
-    homeMonthPrimaryCard("매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.paidAmount), cafe.error ? "Cafe24 확인 필요" : `주문 ${apiNum(cafeTotals.orderCount)}건`, cardBadge("cafe24", cafe, hasApiValue(cafeTotals.paidAmount))),
-    homeMonthPrimaryCard("ROAS", roas === null ? "확인 중" : multiple(roas), "Meta 기준 추정 구매값", cardBadge("meta", meta, roas !== null)),
-    homeMonthPrimaryCard("평균 저장률", posts.length ? pct(avgSaveRate) : "데이터 없음", posts.length ? "콘텐츠 평균" : "콘텐츠 데이터 없음", cardBadge("instagram", data, posts.length > 0))
-  ].join("");
-
-  supportTarget.innerHTML = [
-    homeMonthSupportCard("광고비", meta.error ? "확인 필요" : apiWon(metaTotals.spend), meta.error ? "Meta 확인 필요" : "Meta Ads", cardBadge("meta", meta, hasApiValue(metaTotals.spend))),
-    homeMonthSupportCard("팔로워 증가", followerDelta ? `${apiNum(followerDelta)}명` : "데이터 없음", `현재 ${apiNum(a.followers)}명`, cardBadge("instagram", data, Boolean(followerDelta))),
-    homeMonthSupportCard("콘텐츠 개수", `${apiNum(postCount)}개`, data.postsScope === "recent_media_fallback" ? "최근 미디어 기준" : "선택 월 기준", cardBadge("instagram", data, postCount > 0))
-  ].join("");
-
   const actions = buildOverviewActions({ data, meta, cafe, account: a, topSaved, roas });
   $("#actions").innerHTML = actions.map((item) => homeActionCard(item)).join("");
-  $("#nextActions").innerHTML = homeGoalCards({ cafeTotals: { ...cafeTotals, orderAmount: cafeTotals.paidAmount }, metaTotals, postCount, followerDelta });
+  $("#nextActions").innerHTML = homeGoalCards({ cafeTotals: { ...cafeTotals, orderAmount: cafeTotals.paidAmount }, metaTotals: { ...metaTotals, spend: metaCanonical.reportingSpend, purchaseValue: metaCanonical.reportingPurchaseValue }, postCount, followerDelta });
   $("#insightList").innerHTML = homeActivityCards({ status, meta, cafe, data });
+}
+
+function todayCanonicalMetaTotals(meta = {}, rangeLabel = "") {
+  const rawTotals = meta.totals || {};
+  const marketing = todaySummaryState.marketing || {};
+  const samePeriod = !marketing.periodLabel || !rangeLabel || marketing.periodLabel === rangeLabel;
+  const reportingSpend = samePeriod && Number.isFinite(Number(marketing.reportingSpend))
+    ? Number(marketing.reportingSpend)
+    : Number(rawTotals.spend || 0);
+  const reportingPurchaseValue = samePeriod && Number.isFinite(Number(marketing.reportingPurchaseValue))
+    ? Number(marketing.reportingPurchaseValue)
+    : Number(rawTotals.purchaseValue || 0);
+  return { reportingSpend, reportingPurchaseValue };
+}
+
+function renderTodayOverviewCards() {
+  if (!todayOverviewState) return;
+  const { data, meta, cafe, contentData, contentRangeError, posts, topProduct, avgSaveRate, followerDelta, range } = todayOverviewState;
+  const metaCanonical = todayCanonicalMetaTotals(meta, `${range.since} ~ ${range.until}`);
+  const roas = metaCanonical.reportingSpend > 0 ? metaCanonical.reportingPurchaseValue / metaCanonical.reportingSpend : null;
+  const cafeTotals = cafe.totals || {};
+  const a = contentData.account || {};
+  const postCount = posts.length;
+  $("#kpiGrid").innerHTML = [
+    homeTopMetric("선택 기간 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.paidAmount), cafe.error ? "Cafe24 연결 후 표시" : "선택기간 기준", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.paidAmount))),
+    homeTopMetric("선택 기간 광고비", meta.error ? "확인 필요" : apiWon(metaCanonical.reportingSpend), meta.error ? "Meta 연결 후 표시" : "Marketing canonical 기준", cardBadge("meta", meta, hasApiValue(metaCanonical.reportingSpend))),
+    homeTopMetric("선택 기간 주문", cafe.error ? "데이터 없음" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderCount))),
+    homeTopMetric("선택 기간 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음", cardBadge("cafe24", cafe, Boolean(topProduct)))
+  ].join("");
+
+  $("#overviewLiveData").innerHTML = [
+    homeMonthPrimaryCard("매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.paidAmount), cafe.error ? "Cafe24 확인 필요" : `주문 ${apiNum(cafeTotals.orderCount)}건`, cardBadge("cafe24", cafe, hasApiValue(cafeTotals.paidAmount))),
+    homeMonthPrimaryCard("ROAS", roas === null ? "확인 중" : multiple(roas), "Meta canonical 구매값 / 광고비", cardBadge("meta", meta, roas !== null)),
+    homeMonthPrimaryCard("평균 저장률", contentRangeError ? "확인 필요" : posts.length ? pct(avgSaveRate) : "데이터 없음", contentRangeError ? "Instagram 게시물 데이터 오류" : posts.length ? "콘텐츠 평균" : "콘텐츠 데이터 없음", cardBadge("instagram", contentData, posts.length > 0 && !contentRangeError))
+  ].join("");
+
+  $("#overviewLiveSupport").innerHTML = [
+    homeMonthSupportCard("광고비", meta.error ? "확인 필요" : apiWon(metaCanonical.reportingSpend), meta.error ? "Meta 확인 필요" : "Marketing canonical 기준", cardBadge("meta", meta, hasApiValue(metaCanonical.reportingSpend))),
+    homeMonthSupportCard("팔로워 증가", followerDelta ? `${apiNum(followerDelta)}명` : "데이터 없음", `현재 ${apiNum(a.followers)}명`, cardBadge("instagram", contentData, Boolean(followerDelta))),
+    homeMonthSupportCard("콘텐츠 개수", contentRangeError ? "확인 필요" : `${apiNum(postCount)}개`, contentRangeError ? "선택 기간 게시물 데이터 오류" : data.postsScope === "recent_media_fallback" ? "최근 미디어 기준" : "선택 기간 기준", cardBadge("instagram", contentData, postCount > 0 && !contentRangeError))
+  ].join("");
 }
 
 function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSaved, topCampaign, topProduct, roas }) {
@@ -905,8 +994,9 @@ function renderPurposeRadar(posts) {
   )).join("") : `<div class="insight">게시물별 데이터가 없습니다.</div>`;
 }
 
-function renderContentTable(posts) {
-  renderContentPerformanceCenter(posts || [], selectedMonth());
+function renderContentTable(posts, data = selectedMonth()) {
+  renderContentSummary(data);
+  renderContentPerformanceCenter(posts || [], data);
   const legacyRows = $("#contentRows");
   if (!legacyRows) return;
   legacyRows.innerHTML = (posts || []).slice(0, 80).map((post) => {
@@ -926,6 +1016,114 @@ function renderContentTable(posts) {
   }).join("") || `<tr><td colspan="10">게시물별 데이터가 없습니다.</td></tr>`;
 }
 
+async function renderContentOperations(data) {
+  const range = operationsDateRange(data);
+  const rangeData = await getJson(`/api/instagram/range?since=${range.since}&until=${range.until}`, 9000);
+  if (rangeData.error) {
+    const message = rangeData.error || "이전 월 데이터는 유지되지만 선택 기간 게시물 지표를 확인할 수 없습니다.";
+    const heroTarget = $("#contentSummaryHero");
+    const performanceTarget = $("#contentSummaryPerformance");
+    const formatTarget = $("#contentSummaryFormat");
+    const rowsTarget = $("#contentRows");
+    const errorCard = `<article class="action-item"><strong>Instagram 게시물 데이터를 불러오지 못했습니다.</strong><p>${esc(message)}</p></article>`;
+    if (heroTarget) heroTarget.innerHTML = errorCard;
+    if (performanceTarget) performanceTarget.innerHTML = `<article class="action-item"><strong>선택 기간 성과 확인 불가</strong><p>이전 월 데이터는 유지되지만 선택 기간 게시물 지표를 확인할 수 없습니다.</p></article>`;
+    if (formatTarget) formatTarget.innerHTML = "";
+    if (rowsTarget) rowsTarget.innerHTML = `<tr><td colspan="10">Instagram 게시물 데이터를 불러오지 못했습니다.</td></tr>`;
+    return;
+  }
+  const contentData = {
+    ...data,
+    source: rangeData.source || data.source,
+    syncedAt: rangeData.syncedAt || data.syncedAt,
+    account: rangeData.account || {},
+    posts: rangeData.posts || []
+  };
+  renderContentTable(contentData.posts || [], contentData);
+}
+
+function renderContentSummary(data = {}) {
+  const posts = data.posts || [];
+  const account = data.account || {};
+  const heroTarget = $("#contentSummaryHero");
+  const performanceTarget = $("#contentSummaryPerformance");
+  const formatTarget = $("#contentSummaryFormat");
+  if (!heroTarget || !performanceTarget || !formatTarget) return;
+
+  const totalViews = sum(posts, "views");
+  const totalSaves = sum(posts, "saves");
+  const totalShares = sum(posts, "shares");
+  const totalLikes = sum(posts, "likes");
+  const avgSaveRate = posts.length ? avg(posts.map((post) => postMetrics(post).saveRate)) : null;
+  const followerDelta = Number(account.followerDelta);
+  const followerLabel = hasApiValue(account.followerDelta) && Number.isFinite(followerDelta)
+    ? `${followerDelta > 0 ? "+" : ""}${apiNum(followerDelta)}명`
+    : "계산 불가";
+
+  heroTarget.innerHTML = `<section class="ops-summary-hero">
+    <div class="ops-summary-hero-main">
+      <span>조회 합산</span>
+      <strong class="ops-summary-hero-num">${apiNum(totalViews)}</strong>
+      <p class="ops-summary-hero-sub">전체 게시물 views 합계</p>
+    </div>
+    <div class="ops-summary-hero-main">
+      <span>저장</span>
+      <strong class="ops-summary-hero-num">${apiNum(totalSaves)}</strong>
+      <p class="ops-summary-hero-sub">전체 게시물 saves 합계</p>
+    </div>
+    <div class="ops-summary-side">
+      ${opsStatRow("공유", apiNum(totalShares))}
+      ${opsStatRow("좋아요", apiNum(totalLikes))}
+      ${opsStatRow("게시물", `${apiNum(posts.length)}개`)}
+      ${opsStatRow("팔로워 증가", followerLabel, { muted: true, note: "월별 snapshot 기준" })}
+    </div>
+  </section>`;
+
+  const savedTop = topPosts(posts, (post) => post.saves, 3);
+  const sharedTop = topPosts(posts, (post) => post.shares, 3);
+  const aboveAverage = avgSaveRate === null ? [] : posts.filter((post) => postMetrics(post).saveRate > avgSaveRate).slice(0, 3);
+  performanceTarget.innerHTML = `<section class="ops-summary-cols">
+    <div class="ops-summary-block">
+      <div class="ops-summary-block-head"><h4>저장 TOP 3</h4><span>postMetrics saveRate</span></div>
+      ${savedTop.length ? savedTop.map((post, index) => opsRankRow(index, post.title || "-", `저장 ${apiNum(post.saves)} · 저장률 ${pct(postMetrics(post).saveRate)}`)).join("") : opsRankRow(0, "데이터 없음", "-")}
+      <p class="ops-summary-obs">평균 저장률 상회 ${apiNum(aboveAverage.length)}개 · ${avgSaveRate === null ? "저장률 데이터 없음" : `평균 ${pct(avgSaveRate)}`}</p>
+    </div>
+    <div class="ops-summary-block">
+      <div class="ops-summary-block-head"><h4>공유 TOP 3</h4><span>postMetrics shareRate</span></div>
+      ${sharedTop.length ? sharedTop.map((post, index) => opsRankRow(index, post.title || "-", `공유 ${apiNum(post.shares)} · 공유율 ${pct(postMetrics(post).shareRate)}`)).join("") : opsRankRow(0, "데이터 없음", "-")}
+    </div>
+  </section>`;
+
+  const summary = summarizeByType(posts);
+  const totalPosts = Math.max(1, posts.length);
+  const formatTypes = [
+    { label: "릴스", source: "릴스" },
+    { label: "카드뉴스", source: "카드뉴스" },
+    { label: "피드", source: "사진" }
+  ];
+  const formatRows = formatTypes.map(({ label, source }) => {
+    const item = summary.find((row) => row.type === source) || { count: 0, reach: 0, saves: 0, shares: 0, avgSaveRate: 0 };
+    const ratio = Number(item.count || 0) / totalPosts * 100;
+    return { label, item, ratio };
+  });
+  const lead = formatRows.reduce((best, row) => Number(row.item.count || 0) > Number(best.item.count || 0) ? row : best, formatRows[0] || { label: "데이터 없음", item: { count: 0 }, ratio: 0 });
+  const unused = formatRows.filter((row) => !Number(row.item.count || 0)).map((row) => `${row.label} 0개`);
+  formatTarget.innerHTML = `<section class="ops-summary-block">
+    <div class="ops-summary-block-head"><h4>Format Mix</h4><span>콘텐츠 유형별 구성</span></div>
+    <div class="ops-summary-lead">
+      <strong>${esc(lead.label)} ${pct(lead.ratio)}</strong>
+      <div class="ops-summary-bar"><i style="width:${monthlyReportRatio(lead.ratio, 100)}%"></i></div>
+      <p>${apiNum(lead.item.count)}개 · Reach ${apiNum(lead.item.reach)} · 저장 ${apiNum(lead.item.saves)} · 공유 ${apiNum(lead.item.shares)} · 저장률 ${pct(lead.item.avgSaveRate)}</p>
+    </div>
+    ${formatRows.map((row) => `<div class="ops-summary-srow ${Number(row.item.count || 0) ? "" : "is-muted"}">
+      <span>${esc(row.label)}</span>
+      <strong>${pct(row.ratio)}</strong>
+      <em>${apiNum(row.item.count)}개 · 저장 ${apiNum(row.item.saves)} · 공유 ${apiNum(row.item.shares)}</em>
+    </div>`).join("")}
+    ${unused.length ? `<p class="ops-summary-fnote">${esc(unused.join(" · "))} — 이번 기간 미사용</p>` : ""}
+  </section>`;
+}
+
 function renderContentPerformanceCenter(posts, data = {}) {
   const account = data.account || {};
   const targetKpis = $("#contentKpiGrid");
@@ -943,7 +1141,7 @@ function renderContentPerformanceCenter(posts, data = {}) {
     <article class="content-kpi-highlight">
       <span>저장률</span>
       <strong>${avgSaveRate === null ? "데이터 없음" : pct(avgSaveRate)}</strong>
-      <p>이번 달 평균 저장률</p>
+      <p>선택 기간 평균 저장률</p>
     </article>
     <article class="content-kpi-highlight">
       <span>Reach</span>
@@ -962,7 +1160,7 @@ function renderContentPerformanceCenter(posts, data = {}) {
     contentRankingCard("조회수 TOP 5", topPosts(posts, (post) => post.views || post.reach, 5), (post) => `조회 ${apiNum(post.views)} · Reach ${apiNum(post.reach)}`),
     contentRankingCard("저장률 TOP 5", topPosts(posts, (post) => postMetrics(post).saveRate, 5), (post) => `저장률 ${pct(postMetrics(post).saveRate)} · 저장 ${apiNum(post.saves)}`),
     contentRankingCard("공유 TOP 5", topPosts(posts, (post) => post.shares, 5), (post) => `공유 ${apiNum(post.shares)} · 공유율 ${pct(postMetrics(post).shareRate)}`),
-    contentRankingCard("팔로우 전환 TOP 5", topPosts(posts, (post) => post.follows || post.profileVisits || post.websiteClicks || postMetrics(post).engagementRate, 5), (post) => `프로필 ${apiNum(post.profileVisits)} · 클릭 ${apiNum(post.websiteClicks)}`)
+    contentRankingCard("프로필·클릭 반응 TOP 5", topPosts(posts, (post) => post.follows || post.profileVisits || post.websiteClicks || postMetrics(post).engagementRate, 5), (post) => `프로필 ${apiNum(post.profileVisits)} · 클릭 ${apiNum(post.websiteClicks)}`)
   ].join("");
 
   $("#contentTypeGrid").innerHTML = contentTypeCards(posts);
@@ -1483,6 +1681,269 @@ function renderMonthlyDashboard(data) {
     </section>`;
 }
 
+function monthlyReportRatio(value, base) {
+  const numerator = Number(value || 0);
+  const denominator = Number(base || 0);
+  if (!denominator || !Number.isFinite(numerator) || !Number.isFinite(denominator)) return 0;
+  return Math.max(0, Math.min(100, numerator / denominator * 100));
+}
+
+function monthlyReportRankRows(items, options = {}) {
+  const rows = items || [];
+  if (!rows.length) return `<div class="monthly-report-rank-row monthly-report-muted"><strong>데이터 없음</strong><span>저장된 항목이 없습니다.</span></div>`;
+  const valueFn = options.valueFn || (() => 0);
+  const labelFn = options.labelFn || (() => "-");
+  const subFn = options.subFn || (() => "");
+  const base = Math.max(...rows.map((item) => Number(valueFn(item) || 0)), 1);
+  return rows.map((item, index) => {
+    const value = valueFn(item);
+    return `<div class="monthly-report-rank-row">
+      <span class="monthly-report-rank-no">${String(index + 1).padStart(2, "0")}</span>
+      <div class="monthly-report-rank-main">
+        <strong>${esc(labelFn(item))}</strong>
+        <span>${esc(subFn(item))}</span>
+        ${options.withBar ? `<div class="monthly-report-rank-bar"><i style="width:${monthlyReportRatio(value, base)}%"></i></div>` : ""}
+      </div>
+      <em>${esc(options.formatValue ? options.formatValue(value, item) : apiNum(value))}</em>
+    </div>`;
+  }).join("");
+}
+
+async function renderMonthlyArchiveReport(month) {
+  const target = $("#monthlyArchiveReport");
+  if (!target) return;
+
+  target.innerHTML = `<article class="action-item"><strong>Monthly Report 확인 중</strong><p>저장된 월간 리포트를 불러오고 있습니다.</p></article>`;
+
+  const archive = await getJson(`/api/reports/monthly?month=${month}`, 8000);
+
+  if (archive.error) {
+    target.innerHTML = `<article class="action-item"><strong>Monthly Report 생성 실패</strong><p>${esc(archive.error)}</p></article>`;
+    return;
+  }
+
+  const commerce = archive.commerce || {};
+  const marketing = archive.marketing || {};
+  const content = archive.content || {};
+  const paymentMethods = commerce.paymentMethods || [];
+  const brandSales = commerce.brandSales || [];
+  const productSales = commerce.productSales || [];
+  const formatMix = content.formatMix || [];
+  const topContent = content.topContent || [];
+  const aboveAverageSaveRatePosts = content.aboveAverageSaveRatePosts || [];
+  const reconciliationLabel = marketing.reconciliationStatus === "matched"
+    ? "일치"
+    : marketing.reconciliationStatus === "mismatch"
+      ? "불일치"
+      : "확인 불가";
+  const archiveStatusLabel = {
+    live: "Live Draft",
+    saved: "Saved Archive",
+    draft: "Unsaved Draft"
+  }[archive.archiveStatus] || String(archive.status || "Draft");
+  const archiveSaveButton = archive.archiveStatus === "draft"
+    ? `<button type="button" class="button secondary" data-archive-save="${esc(month)}">아카이브 저장</button>`
+    : "";
+  const paymentTotal = Number(commerce.paidAmount || 0);
+  const compareBase = Math.max(Number(marketing.spend || 0), Number(marketing.purchaseValue || 0), 1);
+
+  target.innerHTML = `
+    <header class="monthly-report-header">
+      <div>
+        <p class="eyebrow">Monthly Report</p>
+        <h3>${esc(String(month || "").replace("-", " / "))}</h3>
+      </div>
+      <div class="monthly-report-stat">
+        <strong>${esc(archiveStatusLabel)}</strong>
+        <span>Generated ${esc(archive.generatedAt || "-")}</span>
+        <em>저장 데이터</em>
+        ${archiveSaveButton}
+      </div>
+    </header>
+    <nav class="monthly-report-toc" aria-label="Monthly report chapters">
+      <a href="#monthly-report-ch1">01 Commerce</a>
+      <a href="#monthly-report-ch2">02 Marketing</a>
+      <a href="#monthly-report-ch3">03 Content</a>
+    </nav>
+
+    <section id="monthly-report-ch1" class="monthly-report-chapter">
+      <div class="monthly-report-chapter-head">
+        <span>01</span>
+        <div><p class="eyebrow">Commerce</p><h3>월간 판매 스냅샷</h3></div>
+      </div>
+      <div class="monthly-report-hero">
+        <div class="monthly-report-hero-main">
+          <span>월 실제 판매</span>
+          <strong>${apiWon(commerce.paidAmount)}</strong>
+        </div>
+        <div class="monthly-report-side">
+          <div class="monthly-report-side-row"><span>주문수</span><strong>${apiNum(commerce.orderCount)}</strong></div>
+          <div class="monthly-report-side-row"><span>객단가</span><strong>${apiWon(commerce.averageOrderValue)}</strong></div>
+          <div class="monthly-report-side-row"><span>제외 주문</span><strong>${apiNum(commerce.excludedOrderCount)}</strong></div>
+        </div>
+      </div>
+      <div class="monthly-report-drill">
+        <span>Commerce ▸ Product</span>
+        <button class="today-jump-button" type="button" data-jump-view="Product">상품별 판매 보기</button>
+      </div>
+      <div class="monthly-report-grid2">
+        <section class="monthly-report-block">
+          <div class="monthly-report-block-head"><h4>결제수단 구성</h4><span>orderAmount 기준</span></div>
+          <div class="monthly-report-stack">
+            ${paymentMethods.length ? paymentMethods.map((item) => `<span class="${Number(item.orderAmount || 0) ? "" : "monthly-report-muted"}" style="width:${monthlyReportRatio(item.orderAmount, paymentTotal)}%"></span>`).join("") : `<span class="monthly-report-muted" style="width:100%"></span>`}
+          </div>
+          <div class="monthly-report-legend">
+            ${paymentMethods.length ? paymentMethods.map((item) => `<div class="monthly-report-legend-row ${Number(item.orderAmount || 0) ? "" : "monthly-report-muted"}"><strong>${esc(item.paymentMethod || "-")}</strong><span>${apiWon(item.orderAmount)} · 주문 ${apiNum(item.orderCount)}</span></div>`).join("") : `<div class="monthly-report-legend-row monthly-report-muted"><strong>데이터 없음</strong><span>저장된 결제수단 정보가 없습니다.</span></div>`}
+          </div>
+        </section>
+        <section class="monthly-report-block">
+          <div class="monthly-report-block-head"><h4>브랜드 매출 TOP 5</h4><span>salesAmount</span></div>
+          <div class="monthly-report-rank">
+            ${monthlyReportRankRows(brandSales.slice(0, 5), {
+              withBar: true,
+              valueFn: (item) => item.salesAmount,
+              labelFn: (item) => item.brand_name || item.brand_code || "-",
+              subFn: (item) => item.brand_code || "",
+              formatValue: (value) => apiWon(value)
+            })}
+          </div>
+        </section>
+      </div>
+      <section class="monthly-report-block">
+        <div class="monthly-report-block-head"><h4>상품 매출 TOP 5</h4><span>salesAmount</span></div>
+        <div class="monthly-report-rank">
+          ${monthlyReportRankRows(productSales.slice(0, 5), {
+            withBar: false,
+            valueFn: (item) => item.salesAmount,
+            labelFn: (item) => item.productName || item.product_name || "-",
+            subFn: (item) => item.brand_name || item.brand_code || "",
+            formatValue: (value) => apiWon(value)
+          })}
+        </div>
+      </section>
+    </section>
+
+    <section id="monthly-report-ch2" class="monthly-report-chapter">
+      <div class="monthly-report-chapter-head">
+        <span>02</span>
+        <div><p class="eyebrow">Marketing</p><h3>월간 광고 스냅샷</h3></div>
+      </div>
+      <div class="monthly-report-hero">
+        <div class="monthly-report-hero-main">
+          <span>광고비</span>
+          <strong>${apiWon(marketing.spend)}</strong>
+        </div>
+        <div class="monthly-report-side">
+          <div class="monthly-report-side-row"><span>광고비 비중</span><strong>${hasApiValue(marketing.adSpendShare) ? pct(marketing.adSpendShare) : "-"}</strong></div>
+          <div class="monthly-report-side-row"><span>오차율</span><strong>${marketing.comparable === false ? "비교 불가" : hasApiValue(marketing.mismatchRate) ? pct(marketing.mismatchRate) : "-"}</strong></div>
+          <div class="monthly-report-side-row"><span>일치검증</span><strong>${reconciliationLabel}</strong></div>
+        </div>
+      </div>
+      <section class="monthly-report-block">
+        <div class="monthly-report-block-head"><h4>광고비와 Meta 구매값</h4><span>Meta 광고 귀속 기준 · 실제 매출 아님</span></div>
+        <div class="monthly-report-compare">
+          <div class="monthly-report-compare-row">
+            <span>광고비</span>
+            <div><i style="width:${monthlyReportRatio(marketing.spend, compareBase)}%"></i></div>
+            <strong>${apiWon(marketing.spend)}</strong>
+          </div>
+          <div class="monthly-report-compare-row monthly-report-attributed">
+            <span>구매값</span>
+            <div><i style="width:${monthlyReportRatio(marketing.purchaseValue, compareBase)}%"></i></div>
+            <strong>${apiWon(marketing.purchaseValue)}</strong>
+          </div>
+        </div>
+      </section>
+      <div class="monthly-report-strip">
+        <div><span>집행</span><strong>${apiNum(marketing.activeCampaignCount)}</strong></div>
+        <div><span>미집행</span><strong>${apiNum(marketing.inactiveCampaignCount)}</strong></div>
+        <div><span>누락</span><strong>${apiNum(marketing.unlistedCampaignCount)}</strong></div>
+        <div><span>일치검증</span><strong>${reconciliationLabel}</strong></div>
+        <div><span>오차율</span><strong>${marketing.comparable === false ? "비교 불가" : hasApiValue(marketing.mismatchRate) ? pct(marketing.mismatchRate) : "-"}</strong></div>
+      </div>
+      <div class="monthly-report-drill">
+        <span>Marketing ▸ Advertising</span>
+        <button class="today-jump-button" type="button" data-jump-view="Advertising">광고 데이터 보기</button>
+      </div>
+    </section>
+
+    <section id="monthly-report-ch3" class="monthly-report-chapter">
+      <div class="monthly-report-chapter-head">
+        <span>03</span>
+        <div><p class="eyebrow">Content</p><h3>월간 콘텐츠 스냅샷</h3></div>
+      </div>
+      <div class="monthly-report-hero">
+        <div class="monthly-report-hero-main">
+          <span>조회수</span>
+          <strong>${apiNum(content.totalViews)}</strong>
+        </div>
+        <div class="monthly-report-hero-main">
+          <span>저장</span>
+          <strong>${apiNum(content.totalSaves)}</strong>
+        </div>
+        <div class="monthly-report-side">
+          <div class="monthly-report-side-row"><span>콘텐츠 수</span><strong>${apiNum(content.postCount)}</strong></div>
+          <div class="monthly-report-side-row"><span>좋아요</span><strong>${apiNum(content.totalLikes)}</strong></div>
+          <div class="monthly-report-side-row"><span>공유</span><strong>${apiNum(content.totalShares)}</strong></div>
+          <div class="monthly-report-side-row monthly-report-muted"><span>팔로워 변화</span><strong>${hasApiValue(content.followerDelta) ? `${Number(content.followerDelta) > 0 ? "+" : ""}${apiNum(content.followerDelta)}명` : "-"}</strong></div>
+        </div>
+      </div>
+      <p class="monthly-report-fnote">팔로워 변화는 현재 archive 기준값으로 참고용입니다.</p>
+      <section class="monthly-report-block">
+        <div class="monthly-report-block-head"><h4>Format Mix</h4><span>archive percentage 기준</span></div>
+        <div class="monthly-report-fmix">
+          ${formatMix.length ? formatMix.map((item) => {
+            const width = monthlyReportRatio(item.percentage, 100);
+            return `<article class="monthly-report-fmix-row">
+              <div>
+                <strong>${esc(item.type || "-")}</strong>
+                <span>${apiNum(item.count)}개 · ${hasApiValue(item.percentage) ? pct(item.percentage) : "-"} · Reach ${apiNum(item.reach)} · 저장 ${apiNum(item.saves)} · 공유 ${apiNum(item.shares)} · 저장률 ${hasApiValue(item.avgSaveRate) ? pct(item.avgSaveRate) : "-"}</span>
+              </div>
+              <div><i style="width:${width}%"></i></div>
+            </article>`;
+          }).join("") : `<div class="monthly-report-fmix-row monthly-report-muted"><strong>데이터 없음</strong><span>저장된 Format Mix가 없습니다.</span></div>`}
+        </div>
+      </section>
+      <div class="monthly-report-grid2">
+        <section class="monthly-report-block">
+          <div class="monthly-report-block-head">
+            <h4>조회 상위 콘텐츠</h4>
+            <span>views</span>
+          </div>
+          <div class="monthly-report-rank">
+            ${monthlyReportRankRows(topContent.slice(0, 3), {
+              withBar: true,
+              valueFn: (item) => item.views,
+              labelFn: (item) => item.title || item.caption || "-",
+              subFn: (item) => item.date || item.type || "",
+              formatValue: (value) => apiNum(value)
+            })}
+          </div>
+        </section>
+        <section class="monthly-report-block">
+          <div class="monthly-report-block-head">
+            <h4>평균 저장률 상회</h4>
+            <span>saves / reach</span>
+          </div>
+          <div class="monthly-report-rank">
+            ${monthlyReportRankRows(aboveAverageSaveRatePosts.slice(0, 3), {
+              withBar: false,
+              valueFn: (item) => item.saves,
+              labelFn: (item) => item.title || item.caption || "-",
+              subFn: (item) => `저장 ${apiNum(item.saves)} · Reach ${apiNum(item.reach || item.views)}`,
+              formatValue: () => ""
+            })}
+          </div>
+        </section>
+      </div>
+      <div class="monthly-report-drill">
+        <span>Content ▸ Editorial AI</span>
+        <button class="today-jump-button" type="button" data-jump-view="Editorial AI">Editorial AI 분석</button>
+      </div>
+    </section>
+  `;
+}
+
 function miniMetric(label, value, helper) {
   return `<div class="mini-metric"><span>${esc(label)}</span><strong>${esc(value)}</strong><p>${esc(helper)}</p></div>`;
 }
@@ -1530,6 +1991,9 @@ function renderOtherSections(data) {
   renderCards("cardnewsReport", posts.filter((post) => post.type === "카드뉴스"), "cardnews");
   renderCards("conversionGrid", [...posts].sort((a, b) => Number(b.websiteClicks || 0) - Number(a.websiteClicks || 0)).slice(0, 6));
   $("#adAiBriefing").innerHTML = `<article class="action-item"><strong>관리 필요 캠페인 확인 중</strong><p>Meta 자체 귀속 지표 기준으로 확인하고 있습니다.</p></article>`;
+  $("#marketingSummaryHero").innerHTML = `<article class="action-item"><strong>Marketing 데이터 확인 중</strong><p>Meta Ads와 Commerce 매출을 불러오고 있습니다.</p></article>`;
+  $("#marketingSummaryBriefing").innerHTML = `<article class="action-item"><strong>관리 필요 캠페인 확인 중</strong><p>Meta 자체 귀속 지표 기준으로 확인하고 있습니다.</p></article>`;
+  $("#marketingSummaryStatus").innerHTML = `<article class="action-item"><strong>광고 상태 확인 중</strong><p>집행·미집행·일치 검증 결과를 정리합니다.</p></article>`;
   $("#adTodayStatus").innerHTML = `<span class="status-dot"></span><strong>오늘 광고 상태 확인 중</strong><span class="note">Meta Ads 데이터를 불러오고 있습니다.</span>`;
   $("#adCoreKpi").innerHTML = `<article class="action-item"><strong>핵심 지표 확인 중</strong><p>광고비, ROAS, 실매출을 확인합니다.</p></article>`;
   $("#advertisingSummary").innerHTML = `<article class="action-item"><strong>Meta 광고 데이터 확인 중</strong><p>광고비, 도달, 클릭, 구매값, ROAS를 확인합니다.</p></article>`;
@@ -1539,22 +2003,15 @@ function renderOtherSections(data) {
   hideAdOrganicSection();
   renderAdvertising(data);
   $("#salesHealthBanner").innerHTML = `<span class="status-dot"></span><strong>Sales Health 확인 중</strong><span class="note">Meta · Cafe24 데이터를 불러오고 있습니다.</span>`;
-  $("#salesImpact").classList.add("cards");
-  $("#salesImpact").classList.remove("instagram-feed");
-  delete $("#salesImpact").dataset.productSalesLocked;
-  $("#salesImpact").innerHTML = `<article class="action-item"><strong>Cafe24 주문 데이터 확인 중</strong><p>CSV 또는 저장 캐시를 읽고 있습니다.</p></article>`;
-  $("#salesDetail").innerHTML = `<article class="action-item"><strong>결제수단 확인 중</strong><p>Cafe24 주문 데이터를 불러오고 있습니다.</p></article>`;
+  commerceSummaryState = { cafe: null, comparison: null };
+  $("#commerceSummaryHero").innerHTML = `<article class="action-item"><strong>Commerce 데이터 확인 중</strong><p>Cafe24 canonical 데이터를 불러오고 있습니다.</p></article>`;
+  $("#commerceSummaryCompare").innerHTML = `<article class="action-item"><strong>Meta 비교 확인 중</strong><p>Meta 구매값과 Cafe24 실제 판매를 비교합니다.</p></article>`;
+  $("#commerceSummaryPayments").innerHTML = `<article class="action-item"><strong>결제수단 확인 중</strong><p>결제수단 구성을 불러오고 있습니다.</p></article>`;
   renderCafe24Sales(data);
-  $("#salesMetaEstimate").innerHTML = `<article class="action-item"><strong>Meta 추정 매출 확인 중</strong><p>Meta 구매값을 불러오고 있습니다.</p></article>`;
-  $("#salesVariance").innerHTML = `<article class="action-item"><strong>오차 분석 확인 중</strong><p>Meta 구매값과 Cafe24 실제 매출을 비교합니다.</p></article>`;
-  $("#salesAction").innerHTML = `<article class="action-item"><strong>추천 Action 확인 중</strong><p>Sales Health 판단 후 표시됩니다.</p></article>`;
   renderAdComparison(data);
   $("#productDashboardBanner").innerHTML = `<span class="status-dot"></span><strong>상품 Dashboard 확인 중</strong><span class="note">Cafe24 Orders · Products 데이터를 불러오고 있습니다.</span>`;
   $("#productDashboardRows").innerHTML = `<tr><td colspan="7">상품 데이터를 불러오고 있습니다.</td></tr>`;
   renderProductDashboard(data);
-  $("#calendarGrid").innerHTML = ["Brand Discovery", "Product Focus", "Editorial Cardnews", "Event / Sale"].map((title, index) => (
-    `<article class="action-item"><strong>${index + 1}주차</strong><span>${title}</span><p>상위 성과 콘텐츠 톤을 다음 달에 확장합니다.</p></article>`
-  )).join("");
   renderApiHealthCenter(data);
   renderScoreWeightsSettings();
   renderCafe24ProductDiagnostics();
@@ -1964,6 +2421,10 @@ function healthBannerState(data = {}, kind = "") {
   if (data.error) {
     // 실제 오류: Cafe24는 재인증성 오류를 요청하신 문구("재인증 필요")로 통일한다.
     // Instagram/Meta는 기존 라벨(토큰 오류/API 실패 등)을 그대로 유지한다.
+    if (kind === "meta") {
+      const needsReauth = base.label === "토큰 만료" || base.label === "권한 만료";
+      return { ...base, tone: "error", label: needsReauth ? "재인증 필요" : "실패" };
+    }
     if (kind === "cafe24" && (base.label === "토큰 만료" || base.label === "권한 만료" || base.label === "토큰 오류")) {
       return { ...base, tone: "error", label: "재인증 필요" };
     }
@@ -1979,6 +2440,16 @@ function healthBannerState(data = {}, kind = "") {
       tone: "good",
       label: ageText && ageText !== "최신" ? `정상 (마지막 동기화 ${ageText})` : "정상",
       reason: "",
+      action: "",
+      actionHref: null
+    };
+  }
+  if (kind === "meta") {
+    const live = isLiveSource(data);
+    return {
+      tone: "good",
+      label: "정상",
+      reason: live === false ? cacheFreshnessLabel(data) : live === true ? "Live" : base.reason,
       action: "",
       actionHref: null
     };
@@ -2077,8 +2548,9 @@ async function renderAdvertising(data) {
   if (!briefingTarget || !statusTarget || !coreKpiTarget || !summaryTarget || !campaignTarget || !contentTarget || !tableTarget || !reconTarget || !fullReportTargets.active || !fullReportTargets.other) return;
   hideAdOrganicSection();
 
-  const startDate = `${data.month}-01`;
-  const endDate = monthEnd(data.month);
+  const range = operationsDateRange(data);
+  const startDate = range.since;
+  const endDate = range.until;
   renderAdLevelTabs();
   const [meta, fullReport, weightsResp, commerce] = await Promise.all([
     getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}&level=${activeAdLevel}`, 9000),
@@ -2109,25 +2581,29 @@ async function renderAdvertising(data) {
     fullReportTargets.active.innerHTML = `<tr><td colspan="18">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
     fullReportTargets.other.innerHTML = "";
     contentTarget.innerHTML = "";
+    renderMarketingSummary({ meta, fullReport, commerce, adSpendShare: null, briefingTarget, reconTarget, periodLabel: `${startDate} ~ ${endDate}` });
     return;
   }
 
-  renderAdAiBriefing(fullReport, scoreWeights, briefingTarget);
+  const briefingCount = renderAdAiBriefing(fullReport, scoreWeights, briefingTarget);
 
   const totals = meta.totals || {};
-  const spend = Number(totals.spend || 0);
+  const tableSpend = Number(fullReport?.reconciliation?.tableSpend);
+  const reportingSpend = Number.isFinite(tableSpend) ? tableSpend : Number(totals.spend || 0);
+  const tablePurchaseValue = Number(fullReport?.reconciliation?.tablePurchaseValue);
+  const reportingPurchaseValue = Number.isFinite(tablePurchaseValue) ? tablePurchaseValue : Number(totals.purchaseValue || 0);
   const purchaseValue = Number(totals.purchaseValue || 0);
-  const roas = spend ? purchaseValue / spend : null;
+  const roas = reportingSpend ? purchaseValue / reportingSpend : null;
   const commerceTotals = commerce?.totals || {};
   const commercePaidAmount = Number(commerceTotals.paidAmount || 0);
-  const adSpendShare = commercePaidAmount > 0 ? spend / commercePaidAmount * 100 : null;
+  const adSpendShare = commercePaidAmount > 0 ? reportingSpend / commercePaidAmount * 100 : null;
   const badge = metaAdsSourceBadge(meta);
 
   statusTarget.className = `ad-status-banner ${badge.tone}`;
   statusTarget.innerHTML = `<span class="status-dot"></span><strong>${esc(badge.icon)} ${esc(badge.label)}</strong><span class="note">${esc(startDate)} ~ ${esc(endDate)}${badge.detail ? " " + esc(badge.detail) : ""}</span>`;
 
   coreKpiTarget.innerHTML = [
-    metaAdsSummaryCard("광고비", apiWon(totals.spend), "선택 기간 집행 금액", true),
+    metaAdsSummaryCard("광고비", apiWon(reportingSpend), "선택 기간 집행 금액", true),
     metaAdsSummaryCard("ROAS", roas === null ? "-" : multiple(roas), "Meta 구매값 / 광고비", true),
     metaAdsSummaryCard("실제 매출(Commerce)", apiWon(commerceTotals.paidAmount), "Cafe24 canonical 기준", true),
     metaAdsSummaryCard("광고비 비중", adSpendShare === null ? "-" : pct(adSpendShare), "광고비 / 실제 매출", true)
@@ -2152,7 +2628,429 @@ async function renderAdvertising(data) {
   tableTarget.innerHTML = renderMetaAdsRows(metaAdsRowsForLevel(meta));
   renderMetaAdsReconciliation(fullReport, reconTarget);
   renderMetaAdsFullReportGroups(fullReport, scoreWeights, fullReportTargets);
+  renderMarketingSummary({ meta, fullReport, commerce, adSpendShare, briefingTarget, reconTarget, briefingCount, reportingSpend, reportingPurchaseValue, periodLabel: `${startDate} ~ ${endDate}` });
   contentTarget.innerHTML = "";
+}
+
+function campaignComparisonAddDays(dateKey, days) {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function campaignComparisonInclusiveDays(startDate, endDate) {
+  return Math.floor((new Date(`${endDate}T00:00:00Z`) - new Date(`${startDate}T00:00:00Z`)) / 86400000) + 1;
+}
+
+function campaignComparisonTodayKey() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+}
+
+function campaignComparisonRate(delta, base) {
+  if (base > 0) return pct(delta / base * 100);
+  if (delta > 0) return "신규";
+  return "-";
+}
+
+function campaignComparisonSignedWon(value) {
+  const amount = Number(value || 0);
+  if (amount > 0) return `+${apiWon(amount)}`;
+  if (amount < 0) return `-${apiWon(Math.abs(amount))}`;
+  return apiWon(0);
+}
+
+function campaignComparisonSignedNum(value) {
+  const amount = Number(value || 0);
+  if (amount > 0) return `+${apiNum(amount)}`;
+  return apiNum(amount);
+}
+
+function campaignComparisonDeltaText(value, unit) {
+  const amount = Number(value || 0);
+  if (amount > 0) return `${apiNum(amount)}${unit} 증가`;
+  if (amount < 0) return `${apiNum(Math.abs(amount))}${unit} 감소`;
+  return `변화 없음`;
+}
+
+function campaignComparisonShortDate(dateKey = "") {
+  const [, month, day] = String(dateKey).match(/^\d{4}-(\d{2})-(\d{2})$/) || [];
+  return month && day ? `${Number(month)}/${day}` : dateKey;
+}
+
+function campaignComparisonIsValidDateKey(dateKey = "") {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return false;
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === dateKey;
+}
+
+function campaignComparisonAutoRange(selectedCampaign = {}) {
+  const executionStart = selectedCampaign.executionStart;
+  const today = campaignComparisonTodayKey();
+  const executionEnd = selectedCampaign.executionEnd && selectedCampaign.executionEnd < today ? selectedCampaign.executionEnd : today;
+  return campaignComparisonRangeFromExecution(executionStart, executionEnd);
+}
+
+function campaignComparisonRangeFromExecution(executionStart, executionEnd) {
+  const days = campaignComparisonInclusiveDays(executionStart, executionEnd);
+  const comparisonEnd = campaignComparisonAddDays(executionStart, -1);
+  const comparisonStart = campaignComparisonAddDays(comparisonEnd, -(days - 1));
+  return { executionStart, executionEnd, comparisonStart, comparisonEnd, days };
+}
+
+function campaignComparisonPreviousMonth(monthKey = "") {
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) return "";
+  const [year, month] = monthKey.split("-").map(Number);
+  const previous = new Date(Date.UTC(year, month - 2, 1));
+  return previous.toISOString().slice(0, 7);
+}
+
+function campaignComparisonMonthLabel(monthKey = "") {
+  const [, year, month] = String(monthKey).match(/^(\d{4})-(\d{2})$/) || [];
+  if (!year || !month) return monthKey;
+  const currentYear = campaignComparisonTodayKey().slice(0, 4);
+  return year === currentYear ? `${Number(month)}월` : `${year}년 ${Number(month)}월`;
+}
+
+function campaignComparisonRangeLabel(startDate = "", endDate = "") {
+  return `${startDate} ~ ${endDate}`;
+}
+
+function campaignComparisonMonthRange(monthKey = "") {
+  const today = campaignComparisonTodayKey();
+  if (!/^\d{4}-\d{2}$/.test(monthKey) || monthKey > today.slice(0, 7)) return null;
+  const start = `${monthKey}-01`;
+  const end = monthKey === today.slice(0, 7) ? today : monthEnd(monthKey);
+  return { start, end };
+}
+
+function campaignComparisonDefaultMonths() {
+  const target = selectedMonth().month || campaignComparisonTodayKey().slice(0, 7);
+  const safeTarget = target > campaignComparisonTodayKey().slice(0, 7) ? campaignComparisonTodayKey().slice(0, 7) : target;
+  return { base: campaignComparisonPreviousMonth(safeTarget), target: safeTarget };
+}
+
+function campaignComparisonValidateManualRange(startDate, endDate) {
+  const today = campaignComparisonTodayKey();
+  if (!campaignComparisonIsValidDateKey(startDate) || !campaignComparisonIsValidDateKey(endDate)) return "유효한 날짜를 선택해주세요.";
+  if (startDate > endDate) return "시작일은 종료일보다 늦을 수 없습니다.";
+  if (startDate > today || endDate > today) return "미래 날짜는 선택할 수 없습니다.";
+  return "";
+}
+
+function campaignComparisonValidateMonthRange(baseMonth, targetMonth) {
+  const todayMonth = campaignComparisonTodayKey().slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(baseMonth) || !/^\d{4}-\d{2}$/.test(targetMonth)) return "유효한 월을 선택해주세요.";
+  if (baseMonth > todayMonth || targetMonth > todayMonth) return "미래 월은 선택할 수 없습니다.";
+  if (baseMonth === targetMonth) return "서로 다른 월을 선택해 주세요.";
+  return "";
+}
+
+function campaignComparisonSettingsHtml(range) {
+  if (!campaignPeriodComparisonState.settingsOpen) return "";
+  const disabled = campaignPeriodComparisonState.loading ? " disabled" : "";
+  const mode = campaignPeriodComparisonState.comparisonMode === "custom" ? "custom" : "month";
+  const defaultMonths = campaignComparisonDefaultMonths();
+  const baseMonth = campaignPeriodComparisonState.monthBase || defaultMonths.base;
+  const targetMonth = campaignPeriodComparisonState.monthTarget || defaultMonths.target;
+  const startValue = campaignPeriodComparisonState.manualRange?.executionStart || range.executionStart;
+  const endValue = campaignPeriodComparisonState.manualRange?.executionEnd || range.executionEnd;
+  const comparisonStartValue = campaignPeriodComparisonState.manualComparisonRange?.comparisonStart || range.comparisonStart;
+  const comparisonEndValue = campaignPeriodComparisonState.manualComparisonRange?.comparisonEnd || range.comparisonEnd;
+  const executionError = campaignComparisonValidateManualRange(startValue, endValue);
+  const comparisonError = campaignComparisonValidateManualRange(comparisonStartValue, comparisonEndValue);
+  const monthError = campaignComparisonValidateMonthRange(baseMonth, targetMonth);
+  const executionDays = executionError ? 0 : campaignComparisonInclusiveDays(startValue, endValue);
+  const comparisonDays = comparisonError ? 0 : campaignComparisonInclusiveDays(comparisonStartValue, comparisonEndValue);
+  const mismatchNote = !executionError && !comparisonError && executionDays !== comparisonDays
+    ? `두 기간의 길이가 다릅니다. 집행기간 ${apiNum(executionDays)}일 · 비교기간 ${apiNum(comparisonDays)}일`
+    : "";
+  const formNote = mode === "month"
+    ? monthError || `${campaignComparisonMonthLabel(baseMonth)}에 비해 ${campaignComparisonMonthLabel(targetMonth)}이 어떻게 달라졌는지 비교합니다.`
+    : executionError || comparisonError || mismatchNote || "비교 기준 기간과 비교 대상 기간의 실제 매출을 비교합니다.";
+  return `<article class="campaign-period-settings">
+    <div class="campaign-period-mode">
+      <button class="button secondary${mode === "month" ? " active" : ""}" type="button" data-campaign-period-mode="month"${disabled}>월별 비교</button>
+      <button class="button secondary${mode === "custom" ? " active" : ""}" type="button" data-campaign-period-mode="custom"${disabled}>직접 기간 선택</button>
+    </div>
+    ${mode === "month" ? `<div class="campaign-period-months">
+      <label><span>비교 기준</span><input id="campaignBaseMonth" type="month" value="${esc(baseMonth)}" max="${esc(campaignComparisonTodayKey().slice(0, 7))}"></label>
+      <span class="campaign-period-arrow">→</span>
+      <label><span>비교 대상</span><input id="campaignTargetMonth" type="month" value="${esc(targetMonth)}" max="${esc(campaignComparisonTodayKey().slice(0, 7))}"></label>
+    </div>` : `<div class="campaign-period-setting-row">
+      <label><span>비교 기준 기간</span><input id="campaignComparisonSince" type="date" value="${esc(comparisonStartValue)}" max="${esc(campaignComparisonTodayKey())}"></label>
+      <span class="campaign-period-tilde">~</span>
+      <label><span>종료일</span><input id="campaignComparisonUntil" type="date" value="${esc(comparisonEndValue)}" max="${esc(campaignComparisonTodayKey())}"></label>
+    </div>
+    <div class="campaign-period-preview">
+      <span>비교 대상 기간</span>
+      <div class="campaign-period-setting-row">
+        <label><span>시작일</span><input id="campaignPeriodSince" type="date" value="${esc(startValue)}" max="${esc(campaignComparisonTodayKey())}"></label>
+        <span class="campaign-period-tilde">~</span>
+        <label><span>종료일</span><input id="campaignPeriodUntil" type="date" value="${esc(endValue)}" max="${esc(campaignComparisonTodayKey())}"></label>
+      </div>
+      <em id="campaignPeriodPreviewNote">${executionError || comparisonError ? esc(executionError || comparisonError) : `비교 기준 ${apiNum(comparisonDays)}일 · 비교 대상 ${apiNum(executionDays)}일`}</em>
+    </div>`}
+    <div class="campaign-period-actions">
+      <button class="button secondary" type="button" data-campaign-period-apply${disabled}>${campaignPeriodComparisonState.loading ? "적용 중..." : mode === "month" ? "비교하기" : "적용"}</button>
+      ${mode === "custom" ? `<button class="button secondary" type="button" data-campaign-period-sync-comparison${disabled}>비교 기준을 직전 동일 기간으로 설정</button>` : ""}
+    </div>
+    <p id="campaignPeriodFormError" class="hint-text">${esc(formNote)}</p>
+  </article>`;
+}
+
+function campaignComparisonLoadingHtml(executionStart, executionEnd, comparisonStart, comparisonEnd) {
+  return `<article class="campaign-period-loading" aria-busy="true">
+    <div>
+      <strong>기간 비교 계산 중</strong>
+      <p>${esc(executionStart)} ~ ${esc(executionEnd)}와 ${esc(comparisonStart)} ~ ${esc(comparisonEnd)}의 Cafe24 브랜드 매출을 불러오고 있습니다.</p>
+    </div>
+    <span></span>
+  </article>`;
+}
+
+function campaignComparisonPaintFrame() {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== "function") {
+      setTimeout(resolve, 16);
+      return;
+    }
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
+function campaignComparisonWait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+function updateCampaignPeriodPreview() {
+  if ((campaignPeriodComparisonState.comparisonMode || "month") === "month") {
+    const baseMonth = $("#campaignBaseMonth")?.value || "";
+    const targetMonth = $("#campaignTargetMonth")?.value || "";
+    const errorTarget = $("#campaignPeriodFormError");
+    if (!errorTarget) return;
+    const error = campaignComparisonValidateMonthRange(baseMonth, targetMonth);
+    errorTarget.textContent = error || `${campaignComparisonMonthLabel(baseMonth)}에 비해 ${campaignComparisonMonthLabel(targetMonth)}이 어떻게 달라졌는지 비교합니다.`;
+    return;
+  }
+  const since = $("#campaignPeriodSince")?.value || "";
+  const until = $("#campaignPeriodUntil")?.value || "";
+  const comparisonSince = $("#campaignComparisonSince")?.value || "";
+  const comparisonUntil = $("#campaignComparisonUntil")?.value || "";
+  const noteTarget = $("#campaignPeriodPreviewNote");
+  const errorTarget = $("#campaignPeriodFormError");
+  if (!noteTarget || !errorTarget) return;
+  const executionError = campaignComparisonValidateManualRange(since, until);
+  const comparisonError = campaignComparisonValidateManualRange(comparisonSince, comparisonUntil);
+  if (executionError || comparisonError) {
+    noteTarget.textContent = executionError || comparisonError;
+    errorTarget.textContent = executionError || comparisonError;
+    return;
+  }
+  const executionDays = campaignComparisonInclusiveDays(since, until);
+  const comparisonDays = campaignComparisonInclusiveDays(comparisonSince, comparisonUntil);
+  noteTarget.textContent = `비교 기준 ${apiNum(comparisonDays)}일 · 비교 대상 ${apiNum(executionDays)}일`;
+  if (executionDays !== comparisonDays) {
+    errorTarget.textContent = `두 기간의 길이가 다릅니다. 비교 기준 ${apiNum(comparisonDays)}일 · 비교 대상 ${apiNum(executionDays)}일`;
+    return;
+  }
+  errorTarget.textContent = "기준 캠페인은 그대로 유지하고 Cafe24 비교 기간만 바꿉니다.";
+}
+
+function campaignComparisonTopCard(title, rows = []) {
+  return `<article class="campaign-period-rank"><strong>${esc(title)}</strong>${rows.length ? `<ol>${rows.slice(0, 3).map((row, index) => `<li><mark>${index + 1}</mark><strong>${esc(row.brandName)}</strong><em>${esc(campaignComparisonSignedWon(row.salesDelta))}</em></li>`).join("")}</ol>` : `<p>표시할 브랜드가 없습니다.</p>`}</article>`;
+}
+
+async function renderCampaignPeriodComparison(target) {
+  if (!target) return;
+  const defaultMonths = campaignComparisonDefaultMonths();
+  const defaultBaseRange = campaignComparisonMonthRange(defaultMonths.base);
+  const defaultTargetRange = campaignComparisonMonthRange(defaultMonths.target);
+  const autoRange = {
+    executionStart: defaultTargetRange?.start || campaignComparisonTodayKey(),
+    executionEnd: defaultTargetRange?.end || campaignComparisonTodayKey(),
+    comparisonStart: defaultBaseRange?.start || campaignComparisonTodayKey(),
+    comparisonEnd: defaultBaseRange?.end || campaignComparisonTodayKey()
+  };
+  target.innerHTML = `<article class="action-item"><strong>기간 비교 계산 중</strong><p>Cafe24 실제 매출 기준으로 기준 기간과 대상 기간을 비교합니다.</p></article>`;
+  const mode = campaignPeriodComparisonState.comparisonMode === "custom" ? "custom" : "month";
+  const baseMonth = campaignPeriodComparisonState.monthBase || defaultMonths.base;
+  const targetMonth = campaignPeriodComparisonState.monthTarget || defaultMonths.target;
+  let executionRange;
+  let comparisonRange;
+  let baseLabel = campaignComparisonRangeLabel(autoRange.comparisonStart, autoRange.comparisonEnd);
+  let targetLabel = campaignComparisonRangeLabel(autoRange.executionStart, autoRange.executionEnd);
+  let rangeModeLabel = "월별 비교";
+  if (mode === "month") {
+    const monthError = campaignComparisonValidateMonthRange(baseMonth, targetMonth);
+    const baseMonthRange = campaignComparisonMonthRange(baseMonth);
+    const targetMonthRange = campaignComparisonMonthRange(targetMonth);
+    if (monthError || !baseMonthRange || !targetMonthRange) {
+      target.innerHTML = [
+        campaignComparisonSettingsHtml(autoRange),
+        `<article class="action-item"><strong>기간 비교 확인 불가</strong><p>${esc(monthError || "유효한 월을 선택해주세요.")}</p></article>`
+      ].join("");
+      return;
+    }
+    executionRange = { executionStart: targetMonthRange.start, executionEnd: targetMonthRange.end };
+    comparisonRange = { comparisonStart: baseMonthRange.start, comparisonEnd: baseMonthRange.end };
+    baseLabel = campaignComparisonMonthLabel(baseMonth);
+    targetLabel = campaignComparisonMonthLabel(targetMonth);
+    rangeModeLabel = "월별 비교";
+  } else {
+    const manualRange = campaignPeriodComparisonState.manualRange;
+    const manualComparisonRange = campaignPeriodComparisonState.manualComparisonRange;
+    executionRange = manualRange ? { executionStart: manualRange.executionStart, executionEnd: manualRange.executionEnd } : { executionStart: autoRange.executionStart, executionEnd: autoRange.executionEnd };
+    const autoComparison = campaignComparisonRangeFromExecution(executionRange.executionStart, executionRange.executionEnd);
+    comparisonRange = manualComparisonRange || { comparisonStart: autoComparison.comparisonStart, comparisonEnd: autoComparison.comparisonEnd };
+    baseLabel = campaignComparisonRangeLabel(comparisonRange.comparisonStart, comparisonRange.comparisonEnd);
+    targetLabel = campaignComparisonRangeLabel(executionRange.executionStart, executionRange.executionEnd);
+    rangeModeLabel = "직접 선택";
+  }
+  const range = {
+    executionStart: executionRange.executionStart,
+    executionEnd: executionRange.executionEnd,
+    comparisonStart: comparisonRange.comparisonStart,
+    comparisonEnd: comparisonRange.comparisonEnd
+  };
+  const { executionStart, executionEnd, comparisonStart, comparisonEnd } = range;
+  const executionDays = campaignComparisonInclusiveDays(executionStart, executionEnd);
+  const comparisonDays = campaignComparisonInclusiveDays(comparisonStart, comparisonEnd);
+
+  campaignPeriodComparisonState.loading = true;
+  const loadingStartedAt = Date.now();
+  target.innerHTML = [
+    campaignComparisonSettingsHtml(range),
+    campaignComparisonLoadingHtml(executionStart, executionEnd, comparisonStart, comparisonEnd)
+  ].join("");
+  await campaignComparisonPaintFrame();
+
+  let execution;
+  let comparison;
+  try {
+    [execution, comparison] = await Promise.all([
+      getJson(`/api/diagnostics/brand-sales?since=${executionStart}&until=${executionEnd}`, 15000),
+      getJson(`/api/diagnostics/brand-sales?since=${comparisonStart}&until=${comparisonEnd}`, 15000)
+    ]);
+  } finally {
+    await campaignComparisonWait(350 - (Date.now() - loadingStartedAt));
+    campaignPeriodComparisonState.loading = false;
+  }
+  if (execution.error || comparison.error) {
+    target.innerHTML = `<article class="action-item"><strong>기간 비교 확인 불가</strong><p>일부 데이터를 불러오지 못해 기간 비교를 표시할 수 없습니다.</p></article>`;
+    return;
+  }
+  if (execution.source === "csv_required" || comparison.source === "csv_required") {
+    target.innerHTML = `<article class="action-item"><strong>기간 비교 준비 필요</strong><p>비교 기간의 Cafe24 데이터가 아직 준비되지 않았습니다. 과거 데이터 CSV 업로드가 필요할 수 있습니다.</p></article>`;
+    return;
+  }
+  if (!Array.isArray(execution.brands) || !Array.isArray(comparison.brands) || (!execution.brands.length && !comparison.brands.length)) {
+    target.innerHTML = `<article class="action-item"><strong>브랜드 매출 데이터 없음</strong><p>비교 대상 기간에 브랜드 매출 데이터가 없습니다.</p></article>`;
+    return;
+  }
+
+  const executionMap = new Map(execution.brands.map((row) => [row.brand_code || "UNASSIGNED", row]));
+  const comparisonMap = new Map(comparison.brands.map((row) => [row.brand_code || "UNASSIGNED", row]));
+  const brandRows = [...new Set([...executionMap.keys(), ...comparisonMap.keys()])].map((code) => {
+    const current = executionMap.get(code) || {};
+    const previous = comparisonMap.get(code) || {};
+    const currentSales = Number(current.salesAmount || 0);
+    const previousSales = Number(previous.salesAmount || 0);
+    return {
+      brandCode: code,
+      brandName: current.brand_name || previous.brand_name || code,
+      salesDelta: currentSales - previousSales,
+      orderDelta: Number(current.orderCount || 0) - Number(previous.orderCount || 0),
+      quantityDelta: Number(current.quantitySold || 0) - Number(previous.quantitySold || 0)
+    };
+  }).filter((row) => row.salesDelta || row.orderDelta || row.quantityDelta);
+  const increaseTop = brandRows.filter((row) => row.salesDelta > 0).sort((left, right) => right.salesDelta - left.salesDelta).slice(0, 5);
+  const decreaseTop = brandRows.filter((row) => row.salesDelta < 0).sort((left, right) => left.salesDelta - right.salesDelta).slice(0, 5);
+  const executionTotals = execution.totals || {};
+  const comparisonTotals = comparison.totals || {};
+  const salesDelta = Number(executionTotals.salesAmount || 0) - Number(comparisonTotals.salesAmount || 0);
+  const orderDelta = Number(executionTotals.orderCount || 0) - Number(comparisonTotals.orderCount || 0);
+  const quantityDelta = Number(executionTotals.quantitySold || 0) - Number(comparisonTotals.quantitySold || 0);
+  const salesTone = salesDelta > 0 ? "good" : salesDelta < 0 ? "urgent" : "neutral";
+  const salesDirection = salesDelta > 0 ? "증가" : salesDelta < 0 ? "감소" : "변화 없음";
+  const comparisonSales = Number(comparisonTotals.salesAmount || 0);
+  const executionSales = Number(executionTotals.salesAmount || 0);
+  const salesNarrative = `${baseLabel}에 비해 ${targetLabel} 매출이 ${campaignComparisonRate(salesDelta, comparisonSales)} ${salesDirection}했습니다.`;
+
+  target.innerHTML = [
+    campaignComparisonSettingsHtml(range),
+    `<article class="campaign-period-hero ${esc(salesTone)}">
+      <div class="campaign-period-result">
+        <span>매출</span>
+        <strong>${esc(campaignComparisonRate(salesDelta, comparisonSales))}</strong>
+        <p>${esc(salesNarrative)}</p>
+        <em>${apiWon(comparisonSales)} → ${apiWon(executionSales)}</em>
+      </div>
+      <div class="campaign-period-window">
+        <div><span>비교 기준</span><strong>${esc(campaignComparisonShortDate(comparisonStart))} ~ ${esc(campaignComparisonShortDate(comparisonEnd))}</strong></div>
+        <div><span>비교 대상</span><strong>${esc(campaignComparisonShortDate(executionStart))} ~ ${esc(campaignComparisonShortDate(executionEnd))}</strong></div>
+      </div>
+      <div class="campaign-period-delta">
+        <strong>${esc(campaignComparisonSignedWon(salesDelta))}</strong>
+        <span>${esc(salesDirection)} 금액</span>
+      </div>
+    </article>`,
+    `<div class="campaign-period-kpis">
+      <article class="action-item"><span>주문수</span><strong>${apiNum(comparisonTotals.orderCount)} → ${apiNum(executionTotals.orderCount)}</strong><p>${esc(campaignComparisonDeltaText(orderDelta, "건"))}</p></article>
+      <article class="action-item"><span>판매수량</span><strong>${apiNum(comparisonTotals.quantitySold)} → ${apiNum(executionTotals.quantitySold)}</strong><p>${esc(campaignComparisonDeltaText(quantityDelta, "개"))}</p></article>
+    </div>`,
+    `<div class="campaign-period-ranks">${campaignComparisonTopCard(`${baseLabel}에 비해 가장 많이 증가한 브랜드 TOP 3`, increaseTop)}${campaignComparisonTopCard(`${baseLabel}에 비해 가장 많이 감소한 브랜드 TOP 3`, decreaseTop)}</div>`,
+    `<article class="campaign-period-meta">
+      <span>기간 기준</span><strong>${esc(rangeModeLabel)}</strong>
+      <span>비교 대상</span><strong>${esc(executionStart)} ~ ${esc(executionEnd)} (${apiNum(executionDays)}일)</strong>
+      <span>비교 기준</span><strong>${esc(comparisonStart)} ~ ${esc(comparisonEnd)} (${apiNum(comparisonDays)}일)</strong>
+    </article>`,
+    `<p class="hint-text">이 데이터는 Cafe24 실제 매출 기간 비교입니다. 광고와 매출의 인과관계를 의미하지 않습니다.</p>`
+  ].join("");
+}
+
+function renderMarketingSummary({ meta = {}, fullReport = {}, commerce = {}, adSpendShare = null, briefingTarget = null, reconTarget = null, briefingCount = null, reportingSpend = null, reportingPurchaseValue = null, periodLabel = "" } = {}) {
+  const heroTarget = $("#marketingSummaryHero");
+  const briefingSummaryTarget = $("#marketingSummaryBriefing");
+  const statusSummaryTarget = $("#marketingSummaryStatus");
+  if (!heroTarget || !briefingSummaryTarget || !statusSummaryTarget) return;
+
+  const commerceTotals = commerce?.totals || {};
+  const spend = reportingSpend === null || reportingSpend === undefined ? Number(meta.totals?.spend || 0) : Number(reportingSpend || 0);
+  const purchaseValue = reportingPurchaseValue === null || reportingPurchaseValue === undefined ? Number(meta.totals?.purchaseValue || 0) : Number(reportingPurchaseValue || 0);
+  const paidAmount = Number(commerceTotals.paidAmount || 0);
+  const purchaseCommerceDiff = purchaseValue - paidAmount;
+  heroTarget.innerHTML = [
+    metaAdsSummaryCard("광고비 / 실제 매출", adSpendShare === null ? "-" : pct(adSpendShare), "기존 Advertising 계산값", true),
+    metaAdsSummaryCard("광고비", apiWon(spend), "Meta Ads 기준", true),
+    metaAdsSummaryCard("Meta 추정 구매값", apiWon(purchaseValue), "Meta 자체 귀속 기준", true),
+    metaAdsSummaryCard("실제 매출", apiWon(paidAmount), "Commerce canonical 기준", true),
+    metaAdsSummaryCard("Meta ↔ Cafe24 차이", campaignComparisonSignedWon(purchaseCommerceDiff), "같은 기간·다른 집계 기준 비교, 인과관계 아님", true)
+  ].join("");
+
+  const briefingCards = briefingTarget ? [...briefingTarget.querySelectorAll(".ad-ai-briefing-card")] : [];
+  const totalBriefingCount = briefingCount === null || briefingCount === undefined ? briefingCards.length : Number(briefingCount || 0);
+  const firstNarrative = briefingCards[0]?.querySelector(".ad-ai-briefing-narrative")?.textContent?.trim() || "관리 필요 캠페인이 확인되지 않았습니다.";
+  renderTodaySummary({ marketing: { adSpendShare, briefingCount: totalBriefingCount, narrative: firstNarrative, reportingSpend: spend, reportingPurchaseValue: purchaseValue, periodLabel } });
+  renderTodayOverviewCards();
+  briefingSummaryTarget.innerHTML = [
+    salesCompareCard("관리 필요 캠페인", `${apiNum(totalBriefingCount)}건`, "관리가 필요한 순서로 표시됩니다."),
+    salesCompareCard("관찰 문구", firstNarrative, "Meta 자체 귀속 기준, Commerce 매출 미반영")
+  ].join("");
+
+  const groups = { active: [], other: [] };
+  if (!fullReport.error) {
+    (fullReport.rows || []).forEach((row) => groups[metaAdsStatusGroup(row)].push(row));
+  }
+  const reconciliationText = reconTarget?.textContent || "";
+  const reconciliationLabel = fullReport.error ? "검증 불가" : reconciliationText.includes("차이 발생") ? "차이 발생" : reconciliationText.includes("일치") ? "일치" : "확인 필요";
+  const unlistedCount = Number(fullReport.reconciliation?.unlistedCampaignCount || 0);
+  statusSummaryTarget.innerHTML = [
+    salesCompareCard("조회 기간", periodLabel || "-", "Marketing Summary 기준"),
+    salesCompareCard("집행", `${apiNum(groups.active.length)}건`, "기존 full report 그룹 기준"),
+    salesCompareCard("미집행", `${apiNum(groups.other.length)}건`, "기존 full report 그룹 기준"),
+    salesCompareCard("누락", `${apiNum(unlistedCount)}건`, "기존 reconciliation 기준"),
+    salesCompareCard("일치 검증", reconciliationLabel, "기존 reconciliation 판정 결과")
+  ].join("");
 }
 
 function hideAdOrganicSection() {
@@ -2543,6 +3441,7 @@ function bindAdFullReportToggles() {
     if (!wraps.length) return;
     const show = !wraps[0].classList.contains("show-detail");
     wraps.forEach((wrap) => wrap.classList.toggle("show-detail", show));
+    $$(".ad-detail-panel").forEach((panel) => panel.toggleAttribute("hidden", !show));
     detailBtn.textContent = show ? "기본만 보기" : "상세 보기";
   });
 }
@@ -2553,10 +3452,10 @@ const AD_DECISION_URGENCY = { 중지: 0, 점검: 1, 관찰: 2, 유지: 3, 확대
 
 // 매일 아침 3분 안에 볼 화면이라 카운트 집계 없이 "지금 확인할 3개"만 카드로 보여줍니다.
 function renderAdAiBriefing(fullReport = {}, weights = {}, target) {
-  if (!target) return;
+  if (!target) return 0;
   if (fullReport.error) {
     target.innerHTML = `<article class="action-item"><strong>브리핑 확인 불가</strong><p>${esc(fullReport.error)}</p></article>`;
-    return;
+    return 0;
   }
   const rows = (fullReport.rows || []).filter((row) => Number(row.spend || 0) > 0);
   const scored = rows.map((row) => {
@@ -2564,6 +3463,7 @@ function renderAdAiBriefing(fullReport = {}, weights = {}, target) {
     const decision = metaAdsStarDecision(score);
     return { row, score, decision };
   });
+  const managementCount = scored.filter((item) => (AD_DECISION_URGENCY[item.decision.label] ?? 5) <= 2).length;
 
   const priority = [...scored]
     .sort((left, right) => {
@@ -2575,7 +3475,7 @@ function renderAdAiBriefing(fullReport = {}, weights = {}, target) {
 
   if (!priority.length) {
     target.innerHTML = `<p class="hint-text">이번 기간에 광고비가 집행된 캠페인이 없습니다.</p>`;
-    return;
+    return managementCount;
   }
 
   target.innerHTML = priority.map(({ row, decision }, index) => `
@@ -2589,6 +3489,7 @@ function renderAdAiBriefing(fullReport = {}, weights = {}, target) {
       <p class="ad-ai-briefing-metric">관리가 필요한 순서로 표시됩니다. · ${esc(metaAdsKeyMetricLine(row))} · 광고비 ${apiWon(row.spend)}</p>
     </article>
   `).join("");
+  return managementCount;
 }
 
 // Meta 계정 전체 합계(level=account)와 표에 실제로 보이는 캠페인 합계를 대조합니다.
@@ -2660,42 +3561,114 @@ function renderAdOrganicCards(adPosts, organicPosts) {
 }
 
 async function renderCafe24Sales(data) {
-  const target = $("#salesImpact");
-  const detailTarget = $("#salesDetail");
-  if (!target || !detailTarget) return;
-  const startDate = `${data.month}-01`;
-  const endDate = monthEnd(data.month);
+  const range = operationsDateRange(data);
+  const startDate = range.since;
+  const endDate = range.until;
   const sales = await getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000);
   if (sales.error) {
-    const state = salesConnectionState(sales.error);
-    if (target.dataset.productSalesLocked !== "1") {
-      target.classList.add("cards");
-      target.classList.remove("instagram-feed");
-      target.innerHTML = [
-        salesWarningCard(state),
-        salesKpiCard("오늘(선택기간) 매출", "연결 필요", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
-        salesKpiCard("정상 주문", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
-        salesKpiCard("제외 주문", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled"),
-        salesKpiCard("평균 객단가", "-", "Cafe24 연결 후 표시됩니다.", "is-disabled")
-      ].join("");
-    }
-    detailTarget.innerHTML = salesPaymentCard([], 0);
+    renderCommerceSummary(sales, null);
+    await renderCampaignPeriodComparison($("#campaignPeriodComparison"));
     return;
   }
+  renderCommerceSummary(sales, null);
+  await renderCampaignPeriodComparison($("#campaignPeriodComparison"));
+}
+
+function renderCommerceSummary(cafe, comparisonResult) {
+  if (cafe !== undefined && cafe !== null) commerceSummaryState.cafe = cafe;
+  if (comparisonResult !== undefined && comparisonResult !== null) commerceSummaryState.comparison = comparisonResult;
+  const heroTarget = $("#commerceSummaryHero");
+  const compareTarget = $("#commerceSummaryCompare");
+  const paymentsTarget = $("#commerceSummaryPayments");
+  if (!heroTarget || !compareTarget || !paymentsTarget) return;
+
+  const sales = commerceSummaryState.cafe || {};
   const totals = sales.totals || {};
   const payments = sales.paymentMethods || [];
-  const source = "canonical commerce";
-  if (target.dataset.productSalesLocked !== "1") {
-    target.classList.add("cards");
-    target.classList.remove("instagram-feed");
-    target.innerHTML = [
-      salesKpiCard("오늘(선택기간) 매출", apiWon(totals.paidAmount), `${source} · ${sales.period?.since || startDate} ~ ${sales.period?.until || endDate}`),
-      salesKpiCard("정상 주문", `${apiNum(totals.orderCount)}건`, "취소/환불 주문 제외"),
-      salesKpiCard("제외 주문", `${apiNum(sales.excludedOrderCount)}건`, "취소/환불로 매출 집계에서 제외"),
-      salesKpiCard("평균 객단가", apiWon(totals.averageOrderValue), "Cafe24 실제 결제 기준")
-    ].join("");
-  }
-  detailTarget.innerHTML = salesPaymentCard(payments, Number(totals.paidAmount || 0));
+  const paidAmount = Number(totals.paidAmount || 0);
+  heroTarget.innerHTML = `<section class="ops-summary-hero">
+    <div class="ops-summary-hero-main">
+      <span>실제 판매</span>
+      <strong class="ops-summary-hero-num">${apiWon(totals.paidAmount)}</strong>
+      <p class="ops-summary-hero-sub">Cafe24 canonical 기준</p>
+    </div>
+    <div class="ops-summary-side">
+      ${opsStatRow("정상 주문", `${apiNum(totals.orderCount)}건`)}
+      ${opsStatRow("객단가", apiWon(totals.averageOrderValue))}
+      ${opsStatRow("제외 주문", `${apiNum(sales.excludedOrderCount)}건`, { note: "canonical 집계 제외" })}
+    </div>
+  </section>`;
+
+  const comparison = commerceSummaryState.comparison || {};
+  const cafeOrderAmount = hasApiValue(comparison.cafeOrderAmount) ? Number(comparison.cafeOrderAmount) : paidAmount;
+  const metaPurchaseValue = hasApiValue(comparison.metaPurchaseValue) ? Number(comparison.metaPurchaseValue) : null;
+  const compareBase = Math.max(cafeOrderAmount || 0, metaPurchaseValue || 0, 1);
+  const mismatchText = comparison.comparable
+    ? `${comparison.mismatchRate < 1 ? comparison.mismatchRate.toFixed(1) : Math.round(comparison.mismatchRate)}%`
+    : "비교 불가";
+  compareTarget.innerHTML = `<section class="ops-summary-block">
+    <div class="ops-summary-block-head">
+      <h4>Commerce vs Meta</h4>
+      <span>오차율 ${esc(mismatchText)} · 상품 단위 비교 아님</span>
+    </div>
+    ${opsCompareRow("Cafe24 실제 판매", "canonical Commerce 기준", apiWon(cafeOrderAmount), monthlyReportRatio(cafeOrderAmount, compareBase))}
+    ${opsCompareRow("Meta 구매값", "Meta 광고 귀속 기준 · 실제 매출 아님", comparison.metaReady === false ? "확인 필요" : apiWon(metaPurchaseValue), monthlyReportRatio(metaPurchaseValue, compareBase), { estimated: true })}
+  </section>`;
+
+  const paymentRows = payments.map((item) => {
+    const percentage = paidAmount > 0 ? Number(item.orderAmount || 0) / paidAmount * 100 : 0;
+    return { ...item, percentage };
+  });
+  const leadPayment = paymentRows.reduce((best, item) => Number(item.percentage || 0) > Number(best.percentage || 0) ? item : best, paymentRows[0] || null);
+  paymentsTarget.innerHTML = paymentRows.length ? `<section class="ops-summary-block">
+    <div class="ops-summary-block-head"><h4>결제수단</h4><span>orderAmount / paidAmount</span></div>
+    <div class="ops-summary-lead">
+      <strong>${esc(leadPayment?.paymentMethod || "미확인")} ${pct(leadPayment?.percentage)}</strong>
+      <div class="ops-summary-bar"><i style="width:${monthlyReportRatio(leadPayment?.percentage, 100)}%"></i></div>
+      <p>${apiWon(leadPayment?.orderAmount)} · 주문 ${apiNum(leadPayment?.orderCount)}건</p>
+    </div>
+    ${paymentRows.map((item) => `<div class="ops-summary-srow ${Number(item.orderAmount || 0) ? "" : "is-muted"}">
+      <span>${esc(item.paymentMethod || "미확인")}</span>
+      <strong>${apiWon(item.orderAmount)}</strong>
+      <em>${apiNum(item.orderCount)}건 · ${pct(item.percentage)}</em>
+    </div>`).join("")}
+  </section>` : `<article class="action-item sales-empty-card"><strong>결제수단 데이터 없음</strong><p>Commerce 데이터가 쌓이면 표시됩니다.</p></article>`;
+  renderTodaySummary({ cafe: commerceSummaryState.cafe, comparison: commerceSummaryState.comparison });
+}
+
+function renderTodaySummary({ data, cafe, meta, comparison, marketing } = {}) {
+  if (data !== undefined && data !== null) todaySummaryState.data = data;
+  if (cafe !== undefined && cafe !== null) todaySummaryState.cafe = cafe;
+  if (meta !== undefined && meta !== null) todaySummaryState.meta = meta;
+  if (comparison !== undefined && comparison !== null) todaySummaryState.comparison = comparison;
+  if (marketing !== undefined && marketing !== null) todaySummaryState.marketing = marketing;
+
+  const briefingTarget = $("#todaySummaryBriefing");
+  const sectionsTarget = $("#todaySummarySections");
+  if (!briefingTarget || !sectionsTarget) return;
+
+  const state = todaySummaryState;
+  const cafeTotals = state.cafe?.totals || {};
+  const comparisonState = state.comparison || {};
+  const marketingState = state.marketing || {};
+  const posts = state.data?.posts || [];
+  const contentViews = sum(posts, "views");
+  const metaAge = relativeAgeText(cacheAgeMinutes(state.meta || {}));
+  const commerceValue = hasApiValue(cafeTotals.paidAmount) ? apiWon(cafeTotals.paidAmount) : "확인 필요";
+  const marketingValue = marketingState.adSpendShare === null || marketingState.adSpendShare === undefined ? "확인 필요" : pct(marketingState.adSpendShare);
+
+  briefingTarget.innerHTML = [
+    salesCompareCard("Commerce", comparisonState.comparable ? `오차 ${comparisonState.mismatchRate < 1 ? comparisonState.mismatchRate.toFixed(1) : Math.round(comparisonState.mismatchRate)}%` : "비교 불가", "기존 Sales 비교 결과", { status: !comparisonState.comparable, badge: { label: "Commerce", tone: "neutral" } }),
+    salesCompareCard("Marketing", `관리 필요 캠페인 ${apiNum(marketingState.briefingCount || 0)}건`, marketingState.narrative || "관리 필요 캠페인 결과를 확인 중입니다.", { badge: { label: "Marketing", tone: "neutral" } }),
+    salesCompareCard("Meta Ads Cache", metaAge || "확인 필요", "기존 cache freshness 기준", { status: !metaAge, badge: { label: "Meta", tone: "cache" } })
+  ].join("");
+
+  sectionsTarget.innerHTML = [
+    `<article class="action-item sales-compare-card"><span>Commerce</span><strong>${commerceValue}</strong><p>실제 판매</p><button class="today-jump-button" type="button" data-jump-view="Sales">Commerce 보기</button></article>`,
+    `<article class="action-item sales-compare-card"><span>Marketing</span><strong>${marketingValue}</strong><p>광고비 / 실제 매출</p><button class="today-jump-button" type="button" data-jump-view="Advertising">Marketing 보기</button></article>`,
+    `<article class="action-item sales-compare-card"><span>Content</span><strong>${apiNum(contentViews)}</strong><p>전체 게시물 조회 합산</p><button class="today-jump-button" type="button" data-jump-view="Content">Content 보기</button></article>`,
+    `<article class="action-item sales-compare-card"><span>Reports</span><strong>Monthly Report</strong><p>월간 확정 스냅샷</p><button class="today-jump-button" type="button" data-jump-view="Reports">월간 리포트 보기</button></article>`
+  ].join("");
 }
 
 function salesConnectionState(error) {
@@ -2722,6 +3695,30 @@ function salesWarningCard(state) {
     <p>${esc(state.note)}</p>
     <small>${esc(state.detail)}</small>
   </article>`;
+}
+
+function opsStatRow(label, value, { muted = false, note = "" } = {}) {
+  return `<div class="ops-summary-srow ${muted ? "is-muted" : ""}">
+    <span>${esc(label)}</span>
+    <strong>${esc(value)}</strong>
+    ${note ? `<em>${esc(note)}</em>` : ""}
+  </div>`;
+}
+
+function opsCompareRow(label, note, amountHtml, ratioPct, { estimated = false } = {}) {
+  return `<div class="ops-summary-compare-row ${estimated ? "is-estimated" : ""}">
+    <div><strong>${esc(label)}</strong><span>${esc(note)}</span></div>
+    <div class="ops-summary-bar"><i style="width:${monthlyReportRatio(ratioPct, 100)}%"></i></div>
+    <em>${esc(amountHtml)}</em>
+  </div>`;
+}
+
+function opsRankRow(index, title, valueHtml) {
+  return `<div class="ops-summary-rank-row">
+    <span class="ops-summary-rank-no">${String(index + 1).padStart(2, "0")}</span>
+    <strong>${esc(title || "-")}</strong>
+    <em>${esc(valueHtml || "-")}</em>
+  </div>`;
 }
 
 function salesKpiCard(title, value, note, className = "") {
@@ -2852,12 +3849,10 @@ function cafe24ItemDisplayAmount(item = {}, quantity = 1) {
 
 async function renderAdComparison(data) {
   const healthTarget = $("#salesHealthBanner");
-  const metaTarget = $("#salesMetaEstimate");
-  const varianceTarget = $("#salesVariance");
-  const actionTarget = $("#salesAction");
-  if (!healthTarget || !metaTarget || !varianceTarget || !actionTarget) return;
-  const startDate = `${data.month}-01`;
-  const endDate = monthEnd(data.month);
+  if (!healthTarget) return;
+  const range = operationsDateRange(data);
+  const startDate = range.since;
+  const endDate = range.until;
   const [meta, cafe] = await Promise.all([
     getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
     getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000)
@@ -2879,19 +3874,10 @@ async function renderAdComparison(data) {
     : null;
 
   const decision = salesDecisionState({ meta, cafe, mismatchRate, cafeReady, metaReady, metaPurchaseValue, cafeOrderAmount });
+  renderCommerceSummary(cafe, { metaPurchaseValue, cafeOrderAmount, mismatchRate, comparable, metaReady, cafeReady });
 
   healthTarget.className = `ad-status-banner ${esc(decision.tone)}`;
   healthTarget.innerHTML = `<span class="status-dot"></span><strong>Sales Health · ${esc(decision.label)}</strong><span class="note">${esc(decision.reason)}</span>`;
-
-  metaTarget.innerHTML = salesCompareCard("Meta 구매값", meta.error ? "확인 필요" : apiWon(metaTotals.purchaseValue), `${meta.error || meta.source || "Meta Ads"} · 캠페인 ${apiNum((meta.campaigns || meta.rows || []).length)}개`, { status: Boolean(meta.error), badge: cardBadge("meta", meta, hasApiValue(metaTotals.purchaseValue)) });
-
-  varianceTarget.innerHTML = [
-    salesCompareCard("차이", unmatchedValue === null ? "확인 필요" : apiWon(unmatchedValue), "Meta 구매값 - Cafe24 실제매출", { status: unmatchedValue === null, badge: unmatchedValue === null ? { label: "데이터 없음", tone: "muted" } : { label: "계산값", tone: "neutral" } }),
-    salesCompareCard("오차율", mismatchRate === null ? "확인 필요" : `${mismatchRate < 1 ? mismatchRate.toFixed(1) : Math.round(mismatchRate)}%`, "Cafe24 실제매출 대비 Meta 구매값 오차", { status: mismatchRate === null, tone: decision.tone === "error" ? "urgent" : decision.tone === "warn" ? "warn" : "" }),
-    salesCompareCard("주의사항", "상품 단위 비교 아님", "현재 Meta 데이터는 캠페인 단위이므로 상품별 구매 분석으로 해석하지 않습니다.", { status: true })
-  ].join("");
-
-  actionTarget.innerHTML = salesActionCard(decision);
 }
 
 // ============================================================================
@@ -3719,8 +4705,15 @@ async function updateSync(data) {
   setSyncRow("instagramSyncRow", instagramSidebar.tone, "Instagram", instagramSidebar.badge);
 
   const meta = await getJson(`/api/meta-ads/summary?since=${data.month}-01&until=${monthEnd(data.month)}`, 5000);
-  const metaSidebar = sidebarBadgeFromState(bannerState(meta, "meta"));
-  setSyncRow("metaAdsSyncRow", metaSidebar.tone, "Meta Ads", metaSidebar.badge);
+  const metaState = bannerState(meta, "meta");
+  const metaSidebar = meta.error
+    ? {
+        tone: "error",
+        badge: metaState.label === "토큰 만료" || metaState.label === "권한 만료" ? "재인증 필요" : "실패"
+      }
+    : { tone: "good", badge: "정상" };
+  const metaDetail = meta.error ? "" : (isLiveSource(meta) ? "Live" : cacheFreshnessLabel(meta));
+  setSyncRow("metaAdsSyncRow", metaSidebar.tone, "Meta Ads", metaSidebar.badge, metaDetail);
 
   const cafeStatus = await getCafe24Status(`${data.month}-01`, monthEnd(data.month));
   const cafeReauth = /refresh_token|재인증|reauth_required/i.test(String(cafeStatus.detail || ""));
@@ -3740,17 +4733,25 @@ async function updateSync(data) {
 
 function renderAll() {
   const data = selectedMonth();
+  if (!reportsMonth) reportsMonth = data.month;
   $("#dataModeBadge").textContent = sourceLabel(data);
-  renderMonthRail(data);
+  renderMonthRail();
   renderKpis(data);
   renderOverviewLiveData(data);
-  renderMonthlyDashboard(data);
+  renderMonthlyArchiveReport(reportsMonth);
   renderContentTabs();
-  renderContentTable(data.posts || []);
+  renderContentOperations(data);
   renderEditorialAi(data);
-  renderGrowthChart();
   renderOtherSections(data);
   updateSync(data);
+}
+
+function renderOperationsSections() {
+  const data = selectedMonth();
+  renderCafe24Sales(data);
+  renderAdComparison(data);
+  renderAdvertising(data);
+  renderContentOperations(data);
 }
 
 // options.forceRefresh (2026-07-08 Instagram 자동 동기화 기능 추가): "지금 동기화"
@@ -3788,6 +4789,27 @@ function bind() {
     toast("연동 상태를 다시 확인합니다.");
     renderApiHealthCenter(selectedMonth());
   });
+  $("#operationsRange")?.addEventListener("change", (event) => {
+    operationsRange = event.target.value || "month";
+    const isCustom = operationsRange === "custom";
+    $("#operationsCustomRange")?.toggleAttribute("hidden", !isCustom);
+    renderOperationsSections();
+    renderOverviewLiveData(selectedMonth());
+  });
+  $("#operationsSince")?.addEventListener("change", (event) => {
+    operationsRangeCustomSince = event.target.value || "";
+    if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
+      renderOperationsSections();
+      renderOverviewLiveData(selectedMonth());
+    }
+  });
+  $("#operationsUntil")?.addEventListener("change", (event) => {
+    operationsRangeCustomUntil = event.target.value || "";
+    if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
+      renderOperationsSections();
+      renderOverviewLiveData(selectedMonth());
+    }
+  });
   $("#todayBriefReset")?.addEventListener("click", () => {
     localStorage.removeItem(todayStorageKey());
     renderTodayBriefing();
@@ -3811,6 +4833,112 @@ function bind() {
     const button = event.target.closest("[data-jump-view]");
     if (!button) return;
     document.querySelector(`[data-view="${button.dataset.jumpView}"]`)?.click();
+  });
+  document.addEventListener("click", async (event) => {
+    const toggle = event.target.closest("[data-campaign-period-toggle]");
+    if (toggle) {
+      if (campaignPeriodComparisonState.loading) return;
+      campaignPeriodComparisonState.settingsOpen = !campaignPeriodComparisonState.settingsOpen;
+      await renderCampaignPeriodComparison($("#campaignPeriodComparison"));
+      return;
+    }
+    const modeButton = event.target.closest("[data-campaign-period-mode]");
+    if (modeButton) {
+      if (campaignPeriodComparisonState.loading || modeButton.disabled) return;
+      campaignPeriodComparisonState.comparisonMode = modeButton.dataset.campaignPeriodMode || "month";
+      await renderCampaignPeriodComparison($("#campaignPeriodComparison"));
+      return;
+    }
+    const apply = event.target.closest("[data-campaign-period-apply]");
+    if (apply) {
+      if (campaignPeriodComparisonState.loading || apply.disabled) return;
+      apply.disabled = true;
+      if ((campaignPeriodComparisonState.comparisonMode || "month") === "month") {
+        const baseMonth = $("#campaignBaseMonth")?.value || "";
+        const targetMonth = $("#campaignTargetMonth")?.value || "";
+        const error = campaignComparisonValidateMonthRange(baseMonth, targetMonth);
+        const baseRange = campaignComparisonMonthRange(baseMonth);
+        const targetRange = campaignComparisonMonthRange(targetMonth);
+        if (error || !baseRange || !targetRange) {
+          apply.disabled = false;
+          const target = $("#campaignPeriodFormError");
+          if (target) target.textContent = error || "유효한 월을 선택해주세요.";
+          updateCampaignPeriodPreview();
+          return;
+        }
+        campaignPeriodComparisonState.monthBase = baseMonth;
+        campaignPeriodComparisonState.monthTarget = targetMonth;
+        campaignPeriodComparisonState.manualComparisonRange = { comparisonStart: baseRange.start, comparisonEnd: baseRange.end };
+        campaignPeriodComparisonState.manualRange = { executionStart: targetRange.start, executionEnd: targetRange.end };
+      } else {
+        const since = $("#campaignPeriodSince")?.value || "";
+        const until = $("#campaignPeriodUntil")?.value || "";
+        const comparisonSince = $("#campaignComparisonSince")?.value || "";
+        const comparisonUntil = $("#campaignComparisonUntil")?.value || "";
+        const error = campaignComparisonValidateManualRange(since, until) || campaignComparisonValidateManualRange(comparisonSince, comparisonUntil);
+        if (error) {
+          apply.disabled = false;
+          const target = $("#campaignPeriodFormError");
+          if (target) target.textContent = error;
+          updateCampaignPeriodPreview();
+          return;
+        }
+        campaignPeriodComparisonState.manualRange = { executionStart: since, executionEnd: until };
+        campaignPeriodComparisonState.manualComparisonRange = { comparisonStart: comparisonSince, comparisonEnd: comparisonUntil };
+      }
+      await renderCampaignPeriodComparison($("#campaignPeriodComparison"));
+      return;
+    }
+    const syncComparison = event.target.closest("[data-campaign-period-sync-comparison]");
+    if (syncComparison) {
+      if (campaignPeriodComparisonState.loading || syncComparison.disabled) return;
+      const since = $("#campaignPeriodSince")?.value || "";
+      const until = $("#campaignPeriodUntil")?.value || "";
+      const error = campaignComparisonValidateManualRange(since, until);
+      if (error) {
+        const target = $("#campaignPeriodFormError");
+        if (target) target.textContent = error;
+        updateCampaignPeriodPreview();
+        return;
+      }
+      const range = campaignComparisonRangeFromExecution(since, until);
+      const comparisonSince = $("#campaignComparisonSince");
+      const comparisonUntil = $("#campaignComparisonUntil");
+      if (comparisonSince) comparisonSince.value = range.comparisonStart;
+      if (comparisonUntil) comparisonUntil.value = range.comparisonEnd;
+      updateCampaignPeriodPreview();
+      return;
+    }
+    const reset = event.target.closest("[data-campaign-period-reset]");
+    if (reset) {
+      if (campaignPeriodComparisonState.loading || reset.disabled) return;
+      reset.disabled = true;
+      campaignPeriodComparisonState.comparisonMode = "month";
+      campaignPeriodComparisonState.manualRange = null;
+      campaignPeriodComparisonState.manualComparisonRange = null;
+      await renderCampaignPeriodComparison($("#campaignPeriodComparison"));
+    }
+  });
+  document.addEventListener("input", (event) => {
+    if (!event.target.closest("#campaignPeriodSince, #campaignPeriodUntil, #campaignComparisonSince, #campaignComparisonUntil, #campaignBaseMonth, #campaignTargetMonth")) return;
+    updateCampaignPeriodPreview();
+  });
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-archive-save]");
+    if (!button) return;
+    const month = button.dataset.archiveSave || "";
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "저장 중...";
+    const result = await postJson("/api/reports/monthly/archive", { month }, 30000);
+    if (result.error) {
+      button.disabled = false;
+      button.textContent = originalText;
+      toast(`아카이브 저장 실패: ${result.error}`);
+      return;
+    }
+    toast("아카이브를 저장했습니다.");
+    renderMonthlyArchiveReport(month);
   });
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-project-key]");
