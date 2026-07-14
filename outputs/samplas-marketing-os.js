@@ -4604,9 +4604,9 @@ function productDashboardRowHtml(row, options = {}) {
     <td>${esc(row.productName)}<div class="hint-text">${esc(row.productCode || "")}</div></td>
     <td><span class="badge ${actionClass}">${esc(productAction.label)}</span><div class="hint-text">Confidence · ${esc(productAction.confidence || "-")}</div></td>
     <td>${apiNum(row.inventoryQuantity)}<div class="hint-text">${row.daysOfStockLeft === null || row.daysOfStockLeft === undefined ? "소진일 미확인" : `소진 예상 ${apiNum(row.daysOfStockLeft)}일`}</div>${row.soldOut ? '<div class="hint-text">품절 플래그 있음</div>' : ""}</td>
-    <td>${apiNum(row.quantitySold)}개<div class="hint-text">주문 ${apiNum(row.orderCount)}건</div>${salesWarning}</td>
+    <td>${apiNum(row.quantitySold)}개<div class="hint-text">주문 ${apiNum(row.orderCount)}건 · 일 평균 ${Number(row.salesVelocityPerDay || 0).toFixed(2)}개</div>${salesWarning}</td>
     <td>${apiWon(row.salesAmount)}</td>
-    <td>${lastSaleDate ? esc(lastSaleDate) : "-"}<div class="hint-text">일 평균 ${Number(row.salesVelocityPerDay || 0).toFixed(2)}개</div></td>
+    <td>${lastSaleDate ? esc(lastSaleDate) : "-"}</td>
     <td><span class="badge">Unavailable</span><div class="hint-text">상품 단위 광고 귀속 확인 불가</div></td>
     <td>
       <ul class="product-action-reasons">${reasons.map((reason) => `<li>${esc(reason)}</li>`).join("")}</ul>
@@ -5045,15 +5045,6 @@ function renderOperationsSections() {
   setPending("#commerceSummaryCompare", `<article class="action-item"><strong>Meta 비교 확인 중</strong><p>Meta 구매값과 Cafe24 실제 판매를 비교합니다.</p></article>`);
   setPending("#commerceSummaryPayments", `<article class="action-item"><strong>결제수단 확인 중</strong><p>결제수단 구성을 불러오고 있습니다.</p></article>`);
   setPending("#campaignPeriodComparison", `<article class="action-item"><strong>기간 비교 계산 중</strong><p>Cafe24 실제 매출 기준으로 기준 기간과 대상 기간을 비교합니다.</p></article>`);
-  setPending("#contentSummaryHero", `<article class="action-item"><strong>Content 데이터 확인 중</strong><p>선택 기간 게시물 지표를 불러오고 있습니다.</p></article>`);
-  setPending("#contentSummaryPerformance", `<article class="action-item"><strong>콘텐츠 성과 확인 중</strong><p>저장과 공유 상위 콘텐츠를 정리합니다.</p></article>`);
-  setPending("#contentSummaryFormat", `<article class="action-item"><strong>Format Mix 확인 중</strong><p>콘텐츠 유형별 구성을 불러오고 있습니다.</p></article>`);
-  setPending("#contentKpiGrid", `<article class="action-item"><strong>콘텐츠 KPI 확인 중</strong><p>선택 기간 콘텐츠 지표를 불러오고 있습니다.</p></article>`);
-  setPending("#contentTopGrid", `<article class="action-item"><strong>TOP 콘텐츠 확인 중</strong><p>선택 기간 상위 콘텐츠를 정리합니다.</p></article>`);
-  setPending("#contentTypeGrid", `<article class="action-item"><strong>콘텐츠 유형 확인 중</strong><p>Format Mix를 불러오고 있습니다.</p></article>`);
-  setPending("#contentHeatmap", `<article class="action-item"><strong>게시시간 확인 중</strong><p>시간대별 성과를 정리합니다.</p></article>`);
-  setPending("#contentBrandGrid", `<article class="action-item"><strong>브랜드별 성과 확인 중</strong><p>콘텐츠 브랜드 신호를 정리합니다.</p></article>`);
-  setPending("#contentAiGrid", `<article class="action-item"><strong>AI 추천 확인 중</strong><p>콘텐츠 추천 근거를 정리합니다.</p></article>`);
   renderCafe24Sales(data);
   renderAdComparison(data);
   renderAdvertising(data);

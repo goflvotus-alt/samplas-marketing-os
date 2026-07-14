@@ -23,7 +23,7 @@ const mimeTypes = {
   ".txt": "text/plain; charset=utf-8"
 };
 
-createServer(async (req, res) => {
+const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname === "/") {
@@ -298,6 +298,15 @@ createServer(async (req, res) => {
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
   setInterval(runInstagramBackgroundSync, instagramSyncScheduler.intervalMs);
+});
+
+server.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    console.error(`SAMPLAS Marketing OS cannot start: http://${host}:${port} is already in use. 기존 서버가 실행 중인지 확인한 뒤 다시 실행하세요.`);
+    process.exitCode = 1;
+    return;
+  }
+  throw error;
 });
 
 async function loadEnv() {
