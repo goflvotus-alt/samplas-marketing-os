@@ -3326,8 +3326,7 @@ function renderMarketingSummary({ meta = {}, fullReport = {}, commerce = {}, adS
   renderTodaySummary({ marketing: { adSpendShare, briefingCount: totalBriefingCount, narrative: firstNarrative, reportingSpend: spend, reportingPurchaseValue: purchaseValue, periodLabel } });
   renderTodayOverviewCards();
   briefingSummaryTarget.innerHTML = [
-    salesCompareCard("관리 필요 캠페인", `${apiNum(totalBriefingCount)}건`, "관리가 필요한 순서로 표시됩니다."),
-    salesCompareCard("관찰 문구", firstNarrative, "Meta 자체 귀속 기준, Commerce 매출 미반영")
+    salesCompareCard("관리 필요 캠페인", `${apiNum(totalBriefingCount)}건`, "관리가 필요한 순서로 표시됩니다.")
   ].join("");
 
   const groups = { active: [], other: [] };
@@ -3666,9 +3665,11 @@ function metaAdsStarDecision(score) {
 function metaAdsDecisionCellHtml(row, weights) {
   const score = metaAdsPerformanceScore(row, weights);
   const decision = metaAdsStarDecision(score);
+  const needsManagement = (AD_DECISION_URGENCY[decision.label] ?? 5) <= 2;
   return `<div class="ad-decision-cell ${esc(decision.tone)}">
     <span class="ad-decision-stars">${esc(metaAdsDecisionActionText(decision.label))}</span>
     <span class="ad-decision-line">${esc(metaAdsNarrative(row))}</span>
+    ${needsManagement ? `<span class="ad-decision-action">관리 필요</span>` : ""}
   </div>`;
 }
 
