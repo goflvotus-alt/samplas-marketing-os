@@ -455,7 +455,6 @@ function renderKpis(data) {
   const postCount = (data.posts || []).length;
   const instagramErrors = instagramApiErrors(data);
   const items = [
-    ["선택 기간 매출", "확인 중", "Cafe24 확인 중"],
     ["선택 기간 광고비", "확인 중", "Meta Ads 확인 중"],
     ["선택 기간 주문", "확인 중", "Cafe24 확인 중"],
     ["선택 기간 인기상품", "-", "Cafe24 확인 중"]
@@ -514,9 +513,10 @@ async function renderOverviewLiveData(data, renderSeq) {
   const followerDelta = Number(a.followerDelta || 0);
   const metaCanonical = todayCanonicalMetaTotals(meta, `${startDate} ~ ${endDate}`);
   const roas = metaCanonical.reportingSpend > 0 ? metaCanonical.reportingPurchaseValue / metaCanonical.reportingSpend : null;
+  const comparison = commerceMetaComparisonState(meta, cafe);
 
   renderHealthBanner({ instagram: contentData, meta, cafe });
-  renderTodaySummary({ data: contentData, cafe, meta });
+  renderTodaySummary({ data: contentData, cafe, meta, comparison });
   todayOverviewState = { data, meta, cafe, contentData, contentRangeError, posts, topProduct, avgSaveRate, followerDelta, range };
   $("#overviewRangeEyebrow").textContent = range.label;
   $("#overviewRangeTitle").textContent = `${range.label} KPI`;
@@ -553,7 +553,6 @@ function renderTodayOverviewCards() {
   const a = contentData.account || {};
   const postCount = posts.length;
   $("#kpiGrid").innerHTML = [
-    homeTopMetric("선택 기간 매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.paidAmount), cafe.error ? "Cafe24 연결 후 표시" : "선택기간 기준", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.paidAmount))),
     homeTopMetric("선택 기간 광고비", meta.error ? "확인 필요" : apiWon(metaCanonical.reportingSpend), meta.error ? "Meta 연결 후 표시" : "Marketing canonical 기준", cardBadge("meta", meta, hasApiValue(metaCanonical.reportingSpend))),
     homeTopMetric("선택 기간 주문", cafe.error ? "데이터 없음" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderCount))),
     homeTopMetric("선택 기간 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음", cardBadge("cafe24", cafe, Boolean(topProduct)))
@@ -3957,10 +3956,13 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing } = {}) {
   const metaAge = relativeAgeText(cacheAgeMinutes(state.meta || {}));
   const commerceValue = hasApiValue(cafeTotals.paidAmount) ? apiWon(cafeTotals.paidAmount) : "확인 필요";
   const marketingValue = marketingState.adSpendShare === null || marketingState.adSpendShare === undefined ? "확인 필요" : pct(marketingState.adSpendShare);
+  const marketingBriefingValue = marketingState.briefingCount === null || marketingState.briefingCount === undefined
+    ? "확인 필요"
+    : `관리 필요 캠페인 ${apiNum(marketingState.briefingCount)}건`;
 
   briefingTarget.innerHTML = [
     salesCompareCard("Commerce", comparisonState.comparable ? `오차 ${comparisonState.mismatchRate < 1 ? comparisonState.mismatchRate.toFixed(1) : Math.round(comparisonState.mismatchRate)}%` : "비교 불가", "기존 Sales 비교 결과", { status: !comparisonState.comparable, badge: { label: "Commerce", tone: "neutral" } }),
-    salesCompareCard("Marketing", `관리 필요 캠페인 ${apiNum(marketingState.briefingCount || 0)}건`, marketingState.narrative || "관리 필요 캠페인 결과를 확인 중입니다.", { badge: { label: "Marketing", tone: "neutral" } }),
+    salesCompareCard("Marketing", marketingBriefingValue, marketingState.narrative || "관리 필요 캠페인 결과를 확인 중입니다.", { badge: { label: "Marketing", tone: "neutral" } }),
     salesCompareCard("Meta Ads Cache", metaAge || "확인 필요", "기존 cache freshness 기준", { status: !metaAge, badge: { label: "Meta", tone: "cache" } })
   ].join("");
 
@@ -4159,6 +4161,16 @@ async function renderAdComparison(data, renderSeq) {
     getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000)
   ]);
   if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
+  const comparison = commerceMetaComparisonState(meta, cafe);
+
+  const decision = salesDecisionState({ meta, cafe, ...comparison });
+  renderCommerceSummary(cafe, comparison);
+
+  healthTarget.className = `ad-status-banner ${esc(decision.tone)}`;
+  healthTarget.innerHTML = `<span class="status-dot"></span><strong>Sales Health · ${esc(decision.label)}</strong><span class="note">${esc(decision.reason)}</span>`;
+}
+
+function commerceMetaComparisonState(meta = {}, cafe = {}) {
   const metaTotals = meta.totals || {};
   const cafeTotals = cafe.totals || {};
   const metaPurchaseValue = hasApiValue(metaTotals.purchaseValue) ? Number(metaTotals.purchaseValue) : null;
@@ -4170,16 +4182,10 @@ async function renderAdComparison(data, renderSeq) {
   const cafeReady = !cafe.error && !cafe.cacheWarning && cafeOrderAmount !== null;
   const metaReady = !meta.error && metaPurchaseValue !== null;
   const comparable = cafeReady && metaReady && cafeOrderAmount > 0 && metaPurchaseValue > 0;
-  const unmatchedValue = comparable ? Math.max(0, metaPurchaseValue - cafeOrderAmount) : null;
   const mismatchRate = comparable
     ? Math.abs(metaPurchaseValue - cafeOrderAmount) / cafeOrderAmount * 100
     : null;
-
-  const decision = salesDecisionState({ meta, cafe, mismatchRate, cafeReady, metaReady, metaPurchaseValue, cafeOrderAmount });
-  renderCommerceSummary(cafe, { metaPurchaseValue, cafeOrderAmount, mismatchRate, comparable, metaReady, cafeReady });
-
-  healthTarget.className = `ad-status-banner ${esc(decision.tone)}`;
-  healthTarget.innerHTML = `<span class="status-dot"></span><strong>Sales Health · ${esc(decision.label)}</strong><span class="note">${esc(decision.reason)}</span>`;
+  return { metaPurchaseValue, cafeOrderAmount, mismatchRate, comparable, metaReady, cafeReady };
 }
 
 // ============================================================================
