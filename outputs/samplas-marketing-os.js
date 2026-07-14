@@ -1131,12 +1131,16 @@ function renderContentSummary(data = {}) {
 
   const savedTop = topPosts(posts, (post) => post.saves, 3);
   const sharedTop = topPosts(posts, (post) => post.shares, 3);
-  const aboveAverage = avgSaveRate === null ? [] : posts.filter((post) => postMetrics(post).saveRate > avgSaveRate).slice(0, 3);
+  const aboveAverage = avgSaveRate === null ? [] : posts
+    .filter((post) => postMetrics(post).saveRate > avgSaveRate)
+    .sort((a, b) => postMetrics(b).saveRate - postMetrics(a).saveRate)
+    .slice(0, 3);
   performanceTarget.innerHTML = `<section class="ops-summary-cols">
     <div class="ops-summary-block">
       <div class="ops-summary-block-head"><h4>저장 TOP 3</h4><span>postMetrics saveRate</span></div>
       ${savedTop.length ? savedTop.map((post, index) => opsRankRow(index, post.title || "-", `저장 ${apiNum(post.saves)} · 저장률 ${pct(postMetrics(post).saveRate)}`)).join("") : opsRankRow(0, "데이터 없음", "-")}
       <p class="ops-summary-obs">평균 저장률 상회 ${apiNum(aboveAverage.length)}개 · ${avgSaveRate === null ? "저장률 데이터 없음" : `평균 ${pct(avgSaveRate)}`}</p>
+      ${aboveAverage.length ? aboveAverage.map((post, index) => opsRankRow(index, post.title || "-", `저장률 ${pct(postMetrics(post).saveRate)}`)).join("") : ""}
     </div>
     <div class="ops-summary-block">
       <div class="ops-summary-block-head"><h4>공유 TOP 3</h4><span>postMetrics shareRate</span></div>
@@ -1149,7 +1153,7 @@ function renderContentSummary(data = {}) {
   const formatTypes = [
     { label: "릴스", source: "릴스" },
     { label: "카드뉴스", source: "카드뉴스" },
-    { label: "피드", source: "사진" }
+    { label: "피드", source: "피드" }
   ];
   const formatRows = formatTypes.map(({ label, source }) => {
     const item = summary.find((row) => row.type === source) || { count: 0, reach: 0, saves: 0, shares: 0, avgSaveRate: 0 };
@@ -1213,7 +1217,6 @@ function renderContentPerformanceCenter(posts, data = {}) {
     contentRankingCard("프로필·클릭 반응 TOP 5", topPosts(posts, (post) => post.follows || post.profileVisits || post.websiteClicks || postMetrics(post).engagementRate, 5), (post) => `프로필 ${apiNum(post.profileVisits)} · 클릭 ${apiNum(post.websiteClicks)}`)
   ].join("");
 
-  $("#contentTypeGrid").innerHTML = contentTypeCards(posts);
   $("#contentHeatmap").innerHTML = contentHeatmapCards(posts);
   $("#contentBrandGrid").innerHTML = contentBrandCards(posts);
   $("#contentAiGrid").innerHTML = contentRecommendationCards(posts);
@@ -1240,7 +1243,7 @@ function contentRankingCard(title, rows, helper) {
 function contentTypeCards(posts) {
   const summary = summarizeByType(posts);
   const total = Math.max(1, posts.length);
-  const expected = ["릴스", "카드뉴스", "사진"];
+  const expected = ["릴스", "카드뉴스", "피드"];
   const rows = expected.map((type) => summary.find((item) => item.type === type) || { type, count: 0, reach: 0, avgSaveRate: 0, shares: 0 });
   return rows.map((item) => {
     const share = Math.round(Number(item.count || 0) / total * 100);
