@@ -27,6 +27,7 @@ let productBrandSalesCustomUntil = "";
 let operationsRange = "month";
 let operationsRangeCustomSince = "";
 let operationsRangeCustomUntil = "";
+let operationsRenderSeq = 0;
 let productBrandSalesSort = "brand_asc";
 let productBrandSalesSearch = "";
 let productSoldFilterBrand = "all";
@@ -464,7 +465,7 @@ function renderKpis(data) {
   )).join("");
 }
 
-async function renderOverviewLiveData(data) {
+async function renderOverviewLiveData(data, renderSeq) {
   const target = $("#overviewLiveData");
   const supportTarget = $("#overviewLiveSupport");
   if (!target || !supportTarget) return;
@@ -488,6 +489,7 @@ async function renderOverviewLiveData(data) {
     getJson(`/api/instagram/range?since=${startDate}&until=${endDate}`, 7000),
     getJson("/api/contents/cardnews-status", 6000)
   ]);
+  if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
   const contentData = {
     ...data,
     source: contentRange.error ? data.source : contentRange.source || data.source,
@@ -1039,7 +1041,7 @@ function renderContentTable(posts, data = selectedMonth()) {
   }).join("") || `<tr><td colspan="10">게시물별 데이터가 없습니다.</td></tr>`;
 }
 
-async function renderContentOperations(data) {
+async function renderContentOperations(data, renderSeq) {
   const setPending = (selector, html) => {
     const target = $(selector);
     if (target) target.innerHTML = html;
@@ -1055,6 +1057,7 @@ async function renderContentOperations(data) {
   setPending("#contentAiGrid", `<article class="action-item"><strong>AI 추천 확인 중</strong><p>콘텐츠 추천 근거를 정리합니다.</p></article>`);
   const range = operationsDateRange(data);
   const rangeData = await getJson(`/api/instagram/range?since=${range.since}&until=${range.until}`, 9000);
+  if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
   if (rangeData.error) {
     const message = rangeData.error || "이전 월 데이터는 유지되지만 선택 기간 게시물 지표를 확인할 수 없습니다.";
     const heroTarget = $("#contentSummaryHero");
@@ -2781,7 +2784,7 @@ function apiHealthActionCards() {
   </article>`).join("");
 }
 
-async function renderAdvertising(data) {
+async function renderAdvertising(data, renderSeq) {
   const briefingTarget = $("#adAiBriefing");
   const statusTarget = $("#adTodayStatus");
   const coreKpiTarget = $("#adCoreKpi");
@@ -2808,6 +2811,7 @@ async function renderAdvertising(data) {
     getJson("/api/meta-ads/score-weights", 5000),
     getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 9000)
   ]);
+  if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
   const scoreWeights = weightsResp.weights || {};
   const posts = data.posts || [];
   const adPosts = posts.filter((post) => Number(post.adSpend || 0));
@@ -3115,7 +3119,7 @@ function campaignComparisonMetaCard(title, baseValue, targetValue, deltaValue, f
   return `<article class="action-item"><span>${esc(title)}</span><strong>${hasValues ? esc(campaignComparisonSignedWon(deltaValue)) : "-"}</strong><p>${hasValues ? `${esc(formatter(baseValue))} → ${esc(formatter(targetValue))}` : "Meta 데이터 확인 필요"}</p></article>`;
 }
 
-async function renderCampaignPeriodComparison(target) {
+async function renderCampaignPeriodComparison(target, renderSeq) {
   if (!target) return;
   const defaultMonths = campaignComparisonDefaultMonths();
   const defaultBaseRange = campaignComparisonMonthRange(defaultMonths.base);
@@ -3190,13 +3194,16 @@ async function renderCampaignPeriodComparison(target) {
       getSharedJson(`/api/meta-ads/summary?since=${executionStart}&until=${executionEnd}`, 9000),
       getSharedJson(`/api/meta-ads/summary?since=${comparisonStart}&until=${comparisonEnd}`, 9000)
     ]);
+    if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
     execution = executionResult.status === "fulfilled" ? executionResult.value : { error: executionResult.reason?.message || "실행 기간 데이터 오류" };
     comparison = comparisonResult.status === "fulfilled" ? comparisonResult.value : { error: comparisonResult.reason?.message || "비교 기간 데이터 오류" };
     executionMeta = executionMetaResult.status === "fulfilled" && !executionMetaResult.value?.error ? executionMetaResult.value : null;
     comparisonMeta = comparisonMetaResult.status === "fulfilled" && !comparisonMetaResult.value?.error ? comparisonMetaResult.value : null;
   } finally {
     await campaignComparisonWait(350 - (Date.now() - loadingStartedAt));
-    campaignPeriodComparisonState.loading = false;
+    if (renderSeq === undefined || renderSeq === operationsRenderSeq) {
+      campaignPeriodComparisonState.loading = false;
+    }
   }
   if (execution.error || comparison.error) {
     target.innerHTML = `<article class="action-item"><strong>기간 비교 확인 불가</strong><p>일부 데이터를 불러오지 못해 기간 비교를 표시할 수 없습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
@@ -3836,18 +3843,19 @@ function renderAdOrganicCards(adPosts, organicPosts) {
   ].join("");
 }
 
-async function renderCafe24Sales(data) {
+async function renderCafe24Sales(data, renderSeq) {
   const range = operationsDateRange(data);
   const startDate = range.since;
   const endDate = range.until;
   const sales = await getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000);
+  if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
   if (sales.error) {
     renderCommerceSummary(sales, null);
-    await renderCampaignPeriodComparison($("#campaignPeriodComparison"));
+    await renderCampaignPeriodComparison($("#campaignPeriodComparison"), renderSeq);
     return;
   }
   renderCommerceSummary(sales, null);
-  await renderCampaignPeriodComparison($("#campaignPeriodComparison"));
+  await renderCampaignPeriodComparison($("#campaignPeriodComparison"), renderSeq);
 }
 
 function renderCommerceSummary(cafe, comparisonResult) {
@@ -4123,7 +4131,7 @@ function cafe24ItemDisplayAmount(item = {}, quantity = 1) {
   return amount * quantity;
 }
 
-async function renderAdComparison(data) {
+async function renderAdComparison(data, renderSeq) {
   const healthTarget = $("#salesHealthBanner");
   if (!healthTarget) return;
   const range = operationsDateRange(data);
@@ -4133,6 +4141,7 @@ async function renderAdComparison(data) {
     getSharedJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
     getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000)
   ]);
+  if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
   const metaTotals = meta.totals || {};
   const cafeTotals = cafe.totals || {};
   const metaPurchaseValue = hasApiValue(metaTotals.purchaseValue) ? Number(metaTotals.purchaseValue) : null;
@@ -5026,6 +5035,7 @@ function renderAll() {
 
 function renderOperationsSections() {
   resetSharedJsonRequests();
+  const renderSeq = ++operationsRenderSeq;
   const data = selectedMonth();
   const setPending = (selector, html) => {
     const target = $(selector);
@@ -5047,10 +5057,11 @@ function renderOperationsSections() {
   setPending("#commerceSummaryCompare", `<article class="action-item"><strong>Meta 비교 확인 중</strong><p>Meta 구매값과 Cafe24 실제 판매를 비교합니다.</p></article>`);
   setPending("#commerceSummaryPayments", `<article class="action-item"><strong>결제수단 확인 중</strong><p>결제수단 구성을 불러오고 있습니다.</p></article>`);
   setPending("#campaignPeriodComparison", `<article class="action-item"><strong>기간 비교 계산 중</strong><p>Cafe24 실제 매출 기준으로 기준 기간과 대상 기간을 비교합니다.</p></article>`);
-  renderCafe24Sales(data);
-  renderAdComparison(data);
-  renderAdvertising(data);
-  renderContentOperations(data);
+  renderCafe24Sales(data, renderSeq);
+  renderAdComparison(data, renderSeq);
+  renderAdvertising(data, renderSeq);
+  renderContentOperations(data, renderSeq);
+  return renderSeq;
 }
 
 // options.forceRefresh (2026-07-08 Instagram 자동 동기화 기능 추가): "지금 동기화"
@@ -5092,8 +5103,8 @@ function bind() {
     operationsRange = event.target.value || "month";
     const isCustom = operationsRange === "custom";
     $("#operationsCustomRange")?.toggleAttribute("hidden", !isCustom);
-    renderOperationsSections();
-    renderOverviewLiveData(selectedMonth());
+    const renderSeq = renderOperationsSections();
+    renderOverviewLiveData(selectedMonth(), renderSeq);
   });
   $("#operationsSince")?.addEventListener("change", (event) => {
     const nextSince = event.target.value || "";
@@ -5110,8 +5121,8 @@ function bind() {
     }
     operationsRangeCustomSince = nextSince;
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
-      renderOperationsSections();
-      renderOverviewLiveData(selectedMonth());
+      const renderSeq = renderOperationsSections();
+      renderOverviewLiveData(selectedMonth(), renderSeq);
     }
   });
   $("#operationsUntil")?.addEventListener("change", (event) => {
@@ -5129,8 +5140,8 @@ function bind() {
     }
     operationsRangeCustomUntil = nextUntil;
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
-      renderOperationsSections();
-      renderOverviewLiveData(selectedMonth());
+      const renderSeq = renderOperationsSections();
+      renderOverviewLiveData(selectedMonth(), renderSeq);
     }
   });
   $("#todayBriefReset")?.addEventListener("click", () => {
