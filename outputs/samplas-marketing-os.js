@@ -24,6 +24,7 @@ let productBrandSalesCacheKey = "";
 let productBrandSalesRange = "month";
 let productBrandSalesCustomSince = "";
 let productBrandSalesCustomUntil = "";
+let productBrandSalesRenderSeq = 0;
 let operationsRange = "month";
 let operationsRangeCustomSince = "";
 let operationsRangeCustomUntil = "";
@@ -4244,6 +4245,7 @@ async function renderProductBrandSales(data) {
   const rowsTarget = $("#productBrandSalesRows");
   const metaTarget = $("#productBrandSalesMeta");
   if (!rowsTarget || !metaTarget) return;
+  const renderSeq = ++productBrandSalesRenderSeq;
   const range = productBrandSalesDateRange(data);
   const cacheKey = `${range.since}_${range.until}`;
   if (productBrandSalesCacheKey === cacheKey && productBrandSalesRows.length) {
@@ -4254,6 +4256,7 @@ async function renderProductBrandSales(data) {
   rowsTarget.innerHTML = `<tr><td colspan="5">브랜드 매출 데이터를 불러오고 있습니다.</td></tr>`;
   metaTarget.textContent = `${range.label} · ${range.since} ~ ${range.until} · 확인 중`;
   const result = await getJson(`/api/diagnostics/brand-sales?since=${range.since}&until=${range.until}`, 12000);
+  if (renderSeq !== productBrandSalesRenderSeq) return;
   if (result.error || !Array.isArray(result.brands)) {
     productBrandSalesRows = [];
     productBrandSalesProducts = [];
