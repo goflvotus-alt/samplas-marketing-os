@@ -3665,7 +3665,7 @@ function metaAdsStarDecision(score) {
 function metaAdsDecisionCellHtml(row, weights) {
   const score = metaAdsPerformanceScore(row, weights);
   const decision = metaAdsStarDecision(score);
-  const needsManagement = (AD_DECISION_URGENCY[decision.label] ?? 5) <= 2;
+  const needsManagement = Number(row.spend || 0) > 0 && (AD_DECISION_URGENCY[decision.label] ?? 5) <= 2;
   return `<div class="ad-decision-cell ${esc(decision.tone)}">
     <span class="ad-decision-stars">${esc(metaAdsDecisionActionText(decision.label))}</span>
     <span class="ad-decision-line">${esc(metaAdsNarrative(row))}</span>
@@ -3776,7 +3776,7 @@ function renderAdAiBriefing(fullReport = {}, weights = {}, target) {
     <article class="ad-ai-briefing-card ${esc(decision.tone)}">
       <div class="ad-ai-briefing-head">
         <span class="ad-ai-briefing-rank">${index + 1}</span>
-        <strong>관리 필요 캠페인</strong>
+        <strong>${Number(row.spend || 0) > 0 && (AD_DECISION_URGENCY[decision.label] ?? 5) <= 2 ? "관리 필요 캠페인" : "우선 확인 캠페인"}</strong>
       </div>
       <p class="ad-ai-briefing-name" title="${esc(row.campaignName || "-")}">${esc(row.campaignName || "-")}</p>
       <p class="ad-ai-briefing-narrative">${esc(metaAdsNarrative(row))}</p>
