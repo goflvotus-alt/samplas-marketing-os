@@ -182,6 +182,26 @@ async function getJson(url, timeoutMs = 8000) {
   }
 }
 
+let sharedJsonRequests = new Map();
+
+function resetSharedJsonRequests() {
+  sharedJsonRequests = new Map();
+}
+
+function getSharedJson(url, timeoutMs = 8000) {
+  const key = url;
+  if (sharedJsonRequests.has(key)) return sharedJsonRequests.get(key);
+  const request = getJson(url, timeoutMs).then((body) => {
+    if (body?.error) sharedJsonRequests.delete(key);
+    return body;
+  }, (error) => {
+    sharedJsonRequests.delete(key);
+    throw error;
+  });
+  sharedJsonRequests.set(key, request);
+  return request;
+}
+
 async function postJson(url, payload, timeoutMs = 8000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -401,17 +421,20 @@ function renderMonthRail() {
     reportsMonth = older.month;
     renderMonthRail();
     renderMonthlyArchiveReport(reportsMonth);
+    renderAnnualArchiveFlow(reportsMonth);
   });
   rail.querySelector('[data-nav="next"]')?.addEventListener("click", () => {
     if (!newer) return;
     reportsMonth = newer.month;
     renderMonthRail();
     renderMonthlyArchiveReport(reportsMonth);
+    renderAnnualArchiveFlow(reportsMonth);
   });
   rail.querySelector("#monthRailSelect")?.addEventListener("change", (event) => {
     reportsMonth = event.target.value;
     renderMonthRail();
     renderMonthlyArchiveReport(reportsMonth);
+    renderAnnualArchiveFlow(reportsMonth);
   });
 }
 
@@ -460,8 +483,8 @@ async function renderOverviewLiveData(data) {
   const endDate = range.until;
   const [status, meta, cafe, contentRange, cardnewsStatus] = await Promise.all([
     getJson("/api/status", 6000),
-    getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
-    getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 7000),
+    getSharedJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
+    getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 7000),
     getJson(`/api/instagram/range?since=${startDate}&until=${endDate}`, 7000),
     getJson("/api/contents/cardnews-status", 6000)
   ]);
@@ -1028,7 +1051,18 @@ async function renderContentOperations(data) {
     const errorCard = `<article class="action-item"><strong>Instagram 게시물 데이터를 불러오지 못했습니다.</strong><p>${esc(message)}</p></article>`;
     if (heroTarget) heroTarget.innerHTML = errorCard;
     if (performanceTarget) performanceTarget.innerHTML = `<article class="action-item"><strong>선택 기간 성과 확인 불가</strong><p>이전 월 데이터는 유지되지만 선택 기간 게시물 지표를 확인할 수 없습니다.</p></article>`;
-    if (formatTarget) formatTarget.innerHTML = "";
+    if (formatTarget) formatTarget.innerHTML = `<article class="action-item"><strong>Format Mix 확인 불가</strong><p>선택 기간 게시물 데이터를 불러오지 못했습니다.</p></article>`;
+    [
+      "#contentKpiGrid",
+      "#contentTopGrid",
+      "#contentTypeGrid",
+      "#contentHeatmap",
+      "#contentBrandGrid",
+      "#contentAiGrid"
+    ].forEach((selector) => {
+      const target = $(selector);
+      if (target) target.innerHTML = `<article class="action-item"><strong>Content 데이터 확인 불가</strong><p>Instagram 선택 기간 데이터를 불러오지 못했습니다.</p></article>`;
+    });
     if (rowsTarget) rowsTarget.innerHTML = `<tr><td colspan="10">Instagram 게시물 데이터를 불러오지 못했습니다.</td></tr>`;
     return;
   }
@@ -1709,13 +1743,127 @@ function monthlyReportRankRows(items, options = {}) {
   }).join("");
 }
 
+function previousMonthKey(month) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(month || ""));
+  if (!match) return "";
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const previous = new Date(year, monthIndex - 1, 1);
+  return `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthlyReportDelta(current, previous, formatter = apiNum, options = {}) {
+  if (!hasApiValue(current) || !hasApiValue(previous)) return "전월 대비 비교 불가";
+  const currentValue = Number(current);
+  const previousValue = Number(previous);
+  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) return "전월 대비 비교 불가";
+  const diff = currentValue - previousValue;
+  const sign = diff > 0 ? "+" : diff < 0 ? "-" : "";
+  const diffText = `${sign}${formatter(Math.abs(diff))}`;
+  if (options.noPercent || !previousValue) return `전월 대비 ${diffText}`;
+  return `전월 대비 ${diffText} · ${sign}${Math.abs(diff / previousValue * 100).toFixed(1)}%`;
+}
+
+function annualArchiveMonths(month) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(month || ""));
+  if (!match) return [];
+  const year = Number(match[1]);
+  const todayMonth = campaignComparisonTodayKey().slice(0, 7);
+  const currentYear = Number(todayMonth.slice(0, 4));
+  const currentMonth = Number(todayMonth.slice(5, 7));
+  const lastMonth = year === currentYear ? currentMonth : year < currentYear ? 12 : 0;
+  return Array.from({ length: lastMonth }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
+}
+
+function annualArchiveValue(archive, key) {
+  if (key === "paidAmount") return Number(archive.commerce?.paidAmount);
+  if (key === "spend") return Number(archive.marketing?.spend);
+  if (key === "purchaseValue") return Number(archive.marketing?.purchaseValue);
+  if (key === "totalViews") return Number(archive.content?.totalViews);
+  if (key === "totalSaves") return Number(archive.content?.totalSaves);
+  if (key === "followerDelta") {
+    const value = archive.content?.followerDelta;
+    return hasApiValue(value) ? Number(value) : NaN;
+  }
+  return NaN;
+}
+
+function annualArchiveFormat(value, type) {
+  if (!Number.isFinite(value)) return "-";
+  if (type === "money") return apiWon(value);
+  if (type === "follower") return `${value > 0 ? "+" : ""}${apiNum(value)}명`;
+  return apiNum(value);
+}
+
+function annualArchiveMetricBlock(title, rows, key, type = "number") {
+  const values = rows
+    .map((row) => row.failed ? NaN : annualArchiveValue(row.archive, key))
+    .filter((value) => Number.isFinite(value));
+  const max = Math.max(1, ...values.map((value) => Math.abs(value)));
+  return `<section class="monthly-report-block">
+    <div class="monthly-report-block-head"><h4>${esc(title)}</h4><span>월별 archive 기준</span></div>
+    <div class="compact-list">
+      ${rows.map((row) => {
+        const value = row.failed ? NaN : annualArchiveValue(row.archive, key);
+        const width = Number.isFinite(value) ? Math.max(value === 0 ? 0 : 4, Math.min(100, Math.abs(value) / max * 100)) : 0;
+        return `<div class="bar-row ${row.failed ? "monthly-report-muted" : ""}">
+          <span>${esc(row.month.slice(5, 7))}월</span>
+          <div class="bar"><i style="width:${width}%"></i></div>
+          <em>${esc(row.failed ? "-" : annualArchiveFormat(value, type))}</em>
+        </div>`;
+      }).join("")}
+    </div>
+  </section>`;
+}
+
+async function renderAnnualArchiveFlow(month) {
+  const target = $("#annualArchiveFlow");
+  if (!target) return;
+  const months = annualArchiveMonths(month);
+  const year = String(month || "").slice(0, 4);
+  if (!months.length) {
+    target.innerHTML = `<article class="action-item"><strong>연간 흐름을 불러오지 못했습니다.</strong><p>선택된 월의 연도를 확인할 수 없습니다.</p></article>`;
+    return;
+  }
+  target.innerHTML = `<article class="action-item"><strong>연간 흐름 확인 중</strong><p>${esc(year)}년 월별 아카이브를 불러오고 있습니다.</p></article>`;
+  const settled = await Promise.allSettled(months.map((item) => getJson(`/api/reports/monthly?month=${item}`, 8000)));
+  const rows = months.map((item, index) => {
+    const result = settled[index];
+    const archive = result.status === "fulfilled" ? result.value : {};
+    return { month: item, archive, failed: result.status !== "fulfilled" || Boolean(archive.error) };
+  });
+  if (rows.every((row) => row.failed)) {
+    target.innerHTML = `<article class="action-item"><strong>연간 흐름을 불러오지 못했습니다.</strong><p>${esc(year)}년 월별 아카이브를 확인할 수 없습니다.</p></article>`;
+    return;
+  }
+  target.innerHTML = `<section class="monthly-report-chapter">
+    <div class="monthly-report-chapter-head">
+      <span>Y</span>
+      <div><p class="eyebrow">Annual Flow</p><h3>${esc(year)}년 연간 흐름</h3></div>
+    </div>
+    <p class="monthly-report-fnote">월별 아카이브 기준입니다. 실패한 월은 -로 표시합니다.</p>
+    <div class="monthly-report-grid2">
+      ${annualArchiveMetricBlock("실제 매출", rows, "paidAmount", "money")}
+      ${annualArchiveMetricBlock("광고비", rows, "spend", "money")}
+      ${annualArchiveMetricBlock("Meta 추정 구매값", rows, "purchaseValue", "money")}
+      ${annualArchiveMetricBlock("콘텐츠 조회", rows, "totalViews")}
+      ${annualArchiveMetricBlock("콘텐츠 저장", rows, "totalSaves")}
+      ${annualArchiveMetricBlock("팔로워 증감", rows, "followerDelta", "follower")}
+    </div>
+  </section>`;
+}
+
 async function renderMonthlyArchiveReport(month) {
   const target = $("#monthlyArchiveReport");
   if (!target) return;
 
   target.innerHTML = `<article class="action-item"><strong>Monthly Report 확인 중</strong><p>저장된 월간 리포트를 불러오고 있습니다.</p></article>`;
 
-  const archive = await getJson(`/api/reports/monthly?month=${month}`, 8000);
+  const previousMonth = previousMonthKey(month);
+  const [archive, previousArchive] = await Promise.all([
+    getJson(`/api/reports/monthly?month=${month}`, 8000),
+    previousMonth ? getJson(`/api/reports/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" })
+  ]);
 
   if (archive.error) {
     target.innerHTML = `<article class="action-item"><strong>Monthly Report 생성 실패</strong><p>${esc(archive.error)}</p></article>`;
@@ -1725,6 +1873,9 @@ async function renderMonthlyArchiveReport(month) {
   const commerce = archive.commerce || {};
   const marketing = archive.marketing || {};
   const content = archive.content || {};
+  const previousCommerce = previousArchive.error ? {} : previousArchive.commerce || {};
+  const previousMarketing = previousArchive.error ? {} : previousArchive.marketing || {};
+  const previousContent = previousArchive.error ? {} : previousArchive.content || {};
   const paymentMethods = commerce.paymentMethods || [];
   const brandSales = commerce.brandSales || [];
   const productSales = commerce.productSales || [];
@@ -1775,6 +1926,7 @@ async function renderMonthlyArchiveReport(month) {
         <div class="monthly-report-hero-main">
           <span>월 실제 판매</span>
           <strong>${apiWon(commerce.paidAmount)}</strong>
+          <em>${esc(monthlyReportDelta(commerce.paidAmount, previousCommerce.paidAmount, apiWon))}</em>
         </div>
         <div class="monthly-report-side">
           <div class="monthly-report-side-row"><span>주문수</span><strong>${apiNum(commerce.orderCount)}</strong></div>
@@ -1832,6 +1984,7 @@ async function renderMonthlyArchiveReport(month) {
         <div class="monthly-report-hero-main">
           <span>광고비</span>
           <strong>${apiWon(marketing.spend)}</strong>
+          <em>${esc(monthlyReportDelta(marketing.spend, previousMarketing.spend, apiWon))}</em>
         </div>
         <div class="monthly-report-side">
           <div class="monthly-report-side-row"><span>광고비 비중</span><strong>${hasApiValue(marketing.adSpendShare) ? pct(marketing.adSpendShare) : "-"}</strong></div>
@@ -1846,11 +1999,13 @@ async function renderMonthlyArchiveReport(month) {
             <span>광고비</span>
             <div><i style="width:${monthlyReportRatio(marketing.spend, compareBase)}%"></i></div>
             <strong>${apiWon(marketing.spend)}</strong>
+            <em>${esc(monthlyReportDelta(marketing.spend, previousMarketing.spend, apiWon))}</em>
           </div>
           <div class="monthly-report-compare-row monthly-report-attributed">
             <span>구매값</span>
             <div><i style="width:${monthlyReportRatio(marketing.purchaseValue, compareBase)}%"></i></div>
             <strong>${apiWon(marketing.purchaseValue)}</strong>
+            <em>${esc(monthlyReportDelta(marketing.purchaseValue, previousMarketing.purchaseValue, apiWon))}</em>
           </div>
         </div>
       </section>
@@ -1876,16 +2031,18 @@ async function renderMonthlyArchiveReport(month) {
         <div class="monthly-report-hero-main">
           <span>조회수</span>
           <strong>${apiNum(content.totalViews)}</strong>
+          <em>${esc(monthlyReportDelta(content.totalViews, previousContent.totalViews, apiNum))}</em>
         </div>
         <div class="monthly-report-hero-main">
           <span>저장</span>
           <strong>${apiNum(content.totalSaves)}</strong>
+          <em>${esc(monthlyReportDelta(content.totalSaves, previousContent.totalSaves, apiNum))}</em>
         </div>
         <div class="monthly-report-side">
           <div class="monthly-report-side-row"><span>콘텐츠 수</span><strong>${apiNum(content.postCount)}</strong></div>
           <div class="monthly-report-side-row"><span>좋아요</span><strong>${apiNum(content.totalLikes)}</strong></div>
           <div class="monthly-report-side-row"><span>공유</span><strong>${apiNum(content.totalShares)}</strong></div>
-          <div class="monthly-report-side-row monthly-report-muted"><span>팔로워 변화</span><strong>${hasApiValue(content.followerDelta) ? `${Number(content.followerDelta) > 0 ? "+" : ""}${apiNum(content.followerDelta)}명` : "-"}</strong></div>
+          <div class="monthly-report-side-row monthly-report-muted"><span>팔로워 변화</span><strong>${hasApiValue(content.followerDelta) ? `${Number(content.followerDelta) > 0 ? "+" : ""}${apiNum(content.followerDelta)}명` : "-"}</strong><em>${esc(monthlyReportDelta(content.followerDelta, previousContent.followerDelta, (value) => `${apiNum(value)}명`, { noPercent: true }))}</em></div>
         </div>
       </div>
       <p class="monthly-report-fnote">팔로워 변화는 현재 archive 기준값으로 참고용입니다.</p>
@@ -2553,10 +2710,10 @@ async function renderAdvertising(data) {
   const endDate = range.until;
   renderAdLevelTabs();
   const [meta, fullReport, weightsResp, commerce] = await Promise.all([
-    getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}&level=${activeAdLevel}`, 9000),
+    getSharedJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}&level=${activeAdLevel}`, 9000),
     getJson(`/api/meta-ads/full-report?since=${startDate}&until=${endDate}`, 12000),
     getJson("/api/meta-ads/score-weights", 5000),
-    getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 9000)
+    getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 9000)
   ]);
   const scoreWeights = weightsResp.weights || {};
   const posts = data.posts || [];
@@ -2860,6 +3017,11 @@ function campaignComparisonTopCard(title, rows = []) {
   return `<article class="campaign-period-rank"><strong>${esc(title)}</strong>${rows.length ? `<ol>${rows.slice(0, 3).map((row, index) => `<li><mark>${index + 1}</mark><strong>${esc(row.brandName)}</strong><em>${esc(campaignComparisonSignedWon(row.salesDelta))}</em></li>`).join("")}</ol>` : `<p>표시할 브랜드가 없습니다.</p>`}</article>`;
 }
 
+function campaignComparisonMetaCard(title, baseValue, targetValue, deltaValue, formatter = apiWon) {
+  const hasValues = Number.isFinite(baseValue) && Number.isFinite(targetValue) && Number.isFinite(deltaValue);
+  return `<article class="action-item"><span>${esc(title)}</span><strong>${hasValues ? esc(campaignComparisonSignedWon(deltaValue)) : "-"}</strong><p>${hasValues ? `${esc(formatter(baseValue))} → ${esc(formatter(targetValue))}` : "Meta 데이터 확인 필요"}</p></article>`;
+}
+
 async function renderCampaignPeriodComparison(target) {
   if (!target) return;
   const defaultMonths = campaignComparisonDefaultMonths();
@@ -2926,11 +3088,19 @@ async function renderCampaignPeriodComparison(target) {
 
   let execution;
   let comparison;
+  let executionMeta = null;
+  let comparisonMeta = null;
   try {
-    [execution, comparison] = await Promise.all([
+    const [executionResult, comparisonResult, executionMetaResult, comparisonMetaResult] = await Promise.allSettled([
       getJson(`/api/diagnostics/brand-sales?since=${executionStart}&until=${executionEnd}`, 15000),
-      getJson(`/api/diagnostics/brand-sales?since=${comparisonStart}&until=${comparisonEnd}`, 15000)
+      getJson(`/api/diagnostics/brand-sales?since=${comparisonStart}&until=${comparisonEnd}`, 15000),
+      getJson(`/api/meta-ads/summary?since=${executionStart}&until=${executionEnd}`, 9000),
+      getJson(`/api/meta-ads/summary?since=${comparisonStart}&until=${comparisonEnd}`, 9000)
     ]);
+    execution = executionResult.status === "fulfilled" ? executionResult.value : { error: executionResult.reason?.message || "실행 기간 데이터 오류" };
+    comparison = comparisonResult.status === "fulfilled" ? comparisonResult.value : { error: comparisonResult.reason?.message || "비교 기간 데이터 오류" };
+    executionMeta = executionMetaResult.status === "fulfilled" && !executionMetaResult.value?.error ? executionMetaResult.value : null;
+    comparisonMeta = comparisonMetaResult.status === "fulfilled" && !comparisonMetaResult.value?.error ? comparisonMetaResult.value : null;
   } finally {
     await campaignComparisonWait(350 - (Date.now() - loadingStartedAt));
     campaignPeriodComparisonState.loading = false;
@@ -2975,6 +3145,16 @@ async function renderCampaignPeriodComparison(target) {
   const comparisonSales = Number(comparisonTotals.salesAmount || 0);
   const executionSales = Number(executionTotals.salesAmount || 0);
   const salesNarrative = `${baseLabel}에 비해 ${targetLabel} 매출이 ${campaignComparisonRate(salesDelta, comparisonSales)} ${salesDirection}했습니다.`;
+  const executionMetaTotals = executionMeta?.totals || {};
+  const comparisonMetaTotals = comparisonMeta?.totals || {};
+  const basePaidAmount = hasApiValue(comparisonTotals.paidAmount) ? Number(comparisonTotals.paidAmount) : null;
+  const targetPaidAmount = hasApiValue(executionTotals.paidAmount) ? Number(executionTotals.paidAmount) : null;
+  const baseSpend = hasApiValue(comparisonMetaTotals.spend) ? Number(comparisonMetaTotals.spend) : null;
+  const targetSpend = hasApiValue(executionMetaTotals.spend) ? Number(executionMetaTotals.spend) : null;
+  const basePurchaseValue = hasApiValue(comparisonMetaTotals.purchaseValue) ? Number(comparisonMetaTotals.purchaseValue) : null;
+  const targetPurchaseValue = hasApiValue(executionMetaTotals.purchaseValue) ? Number(executionMetaTotals.purchaseValue) : null;
+  const baseGap = Number.isFinite(basePurchaseValue) && Number.isFinite(basePaidAmount) ? basePurchaseValue - basePaidAmount : null;
+  const targetGap = Number.isFinite(targetPurchaseValue) && Number.isFinite(targetPaidAmount) ? targetPurchaseValue - targetPaidAmount : null;
 
   target.innerHTML = [
     campaignComparisonSettingsHtml(range),
@@ -2997,6 +3177,9 @@ async function renderCampaignPeriodComparison(target) {
     `<div class="campaign-period-kpis">
       <article class="action-item"><span>주문수</span><strong>${apiNum(comparisonTotals.orderCount)} → ${apiNum(executionTotals.orderCount)}</strong><p>${esc(campaignComparisonDeltaText(orderDelta, "건"))}</p></article>
       <article class="action-item"><span>판매수량</span><strong>${apiNum(comparisonTotals.quantitySold)} → ${apiNum(executionTotals.quantitySold)}</strong><p>${esc(campaignComparisonDeltaText(quantityDelta, "개"))}</p></article>
+      ${campaignComparisonMetaCard("광고비 변화", baseSpend, targetSpend, Number.isFinite(baseSpend) && Number.isFinite(targetSpend) ? targetSpend - baseSpend : null)}
+      ${campaignComparisonMetaCard("Meta 추정 구매값 변화", basePurchaseValue, targetPurchaseValue, Number.isFinite(basePurchaseValue) && Number.isFinite(targetPurchaseValue) ? targetPurchaseValue - basePurchaseValue : null)}
+      ${campaignComparisonMetaCard("Meta ↔ Cafe24 차이 변화", baseGap, targetGap, Number.isFinite(baseGap) && Number.isFinite(targetGap) ? targetGap - baseGap : null)}
     </div>`,
     `<div class="campaign-period-ranks">${campaignComparisonTopCard(`${baseLabel}에 비해 가장 많이 증가한 브랜드 TOP 3`, increaseTop)}${campaignComparisonTopCard(`${baseLabel}에 비해 가장 많이 감소한 브랜드 TOP 3`, decreaseTop)}</div>`,
     `<article class="campaign-period-meta">
@@ -3004,7 +3187,7 @@ async function renderCampaignPeriodComparison(target) {
       <span>비교 대상</span><strong>${esc(executionStart)} ~ ${esc(executionEnd)} (${apiNum(executionDays)}일)</strong>
       <span>비교 기준</span><strong>${esc(comparisonStart)} ~ ${esc(comparisonEnd)} (${apiNum(comparisonDays)}일)</strong>
     </article>`,
-    `<p class="hint-text">이 데이터는 Cafe24 실제 매출 기간 비교입니다. 광고와 매출의 인과관계를 의미하지 않습니다.</p>`
+    `<p class="hint-text">이 데이터는 Cafe24 실제 매출과 Meta 자체 추정값의 기간 비교입니다. Meta ↔ Cafe24 차이는 같은 기간·다른 집계 기준 비교이며, 광고와 매출의 인과관계를 의미하지 않습니다.</p>`
   ].join("");
 }
 
@@ -3564,7 +3747,7 @@ async function renderCafe24Sales(data) {
   const range = operationsDateRange(data);
   const startDate = range.since;
   const endDate = range.until;
-  const sales = await getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000);
+  const sales = await getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000);
   if (sales.error) {
     renderCommerceSummary(sales, null);
     await renderCampaignPeriodComparison($("#campaignPeriodComparison"));
@@ -3854,8 +4037,8 @@ async function renderAdComparison(data) {
   const startDate = range.since;
   const endDate = range.until;
   const [meta, cafe] = await Promise.all([
-    getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
-    getJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000)
+    getSharedJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
+    getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000)
   ]);
   const metaTotals = meta.totals || {};
   const cafeTotals = cafe.totals || {};
@@ -4732,6 +4915,7 @@ async function updateSync(data) {
 }
 
 function renderAll() {
+  resetSharedJsonRequests();
   const data = selectedMonth();
   if (!reportsMonth) reportsMonth = data.month;
   $("#dataModeBadge").textContent = sourceLabel(data);
@@ -4739,6 +4923,7 @@ function renderAll() {
   renderKpis(data);
   renderOverviewLiveData(data);
   renderMonthlyArchiveReport(reportsMonth);
+  renderAnnualArchiveFlow(reportsMonth);
   renderContentTabs();
   renderContentOperations(data);
   renderEditorialAi(data);
@@ -4747,7 +4932,35 @@ function renderAll() {
 }
 
 function renderOperationsSections() {
+  resetSharedJsonRequests();
   const data = selectedMonth();
+  const setPending = (selector, html) => {
+    const target = $(selector);
+    if (target) target.innerHTML = html;
+  };
+  setPending("#marketingSummaryHero", `<article class="action-item"><strong>Marketing 데이터 확인 중</strong><p>Meta Ads와 Commerce 매출을 불러오고 있습니다.</p></article>`);
+  setPending("#marketingSummaryBriefing", `<article class="action-item"><strong>관리 필요 캠페인 확인 중</strong><p>Meta 자체 귀속 지표 기준으로 확인하고 있습니다.</p></article>`);
+  setPending("#marketingSummaryStatus", `<article class="action-item"><strong>광고 상태 확인 중</strong><p>집행·미집행·일치 검증 결과를 정리합니다.</p></article>`);
+  setPending("#adTodayStatus", `<span class="status-dot"></span><strong>오늘 광고 상태 확인 중</strong><span class="note">Meta Ads 데이터를 불러오고 있습니다.</span>`);
+  setPending("#adCoreKpi", `<article class="action-item"><strong>핵심 지표 확인 중</strong><p>광고비, ROAS, 실매출을 확인합니다.</p></article>`);
+  setPending("#advertisingSummary", `<article class="action-item"><strong>Meta 광고 데이터 확인 중</strong><p>광고비, 도달, 클릭, 구매값, ROAS를 확인합니다.</p></article>`);
+  setPending("#campaignPerformance", `<article class="action-item"><strong>캠페인 성과 확인 중</strong><p>Meta 캠페인 기준으로 불러옵니다.</p></article>`);
+  setPending("#adReconciliationSummary", `<article class="action-item"><strong>데이터 일치 검증 확인 중</strong><p>Meta 계정 전체 합계와 비교하고 있습니다.</p></article>`);
+  setPending("#adFullReportActiveRows", `<tr><td colspan="18">전체 캠페인 데이터를 확인하고 있습니다.</td></tr>`);
+  commerceSummaryState = { cafe: null, comparison: null };
+  setPending("#commerceSummaryHero", `<article class="action-item"><strong>Commerce 데이터 확인 중</strong><p>Cafe24 canonical 데이터를 불러오고 있습니다.</p></article>`);
+  setPending("#commerceSummaryCompare", `<article class="action-item"><strong>Meta 비교 확인 중</strong><p>Meta 구매값과 Cafe24 실제 판매를 비교합니다.</p></article>`);
+  setPending("#commerceSummaryPayments", `<article class="action-item"><strong>결제수단 확인 중</strong><p>결제수단 구성을 불러오고 있습니다.</p></article>`);
+  setPending("#campaignPeriodComparison", `<article class="action-item"><strong>기간 비교 계산 중</strong><p>Cafe24 실제 매출 기준으로 기준 기간과 대상 기간을 비교합니다.</p></article>`);
+  setPending("#contentSummaryHero", `<article class="action-item"><strong>Content 데이터 확인 중</strong><p>선택 기간 게시물 지표를 불러오고 있습니다.</p></article>`);
+  setPending("#contentSummaryPerformance", `<article class="action-item"><strong>콘텐츠 성과 확인 중</strong><p>저장과 공유 상위 콘텐츠를 정리합니다.</p></article>`);
+  setPending("#contentSummaryFormat", `<article class="action-item"><strong>Format Mix 확인 중</strong><p>콘텐츠 유형별 구성을 불러오고 있습니다.</p></article>`);
+  setPending("#contentKpiGrid", `<article class="action-item"><strong>콘텐츠 KPI 확인 중</strong><p>선택 기간 콘텐츠 지표를 불러오고 있습니다.</p></article>`);
+  setPending("#contentTopGrid", `<article class="action-item"><strong>TOP 콘텐츠 확인 중</strong><p>선택 기간 상위 콘텐츠를 정리합니다.</p></article>`);
+  setPending("#contentTypeGrid", `<article class="action-item"><strong>콘텐츠 유형 확인 중</strong><p>Format Mix를 불러오고 있습니다.</p></article>`);
+  setPending("#contentHeatmap", `<article class="action-item"><strong>게시시간 확인 중</strong><p>시간대별 성과를 정리합니다.</p></article>`);
+  setPending("#contentBrandGrid", `<article class="action-item"><strong>브랜드별 성과 확인 중</strong><p>콘텐츠 브랜드 신호를 정리합니다.</p></article>`);
+  setPending("#contentAiGrid", `<article class="action-item"><strong>AI 추천 확인 중</strong><p>콘텐츠 추천 근거를 정리합니다.</p></article>`);
   renderCafe24Sales(data);
   renderAdComparison(data);
   renderAdvertising(data);
@@ -4798,6 +5011,10 @@ function bind() {
   });
   $("#operationsSince")?.addEventListener("change", (event) => {
     operationsRangeCustomSince = event.target.value || "";
+    if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince > operationsRangeCustomUntil) {
+      toast("시작일이 종료일보다 늦을 수 없습니다.");
+      return;
+    }
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
       renderOperationsSections();
       renderOverviewLiveData(selectedMonth());
@@ -4805,6 +5022,10 @@ function bind() {
   });
   $("#operationsUntil")?.addEventListener("change", (event) => {
     operationsRangeCustomUntil = event.target.value || "";
+    if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince > operationsRangeCustomUntil) {
+      toast("시작일이 종료일보다 늦을 수 없습니다.");
+      return;
+    }
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
       renderOperationsSections();
       renderOverviewLiveData(selectedMonth());
@@ -4939,6 +5160,7 @@ function bind() {
     }
     toast("아카이브를 저장했습니다.");
     renderMonthlyArchiveReport(month);
+    renderAnnualArchiveFlow(month);
   });
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-project-key]");
