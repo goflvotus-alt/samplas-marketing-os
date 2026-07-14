@@ -172,6 +172,7 @@ const server = createServer(async (req, res) => {
       const month = url.searchParams.get("month") || currentMonth();
       if (!isValidMonthKey(month)) return json(res, { error: "Invalid month" }, 400);
       if (month > currentMonth()) return json(res, { error: "Future month is not available" }, 400);
+      await ensurePreviousMonthlyArchiveSaved();
       if (month === currentMonth()) {
         const archive = await buildMonthlyArchive(month);
         return json(res, { ...archive, archiveStatus: "live" });
@@ -3088,6 +3089,19 @@ async function writeMonthlyArchive(month, archive) {
   await mkdir(join(workDir, "monthly"), { recursive: true });
   await writeJsonAtomic(file, archive);
   return archive;
+}
+
+async function ensurePreviousMonthlyArchiveSaved() {
+  const previousMonth = previousMonthKey(currentMonth());
+  if (!previousMonth) return;
+  try {
+    const existing = await readMonthlyArchive(previousMonth);
+    if (existing) return;
+    const archive = await buildMonthlyArchive(previousMonth);
+    await writeMonthlyArchive(previousMonth, { ...archive, archiveStatus: "saved" });
+  } catch (error) {
+    await logApiError("monthly_archive_auto_save_previous", error, { month: previousMonth });
+  }
 }
 
 function daysBetweenDateKeys(since, until) {

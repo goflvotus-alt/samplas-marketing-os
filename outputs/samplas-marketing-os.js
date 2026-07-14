@@ -1869,6 +1869,13 @@ function annualArchiveMetricBlock(metric, rows) {
         const width = Number.isFinite(value) ? Math.max(value === 0 ? 0 : 4, Math.min(100, Math.abs(value) / max * 100)) : 0;
         const label = `${Number(row.month.slice(5, 7))}월`;
         const formatted = missing ? "-" : annualArchiveFormat(value, metric.type);
+        const statusText = row.failed
+          ? "상태 확인 불가"
+          : {
+            saved: "Saved Archive",
+            live: "Live Draft",
+            draft: "Unsaved Draft"
+          }[row.archiveStatus] || String(row.archive?.status || "Draft");
         const previousRow = rows[index - 1];
         const previousMissing = !previousRow || previousRow.failed || !annualArchiveHasValue(previousRow.archive, metric.key);
         const previousValue = previousMissing ? null : annualArchiveValue(previousRow.archive, metric.key);
@@ -1881,7 +1888,7 @@ function annualArchiveMetricBlock(metric, rows) {
                 ? `전월보다 증가폭 ${apiNum(Math.abs(value - previousValue))}명 축소`
                 : "전월과 증가폭 동일"
             : monthlyReportDelta(value, previousValue, metric.type === "money" ? apiWon : apiNum);
-        const tooltip = `${label} · ${metric.title} ${missing ? "데이터 없음" : formatted} · ${deltaText}`;
+        const tooltip = `${label} · ${metric.title} ${missing ? "데이터 없음" : formatted} · ${statusText} · ${deltaText}`;
         return `<div class="annual-flow-bar" data-annual-month="${esc(row.month)}" data-empty="${missing ? "true" : "false"}" data-tooltip="${esc(tooltip)}">
           <i style="height:${width}%"></i>
           <span>${esc(label)}</span>
@@ -1908,7 +1915,7 @@ async function renderAnnualArchiveFlow(month) {
   const rows = months.map((item, index) => {
     const result = settled[index];
     const archive = result.status === "fulfilled" ? result.value : {};
-    return { month: item, archive, failed: result.status !== "fulfilled" || Boolean(archive.error) };
+    return { month: item, archive, archiveStatus: archive.archiveStatus || "", failed: result.status !== "fulfilled" || Boolean(archive.error) };
   });
   if (rows.every((row) => row.failed)) {
     target.innerHTML = `<article class="action-item"><strong>연간 흐름을 불러오지 못했습니다.</strong><p>${esc(year)}년 월별 아카이브를 확인할 수 없습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
@@ -1919,7 +1926,7 @@ async function renderAnnualArchiveFlow(month) {
       <span>Y</span>
       <div><p class="eyebrow">Annual Flow</p><h3>${esc(year)}년 연간 흐름</h3></div>
     </div>
-    <p class="monthly-report-fnote">월별 아카이브 기준입니다. 실패한 월은 -로 표시합니다.</p>
+    <p class="monthly-report-fnote">월별 아카이브 기준입니다. 실패한 월은 -로 표시하며 Saved Archive / Live Draft / Unsaved Draft 상태가 섞일 수 있습니다.</p>
     <div class="annual-flow-filters" aria-label="Annual Flow filter">
       <button class="segment active" type="button" data-annual-filter="all">전체</button>
       <button class="segment" type="button" data-annual-filter="commerce">Commerce</button>
