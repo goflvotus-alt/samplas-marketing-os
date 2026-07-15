@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { URL } from "node:url";
 import { randomUUID } from "node:crypto";
+import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 
 const root = resolve(".");
 const outputDir = join(root, "outputs");
@@ -192,6 +193,20 @@ const server = createServer(async (req, res) => {
       const archive = await buildMonthlyArchive(month);
       const saved = await writeMonthlyArchive(month, { ...archive, archiveStatus: "saved" });
       return json(res, saved);
+    }
+    if (url.pathname === "/api/ecount-sales/monthly") {
+      if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
+      const month = url.searchParams.get("month");
+      if (!month) return json(res, { error: "Month is required" }, 400);
+      try {
+        const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+        if (!snapshot) return json(res, { error: "ECOUNT offline sales snapshot not found", month }, 404);
+        return json(res, snapshot);
+      } catch (error) {
+        const message = safeErrorMessage(error);
+        const status = message.includes("Expected YYYY-MM") ? 400 : 500;
+        return json(res, { error: message }, status);
+      }
     }
     if (url.pathname === "/api/diagnostics/product-join-report") {
       // 상품 Join 진단용 읽기 전용 API. 토큰/시크릿은 포함하지 않는다.
