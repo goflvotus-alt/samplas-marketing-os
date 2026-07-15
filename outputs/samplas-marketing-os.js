@@ -1830,6 +1830,18 @@ function previousMonthKey(month) {
   return `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function monthlyReportMonthRange(month) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(month || ""));
+  if (!match) return { monthStart: "", monthEnd: "" };
+  const year = Number(match[1]);
+  const monthNumber = Number(match[2]);
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  return {
+    monthStart: `${month}-01`,
+    monthEnd: `${month}-${String(lastDay).padStart(2, "0")}`
+  };
+}
+
 function monthlyReportDelta(current, previous, formatter = apiNum, options = {}) {
   if (!hasApiValue(current) || !hasApiValue(previous)) return "전월 대비 비교 불가";
   const currentValue = Number(current);
@@ -1840,6 +1852,80 @@ function monthlyReportDelta(current, previous, formatter = apiNum, options = {})
   const diffText = `${sign}${formatter(Math.abs(diff))}`;
   if (options.noPercent || !previousValue) return `전월 대비 ${diffText}`;
   return `전월 대비 ${diffText} · ${sign}${Math.abs(diff / previousValue * 100).toFixed(1)}%`;
+}
+
+function monthlyReportBrandCode(row = {}) {
+  return String(row.brand_code || row.brandCode || "").trim();
+}
+
+function monthlyReportBrandName(row = {}) {
+  return row.brand_name || row.brandName || row.name || monthlyReportBrandCode(row) || "-";
+}
+
+function monthlyReportBrandSignals(currentRows = [], previousRows = []) {
+  const previousByCode = new Map();
+  previousRows.forEach((row) => {
+    const code = monthlyReportBrandCode(row);
+    if (code) previousByCode.set(code, row);
+  });
+  return currentRows.map((row) => {
+    const code = monthlyReportBrandCode(row);
+    if (!code || !previousByCode.has(code)) return null;
+    const currentSales = Number(row.salesAmount);
+    const previousSales = Number(previousByCode.get(code)?.salesAmount);
+    if (!Number.isFinite(currentSales) || !Number.isFinite(previousSales) || previousSales <= 0) return null;
+    const diffRate = (currentSales - previousSales) / previousSales * 100;
+    if (!Number.isFinite(diffRate)) return null;
+    return {
+      ...row,
+      currentSales,
+      previousSales,
+      diffRate
+    };
+  }).filter(Boolean);
+}
+
+function monthlyReportBrandSignalsBlock(currentRows, previousRows, reconciliationLabel) {
+  const signals = monthlyReportBrandSignals(currentRows, previousRows);
+  if (!signals.length) return "";
+  const rising = signals
+    .filter((item) => item.diffRate > 0)
+    .sort((left, right) => right.diffRate - left.diffRate)
+    .slice(0, 3);
+  const falling = signals
+    .filter((item) => item.diffRate < 0)
+    .sort((left, right) => left.diffRate - right.diffRate)
+    .slice(0, 3);
+  return `<section class="monthly-report-block">
+    <div class="monthly-report-block-head"><h4>브랜드 신호</h4><span>데이터 일치검증 ${esc(reconciliationLabel)}</span></div>
+    <div class="monthly-report-grid2">
+      <div>
+        <div class="monthly-report-block-head"><h4>상승 브랜드 TOP3</h4><span>salesAmount 전월 대비</span></div>
+        <div class="monthly-report-rank">
+          ${monthlyReportRankRows(rising, {
+            withBar: true,
+            valueFn: (item) => item.currentSales,
+            labelFn: monthlyReportBrandName,
+            subFn: (item) => monthlyReportDelta(item.currentSales, item.previousSales, apiWon),
+            formatValue: (value) => apiWon(value)
+          })}
+        </div>
+      </div>
+      <div>
+        <div class="monthly-report-block-head"><h4>하락 브랜드 TOP3</h4><span>salesAmount 전월 대비</span></div>
+        <div class="monthly-report-rank">
+          ${monthlyReportRankRows(falling, {
+            withBar: true,
+            valueFn: (item) => item.currentSales,
+            labelFn: monthlyReportBrandName,
+            subFn: (item) => monthlyReportDelta(item.currentSales, item.previousSales, apiWon),
+            formatValue: (value) => apiWon(value)
+          })}
+        </div>
+      </div>
+    </div>
+    <p class="monthly-report-fnote">브랜드 신호는 현재 월과 전월 archive의 brand_code가 일치하는 항목만 비교합니다.</p>
+  </section>`;
 }
 
 function monthlyReportDirectionText(subject, current, previous, options = {}) {
@@ -2040,9 +2126,12 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   target.innerHTML = `<article class="action-item"><strong>Monthly Report 확인 중</strong><p>저장된 월간 리포트를 불러오고 있습니다.</p></article>`;
 
   const previousMonth = previousMonthKey(month);
-  const [archive, previousArchive] = await Promise.all([
+  const { monthStart, monthEnd } = monthlyReportMonthRange(month);
+  const missionParams = new URLSearchParams({ since: monthStart, until: monthEnd, limit: "3" });
+  const [archive, previousArchive, missionResult] = await Promise.all([
     getJson(`/api/reports/monthly?month=${month}`, 8000),
-    previousMonth ? getJson(`/api/reports/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" })
+    previousMonth ? getJson(`/api/reports/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" }),
+    monthStart && monthEnd ? getJson(intelligenceUrl(`/api/intelligence/missions?${missionParams.toString()}`), 12000) : Promise.resolve({ error: "월 범위 없음" })
   ]);
   if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
 
@@ -2057,6 +2146,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const previousCommerce = previousArchive.error ? {} : previousArchive.commerce || {};
   const previousMarketing = previousArchive.error ? {} : previousArchive.marketing || {};
   const previousContent = previousArchive.error ? {} : previousArchive.content || {};
+  const previousBrandSales = previousArchive.error ? [] : previousCommerce.brandSales || [];
   const paymentMethods = commerce.paymentMethods || [];
   const brandSales = commerce.brandSales || [];
   const productSales = commerce.productSales || [];
@@ -2122,6 +2212,21 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       <p class="monthly-report-fnote ${salesCoverageComplete ? "" : "monthly-report-muted"}">${esc(salesCoverageNote)}</p>
     </section>
   ` : "";
+  const brandSignalsBlock = brandSales.length && previousBrandSales.length
+    ? monthlyReportBrandSignalsBlock(brandSales, previousBrandSales, reconciliationLabel)
+    : "";
+  const missionRows = !missionResult?.error && missionResult?.ok && Array.isArray(missionResult.missions)
+    ? missionResult.missions.slice(0, 3)
+    : [];
+  const missionSummaryBlock = missionRows.length ? `
+    <section class="monthly-report-block">
+      <div class="monthly-report-block-head"><h4>다음 달 우선순위 Mission</h4><span>현재 시점 기준</span></div>
+      <div class="monthly-report-grid2">
+        ${missionRows.map((mission) => intelligenceBriefCard(mission)).join("")}
+      </div>
+      <p class="monthly-report-fnote">Mission은 저장된 월간 archive가 아니라 현재 Intelligence Service 기준으로 표시됩니다.</p>
+    </section>
+  ` : "";
 
   target.innerHTML = `
     <header class="monthly-report-header">
@@ -2143,6 +2248,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       <a href="#monthly-report-ch3">03 Content</a>
     </nav>
     ${salesSummaryBlock}
+    ${brandSignalsBlock}
 
     <section id="monthly-report-ch1" class="monthly-report-chapter">
       <div class="monthly-report-chapter-head">
@@ -2325,6 +2431,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
         <button class="today-jump-button" type="button" data-jump-view="Editorial AI">Editorial AI 분석</button>
       </div>
     </section>
+    ${missionSummaryBlock}
   `;
 }
 
