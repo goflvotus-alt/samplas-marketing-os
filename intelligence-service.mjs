@@ -18,12 +18,14 @@ const naverSearchSnapshotsFile = join(intelligenceWorkDir, "naver-search-snapsho
 const brandTimelineFile = join(intelligenceWorkDir, "brand-timeline.json");
 const decisionHistoryFile = join(intelligenceWorkDir, "decision-history.json");
 const learningDbFile = join(intelligenceWorkDir, "learning-db.json");
+const missionCacheFile = join(intelligenceWorkDir, "mission-cache.json");
 const naverAdsBaseUrl = env.NAVER_ADS_BASE_URL || "https://api.searchad.naver.com";
 const naverAdsTimeoutMs = 10000;
 const marketingOsBaseUrl = env.INTELLIGENCE_MARKETING_OS_BASE_URL || env.MARKETING_OS_BASE_URL || `http://127.0.0.1:${env.PORT || 8787}`;
 const marketingOsTimeoutMs = 12000;
 const missionCacheTtlMs = 30000;
 const missionResultCache = new Map();
+const missionRefreshPromises = new Map();
 
 await mkdir(intelligenceWorkDir, { recursive: true });
 await ensureBrandRegistryFiles();
@@ -31,6 +33,7 @@ await ensureNaverSnapshotsFile();
 await ensureTimelineFile();
 await ensureDecisionHistoryFile();
 await ensureLearningDbFile();
+await ensureMissionCacheFile();
 
 const server = createServer(async (req, res) => {
   try {
@@ -251,13 +254,19 @@ async function handleBriefRoute(url, res) {
     title: mission.title,
     reason: mission.reason
   }));
-  return json(res, {
+  const response = {
     ok: true,
     generatedAt: missions.meta.generatedAt,
     missionCount: missions.count,
     headline: missions.count ? `오늘 우선 확인할 Mission ${missions.count}건` : "현재 우선 확인할 Mission이 없습니다",
     items
-  });
+  };
+  if (missions.meta.cached) {
+    response.cached = true;
+    response.refreshing = Boolean(missions.meta.refreshing);
+    response.cacheUpdatedAt = missions.meta.cacheUpdatedAt || null;
+  }
+  return json(res, response);
 }
 
 async function handleDecisionPost(req, res) {
@@ -515,18 +524,48 @@ async function getMissionsResult(options) {
   const now = Date.now();
   if (cached?.value && cached.expiresAt > now) return cached.value;
   if (cached?.promise) return cached.promise;
-  const promise = buildMissions(options).then((result) => {
-    missionResultCache.set(key, {
-      value: result,
-      expiresAt: Date.now() + missionCacheTtlMs
-    });
-    return result;
-  }).catch((error) => {
+  const fileEntry = await readMissionCacheEntry(key);
+  if (fileEntry) {
+    refreshMissionResultInBackground(options, key);
+    return cachedMissionResult(fileEntry, true);
+  }
+  const promise = buildAndStoreMissionResult(options, key).catch((error) => {
     if (missionResultCache.get(key)?.promise === promise) missionResultCache.delete(key);
     throw error;
   });
   missionResultCache.set(key, { promise });
   return promise;
+}
+
+async function buildAndStoreMissionResult(options, key) {
+  const result = await buildMissions(options);
+  missionResultCache.set(key, {
+    value: result,
+    expiresAt: Date.now() + missionCacheTtlMs
+  });
+  await writeMissionCacheEntry(key, options, result);
+  return result;
+}
+
+function refreshMissionResultInBackground(options, key) {
+  if (missionRefreshPromises.has(key)) return missionRefreshPromises.get(key);
+  const refresh = buildAndStoreMissionResult(options, key).catch(() => null).finally(() => {
+    missionRefreshPromises.delete(key);
+  });
+  missionRefreshPromises.set(key, refresh);
+  return refresh;
+}
+
+function cachedMissionResult(entry, refreshing) {
+  return {
+    ...entry.result,
+    meta: {
+      ...entry.result.meta,
+      cached: true,
+      refreshing,
+      cacheUpdatedAt: entry.updatedAt
+    }
+  };
 }
 
 function missionCacheKey(options) {
@@ -1630,6 +1669,64 @@ async function readJsonBody(req) {
 async function writeNaverSnapshotsStore(store) {
   validateNaverSnapshotsStore(store);
   await writeJsonAtomic(naverSearchSnapshotsFile, store);
+}
+
+async function ensureMissionCacheFile() {
+  if (existsSync(missionCacheFile)) {
+    await readMissionCacheStore();
+    return;
+  }
+  await writeMissionCacheStore({
+    updatedAt: new Date().toISOString(),
+    entries: []
+  });
+}
+
+async function readMissionCacheStore() {
+  const parsed = JSON.parse(await readFile(missionCacheFile, "utf8"));
+  validateMissionCacheStore(parsed);
+  return {
+    updatedAt: parsed.updatedAt || null,
+    entries: parsed.entries
+  };
+}
+
+function validateMissionCacheStore(store) {
+  if (!store || typeof store !== "object") throw new Error("mission-cache.json must be an object");
+  if (!Array.isArray(store.entries)) throw new Error("mission-cache.json entries must be an array");
+  const keys = new Set();
+  for (const entry of store.entries) {
+    if (!entry?.key || !entry?.since || !entry?.until || !Number.isInteger(entry.limit) || !entry?.updatedAt || !entry?.result) throw new Error("Mission cache key, since, until, limit, updatedAt, and result are required");
+    if (keys.has(entry.key)) throw new Error(`Duplicate mission cache key: ${entry.key}`);
+    if (entry.result.ok !== true || !Array.isArray(entry.result.missions) || !entry.result.meta || typeof entry.result.meta !== "object") throw new Error(`Invalid mission cache result: ${entry.key}`);
+    keys.add(entry.key);
+  }
+}
+
+async function readMissionCacheEntry(key) {
+  const store = await readMissionCacheStore();
+  return store.entries.find((entry) => entry.key === key) || null;
+}
+
+async function writeMissionCacheEntry(key, options, result) {
+  const store = await readMissionCacheStore();
+  const now = new Date().toISOString();
+  const entry = {
+    key,
+    since: options.since,
+    until: options.until,
+    limit: options.limit,
+    updatedAt: now,
+    result
+  };
+  store.entries = [entry, ...store.entries.filter((item) => item.key !== key)];
+  store.updatedAt = now;
+  await writeMissionCacheStore(store);
+}
+
+async function writeMissionCacheStore(store) {
+  validateMissionCacheStore(store);
+  await writeJsonAtomic(missionCacheFile, store);
 }
 
 async function ensureTimelineFile() {
