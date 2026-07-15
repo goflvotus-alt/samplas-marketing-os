@@ -1967,6 +1967,9 @@ function annualArchiveMonths(month) {
 }
 
 function annualArchiveValue(archive, key) {
+  if (key === "totalSales") return Number(archive.sales?.totalSales?.amount);
+  if (key === "onlineSales") return Number(archive.sales?.onlineSales?.paidAmount);
+  if (key === "offlineSales") return Number(archive.sales?.offlineSales?.offlineSalesAmount);
   if (key === "paidAmount") return Number(archive.commerce?.paidAmount);
   if (key === "spend") return Number(archive.marketing?.spend);
   if (key === "purchaseValue") return Number(archive.marketing?.purchaseValue);
@@ -1987,6 +1990,9 @@ function annualArchiveFormat(value, type) {
 }
 
 function annualArchiveRawValue(archive, key) {
+  if (key === "totalSales") return archive.sales?.totalSales?.amount;
+  if (key === "onlineSales") return archive.sales?.onlineSales?.paidAmount;
+  if (key === "offlineSales") return archive.sales?.offlineSales?.offlineSalesAmount;
   if (key === "paidAmount") return archive.commerce?.paidAmount;
   if (key === "spend") return archive.marketing?.spend;
   if (key === "purchaseValue") return archive.marketing?.purchaseValue;
@@ -2009,6 +2015,9 @@ function annualArchiveSum(rows, key) {
 }
 
 const annualArchiveMetrics = [
+  { key: "totalSales", title: "총매출", kpiTitle: "누적 총매출", chartTitle: "월별 총매출 흐름", category: "commerce", type: "money", coverage: "offline" },
+  { key: "onlineSales", title: "온라인 매출", kpiTitle: "누적 온라인 매출", category: "commerce", type: "money" },
+  { key: "offlineSales", title: "오프라인 매출", kpiTitle: "누적 오프라인 매출", category: "commerce", type: "money", coverage: "offline" },
   { key: "paidAmount", title: "실제 매출", category: "commerce", type: "money" },
   { key: "spend", title: "광고비", category: "marketing", type: "money" },
   { key: "purchaseValue", title: "Meta 추정 구매값", category: "marketing", type: "money" },
@@ -2017,12 +2026,29 @@ const annualArchiveMetrics = [
   { key: "followerDelta", title: "팔로워 증감", category: "content", type: "follower" }
 ];
 
+function annualArchiveSalesCoverageText(rows) {
+  const salesRows = rows.filter((row) => !row.failed && row.archive?.sales);
+  if (!salesRows.length) return "통합 매출 데이터 없음";
+  const covered = salesRows.filter((row) => row.archive.sales?.coverage?.offline === true).length;
+  const needsReview = rows.length - covered;
+  if (!needsReview) return `${covered}개월 확보`;
+  return `${covered}개월 확보 · ${needsReview}개월 확인 필요`;
+}
+
+function annualArchiveYearLabel(year, rows) {
+  const todayMonth = campaignComparisonTodayKey().slice(0, 7);
+  const currentYear = todayMonth.slice(0, 4);
+  if (String(year) === currentYear) return `YTD ${rows.length}월까지`;
+  return rows.length >= 12 ? "12개월 완료" : `${rows.length}개월 기준`;
+}
+
 function annualArchiveKpi(metric, rows) {
   const total = annualArchiveSum(rows, metric.key);
+  const note = metric.coverage === "offline" ? annualArchiveSalesCoverageText(rows) : "연간 누적";
   return `<article class="annual-flow-kpi" data-annual-category="${esc(metric.category)}">
-    <span>${esc(metric.title)}</span>
+    <span>${esc(metric.kpiTitle || metric.title)}</span>
     <strong>${esc(annualArchiveFormat(total, metric.type))}</strong>
-    <em>연간 누적</em>
+    <em>${esc(note)}</em>
   </article>`;
 }
 
@@ -2034,7 +2060,7 @@ function annualArchiveMetricBlock(metric, rows) {
   const total = annualArchiveSum(rows, metric.key);
   return `<section class="annual-flow-card" data-annual-category="${esc(metric.category)}">
     <div class="annual-flow-card-head">
-      <div><h4>${esc(metric.title)}</h4><span>월별 archive 기준</span></div>
+      <div><h4>${esc(metric.chartTitle || metric.title)}</h4><span>월별 archive 기준</span></div>
       <strong>${esc(annualArchiveFormat(total, metric.type))}</strong>
     </div>
     <div class="annual-flow-bars">
@@ -2044,13 +2070,18 @@ function annualArchiveMetricBlock(metric, rows) {
         const width = Number.isFinite(value) ? Math.max(value === 0 ? 0 : 4, Math.min(100, Math.abs(value) / max * 100)) : 0;
         const label = `${Number(row.month.slice(5, 7))}월`;
         const formatted = missing ? "-" : annualArchiveFormat(value, metric.type);
-        const statusText = row.failed
+    const statusText = row.failed
           ? "상태 확인 불가"
           : {
             saved: "Saved Archive",
             live: "Live Draft",
             draft: "Unsaved Draft"
           }[row.archiveStatus] || String(row.archive?.status || "Draft");
+        const coverageText = metric.coverage === "offline" && !missing
+          ? row.archive?.sales?.coverage?.offline === true
+            ? "오프라인 확보"
+            : "오프라인 확인 필요"
+          : "";
         const previousRow = rows[index - 1];
         const previousMissing = !previousRow || previousRow.failed || !annualArchiveHasValue(previousRow.archive, metric.key);
         const previousValue = previousMissing ? null : annualArchiveValue(previousRow.archive, metric.key);
@@ -2063,7 +2094,7 @@ function annualArchiveMetricBlock(metric, rows) {
                 ? `전월보다 증가폭 ${apiNum(Math.abs(value - previousValue))}명 축소`
                 : "전월과 증가폭 동일"
             : monthlyReportDelta(value, previousValue, metric.type === "money" ? apiWon : apiNum);
-        const tooltip = `${label} · ${metric.title} ${missing ? "데이터 없음" : formatted} · ${statusText} · ${deltaText}`;
+        const tooltip = `${label} · ${metric.title} ${missing ? "데이터 없음" : formatted} · ${statusText}${coverageText ? ` · ${coverageText}` : ""} · ${deltaText}`;
         return `<div class="annual-flow-bar" data-annual-month="${esc(row.month)}" data-empty="${missing ? "true" : "false"}" data-tooltip="${esc(tooltip)}">
           <i style="height:${width}%"></i>
           <span>${esc(label)}</span>
@@ -2097,12 +2128,13 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
     target.innerHTML = `<article class="action-item"><strong>연간 흐름을 불러오지 못했습니다.</strong><p>${esc(year)}년 월별 아카이브를 확인할 수 없습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     return;
   }
+  const yearLabel = annualArchiveYearLabel(year, rows);
   target.innerHTML = `<section class="monthly-report-chapter annual-flow">
     <div class="monthly-report-chapter-head">
       <span>Y</span>
-      <div><p class="eyebrow">Annual Flow</p><h3>${esc(year)}년 연간 흐름</h3></div>
+      <div><p class="eyebrow">Annual Flow</p><h3>${esc(year)}년 누적 흐름 · ${esc(yearLabel)}</h3></div>
     </div>
-    <p class="monthly-report-fnote">월별 아카이브 기준입니다. 실패한 월은 -로 표시하며 Saved Archive / Live Draft / Unsaved Draft 상태가 섞일 수 있습니다. 팔로워 증감은 월말 확정 증감이 아니라 조회 시점 스냅샷 기준입니다.</p>
+    <p class="monthly-report-fnote">월별 아카이브 기준입니다. 실패한 월은 -로 표시하며 Saved Archive / Live Draft / Unsaved Draft 상태가 섞일 수 있습니다. 총매출은 Cafe24 온라인 매출과 확보된 ECOUNT 오프라인 매출의 합계입니다. 팔로워 증감은 월말 확정 증감이 아니라 조회 시점 스냅샷 기준입니다.</p>
     <div class="annual-flow-filters" aria-label="Annual Flow filter">
       <button class="segment active" type="button" data-annual-filter="all">전체</button>
       <button class="segment" type="button" data-annual-filter="commerce">Commerce</button>
