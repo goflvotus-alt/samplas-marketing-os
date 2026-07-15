@@ -2096,6 +2096,32 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const liveDraftNotice = archive.archiveStatus === "live"
     ? "현재 월 진행 중 수치이며 전월 전체 비교는 참고용입니다."
     : "";
+  const sales = archive.sales || null;
+  const salesCoverage = sales?.coverage || {};
+  const hasSalesSummary = Boolean(sales?.totalSales && sales?.onlineSales && sales?.offlineSales);
+  const salesCoverageComplete = salesCoverage.complete === true;
+  const salesCoverageLabel = salesCoverageComplete ? "통합 매출 기준 완료" : "확보 데이터 기준";
+  const salesCoverageNote = salesCoverageComplete
+    ? "Cafe24 온라인 매출과 ECOUNT 오프라인 매출을 함께 합산했습니다."
+    : "ECOUNT 확인 범위 기준으로 합산된 매출입니다. 일부 월 범위 확인 필요.";
+  const salesSummaryBlock = hasSalesSummary ? `
+    <section class="monthly-report-block">
+      <div class="monthly-report-block-head"><h4>Sales Summary</h4><span>${esc(salesCoverageLabel)}</span></div>
+      <div class="monthly-report-hero">
+        <div class="monthly-report-hero-main">
+          <span>총 매출</span>
+          <strong>${apiWon(sales.totalSales.amount)}</strong>
+          <em>Cafe24 온라인 + ECOUNT 오프라인</em>
+        </div>
+        <div class="monthly-report-side">
+          <div class="monthly-report-side-row"><span>온라인 매출</span><strong>${apiWon(sales.onlineSales.paidAmount)}</strong></div>
+          <div class="monthly-report-side-row"><span>오프라인 매출</span><strong>${apiWon(sales.offlineSales.offlineSalesAmount)}</strong></div>
+          <div class="monthly-report-side-row ${salesCoverageComplete ? "" : "monthly-report-muted"}"><span>Coverage</span><strong>${esc(salesCoverageLabel)}</strong></div>
+        </div>
+      </div>
+      <p class="monthly-report-fnote ${salesCoverageComplete ? "" : "monthly-report-muted"}">${esc(salesCoverageNote)}</p>
+    </section>
+  ` : "";
 
   target.innerHTML = `
     <header class="monthly-report-header">
@@ -2116,6 +2142,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       <a href="#monthly-report-ch2">02 Marketing</a>
       <a href="#monthly-report-ch3">03 Content</a>
     </nav>
+    ${salesSummaryBlock}
 
     <section id="monthly-report-ch1" class="monthly-report-chapter">
       <div class="monthly-report-chapter-head">
