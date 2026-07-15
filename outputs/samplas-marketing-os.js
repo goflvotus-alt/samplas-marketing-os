@@ -1803,6 +1803,33 @@ function monthlyReportDelta(current, previous, formatter = apiNum, options = {})
   return `전월 대비 ${diffText} · ${sign}${Math.abs(diff / previousValue * 100).toFixed(1)}%`;
 }
 
+function monthlyReportDirectionText(subject, current, previous, options = {}) {
+  if (!hasApiValue(current) || !hasApiValue(previous)) return `${subject} 비교 불가입니다`;
+  const currentValue = Number(current);
+  const previousValue = Number(previous);
+  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) return `${subject} 비교 불가입니다`;
+  const diff = currentValue - previousValue;
+  if (diff === 0) return `${subject} 전월과 동일합니다`;
+  const direction = diff > 0 ? "증가" : "감소";
+  if (options.noPercent || !previousValue) {
+    const formatter = options.formatter || apiNum;
+    return `${subject} 전월 대비 ${formatter(Math.abs(diff))} ${direction}했습니다`;
+  }
+  return `${subject} 전월 대비 ${Math.abs(diff / previousValue * 100).toFixed(1)}% ${direction}했습니다`;
+}
+
+function monthlyReportFollowerDirectionText(current, previous) {
+  if (!hasApiValue(current) || !hasApiValue(previous)) return "팔로워 증감은 비교 불가입니다";
+  const currentValue = Number(current);
+  const previousValue = Number(previous);
+  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) return "팔로워 증감은 비교 불가입니다";
+  const diff = currentValue - previousValue;
+  if (diff === 0) return "팔로워 증가폭은 전월과 동일합니다";
+  return diff > 0
+    ? `팔로워 증가폭은 전월보다 ${apiNum(Math.abs(diff))}명 확대됐습니다`
+    : `팔로워 증가폭은 전월보다 ${apiNum(Math.abs(diff))}명 축소됐습니다`;
+}
+
 function annualArchiveMonths(month) {
   const match = /^(\d{4})-(\d{2})$/.exec(String(month || ""));
   if (!match) return [];
@@ -2007,11 +2034,29 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     saved: "Saved Archive",
     draft: "Unsaved Draft"
   }[archive.archiveStatus] || String(archive.status || "Draft");
+  const archiveStatusDescription = {
+    live: "실시간 계산",
+    saved: "저장 데이터",
+    draft: "미저장 계산"
+  }[archive.archiveStatus] || "저장 데이터";
   const archiveSaveButton = archive.archiveStatus === "draft" || archive.archiveStatus === "saved"
     ? `<button type="button" class="button secondary" data-archive-save="${esc(month)}" data-archive-status="${esc(archive.archiveStatus)}">${archive.archiveStatus === "saved" ? "최신 값으로 다시 저장" : "아카이브 저장"}</button>`
     : "";
   const paymentTotal = Number(commerce.paidAmount || 0);
   const compareBase = Math.max(Number(marketing.spend || 0), Number(marketing.purchaseValue || 0), 1);
+  const hasMonthlySummaryPrevious = months.includes(previousMonth) && !previousArchive.error;
+  const summaryPreviousCommerce = hasMonthlySummaryPrevious ? previousCommerce : {};
+  const summaryPreviousMarketing = hasMonthlySummaryPrevious ? previousMarketing : {};
+  const summaryPreviousContent = hasMonthlySummaryPrevious ? previousContent : {};
+  const monthlySummary = [
+    monthlyReportDirectionText("실제 매출은", commerce.paidAmount, summaryPreviousCommerce.paidAmount, { formatter: apiWon }),
+    monthlyReportDirectionText("광고비는", marketing.spend, summaryPreviousMarketing.spend, { formatter: apiWon }),
+    monthlyReportDirectionText("콘텐츠 조회는", content.totalViews, summaryPreviousContent.totalViews),
+    monthlyReportFollowerDirectionText(content.followerDelta, summaryPreviousContent.followerDelta)
+  ].join(". ");
+  const liveDraftNotice = archive.archiveStatus === "live"
+    ? "현재 월 진행 중 수치이며 전월 전체 비교는 참고용입니다."
+    : "";
 
   target.innerHTML = `
     <header class="monthly-report-header">
@@ -2022,10 +2067,11 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       <div class="monthly-report-stat">
         <strong>${esc(archiveStatusLabel)}</strong>
         <span>Generated ${esc(archive.generatedAt || "-")}</span>
-        <em>저장 데이터</em>
+        <em>${esc(archiveStatusDescription)}</em>
         ${archiveSaveButton}
       </div>
     </header>
+    <p class="monthly-report-fnote">${esc(monthlySummary)}.${liveDraftNotice ? ` ${esc(liveDraftNotice)}` : ""}</p>
     <nav class="monthly-report-toc" aria-label="Monthly report chapters">
       <a href="#monthly-report-ch1">01 Commerce</a>
       <a href="#monthly-report-ch2">02 Marketing</a>
@@ -2102,7 +2148,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
           <em>${esc(monthlyReportDelta(marketing.spend, previousMarketing.spend, apiWon))}</em>
         </div>
         <div class="monthly-report-side">
-          <div class="monthly-report-side-row"><span>광고비 비중</span><strong>${hasApiValue(marketing.adSpendShare) ? pct(marketing.adSpendShare) : "-"}</strong></div>
+          <div class="monthly-report-side-row"><span>광고비 / 실제 매출</span><strong>${hasApiValue(marketing.adSpendShare) ? pct(marketing.adSpendShare) : "-"}</strong><em>광고비가 실제 매출에서 차지하는 비중</em></div>
           <div class="monthly-report-side-row"><span>오차율</span><strong>${marketing.comparable === false ? "비교 불가" : hasApiValue(marketing.mismatchRate) ? pct(marketing.mismatchRate) : "-"}</strong></div>
           <div class="monthly-report-side-row"><span>일치검증</span><strong>${reconciliationLabel}</strong></div>
         </div>
