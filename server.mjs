@@ -169,6 +169,20 @@ const server = createServer(async (req, res) => {
       const data = await buildBrandSalesDiagnostics(since, until);
       return json(res, data);
     }
+    if (url.pathname === "/api/sales/total") {
+      if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
+      const since = url.searchParams.get("since");
+      const until = url.searchParams.get("until");
+      if (!since || !until) return json(res, { error: "since and until are required" }, 400);
+      try {
+        const data = await buildCanonicalTotalSales({ since, until });
+        return json(res, data);
+      } catch (error) {
+        const message = safeErrorMessage(error);
+        const status = error.status === 400 || message.includes("YYYY-MM-DD") || message.includes("since must be before") ? 400 : 500;
+        return json(res, { error: message }, status);
+      }
+    }
     if (url.pathname === "/api/reports/monthly") {
       const month = url.searchParams.get("month") || currentMonth();
       if (!isValidMonthKey(month)) return json(res, { error: "Invalid month" }, 400);
