@@ -1478,7 +1478,7 @@ function editorialMeasuredNote() {
 }
 
 function hideEditorialUnreadySections() {
-  ["#editorialOpportunityGrid", "#editorialDiscoverRadar"].forEach((selector) => {
+  ["#editorialRecommendGrid", "#editorialOpportunityGrid", "#editorialDiscoverRadar", "#editorialContentStrategy", "#editorialSummary"].forEach((selector) => {
     const block = $(selector)?.closest(".section-block");
     if (block) block.hidden = true;
   });
@@ -5268,9 +5268,9 @@ async function renderIntelligenceDashboard() {
   if (!statusTarget || !briefTarget || !missionTarget) return;
   const renderSeq = ++intelligenceRenderSeq;
   statusTarget.className = "ad-status-banner loading";
-  statusTarget.innerHTML = `<span class="status-dot"></span><strong>Intelligence Service 확인 중</strong><span class="note">Mission과 Brief를 불러오고 있습니다.</span>`;
-  briefTarget.innerHTML = `<article class="action-item"><strong>Brief 확인 중</strong><p>Intelligence Service의 오늘 요약을 불러오고 있습니다.</p></article>`;
-  missionTarget.innerHTML = `<article class="action-item"><strong>Mission 확인 중</strong><p>우선 확인할 Mission을 불러오고 있습니다.</p></article>`;
+  statusTarget.innerHTML = `<span class="status-dot"></span><strong>Intelligence Service 확인 중</strong><span class="note">실제 데이터를 확인하고 있어 처음 불러올 때 시간이 걸릴 수 있습니다.</span>`;
+  briefTarget.innerHTML = `<article class="action-item"><strong>Brief 확인 중</strong><p>실제 데이터를 확인하고 있습니다. 처음 불러올 때 시간이 걸릴 수 있습니다.</p></article>`;
+  missionTarget.innerHTML = `<article class="action-item"><strong>Mission 확인 중</strong><p>우선 확인할 Mission을 실제 데이터 기준으로 불러오고 있습니다.</p></article>`;
   const [health, brief, missions] = await Promise.all([
     getJson(intelligenceUrl("/api/intelligence/health"), 5000),
     getJson(intelligenceUrl("/api/intelligence/brief"), 40000),
