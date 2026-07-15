@@ -15,6 +15,8 @@ const marketingBrandMasterFile = join(workRoot, "brand-master.json");
 const brandMasterListFile = join(intelligenceWorkDir, "brand-master-list.json");
 const brandAliasesFile = join(intelligenceWorkDir, "brand-aliases.json");
 const naverSearchSnapshotsFile = join(intelligenceWorkDir, "naver-search-snapshots.json");
+const brandTimelineFile = join(intelligenceWorkDir, "brand-timeline.json");
+const decisionHistoryFile = join(intelligenceWorkDir, "decision-history.json");
 const naverAdsBaseUrl = env.NAVER_ADS_BASE_URL || "https://api.searchad.naver.com";
 const naverAdsTimeoutMs = 10000;
 const marketingOsBaseUrl = env.INTELLIGENCE_MARKETING_OS_BASE_URL || env.MARKETING_OS_BASE_URL || `http://127.0.0.1:${env.PORT || 8787}`;
@@ -23,6 +25,8 @@ const marketingOsTimeoutMs = 12000;
 await mkdir(intelligenceWorkDir, { recursive: true });
 await ensureBrandRegistryFiles();
 await ensureNaverSnapshotsFile();
+await ensureTimelineFile();
+await ensureDecisionHistoryFile();
 
 const server = createServer(async (req, res) => {
   try {
@@ -57,6 +61,25 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/intelligence/brief") {
       return handleBriefRoute(url, res);
+    }
+    if (url.pathname === "/api/intelligence/decisions") {
+      if (req.method === "GET") return handleDecisionsGet(url, res);
+      if (req.method === "POST") return handleDecisionPost(req, res);
+      return json(res, {
+        ok: false,
+        error: "Method Not Allowed"
+      }, 405);
+    }
+    const decisionMatch = url.pathname.match(/^\/api\/intelligence\/decisions\/([^/]+)$/);
+    if (decisionMatch) {
+      if (req.method === "PATCH") return handleDecisionPatch(decisionMatch[1], req, res);
+      return json(res, {
+        ok: false,
+        error: "Method Not Allowed"
+      }, 405);
+    }
+    if (url.pathname === "/api/intelligence/timeline") {
+      return handleTimelineGet(url, res);
     }
     const brandInputMatch = url.pathname.match(/^\/api\/intelligence\/brand\/([^/]+)\/input$/);
     if (brandInputMatch) {
@@ -206,6 +229,103 @@ async function handleBriefRoute(url, res) {
     headline: missions.count ? `오늘 우선 확인할 Mission ${missions.count}건` : "현재 우선 확인할 Mission이 없습니다",
     items
   });
+}
+
+async function handleDecisionPost(req, res) {
+  const body = await readJsonBody(req);
+  if (!body.ok) return json(res, { ok: false, error: "Bad Request", message: body.message }, 400);
+  const validation = await validateDecisionCreateInput(body.value || {});
+  if (!validation.ok) return json(res, { ok: false, error: validation.error, message: validation.message }, validation.status);
+  const now = new Date().toISOString();
+  const decisionStore = await readDecisionHistoryStore();
+  const timelineStore = await readTimelineStore();
+  const decision = {
+    id: createDecisionId(validation.brand.id, now, decisionStore.decisions.length),
+    brandId: validation.brand.id,
+    missionId: validation.missionId,
+    sourceActionId: validation.sourceActionId,
+    decision: validation.decision,
+    status: validation.status,
+    reason: validation.reason,
+    createdAt: now,
+    updatedAt: now,
+    result: null
+  };
+  const event = createTimelineEvent({
+    brandId: validation.brand.id,
+    type: "decision_recorded",
+    occurredAt: now,
+    title: "Decision recorded",
+    description: validation.decision,
+    source: "decision-history",
+    relatedIds: relatedDecisionIds(decision)
+  });
+  decisionStore.decisions.push(decision);
+  decisionStore.updatedAt = now;
+  timelineStore.events.push(event);
+  timelineStore.updatedAt = now;
+  await writeDecisionAndTimelineStores(decisionStore, timelineStore);
+  return json(res, { ok: true, decision });
+}
+
+async function handleDecisionPatch(rawId, req, res) {
+  const id = decodeURIComponent(rawId || "").trim();
+  const body = await readJsonBody(req);
+  if (!body.ok) return json(res, { ok: false, error: "Bad Request", message: body.message }, 400);
+  const patch = validateDecisionPatchInput(body.value || {});
+  if (!patch.ok) return json(res, { ok: false, error: "Bad Request", message: patch.message }, 400);
+  const decisionStore = await readDecisionHistoryStore();
+  const timelineStore = await readTimelineStore();
+  const decision = decisionStore.decisions.find((item) => item.id === id);
+  if (!decision) return json(res, { ok: false, error: "Not Found", message: `Unknown decision: ${id}` }, 404);
+  const previousStatus = decision.status;
+  const previousResult = JSON.stringify(decision.result ?? null);
+  let changed = false;
+  if (patch.status !== undefined && patch.status !== decision.status) {
+    decision.status = patch.status;
+    changed = true;
+  }
+  if (patch.reason !== undefined && patch.reason !== decision.reason) {
+    decision.reason = patch.reason;
+    changed = true;
+  }
+  if (patch.result !== undefined && JSON.stringify(patch.result) !== previousResult) {
+    decision.result = patch.result;
+    changed = true;
+  }
+  if (!changed) return json(res, { ok: true, decision, timelineEvent: null });
+  const now = new Date().toISOString();
+  decision.updatedAt = now;
+  const timelineEvent = decisionPatchTimelineEvent(decision, { previousStatus, previousResult, now });
+  if (timelineEvent) {
+    timelineStore.events.push(timelineEvent);
+    timelineStore.updatedAt = now;
+  }
+  decisionStore.updatedAt = now;
+  await writeDecisionAndTimelineStores(decisionStore, timelineStore);
+  return json(res, { ok: true, decision, timelineEvent });
+}
+
+async function handleDecisionsGet(url, res) {
+  const filter = await decisionsFilter(url);
+  if (!filter.ok) return json(res, { ok: false, error: filter.error, message: filter.message }, filter.status);
+  const store = await readDecisionHistoryStore();
+  let decisions = sortDecisionsLatestFirst(store.decisions);
+  if (filter.brandId) decisions = decisions.filter((decision) => decision.brandId === filter.brandId);
+  if (filter.statusFilter) decisions = decisions.filter((decision) => decision.status === filter.statusFilter);
+  if (filter.limit) decisions = decisions.slice(0, filter.limit);
+  return json(res, { ok: true, count: decisions.length, decisions });
+}
+
+async function handleTimelineGet(url, res) {
+  const filter = await timelineFilter(url);
+  if (!filter.ok) return json(res, { ok: false, error: filter.error, message: filter.message }, filter.status);
+  const store = await readTimelineStore();
+  let events = sortTimelineLatestFirst(store.events);
+  if (filter.brandId) events = events.filter((event) => event.brandId === filter.brandId);
+  if (filter.type) events = events.filter((event) => event.type === filter.type);
+  if (filter.limit) events = events.slice(0, filter.limit);
+  return json(res, { ok: true, count: events.length, events });
 }
 
 async function buildBrandIntelligenceInput(brandId, options = {}) {
@@ -560,6 +680,193 @@ function sortMissions(missions) {
     if (brandDiff) return brandDiff;
     return left.sourceActionId.localeCompare(right.sourceActionId);
   });
+}
+
+async function validateDecisionCreateInput(input) {
+  const registry = await readBrandRegistry();
+  const brandId = normalizeBrandCode(input.brandId);
+  const brand = registry.brands.find((item) => item.id === brandId);
+  if (!brand) return { ok: false, status: 404, error: "Not Found", message: `Unknown brandId: ${brandId}` };
+  const decision = normalizeRequiredText(input.decision);
+  if (!decision) return { ok: false, status: 400, error: "Bad Request", message: "decision is required" };
+  const reason = normalizeRequiredText(input.reason);
+  if (!reason) return { ok: false, status: 400, error: "Bad Request", message: "reason is required" };
+  const status = input.status === undefined ? "planned" : normalizeBrandName(input.status);
+  if (!validDecisionStatus(status)) return { ok: false, status: 400, error: "Bad Request", message: "Invalid decision status" };
+  const reference = await validateDecisionReference({
+    brandId,
+    missionId: normalizeOptionalText(input.missionId),
+    sourceActionId: normalizeOptionalText(input.sourceActionId)
+  });
+  if (!reference.ok) return reference;
+  return {
+    ok: true,
+    brand,
+    decision,
+    reason,
+    status,
+    missionId: reference.missionId,
+    sourceActionId: reference.sourceActionId
+  };
+}
+
+async function validateDecisionReference({ brandId, missionId, sourceActionId }) {
+  if (!missionId && !sourceActionId) return { ok: true, missionId: null, sourceActionId: null };
+  let period = { since: currentMonthStartKey(), until: todayKey() };
+  let actionId = sourceActionId;
+  if (missionId) {
+    const parsed = parseMissionId(missionId);
+    if (!parsed || parsed.brandId !== brandId) return { ok: false, status: 400, error: "Bad Request", message: "missionId does not match this brand" };
+    period = { since: parsed.since, until: parsed.until };
+    actionId = actionId || parsed.sourceActionId;
+    if (actionId !== parsed.sourceActionId) return { ok: false, status: 400, error: "Bad Request", message: "sourceActionId does not match missionId" };
+  }
+  if (actionId) {
+    const input = await buildBrandIntelligenceInput(brandId, period);
+    const intelligence = buildBrandIntelligence(input);
+    if (!intelligence.actions.some((action) => action.id === actionId)) return { ok: false, status: 404, error: "Not Found", message: `Action is not available for this brand: ${actionId}` };
+  }
+  return { ok: true, missionId: missionId || null, sourceActionId: actionId || null };
+}
+
+function validateDecisionPatchInput(input) {
+  const result = {};
+  if (input.status !== undefined) {
+    const status = normalizeBrandName(input.status);
+    if (!validDecisionStatus(status)) return { ok: false, message: "Invalid decision status" };
+    result.status = status;
+  }
+  if (input.reason !== undefined) {
+    const reason = normalizeRequiredText(input.reason);
+    if (!reason) return { ok: false, message: "reason must not be empty" };
+    result.reason = reason;
+  }
+  if (input.result !== undefined) result.result = input.result === null ? null : input.result;
+  if (result.status === undefined && result.reason === undefined && result.result === undefined) return { ok: false, message: "No supported fields to update" };
+  return { ok: true, ...result };
+}
+
+async function decisionsFilter(url) {
+  const registry = await readBrandRegistry();
+  const brandId = normalizeOptionalText(url.searchParams.get("brandId"));
+  if (brandId && !registry.brands.some((brand) => brand.id === brandId)) return { ok: false, status: 404, error: "Not Found", message: `Unknown brandId: ${brandId}` };
+  const statusFilter = normalizeOptionalText(url.searchParams.get("status"));
+  if (statusFilter && !validDecisionStatus(statusFilter)) return { ok: false, status: 400, error: "Bad Request", message: "Invalid decision status" };
+  const limit = parseHistoryLimit(url.searchParams.get("limit"));
+  if (!limit.ok) return { ok: false, status: 400, error: "Bad Request", message: "limit must be a positive integer" };
+  return { ok: true, brandId, statusFilter, limit: limit.value };
+}
+
+async function timelineFilter(url) {
+  const registry = await readBrandRegistry();
+  const brandId = normalizeOptionalText(url.searchParams.get("brandId"));
+  if (brandId && !registry.brands.some((brand) => brand.id === brandId)) return { ok: false, status: 404, error: "Not Found", message: `Unknown brandId: ${brandId}` };
+  const type = normalizeOptionalText(url.searchParams.get("type"));
+  if (type && !validTimelineType(type)) return { ok: false, status: 400, error: "Bad Request", message: "Invalid timeline type" };
+  const limit = parseHistoryLimit(url.searchParams.get("limit"));
+  if (!limit.ok) return { ok: false, status: 400, error: "Bad Request", message: "limit must be a positive integer" };
+  return { ok: true, brandId, type, limit: limit.value };
+}
+
+function createDecisionId(brandId, createdAt, index) {
+  return `decision:${brandId}:${createdAt}:${index + 1}`;
+}
+
+function createTimelineEvent({ brandId, type, occurredAt, title, description, source, relatedIds }) {
+  return {
+    id: `event:${type}:${brandId}:${occurredAt}:${relatedIds.filter(Boolean).join("|")}`,
+    brandId,
+    type,
+    occurredAt,
+    title,
+    description,
+    source,
+    relatedIds: relatedIds.filter(Boolean)
+  };
+}
+
+function decisionPatchTimelineEvent(decision, { previousStatus, previousResult, now }) {
+  if (decision.status === "completed" && JSON.stringify(decision.result ?? null) !== previousResult) {
+    return createTimelineEvent({
+      brandId: decision.brandId,
+      type: "result_recorded",
+      occurredAt: now,
+      title: "Decision result recorded",
+      description: "Decision result was recorded",
+      source: "decision-history",
+      relatedIds: relatedDecisionIds(decision)
+    });
+  }
+  if (decision.status !== previousStatus) {
+    return createTimelineEvent({
+      brandId: decision.brandId,
+      type: "action_started",
+      occurredAt: now,
+      title: "Decision status updated",
+      description: `Decision status changed to ${decision.status}`,
+      source: "decision-history",
+      relatedIds: relatedDecisionIds(decision)
+    });
+  }
+  if (JSON.stringify(decision.result ?? null) !== previousResult) {
+    return createTimelineEvent({
+      brandId: decision.brandId,
+      type: "result_recorded",
+      occurredAt: now,
+      title: "Decision result recorded",
+      description: "Decision result was recorded",
+      source: "decision-history",
+      relatedIds: relatedDecisionIds(decision)
+    });
+  }
+  return null;
+}
+
+function relatedDecisionIds(decision) {
+  return [decision.id, decision.missionId, decision.sourceActionId];
+}
+
+function parseMissionId(missionId) {
+  const parts = String(missionId || "").split(":");
+  if (parts.length !== 5 || parts[0] !== "mission" || !isDateKey(parts[3]) || !isDateKey(parts[4])) return null;
+  return {
+    brandId: parts[1],
+    sourceActionId: parts[2],
+    since: parts[3],
+    until: parts[4]
+  };
+}
+
+function validDecisionStatus(status) {
+  return ["planned", "in_progress", "completed", "cancelled"].includes(status);
+}
+
+function validTimelineType(type) {
+  return ["decision_recorded", "action_started", "result_recorded"].includes(type);
+}
+
+function parseHistoryLimit(value) {
+  if (value === null || value === "") return { ok: true, value: null };
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1) return { ok: false };
+  return { ok: true, value: limit };
+}
+
+function sortDecisionsLatestFirst(decisions) {
+  return [...decisions].sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
+}
+
+function sortTimelineLatestFirst(events) {
+  return [...events].sort((left, right) => String(right.occurredAt).localeCompare(String(left.occurredAt)));
+}
+
+function normalizeRequiredText(value) {
+  return normalizeBrandName(value).slice(0, 1000);
+}
+
+function normalizeOptionalText(value) {
+  const text = normalizeBrandName(value);
+  return text || null;
 }
 
 async function buildCommerceBrandInput({ brand, registry, period, sourceData }) {
@@ -1125,6 +1432,93 @@ async function writeNaverSnapshotsStore(store) {
   await writeJsonAtomic(naverSearchSnapshotsFile, store);
 }
 
+async function ensureTimelineFile() {
+  if (existsSync(brandTimelineFile)) {
+    await readTimelineStore();
+    return;
+  }
+  await writeTimelineStore({
+    updatedAt: new Date().toISOString(),
+    events: []
+  });
+}
+
+async function ensureDecisionHistoryFile() {
+  if (existsSync(decisionHistoryFile)) {
+    await readDecisionHistoryStore();
+    return;
+  }
+  await writeDecisionHistoryStore({
+    updatedAt: new Date().toISOString(),
+    decisions: []
+  });
+}
+
+async function readTimelineStore() {
+  const parsed = JSON.parse(await readFile(brandTimelineFile, "utf8"));
+  validateTimelineStore(parsed);
+  return {
+    updatedAt: parsed.updatedAt || null,
+    events: parsed.events
+  };
+}
+
+async function readDecisionHistoryStore() {
+  const parsed = JSON.parse(await readFile(decisionHistoryFile, "utf8"));
+  validateDecisionHistoryStore(parsed);
+  return {
+    updatedAt: parsed.updatedAt || null,
+    decisions: parsed.decisions
+  };
+}
+
+function validateTimelineStore(store) {
+  if (!store || typeof store !== "object") throw new Error("brand-timeline.json must be an object");
+  if (!Array.isArray(store.events)) throw new Error("brand-timeline.json events must be an array");
+  const ids = new Set();
+  for (const event of store.events) {
+    if (!event?.id || !event?.brandId || !event?.type || !event?.occurredAt || !event?.title || !event?.source) throw new Error("Timeline event id, brandId, type, occurredAt, title, and source are required");
+    if (!validTimelineType(event.type)) throw new Error(`Invalid timeline event type: ${event.type}`);
+    if (!Array.isArray(event.relatedIds)) throw new Error(`Timeline event relatedIds must be an array: ${event.id}`);
+    if (ids.has(event.id)) throw new Error(`Duplicate timeline event id: ${event.id}`);
+    ids.add(event.id);
+  }
+}
+
+function validateDecisionHistoryStore(store) {
+  if (!store || typeof store !== "object") throw new Error("decision-history.json must be an object");
+  if (!Array.isArray(store.decisions)) throw new Error("decision-history.json decisions must be an array");
+  const ids = new Set();
+  for (const decision of store.decisions) {
+    if (!decision?.id || !decision?.brandId || !decision?.decision || !decision?.status || !decision?.createdAt || !decision?.updatedAt) throw new Error("Decision id, brandId, decision, status, createdAt, and updatedAt are required");
+    if (!validDecisionStatus(decision.status)) throw new Error(`Invalid decision status: ${decision.status}`);
+    if (decision.result === undefined) throw new Error(`Decision result field is required: ${decision.id}`);
+    if (ids.has(decision.id)) throw new Error(`Duplicate decision id: ${decision.id}`);
+    ids.add(decision.id);
+  }
+}
+
+async function writeTimelineStore(store) {
+  validateTimelineStore(store);
+  await writeJsonAtomic(brandTimelineFile, store);
+}
+
+async function writeDecisionHistoryStore(store) {
+  validateDecisionHistoryStore(store);
+  await writeJsonAtomic(decisionHistoryFile, store);
+}
+
+async function writeDecisionAndTimelineStores(decisionStore, timelineStore) {
+  validateDecisionHistoryStore(decisionStore);
+  validateTimelineStore(timelineStore);
+  const decisionTemp = tempJsonFile(decisionHistoryFile);
+  const timelineTemp = tempJsonFile(brandTimelineFile);
+  await writeFile(decisionTemp, `${JSON.stringify(decisionStore, null, 2)}\n`);
+  await writeFile(timelineTemp, `${JSON.stringify(timelineStore, null, 2)}\n`);
+  await rename(decisionTemp, decisionHistoryFile);
+  await rename(timelineTemp, brandTimelineFile);
+}
+
 async function ensureBrandRegistryFiles() {
   await mkdir(intelligenceWorkDir, { recursive: true });
   if (!existsSync(brandMasterListFile) || !existsSync(brandAliasesFile)) {
@@ -1289,9 +1683,13 @@ async function writeJson(file, data) {
 }
 
 async function writeJsonAtomic(file, data) {
-  const tempFile = `${file}.tmp-${process.pid}-${Date.now()}`;
+  const tempFile = tempJsonFile(file);
   await writeFile(tempFile, `${JSON.stringify(data, null, 2)}\n`);
   await rename(tempFile, file);
+}
+
+function tempJsonFile(file) {
+  return `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function safeErrorMessage(error) {
