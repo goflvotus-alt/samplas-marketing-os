@@ -3050,6 +3050,53 @@ export async function buildCanonicalTotalSales({ since: sinceValue, until: until
   };
 }
 
+async function buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource) {
+  const month = monthStart.slice(0, 7);
+  const onlinePaidAmount = finiteNumberOrZero(commerceSource?.totals?.paidAmount);
+  const missingMonths = [];
+  const partialMonths = [];
+  let offlineSalesAmount = 0;
+  const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+
+  if (!snapshot) {
+    missingMonths.push(month);
+  } else {
+    if (String(snapshot.periodStart || "") > monthStart || String(snapshot.periodEnd || "") < monthEnd) {
+      partialMonths.push(month);
+    }
+    const lines = Array.isArray(snapshot.salesLines) ? snapshot.salesLines : Array.isArray(snapshot.rows) ? snapshot.rows : [];
+    for (const line of lines) {
+      const date = String(line?.date || "");
+      const salesAmount = Number(line?.salesAmount);
+      if (line?.isOfflineRevenue === true && Number.isFinite(salesAmount) && date >= monthStart && date <= monthEnd) {
+        offlineSalesAmount += salesAmount;
+      }
+    }
+  }
+
+  const offlineComplete = missingMonths.length === 0 && partialMonths.length === 0;
+  return {
+    periodStart: monthStart,
+    periodEnd: monthEnd,
+    onlineSales: {
+      paidAmount: onlinePaidAmount
+    },
+    offlineSales: {
+      offlineSalesAmount
+    },
+    totalSales: {
+      amount: onlinePaidAmount + offlineSalesAmount
+    },
+    coverage: {
+      online: true,
+      offline: offlineComplete,
+      complete: offlineComplete,
+      partialMonths,
+      missingMonths
+    }
+  };
+}
+
 async function buildMonthlyArchive(month) {
   if (!isValidMonthKey(month)) {
     throw new Error("month는 YYYY-MM 형식이어야 합니다.");
@@ -3074,6 +3121,7 @@ async function buildMonthlyArchive(month) {
     brandSales: commerceSource.brands || [],
     productSales: commerceSource.products || []
   };
+  const sales = await buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource);
 
   const metaTotals = metaSummary.totals || {};
   const spend = Number(metaTotals.spend || 0);
@@ -3154,6 +3202,7 @@ async function buildMonthlyArchive(month) {
     generatedAt: new Date().toISOString(),
     dataVersion: 1,
     status: "draft",
+    sales,
     commerce,
     marketing,
     content
