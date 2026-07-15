@@ -546,9 +546,16 @@
             <p class="eyebrow">Intelligence Service</p>
             <h3>Mission Brief</h3>
           </div>
-          <button class="button secondary" type="button" data-intelligence-refresh>새로고침</button>
+          <button id="intelligenceRefreshBtn" class="button secondary" type="button" data-intelligence-refresh>새로고침</button>
         </div>
-        <div class="section-block">
+        <div class="product-action-filters">
+          <button class="product-action-filter active" type="button" data-intelligence-panel-tab="overview">Overview</button>
+          <button class="product-action-filter" type="button" data-intelligence-panel-tab="brand">Brand Intelligence</button>
+          <button class="product-action-filter" type="button" data-intelligence-panel-tab="decisions">Decisions</button>
+          <button class="product-action-filter" type="button" data-intelligence-panel-tab="timeline">Timeline</button>
+          <button class="product-action-filter" type="button" data-intelligence-panel-tab="learning">Learning</button>
+        </div>
+        <div class="section-block" data-intelligence-panel="overview">
           <div class="section-title compact">
             <div>
               <p class="eyebrow">Service Status</p>
@@ -557,7 +564,7 @@
           </div>
           <div id="intelligenceStatus" class="ad-status-banner loading"></div>
         </div>
-        <div class="section-block">
+        <div class="section-block" data-intelligence-panel="overview">
           <div class="section-title compact">
             <div>
               <p class="eyebrow">Brief</p>
@@ -566,7 +573,7 @@
           </div>
           <div id="intelligenceBrief" class="cards"></div>
         </div>
-        <div class="section-block">
+        <div class="section-block" data-intelligence-panel="overview">
           <div class="section-title compact">
             <div>
               <p class="eyebrow">Mission</p>
@@ -574,6 +581,47 @@
             </div>
           </div>
           <div id="intelligenceMissions" class="cards"></div>
+        </div>
+        <div class="section-block" data-intelligence-panel="brand" hidden>
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Brand Intelligence</p>
+              <h3 id="intelligenceBrandTitle">브랜드 상세</h3>
+            </div>
+            <button class="button secondary" type="button" data-intelligence-panel-tab="overview">Overview로 돌아가기</button>
+          </div>
+          <div id="intelligenceBrandDetail"></div>
+        </div>
+        <div class="section-block" data-intelligence-panel="decisions" hidden>
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Decision History</p>
+              <h3>Decision 목록</h3>
+            </div>
+            <button class="button secondary" type="button" data-intelligence-decisions-refresh>새로고침</button>
+          </div>
+          <div id="intelligenceDecisions"></div>
+        </div>
+        <div class="section-block" data-intelligence-panel="timeline" hidden>
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Timeline</p>
+              <h3>Brand Timeline</h3>
+            </div>
+            <select id="intelligenceTimelineBrandFilter" aria-label="Timeline 브랜드 필터"></select>
+          </div>
+          <div id="intelligenceTimeline"></div>
+        </div>
+        <div class="section-block" data-intelligence-panel="learning" hidden>
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Learning DB</p>
+              <h3>Learning Case</h3>
+            </div>
+            <button class="button secondary" type="button" data-intelligence-learning-refresh>새로고침</button>
+          </div>
+          <div id="intelligenceLearning"></div>
+          <div id="intelligenceSimilar"></div>
         </div>
       </section>
 

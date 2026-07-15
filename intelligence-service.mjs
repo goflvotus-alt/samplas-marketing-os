@@ -22,6 +22,8 @@ const naverAdsBaseUrl = env.NAVER_ADS_BASE_URL || "https://api.searchad.naver.co
 const naverAdsTimeoutMs = 10000;
 const marketingOsBaseUrl = env.INTELLIGENCE_MARKETING_OS_BASE_URL || env.MARKETING_OS_BASE_URL || `http://127.0.0.1:${env.PORT || 8787}`;
 const marketingOsTimeoutMs = 12000;
+const missionCacheTtlMs = 30000;
+const missionResultCache = new Map();
 
 await mkdir(intelligenceWorkDir, { recursive: true });
 await ensureBrandRegistryFiles();
@@ -229,7 +231,7 @@ async function handleMissionsRoute(url, res) {
       message: parsed.message
     }, 400);
   }
-  const result = await buildMissions(parsed);
+  const result = await getMissionsResult(parsed);
   return json(res, result);
 }
 
@@ -242,7 +244,7 @@ async function handleBriefRoute(url, res) {
       message: parsed.message
     }, 400);
   }
-  const missions = await buildMissions(parsed);
+  const missions = await getMissionsResult(parsed);
   const items = missions.missions.map((mission) => ({
     brand: mission.brand,
     priority: mission.priority,
@@ -505,6 +507,34 @@ async function buildMissions(options) {
       partial
     }
   };
+}
+
+async function getMissionsResult(options) {
+  const key = missionCacheKey(options);
+  const cached = missionResultCache.get(key);
+  const now = Date.now();
+  if (cached?.value && cached.expiresAt > now) return cached.value;
+  if (cached?.promise) return cached.promise;
+  const promise = buildMissions(options).then((result) => {
+    missionResultCache.set(key, {
+      value: result,
+      expiresAt: Date.now() + missionCacheTtlMs
+    });
+    return result;
+  }).catch((error) => {
+    if (missionResultCache.get(key)?.promise === promise) missionResultCache.delete(key);
+    throw error;
+  });
+  missionResultCache.set(key, { promise });
+  return promise;
+}
+
+function missionCacheKey(options) {
+  return `${options.since}|${options.until}|${options.limit}`;
+}
+
+function clearMissionCache() {
+  missionResultCache.clear();
 }
 
 async function readMissionSourceData(options) {
@@ -1282,6 +1312,7 @@ async function handleNaverSnapshotsPost(req, url, res) {
   store.snapshots.push(snapshot);
   store.updatedAt = collectedAt;
   await writeNaverSnapshotsStore(store);
+  clearMissionCache();
   return json(res, {
     ok: true,
     duplicate: false,

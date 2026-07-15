@@ -56,6 +56,14 @@ let campaignPeriodComparisonState = { comparisonMode: "month", manualRange: null
 let reportsMonth = "";
 let reportsRenderSeq = 0;
 let intelligenceRenderSeq = 0;
+let intelligenceBrandRenderSeq = 0;
+let intelligenceDecisionsRenderSeq = 0;
+let intelligenceTimelineRenderSeq = 0;
+let intelligenceLearningRenderSeq = 0;
+let intelligenceSubmitInFlight = false;
+let activeIntelligencePanel = "overview";
+let selectedIntelligenceMission = null;
+let intelligenceBrandCache = null;
 let apiHealthRefreshInFlight = false;
 let currentTodayBriefingItems = [];
 // Cafe24 재인증 콜백이 실패로 돌아왔을 때만 채워진다(handleCafe24OAuthRedirect() 참고).
@@ -246,6 +254,32 @@ async function postJson(url, payload, timeoutMs = 8000) {
   }
 }
 
+async function patchJson(url, payload, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { error: `응답을 읽지 못했습니다: ${text.slice(0, 100)}` };
+    }
+    if (!response.ok && !body.error) body.error = `API 오류 ${response.status}`;
+    return body;
+  } catch (error) {
+    return { error: error.name === "AbortError" ? "응답 지연" : error.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function selectedMonth() {
   const value = $("#monthSelect")?.value;
   return monthlyData.find((item) => item.month === value) || monthlyData[0] || emptyMonth("2026-07");
@@ -380,7 +414,7 @@ function renderNav() {
     $$(".nav button").forEach((node) => node.classList.toggle("active", node === button));
     $$(".view").forEach((view) => view.classList.toggle("active", view.id === button.dataset.view));
     setTopbarTitle(button.dataset.view);
-    if (button.dataset.view === "Intelligence") renderIntelligenceDashboard();
+    if (button.dataset.view === "Intelligence") refreshActiveIntelligencePanel();
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 }
@@ -5187,6 +5221,46 @@ function intelligenceUrl(path) {
   return `${intelligenceBaseUrl}${path}`;
 }
 
+function setIntelligencePanel(panel = "overview") {
+  activeIntelligencePanel = panel;
+  if (panel !== "overview") intelligenceRenderSeq += 1;
+  if (panel !== "brand") intelligenceBrandRenderSeq += 1;
+  if (panel !== "decisions") intelligenceDecisionsRenderSeq += 1;
+  if (panel !== "timeline") intelligenceTimelineRenderSeq += 1;
+  if (panel !== "learning") intelligenceLearningRenderSeq += 1;
+  $$("[data-intelligence-panel]").forEach((node) => node.toggleAttribute("hidden", node.dataset.intelligencePanel !== panel));
+  $$("[data-intelligence-panel-tab]").forEach((button) => button.classList.toggle("active", button.dataset.intelligencePanelTab === panel));
+  refreshActiveIntelligencePanel();
+}
+
+// data-intelligence-panel-tab="brand"를 mission 카드의 "상세" 버튼 없이 직접 클릭하면
+// selectedIntelligenceMission이 비어 있어 renderIntelligenceBrandDetail의
+// `if (!target || !mission?.brandId) return;` 가드에 걸려 아무것도 렌더되지 않고
+// #intelligenceBrandDetail이 HTML 초기 상태(빈 div) 그대로 남아 탭은 active인데
+// 콘텐츠만 공백으로 보이는 회귀가 있었다. 이 래퍼가 그 경우를 명시적 안내 문구로 채운다.
+function renderIntelligenceBrandPanel() {
+  if (selectedIntelligenceMission?.brandId) {
+    renderIntelligenceBrandDetail(selectedIntelligenceMission);
+    return;
+  }
+  const target = $("#intelligenceBrandDetail");
+  if (!target) return;
+  const titleTarget = $("#intelligenceBrandTitle");
+  if (titleTarget) titleTarget.textContent = "브랜드 상세";
+  target.innerHTML = `<article class="action-item sales-list-card sales-empty-card"><span>Brand Intelligence</span><strong>선택된 브랜드가 없습니다</strong><p>Mission 카드의 "상세 / Decision 기록" 버튼을 눌러 브랜드를 선택해주세요.</p></article>`;
+}
+
+// 헤더의 새로고침 버튼이 항상 Overview만 새로고침해서, Decisions/Timeline/Learning/Brand
+// 탭을 보는 중에는 눌러도 화면상 아무 변화가 없어 "동작하지 않는다"로 보이는 문제가 있었다.
+// 현재 활성 탭 기준으로 재요청하도록 dispatch만 추가한다(API/데이터 계약 변경 없음).
+function refreshActiveIntelligencePanel() {
+  if (activeIntelligencePanel === "decisions") return renderIntelligenceDecisions();
+  if (activeIntelligencePanel === "timeline") return renderIntelligenceTimeline();
+  if (activeIntelligencePanel === "learning") return renderIntelligenceLearning();
+  if (activeIntelligencePanel === "brand") return renderIntelligenceBrandPanel();
+  return renderIntelligenceDashboard();
+}
+
 async function renderIntelligenceDashboard() {
   const statusTarget = $("#intelligenceStatus");
   const briefTarget = $("#intelligenceBrief");
@@ -5264,6 +5338,9 @@ function intelligenceMissionCard(mission = {}) {
   const signalIds = Array.isArray(mission.signalIds) ? mission.signalIds.join(",") : "";
   return `<article class="action-item sales-list-card"
     data-mission-id="${esc(mission.id || "")}"
+    data-brand-id="${esc(mission.brand?.id || "")}"
+    data-brand-name="${esc(intelligenceBrandName(mission.brand))}"
+    data-priority="${esc(mission.priority || "")}"
     data-source-action-id="${esc(mission.sourceActionId || "")}"
     data-signal-ids="${esc(signalIds)}">
     ${intelligencePriorityBadge(mission.priority)}
@@ -5271,6 +5348,7 @@ function intelligenceMissionCard(mission = {}) {
     <strong>${esc(mission.title || "Mission")}</strong>
     <p>${esc(mission.reason || "Mission 근거 없음")}</p>
     <small>${esc(mission.sourceActionId || "source action 없음")}</small>
+    <button class="today-jump-button" type="button" data-intelligence-brand-detail>상세 / Decision 기록</button>
   </article>`;
 }
 
@@ -5289,6 +5367,314 @@ function intelligenceTimeLabel(value) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "-";
   return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function readMissionDataset(node) {
+  if (!node) return null;
+  const signalIds = (node.dataset.signalIds || "").split(",").map((item) => item.trim()).filter(Boolean);
+  return {
+    id: node.dataset.missionId || "",
+    brandId: node.dataset.brandId || "",
+    brandName: node.dataset.brandName || "",
+    priority: node.dataset.priority || "",
+    sourceActionId: node.dataset.sourceActionId || "",
+    signalIds
+  };
+}
+
+async function readIntelligenceBrands() {
+  if (intelligenceBrandCache) return intelligenceBrandCache;
+  const result = await getJson(intelligenceUrl("/api/intelligence/brands"), 10000);
+  if (result.error || !result.ok) return { brands: [] };
+  intelligenceBrandCache = result;
+  return result;
+}
+
+function intelligenceBrandLabel(brandId, brands = []) {
+  return brands.find((brand) => brand.id === brandId)?.name || brandId || "브랜드";
+}
+
+async function renderIntelligenceBrandDetail(mission) {
+  const target = $("#intelligenceBrandDetail");
+  if (!target || !mission?.brandId) return;
+  const renderSeq = ++intelligenceBrandRenderSeq;
+  $("#intelligenceBrandTitle").textContent = mission.brandName || mission.brandId;
+  target.innerHTML = `<article class="action-item"><strong>Brand Intelligence 확인 중</strong><p>${esc(mission.brandName || mission.brandId)} 데이터를 불러오고 있습니다.</p></article>`;
+  const [detail, input] = await Promise.all([
+    getJson(intelligenceUrl(`/api/intelligence/brand/${encodeURIComponent(mission.brandId)}`), 40000),
+    getJson(intelligenceUrl(`/api/intelligence/brand/${encodeURIComponent(mission.brandId)}/input`), 40000)
+  ]);
+  if (renderSeq !== intelligenceBrandRenderSeq) return;
+  if (detail.error || !detail.ok) {
+    target.innerHTML = `<article class="action-item"><strong>Brand Intelligence 확인 불가</strong><p>Intelligence Service 응답을 확인할 수 없습니다.</p></article>`;
+    return;
+  }
+  const data = detail.data || {};
+  const inputData = input?.data || {};
+  const sources = data.sources || {};
+  const signals = Array.isArray(data.signals) ? data.signals : [];
+  const actions = Array.isArray(data.actions) ? data.actions : [];
+  target.innerHTML = [
+    `<div class="cards">
+      <article class="action-item ad-summary-card ad-core-kpi-card"><span>Brand</span><strong>${esc(data.brand?.name || mission.brandName || mission.brandId)}</strong><p>${esc(data.period?.since || inputData.period?.since || "-")} ~ ${esc(data.period?.until || inputData.period?.until || "-")}</p></article>
+      <article class="action-item"><span>Summary</span><strong>${esc(data.summary || "요약 없음")}</strong><p>API rule 기반 요약</p></article>
+    </div>`,
+    `<div class="cards">${["commerce", "marketing", "content", "search"].map((key) => intelligenceSourceCard(key, sources[key])).join("")}</div>`,
+    `<div class="cards">${signals.length ? signals.map(intelligenceSignalCard).join("") : `<article class="action-item"><strong>Signal 없음</strong><p>현재 선택 기간에 표시할 signal이 없습니다.</p></article>`}</div>`,
+    `<div class="cards">${actions.length ? actions.map(intelligenceActionCard).join("") : `<article class="action-item"><strong>Action 없음</strong><p>현재 생성된 action이 없습니다.</p></article>`}</div>`,
+    intelligenceDecisionForm(mission)
+  ].join("");
+}
+
+function intelligenceSourceCard(name, source = {}) {
+  const status = source?.status || "unknown";
+  const tone = status === "matched" ? "good" : status === "unavailable" ? "urgent" : "warn";
+  return `<article class="action-item ${esc(tone)}"><span>${esc(name)}</span><strong>${esc(status)}</strong><p>${status === "unavailable" ? "source 확인 불가" : "source 상태"}</p></article>`;
+}
+
+function intelligenceSignalCard(signal = {}) {
+  return `<article class="action-item sales-list-card">
+    ${intelligencePriorityBadge(signal.priority)}
+    <span>${esc(signal.type || "signal")}</span>
+    <strong>${esc(signal.title || signal.id || "Signal")}</strong>
+    <p>${esc(signal.id || "")}</p>
+  </article>`;
+}
+
+function intelligenceActionCard(action = {}) {
+  return `<article class="action-item sales-list-card">
+    ${intelligencePriorityBadge(action.priority)}
+    <span>${esc(action.id || "action")}</span>
+    <strong>${esc(action.title || "Action")}</strong>
+    <p>${esc(action.reason || "")}</p>
+  </article>`;
+}
+
+function intelligenceDecisionForm(mission) {
+  return `<article class="action-item sales-list-card">
+    <span>Decision</span>
+    <strong>Mission 판단 기록</strong>
+    <p>${esc(mission.brandName || mission.brandId)} · ${esc(mission.sourceActionId || "")}</p>
+    <textarea id="intelligenceDecisionText" rows="3" placeholder="Decision 내용"></textarea>
+    <textarea id="intelligenceDecisionReason" rows="3" placeholder="이유"></textarea>
+    <select id="intelligenceDecisionStatus">
+      <option value="planned">planned</option>
+      <option value="in_progress">in_progress</option>
+      <option value="completed">completed</option>
+      <option value="cancelled">cancelled</option>
+    </select>
+    <button class="today-jump-button" type="button" data-intelligence-decision-save>Decision 저장</button>
+    <div id="intelligenceDecisionFeedback" class="hint-text"></div>
+  </article>`;
+}
+
+async function saveIntelligenceDecision() {
+  if (intelligenceSubmitInFlight || !selectedIntelligenceMission?.brandId) return;
+  const decision = $("#intelligenceDecisionText")?.value?.trim() || "";
+  const reason = $("#intelligenceDecisionReason")?.value?.trim() || "";
+  const status = $("#intelligenceDecisionStatus")?.value || "planned";
+  const feedback = $("#intelligenceDecisionFeedback");
+  if (!decision || !reason) {
+    if (feedback) feedback.textContent = "Decision 내용과 이유를 입력해주세요.";
+    return;
+  }
+  intelligenceSubmitInFlight = true;
+  const button = $("[data-intelligence-decision-save]");
+  if (button) button.disabled = true;
+  const result = await postJson(intelligenceUrl("/api/intelligence/decisions"), {
+    brandId: selectedIntelligenceMission.brandId,
+    missionId: selectedIntelligenceMission.id,
+    sourceActionId: selectedIntelligenceMission.sourceActionId,
+    decision,
+    reason,
+    status
+  }, 15000);
+  intelligenceSubmitInFlight = false;
+  if (button) button.disabled = false;
+  if (result.error || !result.ok) {
+    if (feedback) feedback.textContent = `저장 실패: ${result.message || result.error || "응답 확인 필요"}`;
+    return;
+  }
+  if (feedback) feedback.textContent = `저장 완료: ${result.decision?.status || status}`;
+  renderIntelligenceDecisions();
+  renderIntelligenceTimeline();
+}
+
+async function renderIntelligenceDecisions() {
+  const target = $("#intelligenceDecisions");
+  if (!target) return;
+  const renderSeq = ++intelligenceDecisionsRenderSeq;
+  target.innerHTML = `<article class="action-item"><strong>Decision 확인 중</strong><p>Decision History를 불러오고 있습니다.</p></article>`;
+  const [result, registry] = await Promise.all([
+    getJson(intelligenceUrl("/api/intelligence/decisions?limit=20"), 15000),
+    readIntelligenceBrands()
+  ]);
+  if (renderSeq !== intelligenceDecisionsRenderSeq) return;
+  if (result.error || !result.ok) {
+    target.innerHTML = `<article class="action-item"><strong>Decision 확인 불가</strong><p>Intelligence Service 응답을 확인할 수 없습니다.</p></article>`;
+    return;
+  }
+  const decisions = Array.isArray(result.decisions) ? result.decisions : [];
+  target.innerHTML = decisions.length ? decisions.map((decision) => intelligenceDecisionRow(decision, registry.brands || [])).join("") : `<article class="action-item"><strong>Decision 없음</strong><p>Mission에서 Decision을 저장하면 이곳에 표시됩니다.</p></article>`;
+}
+
+function intelligenceDecisionRow(decision = {}, brands = []) {
+  const resultText = decision.result ? JSON.stringify(decision.result) : "결과 없음";
+  return `<article class="action-item sales-list-card" data-decision-id="${esc(decision.id || "")}">
+    <span>${esc(intelligenceBrandLabel(decision.brandId, brands))}</span>
+    <strong>${esc(decision.decision || "Decision")}</strong>
+    <p>${esc(decision.reason || "")}</p>
+    <small>${esc(decision.status || "-")} · ${esc(intelligenceTimeLabel(decision.updatedAt))}</small>
+    <p class="hint-text">${esc(resultText)}</p>
+    <select data-decision-status="${esc(decision.id || "")}">
+      ${["planned", "in_progress", "completed", "cancelled"].map((status) => `<option value="${status}" ${decision.status === status ? "selected" : ""}>${status}</option>`).join("")}
+    </select>
+    <textarea rows="2" data-decision-result="${esc(decision.id || "")}" placeholder="result JSON 또는 텍스트"></textarea>
+    <button class="today-jump-button" type="button" data-decision-update="${esc(decision.id || "")}">상태 / 결과 저장</button>
+    ${decision.status === "completed" && decision.result ? `<button class="today-jump-button" type="button" data-learning-create="${esc(decision.id || "")}">Learning Case로 등록</button>` : ""}
+  </article>`;
+}
+
+async function updateIntelligenceDecision(id) {
+  if (intelligenceSubmitInFlight || !id) return;
+  const status = $(`[data-decision-status="${CSS.escape(id)}"]`)?.value;
+  const resultValue = $(`[data-decision-result="${CSS.escape(id)}"]`)?.value?.trim() || "";
+  const payload = { status };
+  if (resultValue) payload.result = parseDecisionResultInput(resultValue);
+  intelligenceSubmitInFlight = true;
+  const result = await patchJson(intelligenceUrl(`/api/intelligence/decisions/${encodeURIComponent(id)}`), payload, 15000);
+  intelligenceSubmitInFlight = false;
+  if (result.error || !result.ok) {
+    toast(`Decision 저장 실패: ${result.message || result.error || "응답 확인 필요"}`);
+    return;
+  }
+  toast("Decision을 저장했습니다.");
+  renderIntelligenceDecisions();
+  renderIntelligenceTimeline();
+}
+
+function parseDecisionResultInput(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return { summary: value };
+  }
+}
+
+async function renderIntelligenceTimeline() {
+  const target = $("#intelligenceTimeline");
+  if (!target) return;
+  const renderSeq = ++intelligenceTimelineRenderSeq;
+  target.innerHTML = `<article class="action-item"><strong>Timeline 확인 중</strong><p>Brand Timeline을 불러오고 있습니다.</p></article>`;
+  const registry = await readIntelligenceBrands();
+  renderIntelligenceTimelineFilter(registry.brands || []);
+  const brandId = $("#intelligenceTimelineBrandFilter")?.value || "";
+  const query = brandId ? `?brandId=${encodeURIComponent(brandId)}&limit=30` : "?limit=30";
+  const result = await getJson(intelligenceUrl(`/api/intelligence/timeline${query}`), 15000);
+  if (renderSeq !== intelligenceTimelineRenderSeq) return;
+  if (result.error || !result.ok) {
+    target.innerHTML = `<article class="action-item"><strong>Timeline 확인 불가</strong><p>Intelligence Service 응답을 확인할 수 없습니다.</p></article>`;
+    return;
+  }
+  const events = Array.isArray(result.events) ? result.events : [];
+  target.innerHTML = events.length ? events.map((event) => intelligenceTimelineRow(event, registry.brands || [])).join("") : `<article class="action-item"><strong>Timeline 없음</strong><p>Decision이 기록되면 이곳에 표시됩니다.</p></article>`;
+}
+
+function renderIntelligenceTimelineFilter(brands = []) {
+  const select = $("#intelligenceTimelineBrandFilter");
+  if (!select || select.dataset.loaded === "true") return;
+  select.innerHTML = `<option value="">브랜드 전체</option>${brands.map((brand) => `<option value="${esc(brand.id)}">${esc(brand.name)}</option>`).join("")}`;
+  select.dataset.loaded = "true";
+}
+
+function intelligenceTimelineRow(event = {}, brands = []) {
+  return `<article class="action-item sales-list-card">
+    <span>${esc(intelligenceBrandLabel(event.brandId, brands))}</span>
+    <strong>${esc(intelligenceTimelineTypeLabel(event.type))}</strong>
+    <p>${esc(event.title || "")} · ${esc(event.description || "")}</p>
+    <small>${esc(intelligenceTimeLabel(event.occurredAt))}</small>
+  </article>`;
+}
+
+function intelligenceTimelineTypeLabel(type = "") {
+  return { decision_recorded: "Decision 기록", action_started: "Action 시작", result_recorded: "Result 기록" }[type] || type;
+}
+
+async function renderIntelligenceLearning() {
+  const target = $("#intelligenceLearning");
+  if (!target) return;
+  const renderSeq = ++intelligenceLearningRenderSeq;
+  target.innerHTML = `<article class="action-item"><strong>Learning Case 확인 중</strong><p>Learning DB를 불러오고 있습니다.</p></article>`;
+  const [result, registry] = await Promise.all([
+    getJson(intelligenceUrl("/api/intelligence/learning?limit=20"), 15000),
+    readIntelligenceBrands()
+  ]);
+  if (renderSeq !== intelligenceLearningRenderSeq) return;
+  if (result.error || !result.ok) {
+    target.innerHTML = `<article class="action-item"><strong>Learning 확인 불가</strong><p>Intelligence Service 응답을 확인할 수 없습니다.</p></article>`;
+    return;
+  }
+  const cases = Array.isArray(result.cases) ? result.cases : [];
+  target.innerHTML = cases.length ? cases.map((item) => intelligenceLearningRow(item, registry.brands || [])).join("") : `<article class="action-item"><strong>Learning Case 없음</strong><p>완료된 Decision을 Learning Case로 등록하면 표시됩니다.</p></article>`;
+  const similar = $("#intelligenceSimilar");
+  if (similar && !cases.length) similar.innerHTML = "";
+}
+
+function intelligenceLearningRow(item = {}, brands = []) {
+  return `<article class="action-item sales-list-card"
+    data-learning-brand-id="${esc(item.brandId || "")}"
+    data-learning-source-action-id="${esc(item.sourceActionId || "")}"
+    data-learning-signal-ids="${esc((item.signalIds || []).join(","))}">
+    <span>${esc(intelligenceBrandLabel(item.brandId, brands))}</span>
+    <strong>${esc(item.decision || "Learning Case")}</strong>
+    <p>${esc(item.reason || "")}</p>
+    <p class="hint-text">${esc(item.result ? JSON.stringify(item.result) : "result 없음")}</p>
+    <small>${esc(item.sourceActionId || "-")} · ${esc(intelligenceTimeLabel(item.completedAt))}</small>
+    <button class="today-jump-button" type="button" data-learning-similar>유사 사례 보기</button>
+  </article>`;
+}
+
+async function createLearningCase(decisionId) {
+  if (intelligenceSubmitInFlight || !decisionId) return;
+  intelligenceSubmitInFlight = true;
+  const result = await postJson(intelligenceUrl("/api/intelligence/learning"), { decisionId }, 15000);
+  intelligenceSubmitInFlight = false;
+  if (result.error || !result.ok) {
+    toast(`Learning 등록 실패: ${result.message || result.error || "응답 확인 필요"}`);
+    return;
+  }
+  toast(result.duplicate ? "이미 등록된 Learning Case입니다." : "Learning Case를 등록했습니다.");
+  setIntelligencePanel("learning");
+}
+
+async function renderSimilarLearningFromCase(node) {
+  const target = $("#intelligenceSimilar");
+  if (!target || !node) return;
+  target.innerHTML = `<article class="action-item"><strong>유사 사례 확인 중</strong><p>matchedBy 기준으로 조회합니다.</p></article>`;
+  const params = new URLSearchParams();
+  if (node.dataset.learningBrandId) params.set("brandId", node.dataset.learningBrandId);
+  if (node.dataset.learningSourceActionId) params.set("sourceActionId", node.dataset.learningSourceActionId);
+  if (node.dataset.learningSignalIds) params.set("signalIds", node.dataset.learningSignalIds);
+  params.set("limit", "5");
+  const [result, registry] = await Promise.all([
+    getJson(intelligenceUrl(`/api/intelligence/learning/similar?${params.toString()}`), 15000),
+    readIntelligenceBrands()
+  ]);
+  if (result.error || !result.ok) {
+    target.innerHTML = `<article class="action-item"><strong>유사 사례 확인 불가</strong><p>Intelligence Service 응답을 확인할 수 없습니다.</p></article>`;
+    return;
+  }
+  const cases = Array.isArray(result.cases) ? result.cases : [];
+  target.innerHTML = `<div class="section-title compact"><div><p class="eyebrow">Similar</p><h3>matchedBy 기준 유사 사례</h3></div></div>${cases.length ? cases.map((item) => intelligenceSimilarRow(item, registry.brands || [])).join("") : `<article class="action-item"><strong>유사 사례 없음</strong><p>같은 기준으로 매칭된 Learning Case가 없습니다.</p></article>`}`;
+}
+
+function intelligenceSimilarRow(item = {}, brands = []) {
+  return `<article class="action-item sales-list-card">
+    <span>${esc(intelligenceBrandLabel(item.brandId, brands))}</span>
+    <strong>${esc(item.decision || "Learning Case")}</strong>
+    <p>${esc((item.matchedBy || []).join(", ") || "matchedBy 없음")}</p>
+    <small>${esc(item.sourceActionId || "-")}</small>
+  </article>`;
 }
 
 // options.forceRefresh (2026-07-08 Instagram 자동 동기화 기능 추가): "지금 동기화"
@@ -5554,10 +5940,50 @@ function bind() {
     }
     window.open(url, "_blank", "noopener");
   });
+  $("#intelligenceRefreshBtn")?.addEventListener("click", refreshActiveIntelligencePanel);
   document.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-intelligence-refresh]");
+    const tab = event.target.closest("[data-intelligence-panel-tab]");
+    if (!tab) return;
+    setIntelligencePanel(tab.dataset.intelligencePanelTab || "overview");
+  });
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-intelligence-brand-detail]");
+    if (!trigger) return;
+    const mission = readMissionDataset(trigger.closest("[data-mission-id]"));
+    if (!mission?.brandId) {
+      toast("Mission의 브랜드 정보를 확인할 수 없습니다.");
+      return;
+    }
+    selectedIntelligenceMission = mission;
+    setIntelligencePanel("brand");
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-intelligence-decision-save]")) return;
+    saveIntelligenceDecision();
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-intelligence-decisions-refresh]")) return;
+    renderIntelligenceDecisions();
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-intelligence-learning-refresh]")) return;
+    renderIntelligenceLearning();
+  });
+  $("#intelligenceTimelineBrandFilter")?.addEventListener("change", renderIntelligenceTimeline);
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-decision-update]");
     if (!button) return;
-    renderIntelligenceDashboard();
+    updateIntelligenceDecision(button.dataset.decisionUpdate || "");
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-learning-create]");
+    if (!button) return;
+    createLearningCase(button.dataset.learningCreate || "");
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-learning-similar]");
+    if (!button) return;
+    renderSimilarLearningFromCase(button.closest("[data-learning-brand-id]"));
   });
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-health-action]");
