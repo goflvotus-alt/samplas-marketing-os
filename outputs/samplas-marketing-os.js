@@ -9,7 +9,18 @@ const navItems = [
   { view: "Editorial AI", label: "Editorial AI", hidden: true }
 ];
 
-const months = ["2026-07", "2026-06", "2026-05", "2026-04", "2026-03", "2026-02", "2026-01"];
+function buildRecentMonthKeys(referenceDate = new Date(), count = 7) {
+  const keys = [];
+  const startYear = referenceDate.getFullYear();
+  const startMonth = referenceDate.getMonth();
+  for (let index = 0; index < count; index += 1) {
+    const date = new Date(startYear, startMonth - index, 1);
+    keys.push(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return keys;
+}
+
+const months = buildRecentMonthKeys();
 let monthlyData = [];
 let storyData = { stories: [], totals: {} };
 let activeContentTab = "All";
@@ -1997,7 +2008,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     draft: "Unsaved Draft"
   }[archive.archiveStatus] || String(archive.status || "Draft");
   const archiveSaveButton = archive.archiveStatus === "draft" || archive.archiveStatus === "saved"
-    ? `<button type="button" class="button secondary" data-archive-save="${esc(month)}">${archive.archiveStatus === "saved" ? "최신 값으로 다시 저장" : "아카이브 저장"}</button>`
+    ? `<button type="button" class="button secondary" data-archive-save="${esc(month)}" data-archive-status="${esc(archive.archiveStatus)}">${archive.archiveStatus === "saved" ? "최신 값으로 다시 저장" : "아카이브 저장"}</button>`
     : "";
   const paymentTotal = Number(commerce.paidAmount || 0);
   const compareBase = Math.max(Number(marketing.spend || 0), Number(marketing.purchaseValue || 0), 1);
@@ -5360,6 +5371,7 @@ function bind() {
     const button = event.target.closest("[data-archive-save]");
     if (!button) return;
     const month = button.dataset.archiveSave || "";
+    if (button.dataset.archiveStatus === "saved" && !window.confirm(`${month} 저장본을 최신 데이터로 다시 계산해 덮어씁니다. 계속할까요?`)) return;
     const originalText = button.textContent;
     button.disabled = true;
     button.textContent = "저장 중...";
