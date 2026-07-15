@@ -2107,6 +2107,111 @@ function annualArchiveMetricBlock(metric, rows) {
   </section>`;
 }
 
+function annualArchiveAggregateBrandSales(rows) {
+  const totals = new Map();
+  rows.forEach((row) => {
+    if (row.failed) return;
+    (row.archive?.commerce?.brandSales || []).forEach((brand) => {
+      const code = monthlyReportBrandCode(brand);
+      if (!code || code === "B0000000") return;
+      const salesAmount = Number(brand.salesAmount);
+      if (!Number.isFinite(salesAmount)) return;
+      const previous = totals.get(code) || {
+        brand_code: code,
+        brand_name: monthlyReportBrandName(brand),
+        salesAmount: 0
+      };
+      previous.salesAmount += salesAmount;
+      totals.set(code, previous);
+    });
+  });
+  return [...totals.values()];
+}
+
+function annualArchiveSavedComparisonRows(rows) {
+  const savedRows = rows.filter((row) => !row.failed && row.archiveStatus === "saved" && (row.archive?.commerce?.brandSales || []).length);
+  if (savedRows.length < 6) return null;
+  const firstRows = savedRows.slice(0, 3);
+  const recentRows = savedRows.slice(-3);
+  if (firstRows.length < 3 || recentRows.length < 3) return null;
+  return { firstRows, recentRows };
+}
+
+function annualArchiveMonthRangeLabel(rows) {
+  if (!rows?.length) return "";
+  return `${rows[0].month}~${rows[rows.length - 1].month.slice(5)}`;
+}
+
+function annualArchiveComparisonDelta(current, previous) {
+  return monthlyReportDelta(current, previous, apiWon).replace("전월 대비", "첫 3개월 대비");
+}
+
+function annualArchiveBrandPerformanceBlock(rows) {
+  const annualBrands = annualArchiveAggregateBrandSales(rows)
+    .sort((left, right) => Number(right.salesAmount || 0) - Number(left.salesAmount || 0));
+  if (!annualBrands.length) return "";
+  const comparisonRows = annualArchiveSavedComparisonRows(rows);
+  const comparisonSignals = comparisonRows
+    ? monthlyReportBrandSignals(
+      annualArchiveAggregateBrandSales(comparisonRows.recentRows),
+      annualArchiveAggregateBrandSales(comparisonRows.firstRows)
+    )
+    : [];
+  const rising = comparisonSignals
+    .filter((item) => item.diffRate > 0)
+    .sort((left, right) => right.diffRate - left.diffRate)
+    .slice(0, 3);
+  const falling = comparisonSignals
+    .filter((item) => item.diffRate < 0)
+    .sort((left, right) => left.diffRate - right.diffRate)
+    .slice(0, 3);
+  const comparisonLabel = comparisonRows
+    ? `${annualArchiveMonthRangeLabel(comparisonRows.firstRows)} vs ${annualArchiveMonthRangeLabel(comparisonRows.recentRows)}`
+    : "";
+  const comparisonBlock = comparisonRows && comparisonSignals.length ? `
+    <div class="monthly-report-grid2">
+      <div>
+        <div class="monthly-report-block-head"><h4>상승 브랜드 TOP3</h4><span>첫 3개월 대비 최근 3개월</span></div>
+        <div class="monthly-report-rank">
+          ${monthlyReportRankRows(rising, {
+            withBar: true,
+            valueFn: (item) => item.currentSales,
+            labelFn: monthlyReportBrandName,
+            subFn: (item) => annualArchiveComparisonDelta(item.currentSales, item.previousSales),
+            formatValue: (value) => apiWon(value)
+          })}
+        </div>
+      </div>
+      <div>
+        <div class="monthly-report-block-head"><h4>하락 브랜드 TOP3</h4><span>첫 3개월 대비 최근 3개월</span></div>
+        <div class="monthly-report-rank">
+          ${monthlyReportRankRows(falling, {
+            withBar: true,
+            valueFn: (item) => item.currentSales,
+            labelFn: monthlyReportBrandName,
+            subFn: (item) => annualArchiveComparisonDelta(item.currentSales, item.previousSales),
+            formatValue: (value) => apiWon(value)
+          })}
+        </div>
+      </div>
+    </div>
+    <p class="monthly-report-fnote">비교 기준: ${esc(comparisonLabel)} · Saved Archive만 사용하며 Live Draft는 제외합니다.</p>
+  ` : "";
+  return `<section class="monthly-report-block" data-annual-category="commerce">
+    <div class="monthly-report-block-head"><h4>Brand Performance</h4><span>brand_code 기준</span></div>
+    <div class="monthly-report-rank">
+      ${monthlyReportRankRows(annualBrands.slice(0, 5), {
+        withBar: true,
+        valueFn: (item) => item.salesAmount,
+        labelFn: monthlyReportBrandName,
+        subFn: (item) => monthlyReportBrandCode(item),
+        formatValue: (value) => apiWon(value)
+      })}
+    </div>
+    ${comparisonBlock}
+  </section>`;
+}
+
 async function renderAnnualArchiveFlow(month, renderSeq) {
   const target = $("#annualArchiveFlow");
   if (!target) return;
@@ -2129,6 +2234,9 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
     return;
   }
   const yearLabel = annualArchiveYearLabel(year, rows);
+  const salesMetrics = annualArchiveMetrics.filter((metric) => ["totalSales", "onlineSales", "offlineSales"].includes(metric.key));
+  const remainingMetrics = annualArchiveMetrics.filter((metric) => !["totalSales", "onlineSales", "offlineSales"].includes(metric.key));
+  const brandPerformanceBlock = annualArchiveBrandPerformanceBlock(rows);
   target.innerHTML = `<section class="monthly-report-chapter annual-flow">
     <div class="monthly-report-chapter-head">
       <span>Y</span>
@@ -2145,7 +2253,9 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
       ${annualArchiveMetrics.map((metric) => annualArchiveKpi(metric, rows)).join("")}
     </div>
     <div class="annual-flow-grid">
-      ${annualArchiveMetrics.map((metric) => annualArchiveMetricBlock(metric, rows)).join("")}
+      ${salesMetrics.map((metric) => annualArchiveMetricBlock(metric, rows)).join("")}
+      ${brandPerformanceBlock}
+      ${remainingMetrics.map((metric) => annualArchiveMetricBlock(metric, rows)).join("")}
     </div>
     <div class="annual-flow-tooltip" role="tooltip" hidden></div>
   </section>`;
