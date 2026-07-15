@@ -33,6 +33,11 @@ await ensureLearningDbFile();
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || `${host}:${port}`}`);
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, corsHeaders());
+      res.end();
+      return;
+    }
     if (url.pathname === "/api/intelligence/health") {
       return json(res, {
         ok: true,
@@ -141,10 +146,19 @@ server.on("error", (error) => {
 
 function json(res, payload, status = 200) {
   res.writeHead(status, {
+    ...corsHeaders(),
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store"
   });
   res.end(JSON.stringify(payload, null, 2));
+}
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type"
+  };
 }
 
 async function handleBrandIntelligenceInputRoute(rawBrandId, url, res) {

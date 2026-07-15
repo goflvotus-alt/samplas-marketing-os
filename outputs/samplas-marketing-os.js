@@ -4,6 +4,7 @@ const navItems = [
   { view: "Advertising", label: "Marketing", hidden: false },
   { view: "Content", label: "Content", hidden: false },
   { view: "Reports", label: "Monthly Report", hidden: false },
+  { view: "Intelligence", label: "Intelligence", hidden: false },
   { view: "Settings", label: "Settings", hidden: false },
   { view: "Product", label: "Product", hidden: true },
   { view: "Editorial AI", label: "Editorial AI", hidden: true }
@@ -54,6 +55,7 @@ let todayOverviewState = null;
 let campaignPeriodComparisonState = { comparisonMode: "month", manualRange: null, manualComparisonRange: null, monthBase: "", monthTarget: "", settingsOpen: false, loading: false };
 let reportsMonth = "";
 let reportsRenderSeq = 0;
+let intelligenceRenderSeq = 0;
 let apiHealthRefreshInFlight = false;
 let currentTodayBriefingItems = [];
 // Cafe24 재인증 콜백이 실패로 돌아왔을 때만 채워진다(handleCafe24OAuthRedirect() 참고).
@@ -68,6 +70,7 @@ let brandMasterCatalogOnly = true;
 const nf = new Intl.NumberFormat("ko-KR");
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+const intelligenceBaseUrl = window.samplasIntelligenceBaseUrl || "http://127.0.0.1:8797";
 const defaultProjectLinks = {
   cafe24: "",
   advertising: "",
@@ -377,6 +380,7 @@ function renderNav() {
     $$(".nav button").forEach((node) => node.classList.toggle("active", node === button));
     $$(".view").forEach((view) => view.classList.toggle("active", view.id === button.dataset.view));
     setTopbarTitle(button.dataset.view);
+    if (button.dataset.view === "Intelligence") renderIntelligenceDashboard();
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 }
@@ -5179,6 +5183,114 @@ function renderOperationsSections() {
   return renderSeq;
 }
 
+function intelligenceUrl(path) {
+  return `${intelligenceBaseUrl}${path}`;
+}
+
+async function renderIntelligenceDashboard() {
+  const statusTarget = $("#intelligenceStatus");
+  const briefTarget = $("#intelligenceBrief");
+  const missionTarget = $("#intelligenceMissions");
+  if (!statusTarget || !briefTarget || !missionTarget) return;
+  const renderSeq = ++intelligenceRenderSeq;
+  statusTarget.className = "ad-status-banner loading";
+  statusTarget.innerHTML = `<span class="status-dot"></span><strong>Intelligence Service 확인 중</strong><span class="note">Mission과 Brief를 불러오고 있습니다.</span>`;
+  briefTarget.innerHTML = `<article class="action-item"><strong>Brief 확인 중</strong><p>Intelligence Service의 오늘 요약을 불러오고 있습니다.</p></article>`;
+  missionTarget.innerHTML = `<article class="action-item"><strong>Mission 확인 중</strong><p>우선 확인할 Mission을 불러오고 있습니다.</p></article>`;
+  const [health, brief, missions] = await Promise.all([
+    getJson(intelligenceUrl("/api/intelligence/health"), 5000),
+    getJson(intelligenceUrl("/api/intelligence/brief"), 40000),
+    getJson(intelligenceUrl("/api/intelligence/missions?limit=5"), 40000)
+  ]);
+  if (renderSeq !== intelligenceRenderSeq) return;
+  renderIntelligenceStatus(health);
+  renderIntelligenceBrief(brief);
+  renderIntelligenceMissions(missions);
+}
+
+function renderIntelligenceStatus(health = {}) {
+  const target = $("#intelligenceStatus");
+  if (!target) return;
+  if (health.error || !health.ok) {
+    target.className = "ad-status-banner error";
+    target.innerHTML = `<span class="status-dot"></span><strong>Intelligence Service 연결 불가</strong><span class="note">서비스를 실행한 뒤 다시 확인해주세요.</span>`;
+    return;
+  }
+  target.className = "ad-status-banner good";
+  target.innerHTML = `<span class="status-dot"></span><strong>Intelligence Service 연결됨</strong><span class="note">마지막 확인 ${esc(intelligenceTimeLabel(health.timestamp))}</span>`;
+}
+
+function renderIntelligenceBrief(brief = {}) {
+  const target = $("#intelligenceBrief");
+  if (!target) return;
+  if (brief.error || !brief.ok) {
+    target.innerHTML = `<article class="action-item"><strong>Brief 확인 불가</strong><p>Intelligence Service 응답을 확인할 수 없습니다.</p></article>`;
+    return;
+  }
+  const items = Array.isArray(brief.items) ? brief.items : [];
+  if (!items.length) {
+    target.innerHTML = `<article class="action-item"><strong>${esc(brief.headline || "현재 우선 확인할 Mission이 없습니다")}</strong><p>Mission이 생성되면 이곳에 표시됩니다.</p></article>`;
+    return;
+  }
+  target.innerHTML = [
+    `<article class="action-item ad-summary-card ad-core-kpi-card"><span>Brief</span><strong>${esc(brief.headline || `Mission ${items.length}건`)}</strong><p>Mission ${apiNum(brief.missionCount ?? items.length)}건</p></article>`,
+    ...items.map((item) => intelligenceBriefCard(item))
+  ].join("");
+}
+
+function renderIntelligenceMissions(missions = {}) {
+  const target = $("#intelligenceMissions");
+  if (!target) return;
+  if (missions.error || !missions.ok) {
+    target.innerHTML = `<article class="action-item"><strong>Mission 확인 불가</strong><p>Intelligence Service 응답을 확인할 수 없습니다.</p></article>`;
+    return;
+  }
+  const rows = Array.isArray(missions.missions) ? missions.missions : [];
+  target.innerHTML = rows.length
+    ? rows.map((mission) => intelligenceMissionCard(mission)).join("")
+    : `<article class="action-item"><strong>현재 우선 확인할 Mission이 없습니다</strong><p>Brand Intelligence action이 생성되면 이곳에 표시됩니다.</p></article>`;
+}
+
+function intelligenceBriefCard(item = {}) {
+  return `<article class="action-item sales-compare-card">
+    ${intelligencePriorityBadge(item.priority)}
+    <span>${esc(intelligenceBrandName(item.brand))}</span>
+    <strong>${esc(item.title || "Mission")}</strong>
+    <p>${esc(item.reason || "Mission 근거 없음")}</p>
+  </article>`;
+}
+
+function intelligenceMissionCard(mission = {}) {
+  const signalIds = Array.isArray(mission.signalIds) ? mission.signalIds.join(",") : "";
+  return `<article class="action-item sales-list-card"
+    data-mission-id="${esc(mission.id || "")}"
+    data-source-action-id="${esc(mission.sourceActionId || "")}"
+    data-signal-ids="${esc(signalIds)}">
+    ${intelligencePriorityBadge(mission.priority)}
+    <span>${esc(intelligenceBrandName(mission.brand))}</span>
+    <strong>${esc(mission.title || "Mission")}</strong>
+    <p>${esc(mission.reason || "Mission 근거 없음")}</p>
+    <small>${esc(mission.sourceActionId || "source action 없음")}</small>
+  </article>`;
+}
+
+function intelligencePriorityBadge(priority = "") {
+  const tone = priority === "high" ? "urgent" : priority === "medium" ? "warn" : "good";
+  const label = priority || "low";
+  return `<span class="badge ${esc(tone)}">${esc(label)}</span>`;
+}
+
+function intelligenceBrandName(brand) {
+  if (typeof brand === "string") return brand;
+  return brand?.name || brand?.id || "브랜드";
+}
+
+function intelligenceTimeLabel(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "-";
+  return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+}
+
 // options.forceRefresh (2026-07-08 Instagram 자동 동기화 기능 추가): "지금 동기화"
 // 버튼은 캐시를 다시 읽는 것만으로는 새 게시물을 반영할 수 없었다 — 서버의
 // buildInstagramMonthlyDataWithCache()는 기본적으로 캐시 우선이라 이 함수가
@@ -5441,6 +5553,11 @@ function bind() {
       return;
     }
     window.open(url, "_blank", "noopener");
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-intelligence-refresh]");
+    if (!button) return;
+    renderIntelligenceDashboard();
   });
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-health-action]");
