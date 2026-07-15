@@ -4772,9 +4772,28 @@ async function instagramFollowerDeltaFromPreviousSnapshot(month, currentFollower
   const previousMonth = previousMonthKey(month);
   if (!previousMonth) return null;
   const previous = await readCachedInstagramMonth(previousMonth);
+  if (isLowTrustInstagramFollowerBaseline(previous)) return null;
   const previousFollowers = Number(previous?.account?.followers);
   if (!Number.isFinite(previousFollowers)) return null;
   return current - previousFollowers;
+}
+
+function isLowTrustInstagramFollowerBaseline(snapshot) {
+  const source = String(snapshot?.source || "");
+  return source === "csv_import" || source === "csv_import_cached";
+}
+
+async function normalizeInstagramFollowerDeltaTrust(snapshot) {
+  if (!snapshot?.month || !snapshot.account || !isCurrentMonth(snapshot.month)) return snapshot;
+  const followerDelta = await instagramFollowerDeltaFromPreviousSnapshot(snapshot.month, snapshot.account.followers);
+  if (followerDelta === snapshot.account.followerDelta) return snapshot;
+  return {
+    ...snapshot,
+    account: {
+      ...snapshot.account,
+      followerDelta
+    }
+  };
 }
 
 function assertInstagramRangeDate(value, fieldName) {
@@ -4892,7 +4911,7 @@ async function buildInstagramMonthlyDataWithCache(month, options = {}) {
         monthMediaCount: cached.monthMediaCount,
         syncedAt: cached.syncedAt
       });
-      return decorateCachedSource(cached, "instagram_graph_api", "cached_first");
+      return decorateCachedSource(await normalizeInstagramFollowerDeltaTrust(cached), "instagram_graph_api", "cached_first");
     }
     if (cached && isStaleCurrentMonthCache(cached)) {
       await logInstagramDiagnostic("cache_stale_fallback_refetching", month, {

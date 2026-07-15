@@ -531,7 +531,8 @@ async function renderOverviewLiveData(data, renderSeq) {
   const topCampaign = [...(meta.campaigns || [])].sort((left, right) => Number(right.purchaseValue || 0) - Number(left.purchaseValue || 0))[0];
   const topProduct = normalizeCafe24TopProducts((cafe.products || []).map((product) => ({ productName: product.productName, quantity: product.quantitySold, itemAmount: product.salesAmount })), [])[0];
   const avgSaveRate = avg(posts.map((post) => postMetrics(post).saveRate));
-  const followerDelta = Number(a.followerDelta || 0);
+  const parsedFollowerDelta = Number(a.followerDelta);
+  const followerDelta = hasApiValue(a.followerDelta) && Number.isFinite(parsedFollowerDelta) ? parsedFollowerDelta : null;
   const metaCanonical = todayCanonicalMetaTotals(meta, `${startDate} ~ ${endDate}`);
   const roas = metaCanonical.reportingSpend > 0 ? metaCanonical.reportingPurchaseValue / metaCanonical.reportingSpend : null;
   const comparison = commerceMetaComparisonState(meta, cafe);
@@ -587,7 +588,7 @@ function renderTodayOverviewCards() {
 
   $("#overviewLiveSupport").innerHTML = [
     homeMonthSupportCard("광고비", meta.error ? "확인 필요" : apiWon(metaCanonical.reportingSpend), meta.error ? "Meta 확인 필요" : "Marketing canonical 기준", cardBadge("meta", meta, hasApiValue(metaCanonical.reportingSpend))),
-    homeMonthSupportCard("팔로워 증가", followerDelta ? `${apiNum(followerDelta)}명` : "데이터 없음", `현재 ${apiNum(a.followers)}명`, cardBadge("instagram", contentData, Boolean(followerDelta))),
+    homeMonthSupportCard("팔로워 증가", hasApiValue(followerDelta) ? `${apiNum(followerDelta)}명` : "계산 불가", `현재 ${apiNum(a.followers)}명`, cardBadge("instagram", contentData, hasApiValue(followerDelta))),
     homeMonthSupportCard("콘텐츠 개수", contentRangeError ? "확인 필요" : `${apiNum(postCount)}개`, contentRangeError ? "선택 기간 게시물 데이터 오류" : data.postsScope === "recent_media_fallback" ? "최근 미디어 기준" : "선택 기간 기준", cardBadge("instagram", contentData, postCount > 0 && !contentRangeError))
   ].join("");
 }
@@ -848,7 +849,7 @@ function buildOverviewActions({ data, meta, cafe, account, topSaved, roas }) {
   ].filter(Boolean);
   const good = [
     topSaved ? { level: "good", category: "Opportunity", icon: "★", title: "저장률 높은 릴스", text: `"${topSaved.title || "성과 좋은 콘텐츠"}" 반응이 좋습니다.` } : null,
-    Number(account.followerDelta) > 0 ? { level: "good", category: "Opportunity", icon: "+", title: "팔로우 증가", text: `${apiNum(account.followerDelta)}명 증가했습니다.` } : null,
+    hasApiValue(account.followerDelta) && Number(account.followerDelta) > 0 ? { level: "good", category: "Opportunity", icon: "+", title: "팔로우 증가", text: `${apiNum(account.followerDelta)}명 증가했습니다.` } : null,
     !urgent.length && !watch.length ? { level: "good", category: "Opportunity", icon: "✓", title: "운영 상태 양호", text: "큰 오류 없이 주요 데이터를 볼 수 있습니다." } : null
   ].filter(Boolean);
   return [...urgent, ...watch, ...good].slice(0, 4);
@@ -878,16 +879,16 @@ function homeActionCard(item) {
   return `<article class="home-action-card ${esc(item.level)}"><span>${esc(item.icon || "•")}</span><div><em>${esc(item.category || "")}</em><strong>${esc(item.title)}</strong><p>${esc(item.text)}</p></div></article>`;
 }
 
-function homeGoalCards({ cafeTotals = {}, metaTotals = {}, postCount = 0, followerDelta = 0 } = {}) {
+function homeGoalCards({ cafeTotals = {}, metaTotals = {}, postCount = 0, followerDelta = null } = {}) {
   const items = [
     { label: "매출", value: goalPercent(Number(cafeTotals.orderAmount || 0), 5000000), note: "월 목표 500만원" },
     { label: "광고", value: goalPercent(Number(metaTotals.spend || 0), 1500000), note: "월 예산 150만원" },
     { label: "콘텐츠", value: goalPercent(Number(postCount || 0), 20), note: "월 목표 20개" },
-    { label: "팔로워", value: goalPercent(Math.max(0, Number(followerDelta || 0)), 300), note: "월 목표 +300명" }
+    { label: "팔로워", value: hasApiValue(followerDelta) ? goalPercent(Math.max(0, Number(followerDelta)), 300) : null, note: hasApiValue(followerDelta) ? "월 목표 +300명" : "월 목표 +300명 · 계산 불가" }
   ];
   return items.map((item) => `<article class="home-goal-card">
-    <div><span>${esc(item.label)}</span><strong>${item.value}%</strong></div>
-    <i><b style="width:${item.value}%"></b></i>
+    <div><span>${esc(item.label)}</span><strong>${item.value === null ? "-" : `${item.value}%`}</strong></div>
+    <i><b style="width:${item.value === null ? 0 : item.value}%"></b></i>
     <p>${esc(item.note)}</p>
   </article>`).join("");
 }
@@ -1977,7 +1978,7 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
       <span>Y</span>
       <div><p class="eyebrow">Annual Flow</p><h3>${esc(year)}년 연간 흐름</h3></div>
     </div>
-    <p class="monthly-report-fnote">월별 아카이브 기준입니다. 실패한 월은 -로 표시하며 Saved Archive / Live Draft / Unsaved Draft 상태가 섞일 수 있습니다.</p>
+    <p class="monthly-report-fnote">월별 아카이브 기준입니다. 실패한 월은 -로 표시하며 Saved Archive / Live Draft / Unsaved Draft 상태가 섞일 수 있습니다. 팔로워 증감은 월말 확정 증감이 아니라 조회 시점 스냅샷 기준입니다.</p>
     <div class="annual-flow-filters" aria-label="Annual Flow filter">
       <button class="segment active" type="button" data-annual-filter="all">전체</button>
       <button class="segment" type="button" data-annual-filter="commerce">Commerce</button>
@@ -2206,7 +2207,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
           <div class="monthly-report-side-row monthly-report-muted"><span>팔로워 변화</span><strong>${hasApiValue(content.followerDelta) ? `${Number(content.followerDelta) > 0 ? "+" : ""}${apiNum(content.followerDelta)}명` : "-"}</strong><em>${esc(monthlyReportDelta(content.followerDelta, previousContent.followerDelta, (value) => `${apiNum(value)}명`, { noPercent: true }))}</em></div>
         </div>
       </div>
-      <p class="monthly-report-fnote">팔로워 변화는 현재 archive 기준값으로 참고용입니다.</p>
+      <p class="monthly-report-fnote">팔로워 변화는 월말 확정 증감이 아니라 조회 시점 스냅샷 기준입니다.</p>
       <section class="monthly-report-block">
         <div class="monthly-report-block-head"><h4>Format Mix</h4><span>archive percentage 기준</span></div>
         <div class="monthly-report-fmix">
