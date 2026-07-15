@@ -52,6 +52,12 @@ const server = createServer(async (req, res) => {
         brand: resolveBrand(url.searchParams.get("name") || "", registry)
       });
     }
+    if (url.pathname === "/api/intelligence/missions") {
+      return handleMissionsRoute(url, res);
+    }
+    if (url.pathname === "/api/intelligence/brief") {
+      return handleBriefRoute(url, res);
+    }
     const brandInputMatch = url.pathname.match(/^\/api\/intelligence\/brand\/([^/]+)\/input$/);
     if (brandInputMatch) {
       return handleBrandIntelligenceInputRoute(brandInputMatch[1], url, res);
@@ -164,6 +170,44 @@ async function handleBrandIntelligenceRoute(rawBrandId, url, res) {
   }
 }
 
+async function handleMissionsRoute(url, res) {
+  const parsed = missionsRequestOptions(url);
+  if (!parsed.ok) {
+    return json(res, {
+      ok: false,
+      error: "Bad Request",
+      message: parsed.message
+    }, 400);
+  }
+  const result = await buildMissions(parsed);
+  return json(res, result);
+}
+
+async function handleBriefRoute(url, res) {
+  const parsed = missionsRequestOptions(url);
+  if (!parsed.ok) {
+    return json(res, {
+      ok: false,
+      error: "Bad Request",
+      message: parsed.message
+    }, 400);
+  }
+  const missions = await buildMissions(parsed);
+  const items = missions.missions.map((mission) => ({
+    brand: mission.brand,
+    priority: mission.priority,
+    title: mission.title,
+    reason: mission.reason
+  }));
+  return json(res, {
+    ok: true,
+    generatedAt: missions.meta.generatedAt,
+    missionCount: missions.count,
+    headline: missions.count ? `오늘 우선 확인할 Mission ${missions.count}건` : "현재 우선 확인할 Mission이 없습니다",
+    items
+  });
+}
+
 async function buildBrandIntelligenceInput(brandId, options = {}) {
   const registry = await readBrandRegistry();
   const brand = registry.brands.find((item) => item.id === brandId);
@@ -176,7 +220,7 @@ async function buildBrandIntelligenceInput(brandId, options = {}) {
     since: options.since || currentMonthStartKey(),
     until: options.until || todayKey()
   };
-  const context = { brand, registry, period };
+  const context = { brand, registry, period, sourceData: options.sourceData || null };
   const [commerce, marketing, content, search] = await Promise.all([
     buildCommerceBrandInput(context),
     buildMarketingBrandInput(context),
@@ -223,6 +267,61 @@ function buildBrandIntelligence(input) {
       ruleSet: "phase-4b-explainable-minimum"
     }
   };
+}
+
+async function buildMissions(options) {
+  const registry = await readBrandRegistry();
+  const activeBrands = registry.brands.filter((brand) => brand.active);
+  const sourceData = await readMissionSourceData(options);
+  const generatedAt = new Date().toISOString();
+  const missions = [];
+  let partial = false;
+  for (const brand of activeBrands) {
+    const input = await buildBrandIntelligenceInput(brand.id, {
+      since: options.since,
+      until: options.until,
+      sourceData
+    });
+    const intelligence = buildBrandIntelligence(input);
+    if (intelligence.meta.partial) partial = true;
+    for (const action of intelligence.actions) {
+      missions.push({
+        id: `mission:${brand.id}:${action.id}:${options.since}:${options.until}`,
+        priority: action.priority,
+        brand: {
+          id: brand.id,
+          name: brand.name
+        },
+        title: action.title,
+        reason: action.reason,
+        signalIds: action.signalIds,
+        sourceActionId: action.id,
+        generatedAt
+      });
+    }
+  }
+  const sorted = sortMissions(missions);
+  const limited = sorted.slice(0, options.limit);
+  return {
+    ok: true,
+    count: limited.length,
+    missions: limited,
+    meta: {
+      generatedAt,
+      brandCount: activeBrands.length,
+      partial
+    }
+  };
+}
+
+async function readMissionSourceData(options) {
+  const [commerce, marketing, content, naverStore] = await Promise.all([
+    fetchMarketingOsJson(`/api/diagnostics/brand-sales?since=${encodeURIComponent(options.since)}&until=${encodeURIComponent(options.until)}`),
+    fetchMarketingOsJson(`/api/meta-ads/full-report?since=${encodeURIComponent(options.since)}&until=${encodeURIComponent(options.until)}`),
+    fetchMarketingOsJson(`/api/instagram/range?since=${encodeURIComponent(options.since)}&until=${encodeURIComponent(options.until)}`),
+    readNaverSnapshotsStore()
+  ]);
+  return { commerce, marketing, content, naverStore };
 }
 
 function buildBrandSignals(input) {
@@ -432,8 +531,39 @@ function hasSignal(signals, id) {
   return signals.some((signal) => signal.id === id);
 }
 
-async function buildCommerceBrandInput({ brand, registry, period }) {
-  const response = await fetchMarketingOsJson(`/api/diagnostics/brand-sales?since=${encodeURIComponent(period.since)}&until=${encodeURIComponent(period.until)}`);
+function missionsRequestOptions(url) {
+  const period = brandIntelligencePeriod(url);
+  if (!period.ok) return period;
+  const limit = parseMissionLimit(url.searchParams.get("limit"));
+  if (!limit.ok) return { ok: false, message: "limit must be a positive integer" };
+  return {
+    ok: true,
+    since: period.since,
+    until: period.until,
+    limit: limit.value
+  };
+}
+
+function parseMissionLimit(value) {
+  if (value === null || value === "") return { ok: true, value: 5 };
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1) return { ok: false };
+  return { ok: true, value: limit };
+}
+
+function sortMissions(missions) {
+  const priorityRank = { high: 0, medium: 1, low: 2 };
+  return [...missions].sort((left, right) => {
+    const priorityDiff = (priorityRank[left.priority] ?? 99) - (priorityRank[right.priority] ?? 99);
+    if (priorityDiff) return priorityDiff;
+    const brandDiff = left.brand.name.localeCompare(right.brand.name, "ko");
+    if (brandDiff) return brandDiff;
+    return left.sourceActionId.localeCompare(right.sourceActionId);
+  });
+}
+
+async function buildCommerceBrandInput({ brand, registry, period, sourceData }) {
+  const response = sourceData?.commerce || await fetchMarketingOsJson(`/api/diagnostics/brand-sales?since=${encodeURIComponent(period.since)}&until=${encodeURIComponent(period.until)}`);
   if (!response.ok) return unavailableSource("commerce", response.message);
   const brands = Array.isArray(response.data?.brands) ? response.data.brands : [];
   const products = Array.isArray(response.data?.products) ? response.data.products : [];
@@ -469,8 +599,8 @@ async function buildCommerceBrandInput({ brand, registry, period }) {
   };
 }
 
-async function buildMarketingBrandInput({ brand, registry, period }) {
-  const response = await fetchMarketingOsJson(`/api/meta-ads/full-report?since=${encodeURIComponent(period.since)}&until=${encodeURIComponent(period.until)}`);
+async function buildMarketingBrandInput({ brand, registry, period, sourceData }) {
+  const response = sourceData?.marketing || await fetchMarketingOsJson(`/api/meta-ads/full-report?since=${encodeURIComponent(period.since)}&until=${encodeURIComponent(period.until)}`);
   if (!response.ok) return unavailableSource("marketing", response.message);
   const rows = Array.isArray(response.data?.rows) ? response.data.rows : [];
   const matchedRows = rows.filter((row) => {
@@ -510,8 +640,8 @@ async function buildMarketingBrandInput({ brand, registry, period }) {
   };
 }
 
-async function buildContentBrandInput({ brand, registry, period }) {
-  const response = await fetchMarketingOsJson(`/api/instagram/range?since=${encodeURIComponent(period.since)}&until=${encodeURIComponent(period.until)}`);
+async function buildContentBrandInput({ brand, registry, period, sourceData }) {
+  const response = sourceData?.content || await fetchMarketingOsJson(`/api/instagram/range?since=${encodeURIComponent(period.since)}&until=${encodeURIComponent(period.until)}`);
   if (!response.ok) return unavailableSource("content", response.message);
   const posts = Array.isArray(response.data?.posts) ? response.data.posts : [];
   const matchedPosts = posts.filter((post) => instagramPostBrandCandidates(post).some((value) => resolveSourceBrandId(value, registry) === brand.id));
@@ -544,8 +674,8 @@ async function buildContentBrandInput({ brand, registry, period }) {
   };
 }
 
-async function buildSearchBrandInput({ brand, registry }) {
-  const store = await readNaverSnapshotsStore();
+async function buildSearchBrandInput({ brand, registry, sourceData }) {
+  const store = sourceData?.naverStore || await readNaverSnapshotsStore();
   const candidates = brandSearchKeywords(brand, registry);
   const snapshot = sortSnapshotsLatestFirst(store.snapshots).find((item) => candidates.some((keyword) => resolveSourceBrandId(item.keyword, registry) === brand.id && normalizeBrandKey(item.keyword) === normalizeBrandKey(keyword)));
   if (!snapshot) {
