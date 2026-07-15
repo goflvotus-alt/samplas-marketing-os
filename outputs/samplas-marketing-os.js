@@ -5417,7 +5417,7 @@ async function renderIntelligenceBrandDetail(mission) {
   target.innerHTML = [
     `<div class="cards">
       <article class="action-item ad-summary-card ad-core-kpi-card"><span>Brand</span><strong>${esc(data.brand?.name || mission.brandName || mission.brandId)}</strong><p>${esc(data.period?.since || inputData.period?.since || "-")} ~ ${esc(data.period?.until || inputData.period?.until || "-")}</p></article>
-      <article class="action-item"><span>Summary</span><strong>${esc(data.summary || "요약 없음")}</strong><p>API rule 기반 요약</p></article>
+      <article class="action-item sales-list-card"><span>Summary</span><strong>${esc(data.summary || "요약 없음")}</strong><p>API rule 기반 요약</p></article>
     </div>`,
     `<div class="cards">${["commerce", "marketing", "content", "search"].map((key) => intelligenceSourceCard(key, sources[key])).join("")}</div>`,
     `<div class="cards">${signals.length ? signals.map(intelligenceSignalCard).join("") : `<article class="action-item"><strong>Signal 없음</strong><p>현재 선택 기간에 표시할 signal이 없습니다.</p></article>`}</div>`,
@@ -5429,7 +5429,7 @@ async function renderIntelligenceBrandDetail(mission) {
 function intelligenceSourceCard(name, source = {}) {
   const status = source?.status || "unknown";
   const tone = status === "matched" ? "good" : status === "unavailable" ? "urgent" : "warn";
-  return `<article class="action-item ${esc(tone)}"><span>${esc(name)}</span><strong>${esc(status)}</strong><p>${status === "unavailable" ? "source 확인 불가" : "source 상태"}</p></article>`;
+  return `<article class="action-item sales-list-card ${esc(tone)}"><span>${esc(name)}</span><strong>${esc(status)}</strong><p>${status === "unavailable" ? "source 확인 불가" : "source 상태"}</p></article>`;
 }
 
 function intelligenceSignalCard(signal = {}) {
