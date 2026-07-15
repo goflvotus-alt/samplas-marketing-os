@@ -1864,11 +1864,11 @@ function monthlyReportBrandName(row = {}) {
 
 function monthlyReportBrandSignals(currentRows = [], previousRows = []) {
   const previousByCode = new Map();
-  previousRows.forEach((row) => {
+  previousRows.filter((row) => monthlyReportBrandCode(row) !== "B0000000").forEach((row) => {
     const code = monthlyReportBrandCode(row);
     if (code) previousByCode.set(code, row);
   });
-  return currentRows.map((row) => {
+  return currentRows.filter((row) => monthlyReportBrandCode(row) !== "B0000000").map((row) => {
     const code = monthlyReportBrandCode(row);
     if (!code || !previousByCode.has(code)) return null;
     const currentSales = Number(row.salesAmount);
@@ -1900,7 +1900,7 @@ function monthlyReportBrandSignalsBlock(currentRows, previousRows, reconciliatio
     <div class="monthly-report-block-head"><h4>브랜드 신호</h4><span>데이터 일치검증 ${esc(reconciliationLabel)}</span></div>
     <div class="monthly-report-grid2">
       <div>
-        <div class="monthly-report-block-head"><h4>상승 브랜드 TOP3</h4><span>salesAmount 전월 대비</span></div>
+        <div class="monthly-report-block-head"><h4>상승 브랜드 TOP3</h4><span>이번 달 판매금액</span></div>
         <div class="monthly-report-rank">
           ${monthlyReportRankRows(rising, {
             withBar: true,
@@ -1912,7 +1912,7 @@ function monthlyReportBrandSignalsBlock(currentRows, previousRows, reconciliatio
         </div>
       </div>
       <div>
-        <div class="monthly-report-block-head"><h4>하락 브랜드 TOP3</h4><span>salesAmount 전월 대비</span></div>
+        <div class="monthly-report-block-head"><h4>하락 브랜드 TOP3</h4><span>이번 달 판매금액</span></div>
         <div class="monthly-report-rank">
           ${monthlyReportRankRows(falling, {
             withBar: true,
