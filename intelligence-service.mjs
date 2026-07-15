@@ -17,6 +17,8 @@ const brandAliasesFile = join(intelligenceWorkDir, "brand-aliases.json");
 const naverSearchSnapshotsFile = join(intelligenceWorkDir, "naver-search-snapshots.json");
 const naverAdsBaseUrl = env.NAVER_ADS_BASE_URL || "https://api.searchad.naver.com";
 const naverAdsTimeoutMs = 10000;
+const marketingOsBaseUrl = env.INTELLIGENCE_MARKETING_OS_BASE_URL || env.MARKETING_OS_BASE_URL || `http://127.0.0.1:${env.PORT || 8787}`;
+const marketingOsTimeoutMs = 12000;
 
 await mkdir(intelligenceWorkDir, { recursive: true });
 await ensureBrandRegistryFiles();
@@ -49,6 +51,10 @@ const server = createServer(async (req, res) => {
         query: url.searchParams.get("name") || "",
         brand: resolveBrand(url.searchParams.get("name") || "", registry)
       });
+    }
+    const brandInputMatch = url.pathname.match(/^\/api\/intelligence\/brand\/([^/]+)\/input$/);
+    if (brandInputMatch) {
+      return handleBrandIntelligenceInputRoute(brandInputMatch[1], url, res);
     }
     if (url.pathname === "/api/intelligence/naver/search") {
       return handleNaverSearchRoute(url, res);
@@ -93,6 +99,209 @@ function json(res, payload, status = 200) {
     "Cache-Control": "no-store"
   });
   res.end(JSON.stringify(payload, null, 2));
+}
+
+async function handleBrandIntelligenceInputRoute(rawBrandId, url, res) {
+  const brandId = decodeURIComponent(rawBrandId || "").trim();
+  const period = brandIntelligencePeriod(url);
+  if (!period.ok) {
+    return json(res, {
+      ok: false,
+      error: "Bad Request",
+      message: period.message
+    }, 400);
+  }
+  try {
+    const data = await buildBrandIntelligenceInput(brandId, {
+      since: period.since,
+      until: period.until
+    });
+    return json(res, { ok: true, data });
+  } catch (error) {
+    if (error?.code === "UNKNOWN_BRAND") {
+      return json(res, {
+        ok: false,
+        error: "Not Found",
+        message: `Unknown brandId: ${brandId}`
+      }, 404);
+    }
+    throw error;
+  }
+}
+
+async function buildBrandIntelligenceInput(brandId, options = {}) {
+  const registry = await readBrandRegistry();
+  const brand = registry.brands.find((item) => item.id === brandId);
+  if (!brand) {
+    const error = new Error(`Unknown brandId: ${brandId}`);
+    error.code = "UNKNOWN_BRAND";
+    throw error;
+  }
+  const period = {
+    since: options.since || currentMonthStartKey(),
+    until: options.until || todayKey()
+  };
+  const context = { brand, registry, period };
+  const [commerce, marketing, content, search] = await Promise.all([
+    buildCommerceBrandInput(context),
+    buildMarketingBrandInput(context),
+    buildContentBrandInput(context),
+    buildSearchBrandInput(context)
+  ]);
+  const sources = { commerce, marketing, content, search };
+  const unavailableSources = Object.entries(sources)
+    .filter(([, source]) => source.status === "unavailable")
+    .map(([name]) => name);
+  return {
+    brand,
+    period,
+    commerce,
+    marketing,
+    content,
+    search,
+    meta: {
+      partial: unavailableSources.length > 0,
+      unavailableSources,
+      generatedAt: new Date().toISOString()
+    }
+  };
+}
+
+async function buildCommerceBrandInput({ brand, registry, period }) {
+  const response = await fetchMarketingOsJson(`/api/diagnostics/brand-sales?since=${encodeURIComponent(period.since)}&until=${encodeURIComponent(period.until)}`);
+  if (!response.ok) return unavailableSource("commerce", response.message);
+  const brands = Array.isArray(response.data?.brands) ? response.data.brands : [];
+  const products = Array.isArray(response.data?.products) ? response.data.products : [];
+  const matchedBrand = brands.find((item) => resolveSourceBrandId(item.brand_code || item.brand_name, registry) === brand.id);
+  const matchedProducts = products.filter((item) => resolveSourceBrandId(item.brand_code || item.brand_name, registry) === brand.id);
+  if (!matchedBrand && !matchedProducts.length) {
+    return {
+      status: "unmatched",
+      data: {
+        source: response.data?.source || null,
+        reason: "No Cafe24 brand sales row matched this canonical brandId"
+      }
+    };
+  }
+  return {
+    status: "matched",
+    data: {
+      source: response.data?.source || null,
+      salesAmount: finiteOrNull(matchedBrand?.salesAmount),
+      paidAmount: finiteOrNull(matchedBrand?.salesAmount),
+      orderCount: finiteOrNull(matchedBrand?.orderCount),
+      quantitySold: finiteOrNull(matchedBrand?.quantitySold),
+      productCount: finiteOrNull(matchedBrand?.soldProductCount ?? matchedProducts.length),
+      products: matchedProducts.map((product) => ({
+        productNo: product.productNo || null,
+        productCode: product.productCode || null,
+        productName: product.productName || null,
+        salesAmount: finiteOrNull(product.salesAmount),
+        orderCount: finiteOrNull(product.orderCount),
+        quantitySold: finiteOrNull(product.quantitySold)
+      }))
+    }
+  };
+}
+
+async function buildMarketingBrandInput({ brand, registry, period }) {
+  const response = await fetchMarketingOsJson(`/api/meta-ads/full-report?since=${encodeURIComponent(period.since)}&until=${encodeURIComponent(period.until)}`);
+  if (!response.ok) return unavailableSource("marketing", response.message);
+  const rows = Array.isArray(response.data?.rows) ? response.data.rows : [];
+  const matchedRows = rows.filter((row) => {
+    const candidates = [
+      row.brandId,
+      row.brand_id,
+      row.brandName,
+      row.brand_name,
+      row.campaignName,
+      row.adsetName,
+      row.adName,
+      row.name
+    ];
+    return candidates.some((value) => resolveSourceBrandId(value, registry) === brand.id);
+  });
+  if (!matchedRows.length) {
+    return {
+      status: "unmatched",
+      data: {
+        reason: "No Meta campaign/ad/adset field exactly matched this canonical brand"
+      }
+    };
+  }
+  return {
+    status: "matched",
+    data: {
+      spend: sumField(matchedRows, "spend"),
+      purchaseValue: sumField(matchedRows, "purchaseValue"),
+      campaignCount: new Set(matchedRows.map((row) => row.campaignId || row.campaignName || row.name).filter(Boolean)).size,
+      rows: matchedRows.map((row) => ({
+        campaignId: row.campaignId || null,
+        campaignName: row.campaignName || row.name || null,
+        spend: finiteOrNull(row.spend),
+        purchaseValue: finiteOrNull(row.purchaseValue)
+      }))
+    }
+  };
+}
+
+async function buildContentBrandInput({ brand, registry, period }) {
+  const response = await fetchMarketingOsJson(`/api/instagram/range?since=${encodeURIComponent(period.since)}&until=${encodeURIComponent(period.until)}`);
+  if (!response.ok) return unavailableSource("content", response.message);
+  const posts = Array.isArray(response.data?.posts) ? response.data.posts : [];
+  const matchedPosts = posts.filter((post) => instagramPostBrandCandidates(post).some((value) => resolveSourceBrandId(value, registry) === brand.id));
+  if (!matchedPosts.length) {
+    return {
+      status: "unmatched",
+      data: {
+        reason: "No structured Instagram brand/tag field exactly matched this canonical brand"
+      }
+    };
+  }
+  return {
+    status: "matched",
+    data: {
+      postCount: matchedPosts.length,
+      totalViews: sumField(matchedPosts, "views"),
+      totalLikes: sumField(matchedPosts, "likes"),
+      totalSaves: sumField(matchedPosts, "saves"),
+      totalShares: sumField(matchedPosts, "shares"),
+      posts: matchedPosts.map((post) => ({
+        id: post.id || post.mediaId || post.permalink || null,
+        caption: post.caption ? String(post.caption).slice(0, 120) : null,
+        timestamp: post.timestamp || post.date || null,
+        views: finiteOrNull(post.views),
+        saves: finiteOrNull(post.saves),
+        likes: finiteOrNull(post.likes),
+        shares: finiteOrNull(post.shares)
+      }))
+    }
+  };
+}
+
+async function buildSearchBrandInput({ brand, registry }) {
+  const store = await readNaverSnapshotsStore();
+  const candidates = brandSearchKeywords(brand, registry);
+  const snapshot = sortSnapshotsLatestFirst(store.snapshots).find((item) => candidates.some((keyword) => resolveSourceBrandId(item.keyword, registry) === brand.id && normalizeBrandKey(item.keyword) === normalizeBrandKey(keyword)));
+  if (!snapshot) {
+    return {
+      status: "unmatched",
+      data: {
+        pointInTime: true,
+        reason: "No Naver snapshot keyword matched this canonical brand or alias"
+      }
+    };
+  }
+  return {
+    status: "matched",
+    data: {
+      pointInTime: true,
+      keyword: snapshot.keyword,
+      collectedAt: snapshot.collectedAt,
+      source: snapshot.source,
+      rows: snapshot.rows
+    }
+  };
 }
 
 async function handleNaverSearchRoute(url, res) {
@@ -322,6 +531,116 @@ function safeNaverErrorMessage(text) {
   } catch {
     return String(text).slice(0, 200);
   }
+}
+
+function brandIntelligencePeriod(url) {
+  const since = url.searchParams.get("since") || currentMonthStartKey();
+  const until = url.searchParams.get("until") || todayKey();
+  if (!isDateKey(since) || !isDateKey(until)) return { ok: false, message: "since and until must be YYYY-MM-DD" };
+  if (since > until) return { ok: false, message: "since must be before or equal to until" };
+  return { ok: true, since, until };
+}
+
+async function fetchMarketingOsJson(path) {
+  const endpoint = new URL(path, marketingOsBaseUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), marketingOsTimeoutMs);
+  try {
+    const response = await fetch(endpoint, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      return { ok: false, message: "Marketing OS returned unreadable JSON" };
+    }
+    if (!response.ok || data?.error) {
+      return { ok: false, message: safeSourceErrorMessage(data?.error || data?.message || `Marketing OS HTTP ${response.status}`) };
+    }
+    return { ok: true, data };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error?.name === "AbortError" ? "Marketing OS request timed out" : "Marketing OS is unavailable"
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function unavailableSource(source, reason) {
+  return {
+    status: "unavailable",
+    data: {
+      source,
+      reason: safeSourceErrorMessage(reason)
+    }
+  };
+}
+
+function resolveSourceBrandId(value, registry) {
+  const resolved = resolveBrand(value, registry);
+  return resolved?.brandId || null;
+}
+
+function brandSearchKeywords(brand, registry) {
+  const values = [brand.name];
+  for (const alias of registry.aliases) {
+    if (alias.brandId === brand.id) values.push(alias.alias);
+  }
+  const seen = new Set();
+  return values.filter((value) => {
+    const key = normalizeBrandKey(value);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function instagramPostBrandCandidates(post) {
+  const values = [
+    post.brandId,
+    post.brand_id,
+    post.brandName,
+    post.brand_name,
+    post.brand,
+    post.productBrand,
+    post.product_brand
+  ];
+  for (const field of [post.tags, post.hashtags, post.brandTags, post.brand_tags, post.mentions]) {
+    if (Array.isArray(field)) values.push(...field);
+  }
+  return values.filter((value) => typeof value === "string" && value.trim());
+}
+
+function sumField(rows, field) {
+  return rows.reduce((total, row) => total + (finiteOrNull(row?.[field]) ?? 0), 0);
+}
+
+function finiteOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function isDateKey(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function todayKey() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+}
+
+function currentMonthStartKey() {
+  return `${todayKey().slice(0, 7)}-01`;
+}
+
+function safeSourceErrorMessage(value) {
+  return String(value || "Source unavailable").slice(0, 200);
 }
 
 async function ensureNaverSnapshotsFile() {
