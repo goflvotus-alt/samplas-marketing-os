@@ -2169,36 +2169,35 @@ function annualArchiveBrandPerformanceBlock(rows) {
     ? `${annualArchiveMonthRangeLabel(comparisonRows.firstRows)} vs ${annualArchiveMonthRangeLabel(comparisonRows.recentRows)}`
     : "";
   const comparisonBlock = comparisonRows && comparisonSignals.length ? `
-    <div class="monthly-report-grid2">
-      <div>
-        <div class="monthly-report-block-head"><h4>상승 브랜드 TOP3</h4><span>첫 3개월 대비 최근 3개월</span></div>
-        <div class="monthly-report-rank">
-          ${monthlyReportRankRows(rising, {
-            withBar: true,
-            valueFn: (item) => item.currentSales,
-            labelFn: monthlyReportBrandName,
-            subFn: (item) => annualArchiveComparisonDelta(item.currentSales, item.previousSales),
-            formatValue: (value) => apiWon(value)
-          })}
-        </div>
+    <section class="monthly-report-block">
+      <div class="monthly-report-block-head"><h4>상승 브랜드 TOP3</h4><span>첫 3개월 대비 최근 3개월</span></div>
+      <div class="monthly-report-rank">
+        ${monthlyReportRankRows(rising, {
+          withBar: true,
+          valueFn: (item) => item.currentSales,
+          labelFn: monthlyReportBrandName,
+          subFn: (item) => annualArchiveComparisonDelta(item.currentSales, item.previousSales),
+          formatValue: (value) => apiWon(value)
+        })}
       </div>
-      <div>
-        <div class="monthly-report-block-head"><h4>하락 브랜드 TOP3</h4><span>첫 3개월 대비 최근 3개월</span></div>
-        <div class="monthly-report-rank">
-          ${monthlyReportRankRows(falling, {
-            withBar: true,
-            valueFn: (item) => item.currentSales,
-            labelFn: monthlyReportBrandName,
-            subFn: (item) => annualArchiveComparisonDelta(item.currentSales, item.previousSales),
-            formatValue: (value) => apiWon(value)
-          })}
-        </div>
+    </section>
+    <section class="monthly-report-block">
+      <div class="monthly-report-block-head"><h4>하락 브랜드 TOP3</h4><span>첫 3개월 대비 최근 3개월</span></div>
+      <div class="monthly-report-rank">
+        ${monthlyReportRankRows(falling, {
+          withBar: true,
+          valueFn: (item) => item.currentSales,
+          labelFn: monthlyReportBrandName,
+          subFn: (item) => annualArchiveComparisonDelta(item.currentSales, item.previousSales),
+          formatValue: (value) => apiWon(value)
+        })}
       </div>
-    </div>
+    </section>
     <p class="monthly-report-fnote">비교 기준: ${esc(comparisonLabel)} · Saved Archive만 사용하며 Live Draft는 제외합니다.</p>
   ` : "";
   return `<section class="monthly-report-block" data-annual-category="commerce">
     <div class="monthly-report-block-head"><h4>Brand Performance</h4><span>brand_code 기준</span></div>
+    <div class="monthly-report-block-head"><h4>연간 누적 브랜드 매출 TOP5</h4><span>이번 연도 누적</span></div>
     <div class="monthly-report-rank">
       ${monthlyReportRankRows(annualBrands.slice(0, 5), {
         withBar: true,
@@ -2208,6 +2207,7 @@ function annualArchiveBrandPerformanceBlock(rows) {
         formatValue: (value) => apiWon(value)
       })}
     </div>
+    ${comparisonBlock ? `<div class="monthly-report-block-head"><h4>첫 3개월 대비 최근 3개월 브랜드 변화</h4><span>Saved Archive 기준</span></div>` : ""}
     ${comparisonBlock}
   </section>`;
 }
@@ -2254,7 +2254,9 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
     </div>
     <div class="annual-flow-grid">
       ${salesMetrics.map((metric) => annualArchiveMetricBlock(metric, rows)).join("")}
-      ${brandPerformanceBlock}
+    </div>
+    ${brandPerformanceBlock}
+    <div class="annual-flow-grid">
       ${remainingMetrics.map((metric) => annualArchiveMetricBlock(metric, rows)).join("")}
     </div>
     <div class="annual-flow-tooltip" role="tooltip" hidden></div>
