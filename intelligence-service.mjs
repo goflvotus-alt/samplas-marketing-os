@@ -17,6 +17,7 @@ const brandAliasesFile = join(intelligenceWorkDir, "brand-aliases.json");
 const naverSearchSnapshotsFile = join(intelligenceWorkDir, "naver-search-snapshots.json");
 const brandTimelineFile = join(intelligenceWorkDir, "brand-timeline.json");
 const decisionHistoryFile = join(intelligenceWorkDir, "decision-history.json");
+const learningDbFile = join(intelligenceWorkDir, "learning-db.json");
 const naverAdsBaseUrl = env.NAVER_ADS_BASE_URL || "https://api.searchad.naver.com";
 const naverAdsTimeoutMs = 10000;
 const marketingOsBaseUrl = env.INTELLIGENCE_MARKETING_OS_BASE_URL || env.MARKETING_OS_BASE_URL || `http://127.0.0.1:${env.PORT || 8787}`;
@@ -27,6 +28,7 @@ await ensureBrandRegistryFiles();
 await ensureNaverSnapshotsFile();
 await ensureTimelineFile();
 await ensureDecisionHistoryFile();
+await ensureLearningDbFile();
 
 const server = createServer(async (req, res) => {
   try {
@@ -80,6 +82,17 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/intelligence/timeline") {
       return handleTimelineGet(url, res);
+    }
+    if (url.pathname === "/api/intelligence/learning") {
+      if (req.method === "GET") return handleLearningGet(url, res);
+      if (req.method === "POST") return handleLearningPost(req, res);
+      return json(res, {
+        ok: false,
+        error: "Method Not Allowed"
+      }, 405);
+    }
+    if (url.pathname === "/api/intelligence/learning/similar") {
+      return handleLearningSimilarGet(url, res);
     }
     const brandInputMatch = url.pathname.match(/^\/api\/intelligence\/brand\/([^/]+)\/input$/);
     if (brandInputMatch) {
@@ -244,6 +257,8 @@ async function handleDecisionPost(req, res) {
     brandId: validation.brand.id,
     missionId: validation.missionId,
     sourceActionId: validation.sourceActionId,
+    signalIds: validation.signalIds,
+    actionTitle: validation.actionTitle,
     decision: validation.decision,
     status: validation.status,
     reason: validation.reason,
@@ -326,6 +341,50 @@ async function handleTimelineGet(url, res) {
   if (filter.type) events = events.filter((event) => event.type === filter.type);
   if (filter.limit) events = events.slice(0, filter.limit);
   return json(res, { ok: true, count: events.length, events });
+}
+
+async function handleLearningPost(req, res) {
+  const body = await readJsonBody(req);
+  if (!body.ok) return json(res, { ok: false, error: "Bad Request", message: body.message }, 400);
+  const decisionId = normalizeOptionalText(body.value?.decisionId);
+  if (!decisionId) return json(res, { ok: false, error: "Bad Request", message: "decisionId is required" }, 400);
+  const decisionStore = await readDecisionHistoryStore();
+  const decision = decisionStore.decisions.find((item) => item.id === decisionId);
+  if (!decision) return json(res, { ok: false, error: "Not Found", message: `Unknown decision: ${decisionId}` }, 404);
+  const validation = validateLearningDecision(decision);
+  if (!validation.ok) return json(res, { ok: false, error: "Bad Request", message: validation.message }, 400);
+  const learningStore = await readLearningDbStore();
+  const existing = learningStore.cases.find((item) => item.decisionId === decision.id);
+  if (existing) return json(res, { ok: true, duplicate: true, case: existing });
+  const now = new Date().toISOString();
+  const learningCase = await createLearningCase(decision, now);
+  learningStore.cases.push(learningCase);
+  learningStore.updatedAt = now;
+  await writeLearningDbStore(learningStore);
+  return json(res, { ok: true, duplicate: false, case: learningCase });
+}
+
+async function handleLearningGet(url, res) {
+  const filter = await learningFilter(url);
+  if (!filter.ok) return json(res, { ok: false, error: filter.error, message: filter.message }, filter.status);
+  const store = await readLearningDbStore();
+  let cases = sortLearningCasesLatestFirst(store.cases);
+  if (filter.brandId) cases = cases.filter((item) => item.brandId === filter.brandId);
+  if (filter.sourceActionId) cases = cases.filter((item) => item.sourceActionId === filter.sourceActionId);
+  if (filter.signalId) cases = cases.filter((item) => item.signalIds.includes(filter.signalId));
+  if (filter.limit) cases = cases.slice(0, filter.limit);
+  return json(res, { ok: true, count: cases.length, cases });
+}
+
+async function handleLearningSimilarGet(url, res) {
+  const filter = await learningSimilarFilter(url);
+  if (!filter.ok) return json(res, { ok: false, error: filter.error, message: filter.message }, filter.status);
+  const store = await readLearningDbStore();
+  const cases = sortSimilarLearningCases(store.cases, filter)
+    .map(({ item, matchedBy }) => ({ ...item, matchedBy }))
+    .filter((item) => item.matchedBy.length > 0);
+  const limited = filter.limit ? cases.slice(0, filter.limit) : cases;
+  return json(res, { ok: true, count: limited.length, cases: limited });
 }
 
 async function buildBrandIntelligenceInput(brandId, options = {}) {
@@ -706,7 +765,9 @@ async function validateDecisionCreateInput(input) {
     reason,
     status,
     missionId: reference.missionId,
-    sourceActionId: reference.sourceActionId
+    sourceActionId: reference.sourceActionId,
+    signalIds: reference.signalIds,
+    actionTitle: reference.actionTitle
   };
 }
 
@@ -724,9 +785,11 @@ async function validateDecisionReference({ brandId, missionId, sourceActionId })
   if (actionId) {
     const input = await buildBrandIntelligenceInput(brandId, period);
     const intelligence = buildBrandIntelligence(input);
-    if (!intelligence.actions.some((action) => action.id === actionId)) return { ok: false, status: 404, error: "Not Found", message: `Action is not available for this brand: ${actionId}` };
+    const action = intelligence.actions.find((item) => item.id === actionId);
+    if (!action) return { ok: false, status: 404, error: "Not Found", message: `Action is not available for this brand: ${actionId}` };
+    return { ok: true, missionId: missionId || null, sourceActionId: actionId || null, signalIds: action.signalIds, actionTitle: action.title };
   }
-  return { ok: true, missionId: missionId || null, sourceActionId: actionId || null };
+  return { ok: true, missionId: missionId || null, sourceActionId: actionId || null, signalIds: [], actionTitle: null };
 }
 
 function validateDecisionPatchInput(input) {
@@ -766,6 +829,68 @@ async function timelineFilter(url) {
   const limit = parseHistoryLimit(url.searchParams.get("limit"));
   if (!limit.ok) return { ok: false, status: 400, error: "Bad Request", message: "limit must be a positive integer" };
   return { ok: true, brandId, type, limit: limit.value };
+}
+
+async function learningFilter(url) {
+  const registry = await readBrandRegistry();
+  const brandId = normalizeOptionalText(url.searchParams.get("brandId"));
+  if (brandId && !registry.brands.some((brand) => brand.id === brandId)) return { ok: false, status: 404, error: "Not Found", message: `Unknown brandId: ${brandId}` };
+  const sourceActionId = normalizeOptionalText(url.searchParams.get("sourceActionId"));
+  const signalId = normalizeOptionalText(url.searchParams.get("signalId"));
+  const limit = parseHistoryLimit(url.searchParams.get("limit"));
+  if (!limit.ok) return { ok: false, status: 400, error: "Bad Request", message: "limit must be a positive integer" };
+  return { ok: true, brandId, sourceActionId, signalId, limit: limit.value };
+}
+
+async function learningSimilarFilter(url) {
+  const base = await learningFilter(url);
+  if (!base.ok) return base;
+  const signalIds = parseSignalIds(url.searchParams.get("signalIds"));
+  if (!signalIds.ok) return { ok: false, status: 400, error: "Bad Request", message: "signalIds must be a comma-separated list" };
+  return { ...base, signalIds: signalIds.value };
+}
+
+function validateLearningDecision(decision) {
+  if (decision.status !== "completed") return { ok: false, message: "decision must be completed" };
+  if (decision.status === "cancelled") return { ok: false, message: "cancelled decision cannot be learned" };
+  if (!hasLearningResult(decision.result)) return { ok: false, message: "decision result is required" };
+  return { ok: true };
+}
+
+async function createLearningCase(decision, createdAt) {
+  const preservedSignalIds = Array.isArray(decision.signalIds) ? decision.signalIds.filter(Boolean) : [];
+  const action = preservedSignalIds.length ? null : await resolveDecisionAction(decision);
+  return {
+    id: `learning:${decision.id}`,
+    brandId: decision.brandId,
+    decisionId: decision.id,
+    missionId: decision.missionId || null,
+    sourceActionId: decision.sourceActionId || null,
+    signalIds: preservedSignalIds.length ? preservedSignalIds : action?.signalIds || [],
+    actionTitle: decision.actionTitle || action?.title || null,
+    decision: decision.decision,
+    reason: decision.reason || null,
+    result: decision.result,
+    completedAt: decision.updatedAt,
+    createdAt
+  };
+}
+
+async function resolveDecisionAction(decision) {
+  if (!decision.sourceActionId) return null;
+  const parsed = parseMissionId(decision.missionId);
+  const period = parsed ? { since: parsed.since, until: parsed.until } : { since: currentMonthStartKey(), until: todayKey() };
+  const input = await buildBrandIntelligenceInput(decision.brandId, period);
+  const intelligence = buildBrandIntelligence(input);
+  return intelligence.actions.find((action) => action.id === decision.sourceActionId) || null;
+}
+
+function hasLearningResult(result) {
+  if (result === null || result === undefined) return false;
+  if (typeof result === "string") return result.trim().length > 0;
+  if (Array.isArray(result)) return result.length > 0;
+  if (typeof result === "object") return Object.keys(result).length > 0;
+  return true;
 }
 
 function createDecisionId(brandId, createdAt, index) {
@@ -852,12 +977,42 @@ function parseHistoryLimit(value) {
   return { ok: true, value: limit };
 }
 
+function parseSignalIds(value) {
+  if (value === null || value === "") return { ok: true, value: [] };
+  const ids = String(value).split(",").map((item) => normalizeOptionalText(item)).filter(Boolean);
+  if (!ids.length) return { ok: false };
+  return { ok: true, value: [...new Set(ids)] };
+}
+
 function sortDecisionsLatestFirst(decisions) {
   return [...decisions].sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
 }
 
 function sortTimelineLatestFirst(events) {
   return [...events].sort((left, right) => String(right.occurredAt).localeCompare(String(left.occurredAt)));
+}
+
+function sortLearningCasesLatestFirst(cases) {
+  return [...cases].sort((left, right) => String(right.completedAt).localeCompare(String(left.completedAt)));
+}
+
+function sortSimilarLearningCases(cases, filter) {
+  return cases.map((item) => {
+    const signalOverlap = filter.signalIds.filter((id) => item.signalIds.includes(id));
+    const matchedBy = [];
+    if (filter.sourceActionId && item.sourceActionId === filter.sourceActionId) matchedBy.push("sourceActionId");
+    if (signalOverlap.length) matchedBy.push("signalIds");
+    if (filter.brandId && item.brandId === filter.brandId) matchedBy.push("brandId");
+    return { item, matchedBy, signalOverlapCount: signalOverlap.length };
+  }).sort((left, right) => {
+    const sourceDiff = Number(right.matchedBy.includes("sourceActionId")) - Number(left.matchedBy.includes("sourceActionId"));
+    if (sourceDiff) return sourceDiff;
+    const signalDiff = right.signalOverlapCount - left.signalOverlapCount;
+    if (signalDiff) return signalDiff;
+    const brandDiff = Number(right.matchedBy.includes("brandId")) - Number(left.matchedBy.includes("brandId"));
+    if (brandDiff) return brandDiff;
+    return String(right.item.completedAt).localeCompare(String(left.item.completedAt));
+  });
 }
 
 function normalizeRequiredText(value) {
@@ -1454,6 +1609,17 @@ async function ensureDecisionHistoryFile() {
   });
 }
 
+async function ensureLearningDbFile() {
+  if (existsSync(learningDbFile)) {
+    await readLearningDbStore();
+    return;
+  }
+  await writeLearningDbStore({
+    updatedAt: new Date().toISOString(),
+    cases: []
+  });
+}
+
 async function readTimelineStore() {
   const parsed = JSON.parse(await readFile(brandTimelineFile, "utf8"));
   validateTimelineStore(parsed);
@@ -1469,6 +1635,15 @@ async function readDecisionHistoryStore() {
   return {
     updatedAt: parsed.updatedAt || null,
     decisions: parsed.decisions
+  };
+}
+
+async function readLearningDbStore() {
+  const parsed = JSON.parse(await readFile(learningDbFile, "utf8"));
+  validateLearningDbStore(parsed);
+  return {
+    updatedAt: parsed.updatedAt || null,
+    cases: parsed.cases
   };
 }
 
@@ -1498,6 +1673,22 @@ function validateDecisionHistoryStore(store) {
   }
 }
 
+function validateLearningDbStore(store) {
+  if (!store || typeof store !== "object") throw new Error("learning-db.json must be an object");
+  if (!Array.isArray(store.cases)) throw new Error("learning-db.json cases must be an array");
+  const ids = new Set();
+  const decisionIds = new Set();
+  for (const item of store.cases) {
+    if (!item?.id || !item?.brandId || !item?.decisionId || !item?.decision || !item?.completedAt || !item?.createdAt) throw new Error("Learning case id, brandId, decisionId, decision, completedAt, and createdAt are required");
+    if (item.result === undefined || item.result === null) throw new Error(`Learning case result is required: ${item.id}`);
+    if (!Array.isArray(item.signalIds)) throw new Error(`Learning case signalIds must be an array: ${item.id}`);
+    if (ids.has(item.id)) throw new Error(`Duplicate learning case id: ${item.id}`);
+    if (decisionIds.has(item.decisionId)) throw new Error(`Duplicate learning case decisionId: ${item.decisionId}`);
+    ids.add(item.id);
+    decisionIds.add(item.decisionId);
+  }
+}
+
 async function writeTimelineStore(store) {
   validateTimelineStore(store);
   await writeJsonAtomic(brandTimelineFile, store);
@@ -1506,6 +1697,11 @@ async function writeTimelineStore(store) {
 async function writeDecisionHistoryStore(store) {
   validateDecisionHistoryStore(store);
   await writeJsonAtomic(decisionHistoryFile, store);
+}
+
+async function writeLearningDbStore(store) {
+  validateLearningDbStore(store);
+  await writeJsonAtomic(learningDbFile, store);
 }
 
 async function writeDecisionAndTimelineStores(decisionStore, timelineStore) {
