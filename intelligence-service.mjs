@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { createHmac } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -13,6 +14,8 @@ const intelligenceWorkDir = join(workRoot, "intelligence");
 const marketingBrandMasterFile = join(workRoot, "brand-master.json");
 const brandMasterListFile = join(intelligenceWorkDir, "brand-master-list.json");
 const brandAliasesFile = join(intelligenceWorkDir, "brand-aliases.json");
+const naverAdsBaseUrl = env.NAVER_ADS_BASE_URL || "https://api.searchad.naver.com";
+const naverAdsTimeoutMs = 10000;
 
 await mkdir(intelligenceWorkDir, { recursive: true });
 await ensureBrandRegistryFiles();
@@ -44,6 +47,9 @@ const server = createServer(async (req, res) => {
         query: url.searchParams.get("name") || "",
         brand: resolveBrand(url.searchParams.get("name") || "", registry)
       });
+    }
+    if (url.pathname === "/api/intelligence/naver/search") {
+      return handleNaverSearchRoute(url, res);
     }
     return json(res, {
       ok: false,
@@ -77,6 +83,156 @@ function json(res, payload, status = 200) {
     "Cache-Control": "no-store"
   });
   res.end(JSON.stringify(payload, null, 2));
+}
+
+async function handleNaverSearchRoute(url, res) {
+  const keyword = normalizeBrandName(url.searchParams.get("keyword") || url.searchParams.get("query") || "");
+  if (!keyword) {
+    return json(res, {
+      ok: false,
+      error: "Bad Request",
+      message: "keyword query is required"
+    }, 400);
+  }
+  const credentials = naverAdsCredentials();
+  if (!credentials.ok) {
+    return json(res, {
+      ok: false,
+      error: "Naver Search Ads credentials are not configured",
+      missing: credentials.missing
+    }, 503);
+  }
+  const result = await fetchNaverKeywordSearch(keyword, credentials);
+  if (!result.ok) {
+    return json(res, {
+      ok: false,
+      error: result.error,
+      status: result.status,
+      message: result.message
+    }, result.httpStatus);
+  }
+  return json(res, {
+    ok: true,
+    source: "naver-searchad-keywordstool",
+    query: keyword,
+    count: result.rows.length,
+    rows: result.rows
+  });
+}
+
+function naverAdsCredentials() {
+  const values = {
+    apiKey: env.NAVER_ADS_API_KEY,
+    secretKey: env.NAVER_ADS_SECRET_KEY,
+    customerId: env.NAVER_ADS_CUSTOMER_ID
+  };
+  const missing = [];
+  if (!values.apiKey) missing.push("NAVER_ADS_API_KEY");
+  if (!values.secretKey) missing.push("NAVER_ADS_SECRET_KEY");
+  if (!values.customerId) missing.push("NAVER_ADS_CUSTOMER_ID");
+  return missing.length ? { ok: false, missing } : { ok: true, ...values };
+}
+
+async function fetchNaverKeywordSearch(keyword, credentials) {
+  const method = "GET";
+  const uri = "/keywordstool";
+  const endpoint = new URL(uri, naverAdsBaseUrl);
+  endpoint.searchParams.set("hintKeywords", keyword);
+  endpoint.searchParams.set("showDetail", "1");
+  const timestamp = String(Date.now());
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), naverAdsTimeoutMs);
+  try {
+    const response = await fetch(endpoint, {
+      method,
+      headers: naverSearchAdsHeaders({ method, uri, timestamp, credentials }),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      return {
+        ok: false,
+        httpStatus: 502,
+        status: response.status,
+        error: "Naver Search Ads request failed",
+        message: safeNaverErrorMessage(text) || `Naver Search Ads returned HTTP ${response.status}`
+      };
+    }
+    try {
+      const parsed = text ? JSON.parse(text) : {};
+      return {
+        ok: true,
+        rows: normalizeNaverKeywordRows(parsed)
+      };
+    } catch {
+      return {
+        ok: false,
+        httpStatus: 502,
+        status: response.status,
+        error: "Naver Search Ads response was not valid JSON",
+        message: "Naver Search Ads returned an unreadable response"
+      };
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      httpStatus: 502,
+      status: null,
+      error: error?.name === "AbortError" ? "Naver Search Ads request timed out" : "Naver Search Ads network error",
+      message: error?.name === "AbortError" ? "Naver Search Ads did not respond in time" : "Unable to reach Naver Search Ads"
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function naverSearchAdsHeaders({ method, uri, timestamp, credentials }) {
+  return {
+    "X-Timestamp": timestamp,
+    "X-API-KEY": credentials.apiKey,
+    "X-Customer": credentials.customerId,
+    "X-Signature": createNaverSearchAdsSignature({ method, uri, timestamp, secretKey: credentials.secretKey })
+  };
+}
+
+function createNaverSearchAdsSignature({ method, uri, timestamp, secretKey }) {
+  return createHmac("sha256", secretKey)
+    .update(`${timestamp}.${method}.${uri}`)
+    .digest("base64");
+}
+
+function normalizeNaverKeywordRows(payload) {
+  const rows = Array.isArray(payload?.keywordList) ? payload.keywordList : [];
+  return rows.map((row) => ({
+    keyword: normalizeBrandName(row.relKeyword),
+    monthlyPcQueryCount: parseNaverNumber(row.monthlyPcQcCnt),
+    monthlyMobileQueryCount: parseNaverNumber(row.monthlyMobileQcCnt),
+    monthlyPcClickCount: parseNaverNumber(row.monthlyAvePcClkCnt),
+    monthlyMobileClickCount: parseNaverNumber(row.monthlyAveMobileClkCnt),
+    monthlyPcClickRate: parseNaverNumber(row.monthlyAvePcCtr),
+    monthlyMobileClickRate: parseNaverNumber(row.monthlyAveMobileCtr),
+    competitionIndex: row.compIdx == null ? null : String(row.compIdx),
+    averageExposureRank: parseNaverNumber(row.plAvgDepth)
+  }));
+}
+
+function parseNaverNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const text = String(value).replace(/,/g, "").trim();
+  if (!text || text.includes("<")) return null;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
+function safeNaverErrorMessage(text) {
+  if (!text) return "";
+  try {
+    const parsed = JSON.parse(text);
+    return String(parsed.title || parsed.message || parsed.error || "").slice(0, 200);
+  } catch {
+    return String(text).slice(0, 200);
+  }
 }
 
 async function ensureBrandRegistryFiles() {
