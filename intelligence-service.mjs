@@ -56,6 +56,10 @@ const server = createServer(async (req, res) => {
     if (brandInputMatch) {
       return handleBrandIntelligenceInputRoute(brandInputMatch[1], url, res);
     }
+    const brandIntelligenceMatch = url.pathname.match(/^\/api\/intelligence\/brand\/([^/]+)$/);
+    if (brandIntelligenceMatch) {
+      return handleBrandIntelligenceRoute(brandIntelligenceMatch[1], url, res);
+    }
     if (url.pathname === "/api/intelligence/naver/search") {
       return handleNaverSearchRoute(url, res);
     }
@@ -129,6 +133,37 @@ async function handleBrandIntelligenceInputRoute(rawBrandId, url, res) {
   }
 }
 
+async function handleBrandIntelligenceRoute(rawBrandId, url, res) {
+  const brandId = decodeURIComponent(rawBrandId || "").trim();
+  const period = brandIntelligencePeriod(url);
+  if (!period.ok) {
+    return json(res, {
+      ok: false,
+      error: "Bad Request",
+      message: period.message
+    }, 400);
+  }
+  try {
+    const input = await buildBrandIntelligenceInput(brandId, {
+      since: period.since,
+      until: period.until
+    });
+    return json(res, {
+      ok: true,
+      data: buildBrandIntelligence(input)
+    });
+  } catch (error) {
+    if (error?.code === "UNKNOWN_BRAND") {
+      return json(res, {
+        ok: false,
+        error: "Not Found",
+        message: `Unknown brandId: ${brandId}`
+      }, 404);
+    }
+    throw error;
+  }
+}
+
 async function buildBrandIntelligenceInput(brandId, options = {}) {
   const registry = await readBrandRegistry();
   const brand = registry.brands.find((item) => item.id === brandId);
@@ -165,6 +200,236 @@ async function buildBrandIntelligenceInput(brandId, options = {}) {
       generatedAt: new Date().toISOString()
     }
   };
+}
+
+function buildBrandIntelligence(input) {
+  const signals = buildBrandSignals(input);
+  const actions = buildBrandActions(input, signals);
+  return {
+    brand: input.brand,
+    period: input.period,
+    sources: {
+      commerce: sourceState(input.commerce),
+      marketing: sourceState(input.marketing),
+      content: sourceState(input.content),
+      search: sourceState(input.search)
+    },
+    signals,
+    actions,
+    summary: buildBrandSummary(input, signals, actions),
+    meta: {
+      ...input.meta,
+      inputModel: "brand-intelligence-input",
+      ruleSet: "phase-4b-explainable-minimum"
+    }
+  };
+}
+
+function buildBrandSignals(input) {
+  const signals = [];
+  const commerce = input.commerce;
+  const search = input.search;
+  if (commerce.status === "matched") {
+    const salesAmount = finiteOrNull(commerce.data?.salesAmount);
+    const orderCount = finiteOrNull(commerce.data?.orderCount);
+    const quantitySold = finiteOrNull(commerce.data?.quantitySold);
+    if (salesAmount !== null && salesAmount > 0) {
+      signals.push({
+        id: "commerce_sales_present",
+        type: "commerce",
+        priority: "medium",
+        title: "선택 기간 판매가 확인됨",
+        evidence: { salesAmount, source: commerce.data?.source || null }
+      });
+    } else if (salesAmount === 0) {
+      signals.push({
+        id: "commerce_sales_zero",
+        type: "commerce",
+        priority: "medium",
+        title: "선택 기간 판매가 0으로 확인됨",
+        evidence: { salesAmount, source: commerce.data?.source || null }
+      });
+    }
+    if (orderCount !== null && orderCount > 0) {
+      signals.push({
+        id: "commerce_orders_present",
+        type: "commerce",
+        priority: "low",
+        title: "선택 기간 주문이 확인됨",
+        evidence: { orderCount }
+      });
+    }
+    if (quantitySold !== null && quantitySold > 0) {
+      signals.push({
+        id: "commerce_quantity_present",
+        type: "commerce",
+        priority: "low",
+        title: "선택 기간 판매 수량이 확인됨",
+        evidence: { quantitySold }
+      });
+    }
+  }
+  if (commerce.status === "unmatched") {
+    signals.push({
+      id: "commerce_unmatched",
+      type: "commerce",
+      priority: "low",
+      title: "선택 기간 Cafe24 브랜드 매출 매칭 없음",
+      evidence: { reason: commerce.data?.reason || null }
+    });
+  }
+  if (search.status === "matched") {
+    const queryCounts = (search.data?.rows || []).map((row) => ({
+      keyword: row.keyword,
+      monthlyPcQueryCount: row.monthlyPcQueryCount,
+      monthlyMobileQueryCount: row.monthlyMobileQueryCount
+    }));
+    signals.push({
+      id: "search_snapshot_present",
+      type: "search",
+      priority: "medium",
+      title: "Naver 검색 snapshot이 확인됨",
+      evidence: {
+        keyword: search.data?.keyword || null,
+        collectedAt: search.data?.collectedAt || null,
+        pointInTime: true,
+        queryCounts
+      }
+    });
+    const hasSearchDemand = queryCounts.some((row) => Number(row.monthlyPcQueryCount || 0) > 0 || Number(row.monthlyMobileQueryCount || 0) > 0);
+    if (hasSearchDemand) {
+      signals.push({
+        id: "search_demand_present",
+        type: "search",
+        priority: "medium",
+        title: "Naver 검색 수요가 확인됨",
+        evidence: { queryCounts }
+      });
+    } else {
+      signals.push({
+        id: "search_demand_inconclusive",
+        type: "search",
+        priority: "low",
+        title: "Naver 검색 수요 비교 불가",
+        evidence: { reason: "검색 수요 숫자가 0 또는 null로만 확인됨" }
+      });
+    }
+  }
+  if (search.status === "unmatched") {
+    signals.push({
+      id: "search_snapshot_missing",
+      type: "search",
+      priority: "low",
+      title: "Naver 검색 snapshot 없음",
+      evidence: { reason: search.data?.reason || null }
+    });
+  }
+  for (const [sourceName, source] of Object.entries({ commerce: input.commerce, marketing: input.marketing, content: input.content, search: input.search })) {
+    if (source.status === "unavailable") {
+      signals.push({
+        id: `${sourceName}_unavailable`,
+        type: "source",
+        priority: "medium",
+        title: `${sourceName} 데이터 확인 불가`,
+        evidence: { source: sourceName, reason: source.data?.reason || null }
+      });
+    }
+  }
+  if (hasSignal(signals, "search_demand_present") && hasSignal(signals, "commerce_sales_zero")) {
+    signals.push({
+      id: "search_demand_without_sales",
+      type: "cross-source",
+      priority: "high",
+      title: "검색 수요는 있으나 선택 기간 판매는 0으로 확인됨",
+      evidence: {
+        signalIds: ["search_demand_present", "commerce_sales_zero"]
+      }
+    });
+  }
+  if (hasSignal(signals, "commerce_sales_present") && hasSignal(signals, "search_snapshot_missing")) {
+    signals.push({
+      id: "sales_without_search_snapshot",
+      type: "cross-source",
+      priority: "medium",
+      title: "판매는 있으나 Naver 검색 snapshot이 없음",
+      evidence: {
+        signalIds: ["commerce_sales_present", "search_snapshot_missing"]
+      }
+    });
+  }
+  if (input.meta?.partial) {
+    signals.push({
+      id: "source_availability_limited",
+      type: "source",
+      priority: "medium",
+      title: "일부 source를 확인할 수 없어 판단이 제한됨",
+      evidence: { unavailableSources: input.meta.unavailableSources || [] }
+    });
+  }
+  return signals;
+}
+
+function buildBrandActions(input, signals) {
+  const actions = [];
+  if (hasSignal(signals, "search_demand_without_sales")) {
+    actions.push({
+      id: "check_product_or_exposure_status",
+      priority: "high",
+      title: "상품/노출 상태 점검 후보",
+      reason: "Naver 검색 수요가 확인됐지만 선택 기간 Cafe24 판매는 0으로 확인됐습니다.",
+      signalIds: ["search_demand_without_sales", "search_demand_present", "commerce_sales_zero"]
+    });
+  }
+  if (hasSignal(signals, "sales_without_search_snapshot")) {
+    actions.push({
+      id: "collect_search_snapshot",
+      priority: "medium",
+      title: "검색 데이터 수집 후보",
+      reason: "선택 기간 판매는 확인됐지만 이 브랜드의 Naver 검색 snapshot이 없습니다.",
+      signalIds: ["sales_without_search_snapshot", "commerce_sales_present", "search_snapshot_missing"]
+    });
+  }
+  if (hasSignal(signals, "source_availability_limited")) {
+    actions.push({
+      id: "check_data_source_connection",
+      priority: "medium",
+      title: "데이터 연결 상태 점검 후보",
+      reason: "일부 source가 unavailable이라 현재 판단 가능한 데이터가 제한적입니다.",
+      signalIds: ["source_availability_limited"]
+    });
+  }
+  return actions.filter((action) => action.signalIds.every((signalId) => hasSignal(signals, signalId)));
+}
+
+function buildBrandSummary(input, signals, actions) {
+  const parts = [];
+  if (hasSignal(signals, "commerce_sales_present")) parts.push("선택 기간 판매가 확인됐습니다");
+  else if (hasSignal(signals, "commerce_sales_zero")) parts.push("선택 기간 판매는 0으로 확인됐습니다");
+  else if (input.commerce.status === "unmatched") parts.push("선택 기간 Cafe24 브랜드 매출 매칭은 없습니다");
+  else if (input.commerce.status === "unavailable") parts.push("Cafe24 데이터 확인이 제한됩니다");
+
+  if (hasSignal(signals, "search_demand_present")) parts.push("Naver 검색 수요가 확인됩니다");
+  else if (hasSignal(signals, "search_snapshot_present")) parts.push("Naver 검색 snapshot은 있으나 수요 비교는 제한적입니다");
+  else if (input.search.status === "unmatched") parts.push("Naver 검색 snapshot은 없습니다");
+  else if (input.search.status === "unavailable") parts.push("Naver 검색 snapshot 확인이 제한됩니다");
+
+  if (input.meta?.partial) parts.push("일부 source가 unavailable이라 판단 가능한 데이터가 제한적입니다");
+  if (!parts.length) parts.push("현재 판단 가능한 브랜드 데이터가 제한적입니다");
+
+  const actionText = actions.length ? `검토 후보 ${actions.length}건이 있습니다.` : "추가 행동 후보는 생성하지 않았습니다.";
+  return `${parts.join(". ")}. ${actionText}`;
+}
+
+function sourceState(source) {
+  return {
+    status: source.status,
+    matched: source.status === "matched",
+    unavailable: source.status === "unavailable"
+  };
+}
+
+function hasSignal(signals, id) {
+  return signals.some((signal) => signal.id === id);
 }
 
 async function buildCommerceBrandInput({ brand, registry, period }) {
