@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createHmac } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { URL } from "node:url";
@@ -14,11 +14,13 @@ const intelligenceWorkDir = join(workRoot, "intelligence");
 const marketingBrandMasterFile = join(workRoot, "brand-master.json");
 const brandMasterListFile = join(intelligenceWorkDir, "brand-master-list.json");
 const brandAliasesFile = join(intelligenceWorkDir, "brand-aliases.json");
+const naverSearchSnapshotsFile = join(intelligenceWorkDir, "naver-search-snapshots.json");
 const naverAdsBaseUrl = env.NAVER_ADS_BASE_URL || "https://api.searchad.naver.com";
 const naverAdsTimeoutMs = 10000;
 
 await mkdir(intelligenceWorkDir, { recursive: true });
 await ensureBrandRegistryFiles();
+await ensureNaverSnapshotsFile();
 
 const server = createServer(async (req, res) => {
   try {
@@ -50,6 +52,14 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/intelligence/naver/search") {
       return handleNaverSearchRoute(url, res);
+    }
+    if (url.pathname === "/api/intelligence/naver/snapshots") {
+      if (req.method === "GET") return handleNaverSnapshotsGet(url, res);
+      if (req.method === "POST") return handleNaverSnapshotsPost(req, url, res);
+      return json(res, {
+        ok: false,
+        error: "Method Not Allowed"
+      }, 405);
     }
     return json(res, {
       ok: false,
@@ -117,6 +127,85 @@ async function handleNaverSearchRoute(url, res) {
     query: keyword,
     count: result.rows.length,
     rows: result.rows
+  });
+}
+
+async function handleNaverSnapshotsGet(url, res) {
+  const keyword = normalizeBrandName(url.searchParams.get("keyword") || "");
+  const limit = parseSnapshotLimit(url.searchParams.get("limit"));
+  if (!limit.ok) {
+    return json(res, {
+      ok: false,
+      error: "Bad Request",
+      message: "limit must be a positive integer"
+    }, 400);
+  }
+  const store = await readNaverSnapshotsStore();
+  let snapshots = sortSnapshotsLatestFirst(store.snapshots);
+  if (keyword) {
+    const keywordKey = normalizeBrandKey(keyword);
+    snapshots = snapshots.filter((snapshot) => normalizeBrandKey(snapshot.keyword) === keywordKey);
+  }
+  if (limit.value) snapshots = snapshots.slice(0, limit.value);
+  return json(res, {
+    ok: true,
+    count: snapshots.length,
+    snapshots
+  });
+}
+
+async function handleNaverSnapshotsPost(req, url, res) {
+  const body = await readJsonBody(req);
+  if (!body.ok) {
+    return json(res, {
+      ok: false,
+      error: "Bad Request",
+      message: body.message
+    }, 400);
+  }
+  const keyword = normalizeBrandName(body.value.keyword || url.searchParams.get("keyword") || "");
+  if (!keyword) {
+    return json(res, {
+      ok: false,
+      error: "Bad Request",
+      message: "keyword is required"
+    }, 400);
+  }
+  const credentials = naverAdsCredentials();
+  if (!credentials.ok) {
+    return json(res, {
+      ok: false,
+      error: "Naver Search Ads credentials are not configured",
+      missing: credentials.missing
+    }, 503);
+  }
+  const result = await fetchNaverKeywordSearch(keyword, credentials);
+  if (!result.ok) {
+    return json(res, {
+      ok: false,
+      error: result.error,
+      status: result.status,
+      message: result.message
+    }, result.httpStatus);
+  }
+  const store = await readNaverSnapshotsStore();
+  const collectedAt = new Date().toISOString();
+  const snapshot = createNaverSearchSnapshot({ keyword, collectedAt, rows: result.rows });
+  const duplicate = findRecentDuplicateSnapshot(store.snapshots, snapshot);
+  if (duplicate) {
+    return json(res, {
+      ok: true,
+      duplicate: true,
+      snapshot: duplicate
+    });
+  }
+  store.snapshots.push(snapshot);
+  store.updatedAt = collectedAt;
+  await writeNaverSnapshotsStore(store);
+  return json(res, {
+    ok: true,
+    duplicate: false,
+    snapshot
   });
 }
 
@@ -233,6 +322,93 @@ function safeNaverErrorMessage(text) {
   } catch {
     return String(text).slice(0, 200);
   }
+}
+
+async function ensureNaverSnapshotsFile() {
+  if (existsSync(naverSearchSnapshotsFile)) {
+    await readNaverSnapshotsStore();
+    return;
+  }
+  await writeNaverSnapshotsStore({
+    updatedAt: new Date().toISOString(),
+    snapshots: []
+  });
+}
+
+async function readNaverSnapshotsStore() {
+  const parsed = JSON.parse(await readFile(naverSearchSnapshotsFile, "utf8"));
+  validateNaverSnapshotsStore(parsed);
+  return {
+    updatedAt: parsed.updatedAt || null,
+    snapshots: parsed.snapshots
+  };
+}
+
+function validateNaverSnapshotsStore(store) {
+  if (!store || typeof store !== "object") throw new Error("naver-search-snapshots.json must be an object");
+  if (!Array.isArray(store.snapshots)) throw new Error("naver-search-snapshots.json snapshots must be an array");
+  const ids = new Set();
+  for (const snapshot of store.snapshots) {
+    if (!snapshot?.id || !snapshot?.keyword || !snapshot?.collectedAt || !snapshot?.source) throw new Error("Naver snapshot id, keyword, collectedAt, and source are required");
+    if (!Array.isArray(snapshot.rows)) throw new Error(`Naver snapshot rows must be an array: ${snapshot.id}`);
+    if (ids.has(snapshot.id)) throw new Error(`Duplicate Naver snapshot id: ${snapshot.id}`);
+    ids.add(snapshot.id);
+  }
+}
+
+function createNaverSearchSnapshot({ keyword, collectedAt, rows }) {
+  return {
+    id: `naver-searchad-keywordstool:${normalizeBrandKey(keyword)}:${collectedAt}`,
+    keyword,
+    collectedAt,
+    source: "naver-searchad-keywordstool",
+    rows
+  };
+}
+
+function findRecentDuplicateSnapshot(snapshots, snapshot) {
+  const keywordKey = normalizeBrandKey(snapshot.keyword);
+  const rowsText = JSON.stringify(snapshot.rows);
+  const collectedAt = Date.parse(snapshot.collectedAt);
+  return sortSnapshotsLatestFirst(snapshots).find((item) => {
+    if (normalizeBrandKey(item.keyword) !== keywordKey) return false;
+    if (JSON.stringify(item.rows) !== rowsText) return false;
+    const itemTime = Date.parse(item.collectedAt);
+    return Number.isFinite(itemTime) && Number.isFinite(collectedAt) && Math.abs(collectedAt - itemTime) <= 5000;
+  }) || null;
+}
+
+function sortSnapshotsLatestFirst(snapshots) {
+  return [...snapshots].sort((left, right) => String(right.collectedAt).localeCompare(String(left.collectedAt)));
+}
+
+function latestNaverSnapshotForKeyword(snapshots, keyword) {
+  const keywordKey = normalizeBrandKey(keyword);
+  return sortSnapshotsLatestFirst(snapshots).find((snapshot) => normalizeBrandKey(snapshot.keyword) === keywordKey) || null;
+}
+
+function parseSnapshotLimit(value) {
+  if (value === null || value === "") return { ok: true, value: null };
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1) return { ok: false };
+  return { ok: true, value: limit };
+}
+
+async function readJsonBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const text = Buffer.concat(chunks).toString("utf8").trim();
+  if (!text) return { ok: true, value: {} };
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false, message: "Request body must be valid JSON" };
+  }
+}
+
+async function writeNaverSnapshotsStore(store) {
+  validateNaverSnapshotsStore(store);
+  await writeJsonAtomic(naverSearchSnapshotsFile, store);
 }
 
 async function ensureBrandRegistryFiles() {
@@ -396,6 +572,12 @@ function dedupeAliases(aliases) {
 
 async function writeJson(file, data) {
   await writeFile(file, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+async function writeJsonAtomic(file, data) {
+  const tempFile = `${file}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(tempFile, `${JSON.stringify(data, null, 2)}\n`);
+  await rename(tempFile, file);
 }
 
 function safeErrorMessage(error) {
