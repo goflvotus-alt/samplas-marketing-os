@@ -2965,6 +2965,77 @@ async function buildBrandSalesDiagnostics(since, until) {
   };
 }
 
+function finiteNumberOrZero(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function monthRequestBounds(month, since, until) {
+  return {
+    start: month === since.slice(0, 7) ? since : `${month}-01`,
+    end: month === until.slice(0, 7) ? until : monthEndKey(month)
+  };
+}
+
+export async function buildCanonicalTotalSales({ since: sinceValue, until: untilValue } = {}) {
+  const since = assertInstagramRangeDate(sinceValue, "since");
+  const until = assertInstagramRangeDate(untilValue, "until");
+  if (since > until) {
+    throw new Error("since must be before or equal to until");
+  }
+
+  const onlineSource = await buildBrandSalesDiagnostics(since, until);
+  const onlinePaidAmount = finiteNumberOrZero(onlineSource?.totals?.paidAmount);
+  const months = instagramRangeMonthKeys(since, until);
+  const missingMonths = [];
+  const partialMonths = [];
+  let offlineSalesAmount = 0;
+
+  for (const month of months) {
+    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+    if (!snapshot) {
+      missingMonths.push(month);
+      continue;
+    }
+
+    const requested = monthRequestBounds(month, since, until);
+    if (String(snapshot.periodStart || "") > requested.start || String(snapshot.periodEnd || "") < requested.end) {
+      partialMonths.push(month);
+    }
+
+    const lines = Array.isArray(snapshot.salesLines) ? snapshot.salesLines : Array.isArray(snapshot.rows) ? snapshot.rows : [];
+    for (const line of lines) {
+      const date = String(line?.date || "");
+      const salesAmount = Number(line?.salesAmount);
+      if (line?.isOfflineRevenue === true && Number.isFinite(salesAmount) && date >= since && date <= until) {
+        offlineSalesAmount += salesAmount;
+      }
+    }
+  }
+
+  const offlineComplete = missingMonths.length === 0 && partialMonths.length === 0;
+  return {
+    periodStart: since,
+    periodEnd: until,
+    onlineSales: {
+      paidAmount: onlinePaidAmount
+    },
+    offlineSales: {
+      offlineSalesAmount
+    },
+    totalSales: {
+      amount: onlinePaidAmount + offlineSalesAmount
+    },
+    coverage: {
+      online: true,
+      offline: offlineComplete,
+      complete: offlineComplete,
+      partialMonths,
+      missingMonths
+    }
+  };
+}
+
 async function buildMonthlyArchive(month) {
   if (!isValidMonthKey(month)) {
     throw new Error("month는 YYYY-MM 형식이어야 합니다.");
