@@ -1373,10 +1373,12 @@ function naverAdsCredentials() {
 }
 
 async function fetchNaverKeywordSearch(keyword, credentials) {
+  const canonicalKeyword = String(keyword || "").trim();
+  const requestKeyword = canonicalKeyword.replace(/\s+/g, "");
   const method = "GET";
   const uri = "/keywordstool";
   const endpoint = new URL(uri, naverAdsBaseUrl);
-  endpoint.searchParams.set("hintKeywords", keyword);
+  endpoint.searchParams.set("hintKeywords", requestKeyword);
   endpoint.searchParams.set("showDetail", "1");
   const timestamp = String(Date.now());
   const controller = new AbortController();
