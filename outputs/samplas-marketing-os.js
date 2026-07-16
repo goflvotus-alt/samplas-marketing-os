@@ -67,6 +67,10 @@ let intelligenceSubmitInFlight = false;
 let activeIntelligencePanel = "overview";
 let selectedIntelligenceMission = null;
 let intelligenceBrandCache = null;
+let intelligenceOverviewState = { missions: [], brief: null, details: new Map(), cached: false, refreshing: false };
+let intelligenceSearchTimer = null;
+let intelligenceSearchRenderSeq = 0;
+let intelligenceTimelineBrandNameCache = new Map();
 let apiHealthRefreshInFlight = false;
 let currentTodayBriefingItems = [];
 // Cafe24 재인증 콜백이 실패로 돌아왔을 때만 채워진다(handleCafe24OAuthRedirect() 참고).
@@ -6054,6 +6058,7 @@ function intelligenceUrl(path) {
 }
 
 function setIntelligencePanel(panel = "overview") {
+  if (panel === "decisions" || panel === "learning") panel = "overview";
   activeIntelligencePanel = panel;
   if (panel !== "overview") intelligenceRenderSeq += 1;
   if (panel !== "brand") intelligenceBrandRenderSeq += 1;
@@ -6099,19 +6104,47 @@ async function renderIntelligenceDashboard() {
   const missionTarget = $("#intelligenceMissions");
   if (!statusTarget || !briefTarget || !missionTarget) return;
   const renderSeq = ++intelligenceRenderSeq;
+  const searchInput = $("#intelligenceBrandSearch");
+  const searchState = $("#intelligenceSearchState");
+  if (searchInput) searchInput.value = "";
+  if (searchState) searchState.textContent = "TOP5 브랜드 이슈를 우선 표시합니다.";
   statusTarget.className = "ad-status-banner loading";
-  statusTarget.innerHTML = `<span class="status-dot"></span><strong>Intelligence Service 확인 중</strong><span class="note">실제 데이터를 확인하고 있어 처음 불러올 때 시간이 걸릴 수 있습니다.</span>`;
-  briefTarget.innerHTML = `<article class="action-item"><strong>Brief 확인 중</strong><p>실제 데이터를 확인하고 있습니다. 처음 불러올 때 시간이 걸릴 수 있습니다.</p></article>`;
-  missionTarget.innerHTML = `<article class="action-item"><strong>Mission 확인 중</strong><p>우선 확인할 Mission을 실제 데이터 기준으로 불러오고 있습니다.</p></article>`;
+  statusTarget.innerHTML = `<span class="status-dot"></span><strong>브랜드 이슈를 분석하고 있습니다.</strong><span class="note">검색창은 먼저 사용할 수 있습니다.</span>`;
+  briefTarget.innerHTML = "";
+  missionTarget.innerHTML = intelligenceOverviewSkeletonHtml();
+  const loadingTimer = setTimeout(() => {
+    if (renderSeq !== intelligenceRenderSeq) return;
+    statusTarget.innerHTML = `<span class="status-dot"></span><strong>여러 데이터 소스를 확인하고 있어 시간이 조금 걸리고 있습니다.</strong><span class="note">마지막 성공 결과가 있으면 먼저 표시됩니다.</span>`;
+  }, 5000);
   const [health, brief, missions] = await Promise.all([
     getJson(intelligenceUrl("/api/intelligence/health"), 5000),
     getJson(intelligenceUrl("/api/intelligence/brief"), 40000),
     getJson(intelligenceUrl("/api/intelligence/missions?limit=5"), 40000)
   ]);
+  clearTimeout(loadingTimer);
   if (renderSeq !== intelligenceRenderSeq) return;
   renderIntelligenceStatus(health);
-  renderIntelligenceBrief(brief);
-  renderIntelligenceMissions(missions);
+  if (missions.error || !missions.ok) {
+    briefTarget.innerHTML = "";
+    missionTarget.innerHTML = `<article class="action-item sales-empty-card"><strong>Intelligence 데이터를 불러오지 못했습니다.</strong><p>서비스 상태를 확인한 뒤 다시 시도해주세요.</p><button class="today-jump-button" type="button" data-intelligence-refresh>다시 시도</button></article>`;
+    return;
+  }
+  const rows = Array.isArray(missions.missions) ? missions.missions : [];
+  const detailPairs = await Promise.all(rows.map(async (mission) => {
+    const brandId = mission?.brand?.id;
+    if (!brandId) return [brandId, null];
+    return [brandId, await fetchIntelligenceBrandOverviewRecord(brandId)];
+  }));
+  if (renderSeq !== intelligenceRenderSeq) return;
+  intelligenceOverviewState = {
+    missions: rows,
+    brief,
+    details: new Map(detailPairs),
+    cached: Boolean(missions.meta?.cached || brief?.cached),
+    refreshing: Boolean(missions.meta?.refreshing || brief?.refreshing)
+  };
+  renderIntelligenceOverviewMeta(brief, missions.meta || {});
+  renderIntelligenceIssueCards(rows, intelligenceOverviewState.details, { mode: "top" });
 }
 
 function renderIntelligenceStatus(health = {}) {
@@ -6155,6 +6188,232 @@ function renderIntelligenceMissions(missions = {}) {
   target.innerHTML = rows.length
     ? rows.map((mission) => intelligenceMissionCard(mission)).join("")
     : `<article class="action-item"><strong>현재 우선 확인할 Mission이 없습니다</strong><p>Brand Intelligence action이 생성되면 이곳에 표시됩니다.</p></article>`;
+}
+
+function intelligenceOverviewSkeletonHtml() {
+  return Array.from({ length: 5 }, (_, index) => `<article class="intelligence-issue-card intelligence-skeleton-card">
+    <div class="intelligence-issue-card-header"><span class="intelligence-issue-rank">TOP ${index + 1}</span></div>
+    <div class="intelligence-issue-title"><strong></strong></div>
+    <div class="intelligence-issue-body"><p></p></div>
+  </article>`).join("");
+}
+
+function renderIntelligenceOverviewMeta(brief = {}, meta = {}) {
+  const target = $("#intelligenceBrief");
+  if (!target) return;
+  const count = Number(meta?.missionCount ?? brief?.missionCount ?? intelligenceOverviewState.missions.length ?? 0);
+  const cacheState = meta.cached
+    ? (meta.refreshing ? "cached · refreshing" : "cached")
+    : (meta.refreshing ? "refreshing" : "live");
+  const checkedAt = meta.cacheUpdatedAt || meta.generatedAt || brief.generatedAt || new Date().toISOString();
+  target.innerHTML = `<article class="action-item intelligence-overview-note">
+    <span>오늘 확인할 브랜드</span>
+    <strong>${apiNum(Number.isFinite(count) ? count : 0)}건</strong>
+    <p>Mission · ${esc(cacheState)} · 마지막 확인 ${esc(intelligenceTimeLabel(checkedAt))}</p>
+  </article>`;
+}
+
+function renderIntelligenceIssueCards(missions = [], details = new Map(), options = {}) {
+  const target = $("#intelligenceMissions");
+  if (!target) return;
+  if (!missions.length) {
+    target.innerHTML = `<article class="intelligence-empty-card sales-empty-card"><strong>${options.mode === "search" ? "검색 결과가 없습니다" : "현재 우선 확인할 브랜드 이슈가 없습니다"}</strong><p>${options.mode === "search" ? "브랜드명 또는 alias를 다시 확인해주세요." : "Mission이 생성되면 이곳에 표시됩니다."}</p></article>`;
+    return;
+  }
+  target.innerHTML = missions.map((mission, index) => intelligenceIssueCard(mission, details.get(mission?.brand?.id), index)).join("");
+}
+
+function intelligenceIssueCard(mission = {}, detailRecord = {}, index = 0) {
+  const detail = intelligenceOverviewDetail(detailRecord);
+  const input = intelligenceOverviewInput(detailRecord);
+  const signalIds = Array.isArray(mission.signalIds) ? mission.signalIds.join(",") : "";
+  const brandName = intelligenceBrandDisplayName(mission.brand, detailRecord);
+  const issue = intelligenceIssueSentence(mission, detail);
+  const metrics = intelligenceEvidenceMetrics(detail);
+  const action = mission.title || (Array.isArray(detail?.actions) && detail.actions[0]?.title) || "상세 확인";
+  const source = intelligenceSourceSummary(detail?.sources || input?.sources);
+  return `<article class="intelligence-issue-card"
+    tabindex="0"
+    role="button"
+    aria-label="${esc(`${brandName} 상세 보기`)}"
+    data-mission-id="${esc(mission.id || `search:${mission.brand?.id || ""}`)}"
+    data-brand-id="${esc(mission.brand?.id || "")}"
+    data-brand-name="${esc(brandName)}"
+    data-priority="${esc(mission.priority || "")}"
+    data-source-action-id="${esc(mission.sourceActionId || "")}"
+    data-signal-ids="${esc(signalIds)}"
+    data-intelligence-brand-detail>
+    <div class="intelligence-issue-card-header">
+      <span class="intelligence-issue-rank">${String(index + 1).padStart(2, "0")}</span>
+      <div class="intelligence-issue-badges">${intelligencePriorityBadge(mission.priority)}<small class="intelligence-source-badge">${esc(source)}</small></div>
+    </div>
+    <div class="intelligence-issue-title"><strong class="intelligence-issue-brand">${esc(brandName)}</strong></div>
+    <div class="intelligence-issue-body"><p class="intelligence-issue-copy">${esc(issue)}</p></div>
+    <div class="intelligence-issue-metrics">${metrics.map((item) => `<div class="intelligence-issue-metric"><em>${esc(item.label)}</em><b>${esc(item.value)}</b></div>`).join("")}</div>
+    <footer class="intelligence-issue-action"><em>지금 할 일</em><b>${esc(action)}</b></footer>
+  </article>`;
+}
+
+async function fetchIntelligenceBrandOverviewRecord(brandId) {
+  const [detail, input] = await Promise.all([
+    getJson(intelligenceUrl(`/api/intelligence/brand/${encodeURIComponent(brandId)}`), 40000),
+    getJson(intelligenceUrl(`/api/intelligence/brand/${encodeURIComponent(brandId)}/input`), 40000)
+  ]);
+  return {
+    detail: detail?.ok ? detail.data : null,
+    input: input?.ok ? input.data : null
+  };
+}
+
+function intelligenceOverviewDetail(record = {}) {
+  return record?.detail || (record?.brand && record?.signals ? record : {}) || {};
+}
+
+function intelligenceOverviewInput(record = {}) {
+  return record?.input || {};
+}
+
+function intelligenceBrandDisplayName(brand = {}, record = {}) {
+  const detail = intelligenceOverviewDetail(record);
+  const input = intelligenceOverviewInput(record);
+  const canonicalName = intelligenceBrandName(detail?.brand || input?.brand || brand);
+  return intelligenceCafe24BrandDisplayName(input)
+    || intelligenceCafe24BrandDisplayName(detail)
+    || intelligenceRepresentativeEnglishAlias(input)
+    || intelligenceRepresentativeEnglishAlias(detail)
+    || canonicalName;
+}
+
+function intelligenceCafe24BrandDisplayName(source = {}) {
+  const commerce = source?.commerce?.data || source?.commerce || {};
+  const candidates = [
+    commerce.brandName,
+    commerce.brand_name,
+    commerce.cafe24BrandName,
+    commerce.displayName,
+    commerce.name
+  ];
+  const products = Array.isArray(commerce.products) ? commerce.products : [];
+  for (const product of products) {
+    const parsed = intelligenceBrandNameFromProductName(product?.productName);
+    if (parsed) candidates.push(parsed);
+  }
+  return candidates.map((value) => String(value || "").trim()).find(Boolean) || "";
+}
+
+function intelligenceBrandNameFromProductName(productName = "") {
+  const match = String(productName || "").match(/^\s*\[\s*([^:\]]+?)\s*:\s*[^\]]+?\]\s*/);
+  return match?.[1]?.trim() || "";
+}
+
+function intelligenceRepresentativeEnglishAlias(source = {}) {
+  const aliasCandidates = [
+    source?.brand?.englishName,
+    source?.brand?.alias,
+    source?.brand?.nameEn,
+    ...(Array.isArray(source?.brand?.aliases) ? source.brand.aliases : []),
+    ...(Array.isArray(source?.aliases) ? source.aliases.map((alias) => alias?.alias || alias?.name || alias) : [])
+  ];
+  return aliasCandidates
+    .map((value) => String(value || "").trim())
+    .find((value) => /[A-Za-z]/.test(value)) || "";
+}
+
+function intelligenceIssueSentence(mission = {}, detail = {}) {
+  const ids = new Set([...(Array.isArray(mission.signalIds) ? mission.signalIds : []), ...(Array.isArray(detail?.signals) ? detail.signals.map((signal) => signal.id) : [])]);
+  const sources = detail?.sources || {};
+  if (Object.values(sources).some((source) => source?.status === "unavailable" || source?.unavailable)) return "일부 데이터 연결을 확인해야 합니다.";
+  if (ids.has("search_demand_without_sales") || ids.has("search_demand_no_sales")) return "검색 수요는 있지만 최근 판매가 없습니다.";
+  if (ids.has("sales_without_search_snapshot") || ids.has("search_snapshot_missing")) return "판매는 있지만 검색 데이터가 없습니다.";
+  return mission.reason || detail?.summary || "브랜드 상태를 확인해야 합니다.";
+}
+
+function intelligenceEvidenceMetrics(detail = {}) {
+  const signals = Array.isArray(detail?.signals) ? detail.signals : [];
+  const metrics = [];
+  for (const signal of signals) {
+    const evidence = signal?.evidence || {};
+    if (metrics.length < 3 && Number.isFinite(Number(evidence.salesAmount))) metrics.push({ label: "최근 판매", value: apiWon(evidence.salesAmount) });
+    if (metrics.length < 3 && Number.isFinite(Number(evidence.orderCount))) metrics.push({ label: "주문", value: `${apiNum(evidence.orderCount)}건` });
+    if (metrics.length < 3 && Number.isFinite(Number(evidence.quantitySold))) metrics.push({ label: "판매수량", value: `${apiNum(evidence.quantitySold)}개` });
+    if (metrics.length < 3 && Number.isFinite(Number(evidence.pcSearchVolume))) metrics.push({ label: "PC 검색", value: apiNum(evidence.pcSearchVolume) });
+    if (metrics.length < 3 && Number.isFinite(Number(evidence.mobileSearchVolume))) metrics.push({ label: "모바일 검색", value: apiNum(evidence.mobileSearchVolume) });
+    if (metrics.length >= 3) break;
+  }
+  return metrics.length ? metrics : [{ label: "근거", value: "상세 확인" }];
+}
+
+function intelligenceSourceSummary(sources = {}) {
+  const entries = Object.entries(sources || {});
+  if (!entries.length) return "source 상태 확인 중";
+  const matched = entries.filter(([, source]) => source?.status === "matched" || source?.matched).map(([key]) => key);
+  const unavailable = entries.filter(([, source]) => source?.status === "unavailable" || source?.unavailable).map(([key]) => key);
+  if (unavailable.length) return `확인 필요: ${unavailable.join(", ")}`;
+  return matched.length ? `연결됨: ${matched.join(", ")}` : "일부 source 미매칭";
+}
+
+function scheduleIntelligenceBrandSearch() {
+  clearTimeout(intelligenceSearchTimer);
+  intelligenceSearchTimer = setTimeout(renderIntelligenceBrandSearch, 300);
+}
+
+async function renderIntelligenceBrandSearch() {
+  const input = $("#intelligenceBrandSearch");
+  const state = $("#intelligenceSearchState");
+  const target = $("#intelligenceMissions");
+  const query = input?.value?.trim() || "";
+  const searchSeq = ++intelligenceSearchRenderSeq;
+  if (!target) return;
+  if (!query) {
+    if (state) state.textContent = "TOP5 브랜드 이슈를 우선 표시합니다.";
+    renderIntelligenceIssueCards(intelligenceOverviewState.missions, intelligenceOverviewState.details, { mode: "top" });
+    return;
+  }
+  if (state) state.textContent = "브랜드를 찾고 있습니다.";
+  target.innerHTML = intelligenceOverviewSkeletonHtml();
+  const registry = await readIntelligenceBrands();
+  const normalized = query.toLowerCase();
+  const localMatch = (registry.brands || []).find((brand) => String(brand.name || "").toLowerCase().includes(normalized) || String(brand.id || "").toLowerCase() === normalized);
+  const resolved = await getJson(intelligenceUrl(`/api/intelligence/brands/resolve?name=${encodeURIComponent(query)}`), 10000);
+  if (searchSeq !== intelligenceSearchRenderSeq) return;
+  if (!($("#intelligenceBrandSearch")?.value?.trim() || "")) {
+    if (state) state.textContent = "TOP5 브랜드 이슈를 우선 표시합니다.";
+    renderIntelligenceIssueCards(intelligenceOverviewState.missions, intelligenceOverviewState.details, { mode: "top" });
+    return;
+  }
+  const brandId = resolved?.brand?.brandId || localMatch?.id || "";
+  const brandName = resolved?.brand?.name || localMatch?.name || query;
+  if (!brandId) {
+    if (state) state.textContent = "검색 결과가 없습니다.";
+    renderIntelligenceIssueCards([], new Map(), { mode: "search" });
+    return;
+  }
+  const detailRecord = await fetchIntelligenceBrandOverviewRecord(brandId);
+  if (searchSeq !== intelligenceSearchRenderSeq) return;
+  if (!($("#intelligenceBrandSearch")?.value?.trim() || "")) {
+    if (state) state.textContent = "TOP5 브랜드 이슈를 우선 표시합니다.";
+    renderIntelligenceIssueCards(intelligenceOverviewState.missions, intelligenceOverviewState.details, { mode: "top" });
+    return;
+  }
+  const data = intelligenceOverviewDetail(detailRecord);
+  if (!data?.brand) {
+    if (state) state.textContent = "브랜드 데이터를 확인하지 못했습니다.";
+    target.innerHTML = `<article class="action-item sales-empty-card"><strong>브랜드 데이터를 확인하지 못했습니다</strong><p>${esc(brandName)} 응답을 다시 확인해주세요.</p></article>`;
+    return;
+  }
+  const action = Array.isArray(data.actions) ? data.actions[0] : null;
+  const displayName = intelligenceBrandDisplayName({ id: brandId, name: data.brand?.name || brandName }, detailRecord);
+  const mission = {
+    id: `search:${brandId}`,
+    priority: action?.priority || "low",
+    brand: { id: brandId, name: data.brand?.name || brandName },
+    title: action?.title || "상세 확인",
+    reason: action?.reason || data.summary || "브랜드 상태를 확인하세요.",
+    signalIds: Array.isArray(action?.signalIds) ? action.signalIds : [],
+    sourceActionId: action?.id || ""
+  };
+  if (state) state.textContent = `${displayName} 검색 결과`;
+  renderIntelligenceIssueCards([mission], new Map([[brandId, detailRecord]]), { mode: "search" });
 }
 
 function intelligenceBriefCard(item = {}) {
@@ -6243,25 +6502,96 @@ async function renderIntelligenceBrandDetail(mission) {
   }
   const data = detail.data || {};
   const inputData = input?.data || {};
+  const displayName = intelligenceBrandDisplayName(
+    { id: mission.brandId, name: data.brand?.name || mission.brandName || mission.brandId },
+    { detail: data, input: inputData }
+  );
+  const canonicalName = intelligenceBrandName(data.brand || { id: mission.brandId, name: mission.brandName });
+  $("#intelligenceBrandTitle").textContent = displayName;
   const sources = data.sources || {};
   const signals = Array.isArray(data.signals) ? data.signals : [];
   const actions = Array.isArray(data.actions) ? data.actions : [];
   target.innerHTML = [
-    `<div class="cards">
-      <article class="action-item ad-summary-card ad-core-kpi-card"><span>Brand</span><strong>${esc(data.brand?.name || mission.brandName || mission.brandId)}</strong><p>${esc(data.period?.since || inputData.period?.since || "-")} ~ ${esc(data.period?.until || inputData.period?.until || "-")}</p></article>
+    `<div class="cards intelligence-brand-priority-grid">
+      <article class="action-item ad-summary-card ad-core-kpi-card"><span>Brand</span><strong>${esc(displayName)}</strong><p>${canonicalName !== displayName ? `${esc(canonicalName)} · ` : ""}${esc(data.period?.since || inputData.period?.since || "-")} ~ ${esc(data.period?.until || inputData.period?.until || "-")}</p></article>
       <article class="action-item sales-list-card"><span>Summary</span><strong>${esc(data.summary || "요약 없음")}</strong><p>API rule 기반 요약</p></article>
     </div>`,
-    `<div class="cards">${["commerce", "marketing", "content", "search"].map((key) => intelligenceSourceCard(key, sources[key])).join("")}</div>`,
-    `<div class="cards">${signals.length ? signals.map(intelligenceSignalCard).join("") : `<article class="action-item"><strong>Signal 없음</strong><p>현재 선택 기간에 표시할 signal이 없습니다.</p></article>`}</div>`,
-    `<div class="cards">${actions.length ? actions.map(intelligenceActionCard).join("") : `<article class="action-item"><strong>Action 없음</strong><p>현재 생성된 action이 없습니다.</p></article>`}</div>`,
-    intelligenceDecisionForm(mission)
+    intelligenceActionSummaryCard(actions),
+    intelligenceDecisionForm(mission),
+    `<div class="cards intelligence-source-grid">${["commerce", "marketing", "content", "search"].map((key) => intelligenceSourceCard(key, sources[key])).join("")}</div>`,
+    `<div class="cards intelligence-evidence-grid">${intelligenceEvidenceCards(data, inputData).join("")}</div>`,
+    intelligenceRawSignalsBlock(signals)
   ].join("");
 }
 
 function intelligenceSourceCard(name, source = {}) {
   const status = source?.status || "unknown";
   const tone = status === "matched" ? "good" : status === "unavailable" ? "urgent" : "warn";
-  return `<article class="action-item sales-list-card ${esc(tone)}"><span>${esc(name)}</span><strong>${esc(status)}</strong><p>${status === "unavailable" ? "source 확인 불가" : "source 상태"}</p></article>`;
+  const label = {
+    commerce: "Commerce",
+    marketing: "Marketing",
+    content: "Content",
+    search: "Search"
+  }[name] || name;
+  return `<article class="action-item sales-list-card intelligence-source-card ${esc(tone)}"><span>${esc(label)}</span><strong>${esc(intelligenceSourceHumanStatus(name, source))}</strong><p>${esc(intelligenceSourceHelpText(name, source))}</p></article>`;
+}
+
+function intelligenceSourceHumanStatus(name, source = {}) {
+  const status = source?.status || "unknown";
+  if (status === "matched" || source?.matched) return "데이터 연결됨";
+  if (status === "unavailable" || source?.unavailable) return "확인 필요";
+  if (name === "search") return "Snapshot 없음";
+  return "데이터 없음";
+}
+
+function intelligenceSourceHelpText(name, source = {}) {
+  const status = source?.status || "unknown";
+  if (status === "matched" || source?.matched) return "현재 브랜드와 연결된 source입니다.";
+  if (status === "unavailable" || source?.unavailable) return "source 응답을 다시 확인해야 합니다.";
+  if (name === "search") return "Naver 검색 snapshot이 아직 없습니다.";
+  return "현재 기간에 매칭된 데이터가 없습니다.";
+}
+
+function intelligenceActionSummaryCard(actions = []) {
+  const actionItems = actions.length
+    ? actions.map(intelligenceActionHumanLabel)
+    : ["현재 즉시 실행할 권장 행동이 없습니다."];
+  return `<article class="intelligence-action-summary">
+    <span>지금 해야 할 일</span>
+    <ul>${actionItems.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
+  </article>`;
+}
+
+function intelligenceActionHumanLabel(action = {}) {
+  const source = `${action.id || ""} ${action.title || ""} ${action.reason || ""}`.toLowerCase();
+  if (source.includes("search") || source.includes("naver") || source.includes("snapshot")) return "Naver 검색 Snapshot 수집";
+  if (source.includes("ad") || source.includes("campaign") || source.includes("marketing") || source.includes("meta")) return "광고 캠페인 상태 확인";
+  if (source.includes("content") || source.includes("instagram")) return "콘텐츠 업로드 상태 검토";
+  if (source.includes("mapping") || source.includes("brand")) return "브랜드 매핑 확인";
+  return action.title || action.reason || "브랜드 상태 확인";
+}
+
+function intelligenceEvidenceCards(data = {}, inputData = {}) {
+  const commerce = inputData?.commerce?.data || {};
+  const marketing = inputData?.marketing || {};
+  const content = inputData?.content || {};
+  const search = inputData?.search || {};
+  const evidence = [
+    { label: "최근 판매금액", value: Number.isFinite(Number(commerce.salesAmount ?? commerce.paidAmount)) ? apiWon(commerce.salesAmount ?? commerce.paidAmount) : "데이터 없음", note: "Cafe24 Canonical" },
+    { label: "주문", value: Number.isFinite(Number(commerce.orderCount)) ? `${apiNum(commerce.orderCount)}건` : "데이터 없음", note: "정상 주문 기준" },
+    { label: "판매수량", value: Number.isFinite(Number(commerce.quantitySold)) ? `${apiNum(commerce.quantitySold)}개` : "데이터 없음", note: "주문 item 기준" },
+    { label: "검색 snapshot", value: intelligenceSourceHumanStatus("search", data?.sources?.search || search), note: "Naver Search Ads" },
+    { label: "Meta", value: intelligenceSourceHumanStatus("marketing", data?.sources?.marketing || marketing), note: "광고 source" },
+    { label: "Instagram", value: intelligenceSourceHumanStatus("content", data?.sources?.content || content), note: "콘텐츠 source" }
+  ];
+  return evidence.map((item) => `<article class="intelligence-evidence-card"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong><p>${esc(item.note)}</p></article>`);
+}
+
+function intelligenceRawSignalsBlock(signals = []) {
+  return `<details class="intelligence-raw-signals">
+    <summary>Raw signal</summary>
+    <div class="cards">${signals.length ? signals.map(intelligenceSignalCard).join("") : `<article class="action-item"><strong>Signal 없음</strong><p>현재 선택 기간에 표시할 signal이 없습니다.</p></article>`}</div>
+  </details>`;
 }
 
 function intelligenceSignalCard(signal = {}) {
@@ -6270,15 +6600,6 @@ function intelligenceSignalCard(signal = {}) {
     <span>${esc(signal.type || "signal")}</span>
     <strong>${esc(signal.title || signal.id || "Signal")}</strong>
     <p>${esc(signal.id || "")}</p>
-  </article>`;
-}
-
-function intelligenceActionCard(action = {}) {
-  return `<article class="action-item sales-list-card">
-    ${intelligencePriorityBadge(action.priority)}
-    <span>${esc(action.id || "action")}</span>
-    <strong>${esc(action.title || "Action")}</strong>
-    <p>${esc(action.reason || "")}</p>
   </article>`;
 }
 
@@ -6397,39 +6718,328 @@ async function renderIntelligenceTimeline() {
   const target = $("#intelligenceTimeline");
   if (!target) return;
   const renderSeq = ++intelligenceTimelineRenderSeq;
-  target.innerHTML = `<article class="action-item"><strong>Timeline 확인 중</strong><p>Brand Timeline을 불러오고 있습니다.</p></article>`;
+  target.classList.add("is-loading");
+  if (!target.innerHTML.trim()) target.innerHTML = intelligenceTimelineSkeletonHtml();
   const registry = await readIntelligenceBrands();
   renderIntelligenceTimelineFilter(registry.brands || []);
   const brandId = $("#intelligenceTimelineBrandFilter")?.value || "";
   const query = brandId ? `?brandId=${encodeURIComponent(brandId)}&limit=30` : "?limit=30";
-  const result = await getJson(intelligenceUrl(`/api/intelligence/timeline${query}`), 15000);
+  const [result, missionsResult, salesMap] = await Promise.all([
+    getJson(intelligenceUrl(`/api/intelligence/timeline${query}`), 15000),
+    brandId ? Promise.resolve({ missions: [] }) : getJson(intelligenceUrl("/api/intelligence/missions?limit=5"), 40000),
+    readIntelligenceTimelineSalesMap()
+  ]);
   if (renderSeq !== intelligenceTimelineRenderSeq) return;
   if (result.error || !result.ok) {
+    target.classList.remove("is-loading");
     target.innerHTML = `<article class="action-item"><strong>Timeline 확인 불가</strong><p>Intelligence Service 응답을 확인할 수 없습니다.</p></article>`;
     return;
   }
   const events = Array.isArray(result.events) ? result.events : [];
-  target.innerHTML = events.length ? events.map((event) => intelligenceTimelineRow(event, registry.brands || [])).join("") : `<article class="action-item"><strong>Timeline 없음</strong><p>Decision이 기록되면 이곳에 표시됩니다.</p></article>`;
+  const missions = Array.isArray(missionsResult.missions) ? missionsResult.missions : [];
+  const fallbackBrandIds = brandId ? [] : intelligenceTimelineFallbackBrandIds(events, missions, registry.brands || [], salesMap);
+  const detailMap = await readIntelligenceTimelineDetails(events, brandId, missions, fallbackBrandIds);
+  if (renderSeq !== intelligenceTimelineRenderSeq) return;
+  renderIntelligenceTimelineFilter(registry.brands || []);
+  const sortedEvents = [...events].sort((a, b) => {
+    const left = new Date(a.occurredAt).getTime() || 0;
+    const right = new Date(b.occurredAt).getTime() || 0;
+    return brandId ? left - right : right - left;
+  });
+  const rows = intelligenceTimelineDisplayRows(sortedEvents, missions, registry.brands || [], detailMap, brandId, fallbackBrandIds, salesMap);
+  target.classList.remove("is-loading");
+  target.innerHTML = rows.length
+    ? intelligenceTimelineContent(rows, registry.brands || [], brandId)
+    : intelligenceTimelineEmptyState(brandId);
 }
 
 function renderIntelligenceTimelineFilter(brands = []) {
   const select = $("#intelligenceTimelineBrandFilter");
-  if (!select || select.dataset.loaded === "true") return;
-  select.innerHTML = `<option value="">브랜드 전체</option>${brands.map((brand) => `<option value="${esc(brand.id)}">${esc(brand.name)}</option>`).join("")}`;
-  select.dataset.loaded = "true";
+  if (!select) return;
+  const currentValue = select.value || "";
+  const deduped = [];
+  const seen = new Set();
+  for (const brand of brands) {
+    if (!brand?.id || seen.has(brand.id)) continue;
+    seen.add(brand.id);
+    deduped.push(brand);
+  }
+  select.innerHTML = `<option value="">브랜드 전체</option>${deduped.map((brand) => `<option value="${esc(brand.id)}">${esc(intelligenceTimelineBrandDisplay(brand))}</option>`).join("")}`;
+  select.value = seen.has(currentValue) ? currentValue : "";
 }
 
-function intelligenceTimelineRow(event = {}, brands = []) {
-  return `<article class="action-item sales-list-card">
-    <span>${esc(intelligenceBrandLabel(event.brandId, brands))}</span>
-    <strong>${esc(intelligenceTimelineTypeLabel(event.type))}</strong>
-    <p>${esc(event.title || "")} · ${esc(event.description || "")}</p>
-    <small>${esc(intelligenceTimeLabel(event.occurredAt))}</small>
+function intelligenceTimelineBrandDisplay(brand = {}) {
+  return intelligenceTimelineBrandNameCache.get(brand.id) || intelligenceBrandName(brand);
+}
+
+async function readIntelligenceTimelineSalesMap() {
+  const today = new Date();
+  const dateKey = (date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
+  const until = dateKey(today);
+  const since = `${until.slice(0, 7)}-01`;
+  const result = await getJson(`/api/diagnostics/brand-sales?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, 20000);
+  const rows = Array.isArray(result.brandSales) ? result.brandSales : [];
+  return new Map(rows.map((row) => [row.brand_code, row]).filter(([code]) => code));
+}
+
+function intelligenceTimelineFallbackBrandIds(events = [], missions = [], brands = [], salesMap = new Map()) {
+  const ids = [...events.map((event) => event.brandId)].filter(Boolean);
+  for (const id of salesMap.keys()) {
+    if (ids.length >= 5) break;
+    ids.push(id);
+  }
+  for (const id of missions.map((mission) => mission?.brand?.id).filter(Boolean)) {
+    if (ids.length >= 5) break;
+    ids.push(id);
+  }
+  for (const brand of brands) {
+    if (ids.length >= 5) break;
+    if (brand?.active !== false && brand?.id) ids.push(brand.id);
+  }
+  return [...new Set(ids)].slice(0, 5);
+}
+
+async function readIntelligenceTimelineDetails(events = [], selectedBrandId = "", missions = [], fallbackBrandIds = []) {
+  const missionBrandIds = missions.map((mission) => mission?.brand?.id).filter(Boolean);
+  const brandIds = [...new Set([selectedBrandId, ...events.map((event) => event.brandId), ...missionBrandIds, ...fallbackBrandIds].filter(Boolean))].slice(0, 12);
+  const pairs = await Promise.all(brandIds.map(async (brandId) => {
+    const record = await fetchIntelligenceBrandOverviewRecord(brandId);
+    const displayName = intelligenceBrandDisplayName({ id: brandId }, record);
+    if (displayName) intelligenceTimelineBrandNameCache.set(brandId, displayName);
+    return [brandId, record];
+  }));
+  return new Map(pairs);
+}
+
+function intelligenceTimelineContent(rows = [], brands = [], selectedBrandId = "") {
+  const selectedDisplayName = intelligenceTimelineHeaderName(rows, selectedBrandId, brands);
+  const header = selectedBrandId
+    ? `<div class="intelligence-timeline-head"><span>Brand Timeline</span><strong>${esc(selectedDisplayName)}</strong><p>최근 이벤트 ${apiNum(rows.length)}건</p></div>`
+    : `<div class="intelligence-timeline-head"><span>Brand Timeline</span><strong>브랜드 전체</strong><p>최근 주요 이벤트 ${apiNum(rows.length)}건</p></div>`;
+  return `${header}<div class="intelligence-timeline-list">${rows.map((row) => intelligenceTimelineRow(row)).join("")}</div>`;
+}
+
+function intelligenceTimelineHeaderName(rows = [], selectedBrandId = "", brands = []) {
+  const rowName = rows.find((row) => row.brandId === selectedBrandId && /[A-Za-z]/.test(row.brandName || ""))?.brandName
+    || rows.find((row) => row.brandId === selectedBrandId)?.brandName;
+  return rowName || intelligenceTimelineBrandDisplay({ id: selectedBrandId, name: intelligenceBrandLabel(selectedBrandId, brands) });
+}
+
+function intelligenceTimelineEmptyState(brandId = "") {
+  return `<article class="intelligence-empty-card"><strong>${brandId ? "이 브랜드에 기록된 이벤트가 없습니다." : "아직 기록된 Intelligence 이벤트가 없습니다."}</strong><p>Decision이나 Learning 이력이 생기면 Timeline에 표시됩니다.</p></article>`;
+}
+
+function intelligenceTimelineSkeletonHtml() {
+  return `<div class="intelligence-timeline-list">${Array.from({ length: 3 }, () => `<article class="intelligence-timeline-item intelligence-skeleton-card"><div class="intelligence-timeline-dot"></div><div class="intelligence-timeline-card"><strong></strong><p></p></div></article>`).join("")}</div>`;
+}
+
+function intelligenceTimelineDisplayRows(events = [], missions = [], brands = [], detailMap = new Map(), selectedBrandId = "", fallbackBrandIds = [], salesMap = new Map()) {
+  const eventRows = events.map((event) => intelligenceTimelineRowFromEvent(event, brands, detailMap.get(event.brandId), salesMap.get(event.brandId)));
+  const brandRows = selectedBrandId
+    ? intelligenceTimelineRowsFromBrand(selectedBrandId, detailMap.get(selectedBrandId), null, brands, salesMap.get(selectedBrandId))
+    : [
+      ...missions.flatMap((mission) => intelligenceTimelineRowsFromBrand(mission?.brand?.id, detailMap.get(mission?.brand?.id), mission, brands, salesMap.get(mission?.brand?.id))),
+      ...fallbackBrandIds.flatMap((id) => intelligenceTimelineRowsFromBrand(id, detailMap.get(id), null, brands, salesMap.get(id)))
+    ];
+  const rows = [...eventRows, ...brandRows].filter(Boolean);
+  const seen = new Set();
+  const deduped = rows.filter((row) => {
+    const key = `${row.brandId}|${row.type}|${row.summary}|${row.action || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return deduped.sort((a, b) => {
+    const left = new Date(a.occurredAt).getTime() || 0;
+    const right = new Date(b.occurredAt).getTime() || 0;
+    return selectedBrandId ? left - right : right - left;
+  });
+}
+
+function intelligenceTimelineRowFromEvent(event = {}, brands = [], detailRecord = {}, salesRecord = null) {
+  const detail = intelligenceOverviewDetail(detailRecord || {});
+  const input = intelligenceOverviewInput(detailRecord || {});
+  const displayName = intelligenceTimelineSalesBrandName(salesRecord) || intelligenceBrandDisplayName({ id: event.brandId, name: intelligenceBrandLabel(event.brandId, brands) }, detailRecord || {});
+  return {
+    brandId: event.brandId || "",
+    brandName: displayName,
+    occurredAt: event.occurredAt,
+    type: event.type,
+    summary: intelligenceTimelineSummary(event, detail, input),
+    metrics: intelligenceTimelineMetrics(detail, input, salesRecord),
+    action: intelligenceTimelineAction(event, detail),
+    sourceText: intelligenceTimelineSourceText(detail?.sources || {}),
+    rawText: intelligenceTimelineRawText(event)
+  };
+}
+
+function intelligenceTimelineRowsFromBrand(brandId = "", detailRecord = {}, mission = null, brands = [], salesRecord = null) {
+  if (!brandId || !detailRecord) return [];
+  const detail = intelligenceOverviewDetail(detailRecord);
+  const input = intelligenceOverviewInput(detailRecord);
+  const displayName = intelligenceTimelineSalesBrandName(salesRecord) || intelligenceBrandDisplayName({ id: brandId, name: intelligenceBrandLabel(brandId, brands) }, detailRecord);
+  if (displayName) intelligenceTimelineBrandNameCache.set(brandId, displayName);
+  const occurredAt = detail?.meta?.generatedAt || input?.meta?.generatedAt || mission?.generatedAt || new Date().toISOString();
+  const rows = [];
+  const metrics = intelligenceTimelineMetrics(detail, input, salesRecord);
+  if (metrics.length) {
+    rows.push({
+      brandId,
+      brandName: displayName,
+      occurredAt,
+      type: "commerce_sales_present",
+      summary: "선택 기간 판매가 확인되었습니다.",
+      metrics,
+      action: intelligenceTimelineAction(mission || {}, detail),
+      sourceText: intelligenceTimelineSourceText(detail?.sources || {}),
+      rawText: intelligenceTimelineBrandRawText(detail, input)
+    });
+  }
+  const signals = new Set(Array.isArray(detail?.signals) ? detail.signals.map((signal) => signal.id) : []);
+  const sources = detail?.sources || {};
+  if (signals.has("search_snapshot_missing") || signals.has("sales_without_search_snapshot") || sources.search?.status === "unmatched") {
+    rows.push({
+      brandId,
+      brandName: displayName,
+      occurredAt,
+      type: signals.has("sales_without_search_snapshot") ? "sales_without_search_snapshot" : "search_snapshot_missing",
+      summary: signals.has("sales_without_search_snapshot") ? "판매는 확인됐지만 Naver 검색 Snapshot이 없습니다." : "Naver 검색 Snapshot이 없습니다.",
+      metrics: [],
+      action: "Naver 검색 Snapshot 수집",
+      sourceText: intelligenceTimelineSourceText({ search: sources.search }),
+      rawText: intelligenceTimelineBrandRawText(detail, input)
+    });
+  }
+  if (sources.marketing?.status === "unmatched") {
+    rows.push({
+      brandId,
+      brandName: displayName,
+      occurredAt,
+      type: "unmatched",
+      summary: "Meta 데이터가 연결되지 않았습니다.",
+      metrics: [],
+      action: "광고 캠페인 상태 확인",
+      sourceText: intelligenceTimelineSourceText({ marketing: sources.marketing }),
+      rawText: intelligenceTimelineBrandRawText(detail, input)
+    });
+  }
+  if (sources.content?.status === "unmatched") {
+    rows.push({
+      brandId,
+      brandName: displayName,
+      occurredAt,
+      type: "unmatched",
+      summary: "Instagram 데이터가 연결되지 않았습니다.",
+      metrics: [],
+      action: "콘텐츠 업로드 상태 검토",
+      sourceText: intelligenceTimelineSourceText({ content: sources.content }),
+      rawText: intelligenceTimelineBrandRawText(detail, input)
+    });
+  }
+  return rows;
+}
+
+function intelligenceTimelineRow(row = {}) {
+  const when = intelligenceTimelineDateLabel(row.occurredAt);
+  const typeLabel = intelligenceTimelineTypeLabel(row.type);
+  const metrics = Array.isArray(row.metrics) ? row.metrics : [];
+  const action = row.action || "";
+  const sourceText = row.sourceText || "";
+  return `<article class="intelligence-timeline-item">
+    <div class="intelligence-timeline-dot" aria-hidden="true"></div>
+    <div class="intelligence-timeline-card">
+      <div class="intelligence-timeline-meta"><span>${esc(when)}</span><small>${esc(row.brandName || row.brandId || "브랜드")}</small></div>
+      <strong class="intelligence-timeline-type">${esc(typeLabel)}</strong>
+      <p class="intelligence-timeline-summary">${esc(row.summary || "Intelligence 이벤트가 기록되었습니다.")}</p>
+      ${metrics.length ? `<div class="intelligence-timeline-metrics">${metrics.map((item) => `<div><em>${esc(item.label)}</em><b>${esc(item.value)}</b></div>`).join("")}</div>` : ""}
+      ${action ? `<div class="intelligence-timeline-action"><em>지금 할 일</em><b>${esc(action)}</b></div>` : ""}
+      ${sourceText ? `<p class="intelligence-timeline-source">${esc(sourceText)}</p>` : ""}
+      <details class="intelligence-timeline-raw"><summary>원본 정보 보기</summary><p>${esc(row.rawText || "")}</p></details>
+    </div>
   </article>`;
 }
 
 function intelligenceTimelineTypeLabel(type = "") {
-  return { decision_recorded: "Decision 기록", action_started: "Action 시작", result_recorded: "Result 기록" }[type] || type;
+  return {
+    decision_recorded: "운영 결정 기록",
+    action_started: "Action 시작",
+    result_recorded: "Result 기록",
+    commerce_sales_present: "판매 확인",
+    commerce_orders_present: "주문 확인",
+    commerce_quantity_present: "판매수량 확인",
+    search_snapshot_missing: "검색 Snapshot 없음",
+    sales_without_search_snapshot: "판매는 있으나 검색 Snapshot 없음",
+    source_unavailable: "데이터 연결 확인 필요",
+    matched: "데이터 연결됨",
+    unmatched: "데이터 없음"
+  }[type] || type || "이벤트";
+}
+
+function intelligenceTimelineDateLabel(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "-";
+  return date.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function intelligenceTimelineSummary(event = {}, detail = {}, input = {}) {
+  if (event.type === "decision_recorded") return event.description || "운영 결정이 기록되었습니다.";
+  const ids = new Set([...(Array.isArray(detail.signals) ? detail.signals.map((signal) => signal.id) : [])]);
+  if (ids.has("sales_without_search_snapshot")) return "판매는 확인됐지만 Naver 검색 Snapshot이 없습니다.";
+  if (ids.has("search_snapshot_missing")) return "Naver 검색 Snapshot이 없습니다.";
+  if (Number.isFinite(Number(input?.commerce?.data?.salesAmount ?? input?.commerce?.data?.paidAmount))) return "선택 기간 판매가 확인되었습니다.";
+  return event.description || event.title || "Intelligence 이벤트가 기록되었습니다.";
+}
+
+function intelligenceTimelineSalesBrandName(row = null) {
+  return String(row?.brand_name || "").trim();
+}
+
+function intelligenceTimelineMetrics(detail = {}, input = {}, salesRecord = null) {
+  const commerce = input?.commerce?.data || {};
+  const metrics = [];
+  if (Number.isFinite(Number(commerce.salesAmount ?? commerce.paidAmount))) metrics.push({ label: "최근 판매", value: apiWon(commerce.salesAmount ?? commerce.paidAmount) });
+  if (Number.isFinite(Number(commerce.orderCount))) metrics.push({ label: "주문", value: `${apiNum(commerce.orderCount)}건` });
+  if (Number.isFinite(Number(commerce.quantitySold))) metrics.push({ label: "판매수량", value: `${apiNum(commerce.quantitySold)}개` });
+  if (!metrics.length && salesRecord) {
+    if (Number.isFinite(Number(salesRecord.salesAmount))) metrics.push({ label: "최근 판매", value: apiWon(salesRecord.salesAmount) });
+    if (Number.isFinite(Number(salesRecord.orderCount))) metrics.push({ label: "주문", value: `${apiNum(salesRecord.orderCount)}건` });
+    if (Number.isFinite(Number(salesRecord.quantitySold))) metrics.push({ label: "판매수량", value: `${apiNum(salesRecord.quantitySold)}개` });
+  }
+  if (!metrics.length && Array.isArray(detail.signals)) {
+    for (const signal of detail.signals) {
+      const evidence = signal.evidence || {};
+      if (metrics.length < 3 && Number.isFinite(Number(evidence.salesAmount))) metrics.push({ label: "최근 판매", value: apiWon(evidence.salesAmount) });
+      if (metrics.length < 3 && Number.isFinite(Number(evidence.orderCount))) metrics.push({ label: "주문", value: `${apiNum(evidence.orderCount)}건` });
+      if (metrics.length < 3 && Number.isFinite(Number(evidence.quantitySold))) metrics.push({ label: "판매수량", value: `${apiNum(evidence.quantitySold)}개` });
+    }
+  }
+  return metrics.slice(0, 3);
+}
+
+function intelligenceTimelineAction(event = {}, detail = {}) {
+  const action = Array.isArray(detail.actions) ? detail.actions[0] : null;
+  if (action) return intelligenceActionHumanLabel(action);
+  const related = Array.isArray(event.relatedIds) ? event.relatedIds.join(" ") : "";
+  if (/search|snapshot|collect/i.test(related)) return "Naver 검색 Snapshot 수집";
+  if (/campaign|meta|ad/i.test(related)) return "광고 캠페인 상태 확인";
+  return "";
+}
+
+function intelligenceTimelineSourceText(sources = {}) {
+  const entries = Object.entries(sources || {});
+  if (!entries.length) return "";
+  return entries.map(([key, source]) => `${key}: ${intelligenceSourceHumanStatus(key, source)}`).join(" · ");
+}
+
+function intelligenceTimelineRawText(event = {}) {
+  const related = Array.isArray(event.relatedIds) && event.relatedIds.length ? ` · related: ${event.relatedIds.join(", ")}` : "";
+  return `${event.type || "event"} · ${event.id || "id 없음"}${related}`;
+}
+
+function intelligenceTimelineBrandRawText(detail = {}, input = {}) {
+  const signalIds = Array.isArray(detail?.signals) ? detail.signals.map((signal) => signal.id).join(", ") : "";
+  const actionIds = Array.isArray(detail?.actions) ? detail.actions.map((action) => action.id).join(", ") : "";
+  return `brand: ${detail?.brand?.id || input?.brand?.id || "unknown"} · signals: ${signalIds || "none"} · actions: ${actionIds || "none"}`;
 }
 
 async function renderIntelligenceLearning() {
@@ -6813,6 +7423,20 @@ function bind() {
     window.open(url, "_blank", "noopener");
   });
   $("#intelligenceRefreshBtn")?.addEventListener("click", refreshActiveIntelligencePanel);
+  $("#intelligenceBrandSearch")?.addEventListener("input", scheduleIntelligenceBrandSearch);
+  $("#intelligenceBrandSearch")?.addEventListener("keyup", scheduleIntelligenceBrandSearch);
+  $("#intelligenceBrandSearch")?.addEventListener("search", scheduleIntelligenceBrandSearch);
+  $("#intelligenceBrandSearch")?.addEventListener("change", scheduleIntelligenceBrandSearch);
+  $("#intelligenceBrandSearch")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    clearTimeout(intelligenceSearchTimer);
+    renderIntelligenceBrandSearch();
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-intelligence-refresh]")) return;
+    refreshActiveIntelligencePanel();
+  });
   document.addEventListener("click", (event) => {
     const tab = event.target.closest("[data-intelligence-panel-tab]");
     if (!tab) return;
@@ -6828,6 +7452,13 @@ function bind() {
     }
     selectedIntelligenceMission = mission;
     setIntelligencePanel("brand");
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const trigger = event.target.closest("[data-intelligence-brand-detail]");
+    if (!trigger) return;
+    event.preventDefault();
+    trigger.click();
   });
   document.addEventListener("click", (event) => {
     if (!event.target.closest("[data-intelligence-decision-save]")) return;

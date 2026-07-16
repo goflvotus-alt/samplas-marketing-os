@@ -551,35 +551,23 @@
         <div class="product-action-filters">
           <button class="product-action-filter active" type="button" data-intelligence-panel-tab="overview">Overview</button>
           <button class="product-action-filter" type="button" data-intelligence-panel-tab="brand">Brand Intelligence</button>
-          <button class="product-action-filter" type="button" data-intelligence-panel-tab="decisions">Decisions</button>
+          <button class="product-action-filter" type="button" data-intelligence-panel-tab="decisions" hidden>Decisions</button>
           <button class="product-action-filter" type="button" data-intelligence-panel-tab="timeline">Timeline</button>
-          <button class="product-action-filter" type="button" data-intelligence-panel-tab="learning">Learning</button>
+          <button class="product-action-filter" type="button" data-intelligence-panel-tab="learning" hidden>Learning</button>
         </div>
         <div class="section-block" data-intelligence-panel="overview">
           <div class="section-title compact">
             <div>
-              <p class="eyebrow">Service Status</p>
-              <h3>연결 상태</h3>
+              <p class="eyebrow">INTELLIGENCE</p>
+              <h3>지금 확인할 브랜드</h3>
             </div>
+          </div>
+          <div class="intelligence-search-row">
+            <input id="intelligenceBrandSearch" type="search" placeholder="브랜드명 또는 영문 alias 검색" aria-label="브랜드 검색">
+            <span id="intelligenceSearchState" class="monthly-report-muted">TOP5 브랜드 이슈를 우선 표시합니다.</span>
           </div>
           <div id="intelligenceStatus" class="ad-status-banner loading"></div>
-        </div>
-        <div class="section-block" data-intelligence-panel="overview">
-          <div class="section-title compact">
-            <div>
-              <p class="eyebrow">Brief</p>
-              <h3>오늘 우선 확인할 흐름</h3>
-            </div>
-          </div>
           <div id="intelligenceBrief" class="cards"></div>
-        </div>
-        <div class="section-block" data-intelligence-panel="overview">
-          <div class="section-title compact">
-            <div>
-              <p class="eyebrow">Mission</p>
-              <h3>Top Mission</h3>
-            </div>
-          </div>
           <div id="intelligenceMissions" class="cards"></div>
         </div>
         <div class="section-block" data-intelligence-panel="brand" hidden>
