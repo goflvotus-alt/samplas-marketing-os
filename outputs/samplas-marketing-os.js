@@ -2387,7 +2387,7 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
       <span>Y</span>
       <div><p class="eyebrow">Annual Flow</p><h3>${esc(year)}년 누적 흐름 · ${esc(yearLabel)}</h3></div>
     </div>
-    <p class="monthly-report-fnote">월별 아카이브 기준입니다. 실패한 월은 -로 표시하며 Saved Archive / Live Draft / Unsaved Draft 상태가 섞일 수 있습니다. 현재월은 Live Draft가 포함될 수 있으며 Saved Archive와 계산 시점이 다를 수 있습니다. 총매출은 Cafe24 온라인 매출과 확보된 ECOUNT 오프라인 매출의 합계입니다. 팔로워 증감은 월말 확정 증감이 아니라 조회 시점 스냅샷 기준입니다.</p>
+    <p class="monthly-report-fnote">월별 아카이브 기준입니다. 현재월은 Live Draft가 포함될 수 있으며 Saved Archive와 계산 시점이 다를 수 있습니다. 총매출은 Cafe24 온라인 매출과 확보된 ECOUNT 오프라인 매출의 합계입니다. 팔로워 증감은 조회 시점 스냅샷 기준입니다.</p>
     <div class="annual-flow-filters" aria-label="Annual Flow filter">
       <button class="segment active" type="button" data-annual-filter="all">전체</button>
       <button class="segment" type="button" data-annual-filter="commerce">Commerce</button>
@@ -2467,8 +2467,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       ? [
         "저장본 있음",
         "현재는 Live Draft 표시 중",
-        savedGeneratedAtLabel ? `저장본 계산 시각 ${savedGeneratedAtLabel}` : "",
-        hasApiValue(archiveReference.savedTotalSales) ? `저장본 총매출 ${apiWon(archiveReference.savedTotalSales)}` : ""
+        savedGeneratedAtLabel ? `저장 시각 ${savedGeneratedAtLabel}` : ""
       ].filter(Boolean).join(" · ")
       : "저장된 snapshot 없음"
     : "";
@@ -2488,7 +2487,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     monthlyReportFollowerDirectionText(content.followerDelta, summaryPreviousContent.followerDelta)
   ].join(". ");
   const liveDraftNotice = archive.archiveStatus === "live"
-    ? "현재 월 진행 중 수치이며 전월 전체 비교는 참고용입니다. 저장본이 있어도 현재 화면은 Live Draft 기준입니다."
+    ? "현재 화면은 Live Draft 기준입니다."
     : "";
   const reportBasisNote = `기간 ${monthStart} ~ ${monthEnd} · 계산 시각 ${archiveGeneratedAtLabel}`;
   const sales = archive.sales || null;
