@@ -50,7 +50,7 @@ let productSoldSearch = "";
 let productSoldSort = "amount_desc";
 let activeBrandOrderPopoverCode = "";
 let commerceSummaryState = { cafe: null, comparison: null };
-let todaySummaryState = { data: null, cafe: null, meta: null, comparison: null, marketing: null };
+let todaySummaryState = { data: null, cafe: null, meta: null, comparison: null, marketing: null, totalSales: null };
 const todaySalesCalendarInitialDate = new Date();
 let todaySalesCalendarMonth = `${todaySalesCalendarInitialDate.getFullYear()}-${String(todaySalesCalendarInitialDate.getMonth() + 1).padStart(2, "0")}`;
 let todaySalesCalendarRenderSeq = 0;
@@ -614,10 +614,11 @@ async function renderOverviewLiveData(data, renderSeq) {
   const range = operationsDateRange(data);
   const startDate = range.since;
   const endDate = range.until;
-  const [status, meta, cafe, contentRange, cardnewsStatus] = await Promise.all([
+  const [status, meta, cafe, totalSales, contentRange, cardnewsStatus] = await Promise.all([
     getJson("/api/status", 6000),
     getSharedJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
     getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 7000),
+    getJson(`/api/sales/total?since=${startDate}&until=${endDate}`, 10000),
     getJson(`/api/instagram/range?since=${startDate}&until=${endDate}`, 7000),
     getJson("/api/contents/cardnews-status", 6000)
   ]);
@@ -650,7 +651,7 @@ async function renderOverviewLiveData(data, renderSeq) {
   const comparison = commerceMetaComparisonState(meta, cafe);
 
   renderHealthBanner({ instagram: contentData, meta, cafe });
-  renderTodaySummary({ data: contentData, cafe, meta, comparison });
+  renderTodaySummary({ data: contentData, cafe, meta, comparison, totalSales });
   todayOverviewState = { data, meta, cafe, contentData, contentRangeError, posts, topProduct, avgSaveRate, followerDelta, range };
   $("#overviewRangeEyebrow").textContent = range.label;
   $("#overviewRangeTitle").textContent = `${range.label} KPI`;
@@ -4487,12 +4488,65 @@ function renderCommerceSummary(cafe, comparisonResult) {
   renderTodaySummary({ cafe: commerceSummaryState.cafe, comparison: commerceSummaryState.comparison });
 }
 
-function renderTodaySummary({ data, cafe, meta, comparison, marketing } = {}) {
+function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}) {
+  const onlineRaw = hasApiValue(totalSales?.onlineSales?.paidAmount)
+    ? totalSales.onlineSales.paidAmount
+    : cafeTotals.paidAmount;
+  const offlineRaw = totalSales?.offlineSales?.offlineSalesAmount;
+  const totalRaw = totalSales?.totalSales?.amount;
+  const onlineSales = hasApiValue(onlineRaw) ? Number(onlineRaw) : null;
+  const offlineSales = hasApiValue(offlineRaw) ? Number(offlineRaw) : null;
+  const canonicalTotal = hasApiValue(totalRaw) ? Number(totalRaw) : null;
+  const onlineAvailable = Number.isFinite(onlineSales);
+  const offlineAvailable = Number.isFinite(offlineSales);
+  const totalAvailable = Number.isFinite(canonicalTotal);
+  if (totalAvailable) {
+    return {
+      label: "총매출",
+      value: apiWon(canonicalTotal),
+      note: `온라인 ${onlineAvailable ? apiWon(onlineSales) : "데이터 없음"} · 오프라인 ${offlineAvailable ? apiWon(offlineSales) : "데이터 없음"}`,
+      ready: true
+    };
+  }
+  if (onlineAvailable && offlineAvailable) {
+    return {
+      label: "총매출",
+      value: apiWon(onlineSales + offlineSales),
+      note: `온라인 ${apiWon(onlineSales)} · 오프라인 ${apiWon(offlineSales)}`,
+      ready: true
+    };
+  }
+  if (onlineAvailable) {
+    return {
+      label: "온라인 매출",
+      value: apiWon(onlineSales),
+      note: "오프라인 매출 데이터 없음",
+      ready: true
+    };
+  }
+  if (offlineAvailable) {
+    return {
+      label: "오프라인 매출",
+      value: apiWon(offlineSales),
+      note: "온라인 매출 확인 필요",
+      ready: true
+    };
+  }
+  return {
+    label: "매출",
+    value: "확인 필요",
+    note: totalSales?.error || "온라인 / 오프라인 매출 확인 필요",
+    ready: false
+  };
+}
+
+function renderTodaySummary({ data, cafe, meta, comparison, marketing, totalSales } = {}) {
   if (data !== undefined && data !== null) todaySummaryState.data = data;
   if (cafe !== undefined && cafe !== null) todaySummaryState.cafe = cafe;
   if (meta !== undefined && meta !== null) todaySummaryState.meta = meta;
   if (comparison !== undefined && comparison !== null) todaySummaryState.comparison = comparison;
   if (marketing !== undefined && marketing !== null) todaySummaryState.marketing = marketing;
+  if (totalSales !== undefined && totalSales !== null) todaySummaryState.totalSales = totalSales;
 
   const briefingTarget = $("#todaySummaryBriefing");
   const sectionsTarget = $("#todaySummarySections");
@@ -4502,10 +4556,11 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing } = {}) {
   const cafeTotals = state.cafe?.totals || {};
   const comparisonState = state.comparison || {};
   const marketingState = state.marketing || {};
+  const totalSalesState = state.totalSales || {};
   const posts = state.data?.posts || [];
   const contentViews = sum(posts, "views");
   const metaAge = relativeAgeText(cacheAgeMinutes(state.meta || {}));
-  const commerceValue = hasApiValue(cafeTotals.paidAmount) ? apiWon(cafeTotals.paidAmount) : "확인 필요";
+  const salesInfo = todaySummarySalesInfo(totalSalesState, cafeTotals);
   const marketingValue = marketingState.adSpendShare === null || marketingState.adSpendShare === undefined ? "확인 필요" : pct(marketingState.adSpendShare);
   const marketingBriefingValue = marketingState.briefingCount === null || marketingState.briefingCount === undefined
     ? "확인 필요"
@@ -4518,7 +4573,7 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing } = {}) {
   ].join("");
 
   sectionsTarget.innerHTML = [
-    `<article class="action-item sales-compare-card"><span>Commerce</span><strong>${commerceValue}</strong><p>실제 판매</p><button class="today-jump-button" type="button" data-jump-view="Sales">Commerce 보기</button></article>`,
+    `<article class="action-item sales-compare-card"><span>${esc(salesInfo.label)}</span><strong>${esc(salesInfo.value)}</strong><p>${esc(salesInfo.note)}</p><button class="today-jump-button" type="button" data-jump-view="Sales">Commerce 보기</button></article>`,
     `<article class="action-item sales-compare-card"><span>Marketing</span><strong>${marketingValue}</strong><p>광고비 / 실제 매출</p><button class="today-jump-button" type="button" data-jump-view="Advertising">Marketing 보기</button></article>`,
     `<article class="action-item sales-compare-card"><span>Content</span><strong>${apiNum(contentViews)}</strong><p>전체 게시물 조회 합산</p><button class="today-jump-button" type="button" data-jump-view="Content">Content 보기</button></article>`,
     `<article class="action-item sales-compare-card"><span>Reports</span><strong>Monthly Report</strong><p>월간 확정 스냅샷</p><button class="today-jump-button" type="button" data-jump-view="Reports">월간 리포트 보기</button></article>`
