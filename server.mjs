@@ -190,7 +190,8 @@ const server = createServer(async (req, res) => {
       await ensurePreviousMonthlyArchiveSaved();
       if (month === currentMonth()) {
         const archive = await buildMonthlyArchive(month);
-        return json(res, { ...archive, archiveStatus: "live" });
+        const archiveReference = await readMonthlyArchiveReference(month);
+        return json(res, { ...archive, archiveStatus: "live", archiveReference });
       }
       const cached = await readMonthlyArchive(month);
       if (cached) return json(res, { ...cached, archiveStatus: "saved" });
@@ -3261,6 +3262,30 @@ async function readMonthlyArchive(month) {
   } catch (error) {
     if (error?.code === "ENOENT") return null;
     throw error;
+  }
+}
+
+async function readMonthlyArchiveReference(month) {
+  const file = monthlyArchivePath(month);
+  if (!existsSync(file)) return { savedExists: false };
+  try {
+    const archive = JSON.parse(await readFile(file, "utf8"));
+    const savedTotalSales = Number(archive?.sales?.totalSales?.amount);
+    return {
+      savedExists: true,
+      savedGeneratedAt: archive.generatedAt || null,
+      savedArchiveStatus: archive.archiveStatus || archive.status || null,
+      savedTotalSales: Number.isFinite(savedTotalSales) ? savedTotalSales : null,
+      savedPeriodStart: archive?.sales?.periodStart || null,
+      savedPeriodEnd: archive?.sales?.periodEnd || null
+    };
+  } catch (error) {
+    await logApiError("monthly_archive_reference", error, { month });
+    return {
+      savedExists: true,
+      unavailable: true,
+      error: safeErrorMessage(error)
+    };
   }
 }
 
