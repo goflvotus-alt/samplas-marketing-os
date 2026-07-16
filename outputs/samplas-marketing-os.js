@@ -6517,11 +6517,132 @@ async function renderIntelligenceBrandDetail(mission) {
       <article class="action-item sales-list-card"><span>Summary</span><strong>${esc(data.summary || "요약 없음")}</strong><p>API rule 기반 요약</p></article>
     </div>`,
     intelligenceActionSummaryCard(actions),
+    renderBrandTimelineSection(buildBrandTimeline({ detail: data, input: inputData, mission })),
     intelligenceDecisionForm(mission),
     `<div class="cards intelligence-source-grid">${["commerce", "marketing", "content", "search"].map((key) => intelligenceSourceCard(key, sources[key])).join("")}</div>`,
     `<div class="cards intelligence-evidence-grid">${intelligenceEvidenceCards(data, inputData).join("")}</div>`,
     intelligenceRawSignalsBlock(signals)
   ].join("");
+}
+
+function buildBrandTimeline(brand = {}) {
+  const detail = brand.detail || brand.data || brand || {};
+  const input = brand.input || {};
+  const mission = brand.mission || {};
+  const generatedAt = detail?.meta?.generatedAt || input?.meta?.generatedAt || new Date().toISOString();
+  const events = [];
+  const addEvent = (event) => {
+    if (!event?.title) return;
+    events.push({
+      date: event.date || generatedAt,
+      category: event.category || "ai",
+      type: event.type || "event",
+      title: event.title,
+      description: event.description || ""
+    });
+  };
+  const commerce = input?.commerce?.data || {};
+  if (Number.isFinite(Number(commerce.salesAmount ?? commerce.paidAmount))) {
+    addEvent({
+      category: "commerce",
+      type: "sales",
+      title: "판매 확인",
+      description: `최근 판매 ${apiWon(commerce.salesAmount ?? commerce.paidAmount)} · 주문 ${apiNum(commerce.orderCount)}건 · 판매수량 ${apiNum(commerce.quantitySold)}개`
+    });
+  }
+  if (Array.isArray(commerce.products)) {
+    commerce.products.slice(0, 3).forEach((product) => addEvent({
+      category: "commerce",
+      type: "product",
+      title: product.productName || "판매 상품",
+      description: `판매 ${apiWon(product.salesAmount)} · 주문 ${apiNum(product.orderCount)}건 · 수량 ${apiNum(product.quantitySold)}개`
+    }));
+  }
+  const marketing = input?.marketing || {};
+  addEvent({
+    category: "marketing",
+    type: marketing.status || "status",
+    title: marketing.status === "matched" ? "광고 데이터 연결" : "광고 데이터 없음",
+    description: marketing.data?.reason || intelligenceSourceHelpText("marketing", marketing)
+  });
+  const content = input?.content || {};
+  addEvent({
+    category: "content",
+    type: content.status || "status",
+    title: content.status === "matched" ? "콘텐츠 데이터 연결" : "콘텐츠 데이터 없음",
+    description: content.data?.reason || intelligenceSourceHelpText("content", content)
+  });
+  const search = input?.search || {};
+  addEvent({
+    category: "search",
+    type: search.status || "status",
+    title: search.status === "matched" ? "검색 Snapshot 연결" : "검색 Snapshot 없음",
+    description: search.data?.reason || intelligenceSourceHelpText("search", search)
+  });
+  (Array.isArray(detail.signals) ? detail.signals : []).forEach((signal) => addEvent({
+    category: signal.type === "commerce" ? "commerce" : signal.type === "search" ? "search" : signal.type === "marketing" ? "marketing" : signal.type === "content" ? "content" : "ai",
+    type: signal.id || signal.type || "signal",
+    title: signal.title || signal.id || "Signal",
+    description: intelligenceSignalDescription(signal)
+  }));
+  (Array.isArray(detail.actions) ? detail.actions : []).forEach((action) => addEvent({
+    category: "ai",
+    type: action.id || "action",
+    title: intelligenceActionHumanLabel(action),
+    description: action.reason || action.title || ""
+  }));
+  if (mission?.title) {
+    addEvent({
+      category: "ai",
+      type: mission.sourceActionId || "mission",
+      title: mission.title,
+      description: mission.reason || ""
+    });
+  }
+  return events.sort((a, b) => (new Date(b.date).getTime() || 0) - (new Date(a.date).getTime() || 0));
+}
+
+function intelligenceSignalDescription(signal = {}) {
+  const evidence = signal.evidence || {};
+  const parts = [];
+  if (Number.isFinite(Number(evidence.salesAmount))) parts.push(`판매 ${apiWon(evidence.salesAmount)}`);
+  if (Number.isFinite(Number(evidence.orderCount))) parts.push(`주문 ${apiNum(evidence.orderCount)}건`);
+  if (Number.isFinite(Number(evidence.quantitySold))) parts.push(`판매수량 ${apiNum(evidence.quantitySold)}개`);
+  if (evidence.reason) parts.push(evidence.reason);
+  return parts.join(" · ") || signal.id || "";
+}
+
+function renderBrandTimelineSection(events = []) {
+  const categories = [
+    ["all", "ALL"],
+    ["commerce", "Commerce"],
+    ["marketing", "Marketing"],
+    ["content", "Content"],
+    ["search", "Search"],
+    ["ai", "AI"]
+  ];
+  const rows = events.length
+    ? events.map((event) => brandTimelineEventHtml(event)).join("")
+    : `<article class="action-item sales-list-card"><span>Timeline</span><strong>표시할 이벤트가 없습니다</strong><p>연결된 데이터가 생기면 이곳에 표시됩니다.</p></article>`;
+  return `<section class="monthly-report-block" data-brand-timeline>
+    <div class="monthly-report-block-head"><div><span>Brand Timeline</span><strong>Unified Brand Timeline</strong></div></div>
+    <div class="product-action-filters">${categories.map(([value, label]) => `<button class="product-action-filter ${value === "all" ? "active" : ""}" type="button" data-brand-timeline-filter="${value}">${label}</button>`).join("")}</div>
+    <div class="cards" data-brand-timeline-events>${rows}</div>
+  </section>`;
+}
+
+function brandTimelineEventHtml(event = {}) {
+  return `<article class="action-item sales-list-card" data-brand-timeline-event="${esc(event.category || "ai")}">
+    <span>● ${esc(brandTimelineDateLabel(event.date))}</span>
+    <strong>${esc(event.title || "Timeline Event")}</strong>
+    <p>${esc(event.description || "")}</p>
+  </article>`;
+}
+
+function brandTimelineDateLabel(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "-";
+  return date.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
 }
 
 function intelligenceSourceCard(name, source = {}) {
@@ -7257,6 +7378,16 @@ function bind() {
     };
     writeTodayBriefingState(state);
     renderTodayBriefing();
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-brand-timeline-filter]");
+    if (!button) return;
+    const section = button.closest("[data-brand-timeline]");
+    const category = button.dataset.brandTimelineFilter || "all";
+    section?.querySelectorAll("[data-brand-timeline-filter]").forEach((node) => node.classList.toggle("active", node === button));
+    section?.querySelectorAll("[data-brand-timeline-event]").forEach((node) => {
+      node.hidden = category !== "all" && node.dataset.brandTimelineEvent !== category;
+    });
   });
   document.addEventListener("pointerover", (event) => {
     const bar = event.target.closest(".annual-flow-bar");
