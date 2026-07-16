@@ -1599,6 +1599,33 @@ function computeCafe24OrderTotals(orders = []) {
   };
 }
 
+// canonicalOrders(= computeCafe24OrderTotals에 넘기는 것과 동일한, 이미 취소/환불·미매칭
+// 주문이 제외된 배열)를 trustedCafe24OrderDate() 기준으로 날짜별로 묶는다. 금액은
+// cafe24OrderAmount()를 그대로 재사용하므로 sum(dailySales[].paidAmount)는 항상
+// computeCafe24OrderTotals(orders).paidAmount와 동일하고, sum(dailySales[].orderCount)는
+// 항상 orders.length(= canonical orderCount)와 동일하다 — 새로운 계산 정책이 아니라
+// 기존 결과를 날짜 단위로 재배열한 것뿐이다.
+function cafe24CanonicalDailySales(orders = []) {
+  const byDate = new Map();
+  let unresolvedDateOrderCount = 0;
+  for (const order of orders) {
+    const date = trustedCafe24OrderDate(order);
+    if (!date) {
+      unresolvedDateOrderCount += 1;
+      continue;
+    }
+    const orderAmount = cafe24OrderAmount(order);
+    const entry = byDate.get(date) || { date, paidAmount: 0, orderCount: 0 };
+    entry.paidAmount += orderAmount;
+    entry.orderCount += 1;
+    byDate.set(date, entry);
+  }
+  return {
+    dailySales: [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date)),
+    unresolvedDateOrderCount
+  };
+}
+
 function cafe24OrderAmount(order = {}) {
   if (isCafe24CanceledOrRefunded(order)) return 0;
   return firstCafe24Money([
@@ -2877,6 +2904,7 @@ async function buildBrandSalesDiagnostics(since, until) {
     const rawOrderIds = new Set(orders.map((order) => String(order.order_id || order.orderId || order.order_no || order.id || "")).filter(Boolean));
     const canonicalOrders = orders.filter((order) => matchedOrderIds.has(String(order.order_id || order.orderId || order.order_no || order.id || "")));
     const commerceTotals = computeCafe24OrderTotals(canonicalOrders);
+    const dailySalesResult = cafe24CanonicalDailySales(canonicalOrders);
     const totals = brands.reduce((acc, brand) => {
       acc.salesAmount += Number(brand.salesAmount || 0);
       acc.quantitySold += Number(brand.quantitySold || 0);
@@ -2899,6 +2927,8 @@ async function buildBrandSalesDiagnostics(since, until) {
       totals,
       excludedOrderCount: Math.max(0, rawOrderIds.size - matchedOrderIds.size),
       paymentMethods: commerceTotals.paymentMethods,
+      dailySales: dailySalesResult.dailySales,
+      dailySalesUnresolvedOrderCount: dailySalesResult.unresolvedDateOrderCount,
       productBrandBackfill,
       brands,
       products: soldProducts
@@ -2950,6 +2980,7 @@ async function buildBrandSalesDiagnostics(since, until) {
   const rawOrderIds = new Set(orders.map((order) => String(order.order_id || order.orderId || order.order_no || order.id || "")).filter(Boolean));
   const canonicalOrders = orders.filter((order) => matchedOrderIds.has(String(order.order_id || order.orderId || order.order_no || order.id || "")));
   const commerceTotals = computeCafe24OrderTotals(canonicalOrders);
+  const dailySalesResult = cafe24CanonicalDailySales(canonicalOrders);
   const totals = brands.reduce((acc, brand) => {
     acc.salesAmount += Number(brand.salesAmount || 0);
     acc.quantitySold += Number(brand.quantitySold || 0);
@@ -2973,6 +3004,8 @@ async function buildBrandSalesDiagnostics(since, until) {
     totals,
     excludedOrderCount: Math.max(0, rawOrderIds.size - matchedOrderIds.size),
     paymentMethods: commerceTotals.paymentMethods,
+    dailySales: dailySalesResult.dailySales,
+    dailySalesUnresolvedOrderCount: dailySalesResult.unresolvedDateOrderCount,
     productBrandBackfill,
     brands,
     products: soldProducts

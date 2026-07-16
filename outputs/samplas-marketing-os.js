@@ -51,6 +51,9 @@ let productSoldSort = "amount_desc";
 let activeBrandOrderPopoverCode = "";
 let commerceSummaryState = { cafe: null, comparison: null };
 let todaySummaryState = { data: null, cafe: null, meta: null, comparison: null, marketing: null };
+const todaySalesCalendarInitialDate = new Date();
+let todaySalesCalendarMonth = `${todaySalesCalendarInitialDate.getFullYear()}-${String(todaySalesCalendarInitialDate.getMonth() + 1).padStart(2, "0")}`;
+let todaySalesCalendarRenderSeq = 0;
 let todayOverviewState = null;
 let campaignPeriodComparisonState = { comparisonMode: "month", manualRange: null, manualComparisonRange: null, monthBase: "", monthTarget: "", settingsOpen: false, loading: false };
 let reportsMonth = "";
@@ -282,7 +285,8 @@ async function patchJson(url, payload, timeoutMs = 8000) {
 
 function selectedMonth() {
   const value = $("#monthSelect")?.value;
-  return monthlyData.find((item) => item.month === value) || monthlyData[0] || emptyMonth("2026-07");
+  const rows = uniqueMonthlyDataRows();
+  return rows.find((item) => item.month === value) || rows[0] || emptyMonth("2026-07");
 }
 
 function emptyMonth(month) {
@@ -402,21 +406,55 @@ function toast(message) {
   window.toastTimer = setTimeout(() => node.classList.remove("show"), 2200);
 }
 
+const viewHashMap = {
+  Overview: "today",
+  Sales: "commerce",
+  Advertising: "marketing",
+  Content: "content",
+  Reports: "monthly-report",
+  Intelligence: "intelligence",
+  Settings: "settings"
+};
+
+const hashViewMap = Object.fromEntries(Object.entries(viewHashMap).map(([view, hash]) => [hash, view]));
+
+function viewFromHash() {
+  const key = decodeURIComponent(String(window.location.hash || "").replace(/^#/, ""));
+  return hashViewMap[key] || "Overview";
+}
+
+function updateViewHash(view) {
+  const hash = viewHashMap[view];
+  if (!hash) return;
+  const next = `#${hash}`;
+  if (window.location.hash === next) return;
+  window.history.pushState(null, "", next);
+}
+
+function setActiveView(view, options = {}) {
+  const targetView = navItems.some((item) => item.view === view) ? view : "Overview";
+  $$(".nav button").forEach((node) => node.classList.toggle("active", node.dataset.view === targetView));
+  $$(".view").forEach((panel) => panel.classList.toggle("active", panel.id === targetView));
+  setTopbarTitle(targetView);
+  updateTopbarControls(targetView);
+  if (targetView === "Intelligence") refreshActiveIntelligencePanel();
+  if (options.updateHash !== false) updateViewHash(targetView);
+  if (options.scroll !== false) window.scrollTo({ top: 0, behavior: options.smooth === false ? "auto" : "smooth" });
+}
+
 function renderNav() {
   const nav = $("#nav");
   nav.innerHTML = navItems.map((item, index) => (
     `<button type="button" class="${index === 0 ? "active" : ""}" data-view="${esc(item.view)}" ${item.hidden ? "hidden" : ""}>${esc(item.label)}</button>`
   )).join("");
-  setTopbarTitle(navItems[0].view);
+  setActiveView(viewFromHash(), { updateHash: false, scroll: false });
   nav.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-view]");
     if (!button) return;
-    $$(".nav button").forEach((node) => node.classList.toggle("active", node === button));
-    $$(".view").forEach((view) => view.classList.toggle("active", view.id === button.dataset.view));
-    setTopbarTitle(button.dataset.view);
-    if (button.dataset.view === "Intelligence") refreshActiveIntelligencePanel();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setActiveView(button.dataset.view);
   });
+  window.addEventListener("popstate", () => setActiveView(viewFromHash(), { updateHash: false, smooth: false }));
+  window.addEventListener("hashchange", () => setActiveView(viewFromHash(), { updateHash: false, smooth: false }));
 }
 
 // Topbar used to repeat "MONTHLY INTELLIGENCE / Marketing Director / SAMPLAS"
@@ -425,6 +463,18 @@ function renderNav() {
 function setTopbarTitle(view) {
   const target = $("#topbarTitle");
   if (target) target.textContent = view;
+}
+
+function updateTopbarControls(view) {
+  const controls = $(".topbar .controls");
+  const monthSelect = $("#monthSelect");
+  const operationsSelect = $("#operationsRange");
+  const customRange = $("#operationsCustomRange");
+  const showOperations = ["Overview", "Sales", "Advertising", "Content"].includes(view);
+  if (monthSelect) monthSelect.hidden = !showOperations;
+  if (operationsSelect) operationsSelect.hidden = !showOperations;
+  if (customRange) customRange.hidden = !showOperations || operationsRange !== "custom";
+  if (controls) controls.hidden = !showOperations;
 }
 
 function renderContentTabs() {
@@ -436,13 +486,38 @@ function renderContentTabs() {
   });
 }
 
+function uniqueMonthlyDataRows() {
+  const seen = new Set();
+  return monthlyData.filter((item) => {
+    const month = item?.month;
+    if (!month || seen.has(month)) return false;
+    seen.add(month);
+    return true;
+  });
+}
+
 function renderMonthSelect() {
   const select = $("#monthSelect");
+  const rows = uniqueMonthlyDataRows();
   const current = select.value;
-  select.innerHTML = monthlyData.map((item) => `<option value="${item.month}">${item.month}</option>`).join("");
-  const bestMonth = monthlyData.find((item) => (item.posts || []).length || Number(item.account?.reach || 0) || Number(item.account?.views || 0));
-  select.value = monthlyData.some((item) => item.month === current) ? current : bestMonth?.month || monthlyData[0]?.month || "2026-07";
+  select.innerHTML = "";
+  select.innerHTML = rows.map((item) => `<option value="${item.month}">${item.month}</option>`).join("");
+  const bestMonth = rows.find((item) => (item.posts || []).length || Number(item.account?.reach || 0) || Number(item.account?.views || 0));
+  select.value = rows.some((item) => item.month === current) ? current : bestMonth?.month || rows[0]?.month || "2026-07";
   select.onchange = renderAll;
+}
+
+function setSelectedMonthValue(month) {
+  const select = $("#monthSelect");
+  if (select && uniqueMonthlyDataRows().some((item) => item.month === month)) select.value = month;
+}
+
+function setReportsMonth(month, options = {}) {
+  if (!uniqueMonthlyDataRows().some((item) => item.month === month)) return;
+  reportsMonth = month;
+  if (options.syncGlobal !== false) setSelectedMonthValue(month);
+  renderMonthRail();
+  renderReportsMonth(reportsMonth, options);
 }
 
 // Reports used to list every month as a row of pills (its own month picker,
@@ -454,37 +529,32 @@ function renderMonthSelect() {
 function renderMonthRail() {
   const rail = $("#monthRail");
   if (!rail) return;
+  const rows = uniqueMonthlyDataRows();
   const fallback = selectedMonth();
   if (!reportsMonth) reportsMonth = fallback.month;
-  let data = monthlyData.find((item) => item.month === reportsMonth) || fallback;
+  let data = rows.find((item) => item.month === reportsMonth) || fallback;
   if (reportsMonth !== data.month) reportsMonth = data.month;
-  const index = monthlyData.findIndex((item) => item.month === data.month);
-  const older = index >= 0 ? monthlyData[index + 1] : null;
-  const newer = index > 0 ? monthlyData[index - 1] : null;
+  const index = rows.findIndex((item) => item.month === data.month);
+  const older = index >= 0 ? rows[index + 1] : null;
+  const newer = index > 0 ? rows[index - 1] : null;
   rail.innerHTML = `
     <button type="button" class="month-nav-btn" data-nav="prev" ${older ? "" : "disabled"} aria-label="이전 달">‹</button>
     <select id="monthRailSelect" aria-label="리포트 월 선택">
-      ${monthlyData.map((item) => `<option value="${esc(item.month)}" ${item.month === data.month ? "selected" : ""}>${esc(item.month)}</option>`).join("")}
+      ${rows.map((item) => `<option value="${esc(item.month)}" ${item.month === data.month ? "selected" : ""}>${esc(item.month)}</option>`).join("")}
     </select>
     <button type="button" class="month-nav-btn" data-nav="next" ${newer ? "" : "disabled"} aria-label="다음 달">›</button>
     <span class="month-rail-source">${esc(sourceLabel(data))}</span>
   `;
   rail.querySelector('[data-nav="prev"]')?.addEventListener("click", () => {
     if (!older) return;
-    reportsMonth = older.month;
-    renderMonthRail();
-    renderReportsMonth(reportsMonth);
+    setReportsMonth(older.month);
   });
   rail.querySelector('[data-nav="next"]')?.addEventListener("click", () => {
     if (!newer) return;
-    reportsMonth = newer.month;
-    renderMonthRail();
-    renderReportsMonth(reportsMonth);
+    setReportsMonth(newer.month);
   });
   rail.querySelector("#monthRailSelect")?.addEventListener("change", (event) => {
-    reportsMonth = event.target.value;
-    renderMonthRail();
-    renderReportsMonth(reportsMonth);
+    setReportsMonth(event.target.value);
   });
 }
 
@@ -4381,6 +4451,365 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing } = {}) {
   ].join("");
 }
 
+function shiftMonthKey(monthKey, offset) {
+  const [year, month] = String(monthKey || "").split("-").map(Number);
+  const date = new Date(year, month - 1 + offset, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function todayDateKey() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+}
+
+function salesCalendarMonthLabel(monthKey) {
+  const [year, month] = String(monthKey || "").split("-");
+  return `${year}년 ${Number(month)}월`;
+}
+
+function salesCalendarLongDate(dateKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return String(dateKey || "");
+  const date = new Date(`${dateKey}T00:00:00`);
+  const weekday = new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(date);
+  return `${dateKey} (${weekday})`;
+}
+
+function normalizeDailySalesMap(rows = [], amountKey = "paidAmount") {
+  const map = new Map();
+  for (const row of rows || []) {
+    const date = String(row?.date || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const amount = Number(row?.[amountKey]);
+    const orderCount = Number(row?.orderCount);
+    const revenueLineCount = Number(row?.revenueLineCount);
+    const totalLineCount = Number(row?.totalLineCount);
+    const quantity = Number(row?.quantity);
+    map.set(date, {
+      amount: Number.isFinite(amount) ? amount : 0,
+      orderCount: Number.isFinite(orderCount) ? orderCount : 0,
+      revenueLineCount: Number.isFinite(revenueLineCount) ? revenueLineCount : 0,
+      totalLineCount: Number.isFinite(totalLineCount) ? totalLineCount : 0,
+      quantity: Number.isFinite(quantity) ? quantity : 0
+    });
+  }
+  return map;
+}
+
+function buildTodaySalesCalendarRows(monthKey, onlineData = {}, offlineData = {}) {
+  const start = `${monthKey}-01`;
+  const end = monthEnd(monthKey);
+  const today = todayDateKey();
+  const onlineOk = !onlineData.error && Array.isArray(onlineData.dailySales);
+  const offlineOk = !offlineData.error && Array.isArray(offlineData.dailySales);
+  const onlineMap = normalizeDailySalesMap(onlineData.dailySales, "paidAmount");
+  const offlineMap = normalizeDailySalesMap(offlineData.dailySales, "offlineSalesAmount");
+  const offlinePeriodStart = offlineOk ? String(offlineData.periodStart || "") : "";
+  const offlinePeriodEnd = offlineOk ? String(offlineData.periodEnd || "") : "";
+  const rows = [];
+  const dayCount = Number(end.slice(-2));
+  for (let day = 1; day <= dayCount; day += 1) {
+    const date = `${monthKey}-${String(day).padStart(2, "0")}`;
+    const onlineRow = onlineMap.get(date) || { amount: 0, orderCount: 0 };
+    const offlineRow = offlineMap.get(date) || { amount: 0, orderCount: 0 };
+    const future = date > today;
+    const offlineAvailable = offlineOk && (!offlinePeriodStart || offlinePeriodStart <= date) && (!offlinePeriodEnd || date <= offlinePeriodEnd);
+    rows.push({
+      date,
+      day,
+      future,
+      onlineSales: onlineOk ? onlineRow.amount : null,
+      offlineSales: offlineAvailable ? offlineRow.amount : null,
+      totalSales: (onlineOk ? onlineRow.amount : 0) + (offlineAvailable ? offlineRow.amount : 0),
+      onlineOrderCount: onlineOk ? onlineRow.orderCount : null,
+      offlineRevenueLineCount: offlineAvailable ? offlineRow.revenueLineCount : null,
+      offlineTotalLineCount: offlineAvailable ? offlineRow.totalLineCount : null,
+      offlineQuantity: offlineAvailable ? offlineRow.quantity : null,
+      onlineAvailable: onlineOk,
+      offlineAvailable
+    });
+  }
+  return rows;
+}
+
+function salesHeatLevel(value, maxValue) {
+  const amount = Number(value || 0);
+  const max = Number(maxValue || 0);
+  if (!max || amount <= 0) return 0;
+  return Math.max(1, Math.min(5, Math.ceil((amount / max) * 5)));
+}
+
+function todaySalesCalendarCell(row, maxDailySales) {
+  if (!row) return `<div class="today-sales-calendar-cell is-outside" aria-hidden="true"></div>`;
+  const level = salesHeatLevel(row.totalSales, maxDailySales);
+  const unavailable = !row.onlineAvailable || !row.offlineAvailable;
+  const zero = !row.future && !unavailable && Number(row.totalSales || 0) === 0;
+  const isToday = row.date === todayDateKey();
+  const classes = [
+    "today-sales-calendar-cell",
+    `sales-heat-${level}`,
+    row.future ? "is-future" : "",
+    isToday ? "is-today" : "",
+    zero ? "is-zero" : "",
+    unavailable ? "is-unavailable" : ""
+  ].filter(Boolean).join(" ");
+  const status = row.future
+    ? "미래 날짜"
+    : unavailable
+      ? `${row.onlineAvailable ? "" : "온라인 미확인"}${!row.onlineAvailable && !row.offlineAvailable ? " · " : ""}${row.offlineAvailable ? "" : "오프라인 미확인"}`
+      : zero ? "매출 0원" : "정상 데이터";
+  const dataAttrs = [
+    `data-date="${esc(row.date)}"`,
+    `data-total="${esc(row.totalSales)}"`,
+    `data-online="${esc(row.onlineSales ?? "")}"`,
+    `data-offline="${esc(row.offlineSales ?? "")}"`,
+    `data-online-orders="${esc(row.onlineOrderCount ?? "")}"`,
+    `data-offline-revenue-lines="${esc(row.offlineRevenueLineCount ?? "")}"`,
+    `data-offline-total-lines="${esc(row.offlineTotalLineCount ?? "")}"`,
+    `data-offline-quantity="${esc(row.offlineQuantity ?? "")}"`,
+    `data-status="${esc(status)}"`
+  ].join(" ");
+  return `<div class="${classes}" tabindex="0" aria-label="${esc(`${row.date} 총매출 ${apiWon(row.totalSales)} ${status}`)}" data-sales-calendar-tooltip="day" ${dataAttrs}>
+    <div class="today-sales-calendar-dayline">${isToday ? `<b>TODAY</b>` : ""}<span>${apiNum(row.day)}</span></div>
+    <strong>${krw(row.totalSales)}</strong>
+    <div class="today-sales-source-dots">
+      <i class="today-sales-source-dot is-online ${row.onlineAvailable ? "" : "is-muted"}" tabindex="0" data-sales-calendar-tooltip="online" ${dataAttrs}></i>
+      <i class="today-sales-source-dot is-offline ${row.offlineAvailable ? "" : "is-muted"}" tabindex="0" data-sales-calendar-tooltip="offline" ${dataAttrs}></i>
+    </div>
+  </div>`;
+}
+
+function finiteTooltipNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function todaySalesTooltipSection(title, value, details = [], tone = "") {
+  return `<section class="today-sales-tooltip-section ${tone ? `is-${esc(tone)}` : ""}">
+    <span>${esc(title)}</span>
+    <strong>${esc(value)}</strong>
+    ${details.length ? `<p>${details.map(esc).join(" · ")}</p>` : ""}
+  </section>`;
+}
+
+function todaySalesCalendarTooltipHtml(target) {
+  const mode = target?.dataset?.salesCalendarTooltip || "day";
+  const date = target?.dataset?.date || "";
+  const total = finiteTooltipNumber(target?.dataset?.total);
+  const online = finiteTooltipNumber(target?.dataset?.online);
+  const offline = finiteTooltipNumber(target?.dataset?.offline);
+  const onlineOrders = finiteTooltipNumber(target?.dataset?.onlineOrders);
+  const offlineRevenueLines = finiteTooltipNumber(target?.dataset?.offlineRevenueLines);
+  const offlineTotalLines = finiteTooltipNumber(target?.dataset?.offlineTotalLines);
+  const offlineQuantity = finiteTooltipNumber(target?.dataset?.offlineQuantity);
+  const status = target?.dataset?.status || "상태 확인";
+  if (mode === "online") {
+    const averageOrder = online !== null && onlineOrders > 0 ? online / onlineOrders : null;
+    return `<div class="today-sales-tooltip-card">
+      <h5>온라인 요약</h5>
+      ${todaySalesTooltipSection("매출", online === null ? "미확인" : apiWon(online), [
+        `주문 ${onlineOrders === null ? "미확인" : `${apiNum(onlineOrders)}건`}`,
+        `객단가 ${averageOrder === null ? "-" : apiWon(averageOrder)}`
+      ], "online")}
+    </div>`;
+  }
+  if (mode === "offline") {
+    return `<div class="today-sales-tooltip-card">
+      <h5>오프라인 요약</h5>
+      ${todaySalesTooltipSection("매출", offline === null ? "미확인" : apiWon(offline), [
+        `매출 Line ${offlineRevenueLines === null ? "미확인" : `${apiNum(offlineRevenueLines)}건`}`,
+        `전체 Line ${offlineTotalLines === null ? "미확인" : `${apiNum(offlineTotalLines)}건`}`,
+        `판매수량 ${offlineQuantity === null ? "미확인" : apiNum(offlineQuantity)}`
+      ], "offline")}
+    </div>`;
+  }
+  return `<div class="today-sales-tooltip-card">
+    <h5>${esc(salesCalendarLongDate(date))}</h5>
+    ${todaySalesTooltipSection("총매출", total === null ? "미확인" : apiWon(total))}
+    <hr>
+    ${todaySalesTooltipSection("온라인", online === null ? "미확인" : apiWon(online), [
+      `주문 ${onlineOrders === null ? "미확인" : `${apiNum(onlineOrders)}건`}`
+    ], "online")}
+    <hr>
+    ${todaySalesTooltipSection("오프라인", offline === null ? "미확인" : apiWon(offline), [
+      `매출 Line ${offlineRevenueLines === null ? "미확인" : `${apiNum(offlineRevenueLines)}건`}`,
+      `판매수량 ${offlineQuantity === null ? "미확인" : apiNum(offlineQuantity)}`
+    ], "offline")}
+    <p>${esc(status)}</p>
+  </div>`;
+}
+
+function todaySalesCalendarTooltipNode() {
+  let tooltip = $("#todaySalesCalendarTooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.id = "todaySalesCalendarTooltip";
+    tooltip.className = "today-sales-calendar-tooltip";
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.hidden = true;
+    document.body.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+function positionTodaySalesCalendarTooltip(anchor, tooltip) {
+  const margin = 14;
+  const gap = 10;
+  const rect = anchor.getBoundingClientRect();
+  const size = tooltip.getBoundingClientRect();
+  const width = size.width || tooltip.offsetWidth || 240;
+  const height = size.height || tooltip.offsetHeight || 180;
+  let left = rect.left + (rect.width / 2) - (width / 2);
+  let top = rect.bottom + gap;
+  if (left + width + margin > window.innerWidth) left = rect.right - width;
+  if (left < margin) left = rect.left;
+  if (top + height + margin > window.innerHeight) top = rect.top - height - gap;
+  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin));
+  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin));
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function showTodaySalesCalendarTooltip(target, event) {
+  const tooltip = todaySalesCalendarTooltipNode();
+  if (!tooltip) return;
+  tooltip.innerHTML = todaySalesCalendarTooltipHtml(target);
+  tooltip.classList.remove("is-visible");
+  tooltip.hidden = false;
+  tooltip.style.left = "0px";
+  tooltip.style.top = "0px";
+  positionTodaySalesCalendarTooltip(target, tooltip, event);
+  requestAnimationFrame(() => tooltip.classList.add("is-visible"));
+}
+
+function hideTodaySalesCalendarTooltip() {
+  const tooltip = $("#todaySalesCalendarTooltip");
+  if (!tooltip) return;
+  tooltip.classList.remove("is-visible");
+  tooltip.hidden = true;
+}
+
+function todaySalesCalendarLoadingHtml(monthKey) {
+  const cells = Array.from({ length: 35 }, () => `<div class="today-sales-calendar-cell today-sales-calendar-skeleton"></div>`).join("");
+  return `<section class="today-sales-calendar monthly-report-block is-loading">
+    <div class="monthly-report-block-head">
+      <div>
+        <h4>월간 일별 매출 캘린더</h4>
+        <span>${esc(salesCalendarMonthLabel(monthKey))}</span>
+      </div>
+      <div class="ops-summary-action">
+        <button class="button secondary" type="button" data-sales-calendar-nav="-1">이전 달</button>
+        <button class="button secondary" type="button" data-sales-calendar-nav="1">다음 달</button>
+      </div>
+    </div>
+    <div class="monthly-report-hero today-sales-calendar-summary">
+      <div class="monthly-report-hero-main"><span>월 누적 총매출</span><strong>확인 중</strong><p class="monthly-report-muted">일별 온라인 + 오프라인 합산</p></div>
+      <div class="monthly-report-side">
+        <div class="monthly-report-side-row"><span>온라인</span><strong>확인 중</strong></div>
+        <div class="monthly-report-side-row"><span>오프라인</span><strong>확인 중</strong></div>
+        <div class="monthly-report-side-row"><span>온라인 주문</span><strong>확인 중</strong></div>
+      </div>
+    </div>
+    <div class="today-sales-calendar-weekdays">
+      ${["일", "월", "화", "수", "목", "금", "토"].map((day) => `<span>${day}</span>`).join("")}
+    </div>
+    <div class="today-sales-calendar-grid">${cells}</div>
+    <div class="today-sales-calendar-loading-overlay" aria-hidden="true"><span></span></div>
+  </section>`;
+}
+
+function todaySalesCalendarSummaryHtml(rows = [], onlineData = {}, offlineData = {}) {
+  const onlineTotal = rows.reduce((sumValue, row) => sumValue + (row.onlineAvailable ? Number(row.onlineSales || 0) : 0), 0);
+  const offlineTotal = rows.reduce((sumValue, row) => sumValue + (row.offlineAvailable ? Number(row.offlineSales || 0) : 0), 0);
+  const total = onlineTotal + offlineTotal;
+  const onlineOrderCount = rows.reduce((sumValue, row) => sumValue + (row.onlineAvailable ? Number(row.onlineOrderCount || 0) : 0), 0);
+  const onlineApiTotal = Number(onlineData?.totals?.paidAmount);
+  const offlineApiTotal = Number(offlineData?.totalOfflineSales);
+  if (!onlineData.error && Number.isFinite(onlineApiTotal) && onlineApiTotal !== onlineTotal) {
+    console.warn("Today sales calendar online total mismatch", { api: onlineApiTotal, daily: onlineTotal });
+  }
+  if (!offlineData.error && Number.isFinite(offlineApiTotal) && offlineApiTotal !== offlineTotal) {
+    console.warn("Today sales calendar offline total mismatch", { api: offlineApiTotal, daily: offlineTotal });
+  }
+  return `<div class="monthly-report-hero today-sales-calendar-summary">
+    <div class="monthly-report-hero-main">
+      <span>월 누적 총매출</span>
+      <strong>${apiWon(total)}</strong>
+      <p class="monthly-report-muted">일별 온라인 + 오프라인 합산</p>
+    </div>
+    <div class="monthly-report-side">
+      <div class="monthly-report-side-row"><span>온라인</span><strong>${onlineData.error ? "미확인" : apiWon(onlineTotal)}</strong></div>
+      <div class="monthly-report-side-row"><span>오프라인</span><strong>${offlineData.error ? "미확인" : apiWon(offlineTotal)}</strong></div>
+      <div class="monthly-report-side-row"><span>온라인 주문</span><strong>${onlineData.error ? "미확인" : `${apiNum(onlineOrderCount)}건`}</strong></div>
+    </div>
+  </div>`;
+}
+
+function todaySalesCalendarCoverageNote(monthKey, onlineData = {}, offlineData = {}) {
+  const notes = [];
+  if (onlineData.error) notes.push(`온라인 매출을 확인하지 못했습니다: ${onlineData.error}`);
+  if (offlineData.error) {
+    notes.push(`오프라인 매출 snapshot이 없거나 확인되지 않았습니다.`);
+  } else if (offlineData.periodStart && offlineData.periodEnd) {
+    const start = `${monthKey}-01`;
+    const end = monthEnd(monthKey);
+    if (offlineData.periodStart > start || offlineData.periodEnd < end) {
+      notes.push(`오프라인 매출은 ${offlineData.periodStart} ~ ${offlineData.periodEnd} 범위까지 반영되었습니다.`);
+    } else {
+      notes.push(`오프라인 매출은 ${offlineData.periodStart} ~ ${offlineData.periodEnd} 기준으로 반영되었습니다.`);
+    }
+  }
+  return notes.length ? `<p class="monthly-report-fnote">${notes.map(esc).join(" · ")}</p>` : "";
+}
+
+async function renderTodaySalesCalendar(monthKey = todaySalesCalendarMonth) {
+  const target = $("#todaySalesCalendar");
+  if (!target) return;
+  todaySalesCalendarMonth = monthKey;
+  const renderSeq = ++todaySalesCalendarRenderSeq;
+  const start = `${monthKey}-01`;
+  const end = monthEnd(monthKey);
+  const existingCalendar = target.querySelector(".today-sales-calendar");
+  hideTodaySalesCalendarTooltip();
+  if (existingCalendar) {
+    existingCalendar.classList.add("is-loading");
+    existingCalendar.querySelector(".monthly-report-block-head span").textContent = salesCalendarMonthLabel(monthKey);
+  } else {
+    target.innerHTML = todaySalesCalendarLoadingHtml(monthKey);
+  }
+  const [onlineData, offlineData] = await Promise.all([
+    getJson(`/api/diagnostics/brand-sales?since=${start}&until=${end}`, 12000),
+    getJson(`/api/ecount-sales/monthly?month=${monthKey}`, 8000)
+  ]);
+  if (renderSeq !== todaySalesCalendarRenderSeq) return;
+  const rows = buildTodaySalesCalendarRows(monthKey, onlineData, offlineData);
+  const maxDailySales = rows.reduce((max, row) => Math.max(max, Number(row.totalSales || 0)), 0);
+  const [year, month] = monthKey.split("-").map(Number);
+  const firstDay = new Date(year, month - 1, 1).getDay();
+  const leading = Array.from({ length: firstDay }, () => null);
+  const cells = [...leading, ...rows];
+  target.innerHTML = `<section class="today-sales-calendar monthly-report-block">
+    <div class="monthly-report-block-head">
+      <div>
+        <h4>월간 일별 매출 캘린더</h4>
+        <span>${esc(salesCalendarMonthLabel(monthKey))}</span>
+      </div>
+      <div class="ops-summary-action">
+        <button class="button secondary" type="button" data-sales-calendar-nav="-1">이전 달</button>
+        <button class="button secondary" type="button" data-sales-calendar-nav="1">다음 달</button>
+      </div>
+    </div>
+    ${todaySalesCalendarSummaryHtml(rows, onlineData, offlineData)}
+    ${todaySalesCalendarCoverageNote(monthKey, onlineData, offlineData)}
+    <div class="today-sales-calendar-weekdays">
+      ${["일", "월", "화", "수", "목", "금", "토"].map((day) => `<span>${day}</span>`).join("")}
+    </div>
+    <div class="today-sales-calendar-grid">
+      ${cells.map((row) => todaySalesCalendarCell(row, maxDailySales)).join("")}
+    </div>
+    <div class="today-sales-calendar-loading-overlay" aria-hidden="true"><span></span></div>
+  </section>`;
+  requestAnimationFrame(() => target.querySelector(".today-sales-calendar")?.classList.add("is-ready"));
+}
+
 function salesConnectionState(error) {
   const raw = String(error || "Cafe24 연결 상태를 확인할 수 없습니다.");
   const lowered = raw.toLowerCase();
@@ -5451,10 +5880,11 @@ async function updateSync(data) {
 function renderAll() {
   resetSharedJsonRequests();
   const data = selectedMonth();
-  if (!reportsMonth) reportsMonth = data.month;
+  reportsMonth = data.month;
   $("#dataModeBadge").textContent = sourceLabel(data);
   renderMonthRail();
   renderKpis(data);
+  renderTodaySalesCalendar(todaySalesCalendarMonth);
   renderOverviewLiveData(data);
   renderReportsMonth(reportsMonth);
   renderContentTabs();
@@ -5970,16 +6400,20 @@ async function loadMonths(options = {}) {
     monthlyData.push(data.error ? errorMonth(month, data.error) : data);
   }
   monthlyData.sort((a, b) => b.month.localeCompare(a.month));
+  monthlyData = uniqueMonthlyDataRows();
   renderMonthSelect();
   renderAll();
 }
 
+async function refreshInstagramMonthlyData() {
+  toast("Instagram 최신 게시물을 다시 확인합니다.");
+  await loadMonths({ forceRefresh: true });
+  await renderStoryInsights();
+  toast("Instagram 최신 게시물을 다시 확인했습니다.");
+}
+
 function bind() {
-  $("#refreshBtn")?.addEventListener("click", async () => {
-    toast("Instagram 최신 게시물을 실제 API에서 다시 가져옵니다.");
-    await loadMonths({ forceRefresh: true });
-    await renderStoryInsights();
-  });
+  $("#instagramRefreshBtn")?.addEventListener("click", refreshInstagramMonthlyData);
   $("#refreshStoriesBtn")?.addEventListener("click", renderStoryInsights);
   // 같은 탭에서 이동한다 — Cafe24 로그인/동의 후 서버가 "/"로 리다이렉트하므로 그대로
   // 이 탭으로 돌아온다. (2026-07-08 Cafe24 재인증 흐름 개선)
@@ -6038,6 +6472,40 @@ function bind() {
     toast("오늘 업무 상태를 초기화했습니다.");
   });
   document.addEventListener("click", (event) => {
+    const calendarButton = event.target.closest("[data-sales-calendar-nav]");
+    if (!calendarButton) return;
+    const offset = Number(calendarButton.dataset.salesCalendarNav || 0);
+    if (!Number.isFinite(offset) || offset === 0) return;
+    renderTodaySalesCalendar(shiftMonthKey(todaySalesCalendarMonth, offset));
+  });
+  document.addEventListener("pointerover", (event) => {
+    const target = event.target.closest("#todaySalesCalendar [data-sales-calendar-tooltip]");
+    if (!target) return;
+    showTodaySalesCalendarTooltip(target, event);
+  });
+  document.addEventListener("pointermove", (event) => {
+    const target = event.target.closest("#todaySalesCalendar [data-sales-calendar-tooltip]");
+    const tooltip = $("#todaySalesCalendarTooltip");
+    if (target && tooltip && !tooltip.hidden) positionTodaySalesCalendarTooltip(target, tooltip);
+  });
+  document.addEventListener("pointerout", (event) => {
+    const target = event.target.closest("#todaySalesCalendar [data-sales-calendar-tooltip]");
+    if (!target || target.contains(event.relatedTarget)) return;
+    hideTodaySalesCalendarTooltip();
+  });
+  document.addEventListener("focusin", (event) => {
+    const target = event.target.closest("#todaySalesCalendar [data-sales-calendar-tooltip]");
+    if (target) showTodaySalesCalendarTooltip(target);
+  });
+  document.addEventListener("focusout", (event) => {
+    const target = event.target.closest("#todaySalesCalendar [data-sales-calendar-tooltip]");
+    if (!target || target.contains(event.relatedTarget)) return;
+    hideTodaySalesCalendarTooltip();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideTodaySalesCalendarTooltip();
+  });
+  document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-brief-status]");
     if (!button) return;
     const id = button.dataset.briefStatus;
@@ -6080,10 +6548,7 @@ function bind() {
     const annualBar = event.target.closest("[data-annual-month]");
     if (annualBar) {
       const month = annualBar.dataset.annualMonth || "";
-      if (!monthlyData.some((item) => item.month === month)) return;
-      reportsMonth = month;
-      renderMonthRail();
-      renderReportsMonth(reportsMonth, { scrollToReport: true });
+      setReportsMonth(month, { scrollToReport: true });
       return;
     }
     const annualFilter = event.target.closest("[data-annual-filter]");
@@ -6361,7 +6826,8 @@ function bind() {
   $$("[data-ad-level]").forEach((button) => {
     button.addEventListener("click", () => {
       activeAdLevel = button.dataset.adLevel || "campaign";
-      const current = monthlyData.find((item) => item.month === $("#monthSelect")?.value) || monthlyData[0];
+      const rows = uniqueMonthlyDataRows();
+      const current = rows.find((item) => item.month === $("#monthSelect")?.value) || rows[0];
       if (current) renderAdvertising(current);
     });
   });
