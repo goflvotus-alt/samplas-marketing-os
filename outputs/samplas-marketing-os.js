@@ -2040,9 +2040,50 @@ function annualArchiveMonths(month) {
   return Array.from({ length: lastMonth }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
 }
 
+function annualArchiveSalesInfo(archive = {}) {
+  const totalRaw = archive.sales?.totalSales?.amount;
+  const onlineRaw = hasApiValue(archive.sales?.onlineSales?.paidAmount)
+    ? archive.sales.onlineSales.paidAmount
+    : archive.commerce?.paidAmount;
+  const offlineRaw = archive.sales?.offlineSales?.offlineSalesAmount;
+  if (hasApiValue(totalRaw)) {
+    const value = Number(totalRaw);
+    return {
+      hasValue: Number.isFinite(value),
+      value,
+      valueType: "total",
+      label: "총매출",
+      onlineSales: hasApiValue(onlineRaw) ? Number(onlineRaw) : null,
+      offlineSales: hasApiValue(offlineRaw) ? Number(offlineRaw) : null,
+      offlineAvailable: hasApiValue(offlineRaw)
+    };
+  }
+  if (hasApiValue(onlineRaw)) {
+    const value = Number(onlineRaw);
+    return {
+      hasValue: Number.isFinite(value),
+      value,
+      valueType: "online-fallback",
+      label: "온라인 매출",
+      onlineSales: value,
+      offlineSales: null,
+      offlineAvailable: false
+    };
+  }
+  return {
+    hasValue: false,
+    value: NaN,
+    valueType: "unavailable",
+    label: "매출",
+    onlineSales: null,
+    offlineSales: null,
+    offlineAvailable: false
+  };
+}
+
 function annualArchiveValue(archive, key) {
-  if (key === "totalSales") return Number(archive.sales?.totalSales?.amount);
-  if (key === "onlineSales") return Number(archive.sales?.onlineSales?.paidAmount);
+  if (key === "totalSales") return annualArchiveSalesInfo(archive).value;
+  if (key === "onlineSales") return Number(hasApiValue(archive.sales?.onlineSales?.paidAmount) ? archive.sales.onlineSales.paidAmount : archive.commerce?.paidAmount);
   if (key === "offlineSales") return Number(archive.sales?.offlineSales?.offlineSalesAmount);
   if (key === "paidAmount") return Number(archive.commerce?.paidAmount);
   if (key === "spend") return Number(archive.marketing?.spend);
@@ -2064,8 +2105,11 @@ function annualArchiveFormat(value, type) {
 }
 
 function annualArchiveRawValue(archive, key) {
-  if (key === "totalSales") return archive.sales?.totalSales?.amount;
-  if (key === "onlineSales") return archive.sales?.onlineSales?.paidAmount;
+  if (key === "totalSales") {
+    const salesInfo = annualArchiveSalesInfo(archive);
+    return salesInfo.hasValue ? salesInfo.value : undefined;
+  }
+  if (key === "onlineSales") return hasApiValue(archive.sales?.onlineSales?.paidAmount) ? archive.sales.onlineSales.paidAmount : archive.commerce?.paidAmount;
   if (key === "offlineSales") return archive.sales?.offlineSales?.offlineSalesAmount;
   if (key === "paidAmount") return archive.commerce?.paidAmount;
   if (key === "spend") return archive.marketing?.spend;
@@ -2141,6 +2185,7 @@ function annualArchiveMetricBlock(metric, rows) {
       ${rows.map((row, index) => {
         const missing = row.failed || !annualArchiveHasValue(row.archive, metric.key);
         const value = missing ? NaN : annualArchiveValue(row.archive, metric.key);
+        const salesInfo = metric.key === "totalSales" ? annualArchiveSalesInfo(row.archive) : null;
         const width = Number.isFinite(value) ? Math.max(value === 0 ? 0 : 4, Math.min(100, Math.abs(value) / max * 100)) : 0;
         const label = `${Number(row.month.slice(5, 7))}월`;
         const formatted = missing ? "-" : annualArchiveFormat(value, metric.type);
@@ -2152,15 +2197,24 @@ function annualArchiveMetricBlock(metric, rows) {
             draft: "Unsaved Draft"
           }[row.archiveStatus] || String(row.archive?.status || "Draft");
         const coverageText = metric.coverage === "offline" && !missing
-          ? row.archive?.sales?.coverage?.offline === true
-            ? "오프라인 확보"
-            : "오프라인 확인 필요"
+          ? metric.key === "totalSales" && salesInfo?.valueType === "online-fallback"
+            ? "오프라인 데이터 없음"
+            : row.archive?.sales?.coverage?.offline === true
+              ? "오프라인 확보"
+              : "오프라인 확인 필요"
           : "";
         const previousRow = rows[index - 1];
         const previousMissing = !previousRow || previousRow.failed || !annualArchiveHasValue(previousRow.archive, metric.key);
         const previousValue = previousMissing ? null : annualArchiveValue(previousRow.archive, metric.key);
+        const previousSalesInfo = metric.key === "totalSales" && previousRow ? annualArchiveSalesInfo(previousRow.archive) : null;
+        const differentSalesBasis = metric.key === "totalSales"
+          && !missing
+          && !previousMissing
+          && salesInfo?.valueType !== previousSalesInfo?.valueType;
         const deltaText = index === 0 || missing || previousMissing
           ? "전월 대비 비교 불가"
+          : differentSalesBasis
+            ? "전월 대비 기준 상이"
           : metric.key === "followerDelta"
             ? Number(value - previousValue) > 0
               ? `전월보다 증가폭 ${apiNum(Math.abs(value - previousValue))}명 확대`
@@ -2168,7 +2222,11 @@ function annualArchiveMetricBlock(metric, rows) {
                 ? `전월보다 증가폭 ${apiNum(Math.abs(value - previousValue))}명 축소`
                 : "전월과 증가폭 동일"
             : monthlyReportDelta(value, previousValue, metric.type === "money" ? apiWon : apiNum);
-        const tooltip = `${label} · ${metric.title} ${missing ? "데이터 없음" : formatted} · ${statusText}${coverageText ? ` · ${coverageText}` : ""} · ${deltaText}`;
+        const tooltip = metric.key === "totalSales"
+          ? salesInfo?.valueType === "online-fallback"
+            ? `${label} · 온라인 매출 ${missing ? "데이터 없음" : formatted} · 오프라인 매출 데이터 없음 · ${statusText}${coverageText ? ` · ${coverageText}` : ""} · ${deltaText}`
+            : `${label} · ${missing ? "매출 데이터 없음" : `${salesInfo.label} ${formatted}`} · 온라인 매출 ${!missing && hasApiValue(salesInfo.onlineSales) ? apiWon(salesInfo.onlineSales) : "데이터 없음"} · 오프라인 매출 ${!missing && salesInfo.offlineAvailable ? apiWon(salesInfo.offlineSales) : "데이터 없음"} · ${statusText}${coverageText ? ` · ${coverageText}` : ""} · ${deltaText}`
+          : `${label} · ${metric.title} ${missing ? "데이터 없음" : formatted} · ${statusText}${coverageText ? ` · ${coverageText}` : ""} · ${deltaText}`;
         return `<div class="annual-flow-bar" data-annual-month="${esc(row.month)}" data-empty="${missing ? "true" : "false"}" data-tooltip="${esc(tooltip)}">
           <i style="height:${width}%"></i>
           <span>${esc(label)}</span>
