@@ -6559,39 +6559,58 @@ function buildBrandTimeline(brand = {}) {
     }));
   }
   const marketing = input?.marketing || {};
-  addEvent({
-    category: "marketing",
-    type: marketing.status || "status",
-    title: marketing.status === "matched" ? "광고 데이터 연결" : "광고 데이터 없음",
-    description: marketing.data?.reason || intelligenceSourceHelpText("marketing", marketing)
-  });
+  const marketingData = marketing.data || {};
+  if (marketing.status === "matched" && (Number.isFinite(Number(marketingData.spend)) || Number.isFinite(Number(marketingData.campaignCount)) || (Array.isArray(marketingData.campaigns) && marketingData.campaigns.length))) {
+    addEvent({
+      category: "marketing",
+      type: "matched",
+      title: "광고 데이터 연결",
+      description: [
+        Number.isFinite(Number(marketingData.spend)) ? `광고비 ${apiWon(marketingData.spend)}` : "",
+        Number.isFinite(Number(marketingData.campaignCount)) ? `캠페인 ${apiNum(marketingData.campaignCount)}건` : ""
+      ].filter(Boolean).join(" · ") || "Meta source 데이터가 연결됐습니다."
+    });
+  }
   const content = input?.content || {};
-  addEvent({
-    category: "content",
-    type: content.status || "status",
-    title: content.status === "matched" ? "콘텐츠 데이터 연결" : "콘텐츠 데이터 없음",
-    description: content.data?.reason || intelligenceSourceHelpText("content", content)
-  });
+  const contentData = content.data || {};
+  const contentPosts = Array.isArray(contentData.posts) ? contentData.posts : [];
+  if (content.status === "matched" && contentPosts.length) {
+    addEvent({
+      category: "content",
+      type: "matched",
+      title: "콘텐츠 데이터 연결",
+      description: `Instagram 콘텐츠 ${apiNum(contentPosts.length)}건`
+    });
+  }
   const search = input?.search || {};
-  addEvent({
-    category: "search",
-    type: search.status || "status",
-    title: search.status === "matched" ? "검색 Snapshot 연결" : "검색 Snapshot 없음",
-    description: search.data?.reason || intelligenceSourceHelpText("search", search)
-  });
-  (Array.isArray(detail.signals) ? detail.signals : []).forEach((signal) => addEvent({
-    category: signal.type === "commerce" ? "commerce" : signal.type === "search" ? "search" : signal.type === "marketing" ? "marketing" : signal.type === "content" ? "content" : "ai",
-    type: signal.id || signal.type || "signal",
-    title: signal.title || signal.id || "Signal",
-    description: intelligenceSignalDescription(signal)
-  }));
-  (Array.isArray(detail.actions) ? detail.actions : []).forEach((action) => addEvent({
+  const searchData = search.data || {};
+  const searchRows = Array.isArray(searchData.rows) ? searchData.rows : [];
+  if (search.status === "matched" && searchRows.length) {
+    const firstRow = searchRows[0] || {};
+    const queryTotal = [firstRow.monthlyPcQueryCount, firstRow.monthlyMobileQueryCount]
+      .map((value) => Number(value))
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    addEvent({
+      date: searchData.collectedAt || generatedAt,
+      category: "search",
+      type: "snapshot",
+      title: "검색 Snapshot 수집",
+      description: [
+        searchData.keyword ? `키워드 ${searchData.keyword}` : "",
+        Number.isFinite(queryTotal) && queryTotal > 0 ? `월 검색 ${apiNum(queryTotal)}회` : "",
+        firstRow.competitionIndex ? `경쟁 ${firstRow.competitionIndex}` : ""
+      ].filter(Boolean).join(" · ") || "Naver Search Ads snapshot이 연결됐습니다."
+    });
+  }
+  const excludedTimelineActionIds = new Set(["collect_search_snapshot"]);
+  (Array.isArray(detail.actions) ? detail.actions : []).filter((action) => !excludedTimelineActionIds.has(action?.id)).forEach((action) => addEvent({
     category: "ai",
     type: action.id || "action",
     title: intelligenceActionHumanLabel(action),
     description: action.reason || action.title || ""
   }));
-  if (mission?.title) {
+  if (mission?.title && !excludedTimelineActionIds.has(mission.sourceActionId)) {
     addEvent({
       category: "ai",
       type: mission.sourceActionId || "mission",
@@ -6623,11 +6642,11 @@ function renderBrandTimelineSection(events = []) {
   ];
   const rows = events.length
     ? events.map((event) => brandTimelineEventHtml(event)).join("")
-    : `<article class="action-item sales-list-card"><span>Timeline</span><strong>표시할 이벤트가 없습니다</strong><p>연결된 데이터가 생기면 이곳에 표시됩니다.</p></article>`;
+    : "";
   return `<section class="monthly-report-block" data-brand-timeline>
     <div class="monthly-report-block-head"><div><span>Brand Timeline</span><strong>Unified Brand Timeline</strong></div></div>
     <div class="product-action-filters">${categories.map(([value, label]) => `<button class="product-action-filter ${value === "all" ? "active" : ""}" type="button" data-brand-timeline-filter="${value}">${label}</button>`).join("")}</div>
-    <div class="cards" data-brand-timeline-events>${rows}</div>
+    <div class="cards" data-brand-timeline-events>${rows}<article class="action-item sales-list-card" data-brand-timeline-empty ${events.length ? "hidden" : ""}><span>Timeline</span><strong>${events.length ? "이 카테고리에 표시할 실제 이벤트가 없습니다." : "표시할 실제 브랜드 이벤트가 없습니다."}</strong><p>Source 상태와 raw signal은 아래 섹션에서 확인할 수 있습니다.</p></article></div>
   </section>`;
 }
 
@@ -7385,9 +7404,19 @@ function bind() {
     const section = button.closest("[data-brand-timeline]");
     const category = button.dataset.brandTimelineFilter || "all";
     section?.querySelectorAll("[data-brand-timeline-filter]").forEach((node) => node.classList.toggle("active", node === button));
+    let visibleCount = 0;
     section?.querySelectorAll("[data-brand-timeline-event]").forEach((node) => {
-      node.hidden = category !== "all" && node.dataset.brandTimelineEvent !== category;
+      const visible = category === "all" || node.dataset.brandTimelineEvent === category;
+      node.hidden = !visible;
+      if (visible) visibleCount += 1;
     });
+    const empty = section?.querySelector("[data-brand-timeline-empty]");
+    if (empty) {
+      empty.hidden = visibleCount > 0;
+      const message = category === "all" ? "표시할 실제 브랜드 이벤트가 없습니다." : "이 카테고리에 표시할 실제 이벤트가 없습니다.";
+      const title = empty.querySelector("strong");
+      if (title) title.textContent = message;
+    }
   });
   document.addEventListener("pointerover", (event) => {
     const bar = event.target.closest(".annual-flow-bar");
