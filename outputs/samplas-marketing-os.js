@@ -2406,28 +2406,40 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     : "";
   const sales = archive.sales || null;
   const salesCoverage = sales?.coverage || {};
-  const hasSalesSummary = Boolean(sales?.totalSales && sales?.onlineSales && sales?.offlineSales);
+  const salesTotalAmount = sales?.totalSales?.amount;
+  const salesOnlineAmount = hasApiValue(sales?.onlineSales?.paidAmount)
+    ? sales.onlineSales.paidAmount
+    : commerce.paidAmount;
+  const salesOfflineAmount = sales?.offlineSales?.offlineSalesAmount;
+  const hasCanonicalTotalSales = hasApiValue(salesTotalAmount);
+  const hasOnlineSales = hasApiValue(salesOnlineAmount);
+  const hasOfflineSales = hasApiValue(salesOfflineAmount);
+  const hasSalesSummary = hasCanonicalTotalSales || hasOnlineSales || hasOfflineSales;
   const salesCoverageComplete = salesCoverage.complete === true;
   const salesCoverageLabel = salesCoverageComplete ? "통합 매출 기준 완료" : "확보 데이터 기준";
-  const salesCoverageNote = salesCoverageComplete
-    ? "Cafe24 온라인 매출과 ECOUNT 오프라인 매출을 함께 합산했습니다."
-    : "ECOUNT 확인 범위 기준으로 합산된 매출입니다. 일부 월 범위 확인 필요.";
+  const salesCoverageNote = hasCanonicalTotalSales
+    ? salesCoverageComplete
+      ? "Cafe24 온라인 매출과 ECOUNT 오프라인 매출을 함께 합산했습니다."
+      : "ECOUNT 확인 범위 기준으로 합산된 매출입니다. 일부 월 범위 확인 필요."
+    : "이 archive에는 통합 매출 필드가 없어 Cafe24 온라인 매출만 표시합니다.";
   const salesSummaryBlock = hasSalesSummary ? `
     <section class="monthly-report-block">
-      <div class="monthly-report-block-head"><h4>Sales Summary</h4><span>${esc(salesCoverageLabel)}</span></div>
+      <div class="monthly-report-block-head"><h4>Sales Summary</h4><span>${esc(hasCanonicalTotalSales ? salesCoverageLabel : "온라인 매출 기준")}</span></div>
       <div class="monthly-report-hero">
         <div class="monthly-report-hero-main">
-          <span>총 매출</span>
-          <strong>${apiWon(sales.totalSales.amount)}</strong>
-          <em>Cafe24 온라인 + ECOUNT 오프라인</em>
+          <span>${hasCanonicalTotalSales ? "총매출" : "온라인 매출"}</span>
+          <strong>${apiWon(hasCanonicalTotalSales ? salesTotalAmount : salesOnlineAmount)}</strong>
+          <em>${hasCanonicalTotalSales ? "Cafe24 온라인 + ECOUNT 오프라인" : "Cafe24 온라인 실제 결제 매출"}</em>
         </div>
         <div class="monthly-report-side">
-          <div class="monthly-report-side-row"><span>온라인 매출</span><strong>${apiWon(sales.onlineSales.paidAmount)}</strong></div>
-          <div class="monthly-report-side-row"><span>오프라인 매출</span><strong>${apiWon(sales.offlineSales.offlineSalesAmount)}</strong></div>
-          <div class="monthly-report-side-row ${salesCoverageComplete ? "" : "monthly-report-muted"}"><span>Coverage</span><strong>${esc(salesCoverageLabel)}</strong></div>
+          <div class="monthly-report-side-row"><span>온라인 매출</span><strong>${apiWon(salesOnlineAmount)}</strong></div>
+          <div class="monthly-report-side-row ${hasOfflineSales ? "" : "monthly-report-muted"}"><span>오프라인 매출</span><strong>${hasOfflineSales ? apiWon(salesOfflineAmount) : "데이터 없음"}</strong></div>
+          <div class="monthly-report-side-row"><span>온라인 주문</span><strong>${apiNum(commerce.orderCount)}</strong></div>
+          <div class="monthly-report-side-row"><span>온라인 객단가</span><strong>${apiWon(commerce.averageOrderValue)}</strong></div>
+          ${hasCanonicalTotalSales ? `<div class="monthly-report-side-row ${salesCoverageComplete ? "" : "monthly-report-muted"}"><span>Coverage</span><strong>${esc(salesCoverageLabel)}</strong></div>` : ""}
         </div>
       </div>
-      <p class="monthly-report-fnote ${salesCoverageComplete ? "" : "monthly-report-muted"}">${esc(salesCoverageNote)}</p>
+      <p class="monthly-report-fnote ${hasCanonicalTotalSales && salesCoverageComplete ? "" : "monthly-report-muted"}">${esc(salesCoverageNote)}</p>
     </section>
   ` : "";
   const brandSignalsBlock = brandSales.length && previousBrandSales.length
