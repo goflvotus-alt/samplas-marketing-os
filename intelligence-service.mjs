@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
-import { createHmac } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash, createHmac } from "node:crypto";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { URL } from "node:url";
@@ -2034,6 +2034,352 @@ function tempJsonFile(file) {
 
 function safeErrorMessage(error) {
   return error?.message ? String(error.message) : "Unknown error";
+}
+
+// ==== Clients Intelligence (Stage 6) — Client Summary Engine ====
+// buildClientSummaries(): ECOUNT 거래처명(customerName)을 client 단위로 묶고, Cafe24 개인결제창
+// 주문을 텍스트 매칭해 monthlySales/lifetimeSales/purchaseCount/latestPurchaseDate를 연결한다.
+// 이번 단계는 데이터 엔진만 구현한다 — API/UI는 추가하지 않는다.
+//
+// 설계 전제(중요, 보고서 참고):
+// - ECOUNT customerName은 "매장방문고객"/"택배"처럼 Cafe24 온라인 주문과 무관한 값이 대부분이다.
+//   Cafe24와 연결 가능한 것은 개인결제창(브랜드코드 B0000000) 거래뿐이며, 이 거래의 Cafe24 상품명에는
+//   "이름 [실장님] 개인결제창 [날짜]" 형태로 담당자/고객 이름이 그대로 노출되어 있다(Phase 1 진단 #259/#260에서
+//   확인). buildClientSummaries()는 이 상품명 텍스트에서 이름을 추출해 ECOUNT customerName과 매칭한다.
+//   매칭되지 않는 client(매장방문고객/택배 등)는 monthlySales/lifetimeSales/purchaseCount가 0이고
+//   latestPurchaseDate는 null이 되는데, 이는 버그가 아니라 Cafe24 온라인 거래 자체가 없다는 뜻이다.
+// - "다인 주문"(예: "박지연 박상욱 실장님 김희섭님 개인결제창")은 첫 번째 이름에만 귀속되는 한계가 있다.
+// - Brand(recentItems.brand)는 ECOUNT brandGroup 원문(예: "AVA", "PRO")을 그대로 사용한다. 현재 코드베이스에는
+//   ECOUNT brandGroup을 work/brand-master.json의 canonical brand_code로 매핑하는 로직이 존재하지 않는다
+//   (직접 확인함). "현재 canonical brand 사용" 지시를 반영하되, 없는 매핑을 새로 만들지는 않았다.
+
+const CLIENT_TYPE_RULE3_EXACT_NAMES = [
+  "윤재님 판매",
+  "영은님 판매",
+  "애림님 판매",
+  "민철님 판매",
+  "우혁님 판매",
+  "준희님 판매"
+];
+const CLIENT_LOGISTICS_NAMES = new Set(["택배"]);
+
+export async function buildClientSummaries(options = {}) {
+  const now = options.now ? new Date(options.now) : new Date();
+  const currentMonth = options.currentMonth || clientsIntelligenceMonthKey(now);
+
+  const ecountClients = await loadEcountClientLines();
+  const cafe24PersonalPaymentOrders = await loadCafe24PersonalPaymentOrders({ currentMonth });
+
+  const mergedClients = new Map();
+  for (const [rawName, lines] of ecountClients) {
+    const entity = classifyClientEntity(rawName);
+    if (entity.entityType !== "client") continue;
+    const classification = classifyClientType(rawName);
+    const matchKey = extractClientMatchKey(rawName);
+    const mergeKey = clientMergeKey(rawName, classification, matchKey);
+    if (!mergedClients.has(mergeKey)) {
+      mergedClients.set(mergeKey, {
+        mergeKey,
+        classification,
+        matchKey,
+        aliases: [],
+        aliasSet: new Set(),
+        lines: [],
+        orders: new Map()
+      });
+    }
+    const group = mergedClients.get(mergeKey);
+    if (!group.aliasSet.has(rawName)) {
+      group.aliasSet.add(rawName);
+      group.aliases.push(rawName);
+    }
+    group.lines.push(...lines);
+    const orderMatchKey = clientOrderMatchKey(classification, matchKey);
+    const matchedOrders = orderMatchKey ? cafe24PersonalPaymentOrders.filter((order) => order.matchKey === orderMatchKey) : [];
+    for (const order of matchedOrders) {
+      group.orders.set(clientOrderDedupeKey(order), order);
+    }
+  }
+
+  const summaries = [...mergedClients.values()].map((group) => {
+    const representativeRawName = selectRepresentativeClientRawName(group.aliases);
+    const classification = group.classification;
+    const matchedOrders = [...group.orders.values()];
+    const monthlySales = matchedOrders
+      .filter((order) => order.monthKey === currentMonth)
+      .reduce((sum, order) => sum + order.paidAmount, 0);
+    const lifetimeSales = matchedOrders.reduce((sum, order) => sum + order.paidAmount, 0);
+    const purchaseCount = matchedOrders.length;
+    const latestPurchaseDate = matchedOrders.reduce(
+      (latest, order) => (!latest || order.orderDate > latest ? order.orderDate : latest),
+      null
+    );
+    return {
+      clientId: clientIdFromMatchKey(group.mergeKey),
+      rawName: representativeRawName,
+      aliases: group.aliases,
+      displayName: buildClientDisplayName(representativeRawName, classification),
+      clientType: classification.type,
+      salesStaff: classification.salesStaff || null,
+      monthlySales,
+      lifetimeSales,
+      purchaseCount,
+      latestPurchaseDate,
+      recentItems: buildClientRecentItems(group.lines)
+    };
+  });
+
+  summaries.sort((a, b) => (b.monthlySales || 0) - (a.monthlySales || 0));
+  return summaries;
+}
+
+function clientsIntelligenceMonthKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function clientIdFromMatchKey(matchKey) {
+  return `client_${createHash("sha1").update(String(matchKey || "")).digest("hex").slice(0, 12)}`;
+}
+
+function classifyClientEntity(rawName) {
+  const text = String(rawName || "").trim();
+  if (CLIENT_LOGISTICS_NAMES.has(text)) return { entityType: "logistics" };
+  return { entityType: "client" };
+}
+
+// Client Type 규칙 (우선순위 순서대로 검사):
+// 1) 거래처명에 "TAXFREE" 포함 -> foreign
+// 2) 거래처명에 "실장님"/"스타일리스트"/"팀" 포함 -> stylist
+// 3) 거래처명이 아래 6개 문자열과 정확히 일치 -> customer (salesStaff는 이름만 별도 저장)
+// 4) 그 외 -> samplas_press
+function classifyClientType(rawName) {
+  const text = String(rawName || "");
+  if (text.includes("TAXFREE")) return { type: "foreign", salesStaff: null };
+  if (text.includes("실장님") || text.includes("스타일리스트") || text.includes("팀")) {
+    return { type: "stylist", salesStaff: null };
+  }
+  if (CLIENT_TYPE_RULE3_EXACT_NAMES.includes(text)) {
+    const match = text.match(/^(.+?)님\s*판매$/);
+    return { type: "customer", salesStaff: match ? match[1] : null };
+  }
+  if (text === "매장방문고객") return { type: "customer", salesStaff: null };
+  return { type: "samplas_press", salesStaff: null };
+}
+
+function clientMergeKey(rawName, classification, matchKey) {
+  if (classification.salesStaff) return `${classification.type}:staff:${normalizeClientIdentityKey(classification.salesStaff)}`;
+  if (matchKey) return `${classification.type}:${matchKey}`;
+  return `${classification.type}:raw:${normalizeClientIdentityKey(rawName)}`;
+}
+
+function clientOrderMatchKey(classification, matchKey) {
+  if (classification.salesStaff) return "";
+  if (classification.type === "customer" && !matchKey) return "";
+  return matchKey;
+}
+
+function clientOrderDedupeKey(order) {
+  return String(order?.orderId || `${order?.orderDate || ""}:${order?.paidAmount || 0}:${order?.personalPaymentProductName || ""}`);
+}
+
+function selectRepresentativeClientRawName(aliases = []) {
+  return [...aliases].sort((left, right) => String(right || "").length - String(left || "").length || String(left || "").localeCompare(String(right || "")))[0] || "";
+}
+
+function buildClientDisplayName(rawName, classification = classifyClientType(rawName)) {
+  if (classification.type === "customer") {
+    if (String(rawName || "").trim() === "매장방문고객") return "매장방문고객";
+    if (classification.salesStaff) return "일반 고객";
+  }
+  let text = String(rawName || "");
+  if (classification.type === "foreign") {
+    text = cleanClientNameText(text.replace(/TAXFREE/gi, " "));
+    return text || "Foreign Client";
+  }
+  if (classification.type === "stylist") {
+    text = cleanClientNameText(text.replace(/실장님|스타일리스트/g, " "));
+    return text || "Stylist Client";
+  }
+  text = cleanClientNameText(text);
+  return text || "SAMPLAS PRESS";
+}
+
+function cleanClientNameText(value) {
+  return String(value || "")
+    .replace(/개인\s*결제창|개인결제창|개인결제/g, " ")
+    .replace(/[()]/g, " ")
+    .replace(/님/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function normalizeClientIdentityKey(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/\s+/g, "")
+    .toLocaleLowerCase("ko-KR");
+}
+
+function buildClientRecentItems(lines = []) {
+  const seen = new Set();
+  const rows = [];
+  for (const line of [...lines].sort((a, b) => String(b?.date || "").localeCompare(String(a?.date || "")))) {
+    const key = [
+      line?.date || "",
+      line?.productName || "",
+      line?.specification || "",
+      line?.brandGroup || "",
+      Number.isFinite(line?.quantity) ? line.quantity : "",
+      Number.isFinite(line?.salesAmount) ? line.salesAmount : ""
+    ].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      brand: line?.brandGroup || null,
+      product: line?.productName || null,
+      size: line?.specification || null,
+      quantity: Number.isFinite(line?.quantity) ? line.quantity : null,
+      date: line?.date || null
+    });
+    if (rows.length >= 5) break;
+  }
+  return rows;
+}
+
+// ECOUNT customerName과 Cafe24 개인결제창 상품명을 같은 인물로 매칭하기 위한 정규화 키.
+// 괄호/날짜(YY.MM.DD)/개인결제창 관련 단어/조사(님)를 제거한 뒤 첫 토큰(이름)을 매칭 키로 쓴다.
+function extractClientMatchKey(text) {
+  let value = String(text || "");
+  // 괄호는 "괄호 안에 실제 이름이 들어있는" 표기(예: "개인결제창 (최재은 실장님)")가 실제로 존재하므로
+  // 내용째 지우지 않고 괄호 문자만 제거해 안쪽 텍스트를 남긴다("이름 (지점명)" 형태에서도 첫 토큰은
+  // 항상 이름이므로 안전하다).
+  value = value.replace(/[()]/g, " ");
+  value = value.replace(/\d{2}\.\d{2}\.\d{2}(-\d+)?/g, " ");
+  value = value.replace(/개인\s*결제창|개인결제/g, " ");
+  value = value.replace(/실장님|스타일리스트|팀장님|팀원|TAXFREE|판매|구매|지인|기프트|픽업|팀/g, " ");
+  value = value.replace(/님/g, " ");
+  value = value.replace(/[/\-,]/g, " ");
+  value = value.replace(/\s+/g, " ").trim();
+  const firstToken = value.split(" ")[0] || "";
+  return firstToken.length >= 2 ? firstToken : "";
+}
+
+// work/ecount-sales/*.json 전체를 읽어 customerName(거래처명) 문자열 그대로를 client 그룹 키로 사용한다.
+async function loadEcountClientLines() {
+  const dir = join(workRoot, "ecount-sales");
+  const names = (await safeReaddir(dir)).filter((name) => /^\d{4}-\d{2}\.json$/.test(name));
+  const clients = new Map();
+  for (const name of names) {
+    let snapshot;
+    try {
+      snapshot = JSON.parse(await readFile(join(dir, name), "utf8"));
+    } catch {
+      continue;
+    }
+    const lines = Array.isArray(snapshot?.salesLines)
+      ? snapshot.salesLines
+      : Array.isArray(snapshot?.rows)
+        ? snapshot.rows
+        : [];
+    for (const line of lines) {
+      const rawName = String(line?.customerName ?? "").trim();
+      if (!rawName) continue;
+      if (!clients.has(rawName)) clients.set(rawName, []);
+      clients.get(rawName).push(line);
+    }
+  }
+  return clients;
+}
+
+// Cafe24 개인결제창 주문만 추출한다.
+// - 과거월: work/cafe24-csv-orders-*.json 전체(월별 canonical 캐시)를 읽는다.
+// - 현재월: work/cafe24-proxy-orders-{currentMonth}-01_*.json 중 주문 수가 가장 많은(가장 최신 동기화된) 파일 1개만 쓴다.
+// 이 함수는 디스크 캐시만 읽고 실시간 Cafe24 API 호출은 하지 않는다(진단 세션 네트워크 정책상 프록시가
+// 항상 연결 가능하다고 보장할 수 없어, 이미 동기화되어 있는 캐시 파일을 신뢰 소스로 사용한다).
+async function loadCafe24PersonalPaymentOrders({ currentMonth }) {
+  const files = await safeReaddir(workRoot);
+  const orders = [];
+
+  const csvFiles = files.filter((name) => /^cafe24-csv-orders-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.json$/.test(name));
+  for (const name of csvFiles) {
+    let data;
+    try {
+      data = JSON.parse(await readFile(join(workRoot, name), "utf8"));
+    } catch {
+      continue;
+    }
+    for (const order of data?.orders || []) {
+      const normalized = normalizeCafe24CsvOrder(order);
+      if (normalized) orders.push(normalized);
+    }
+  }
+
+  const currentMonthPrefix = `cafe24-proxy-orders-${currentMonth}-01_`;
+  const proxyCandidates = files.filter((name) => name.startsWith(currentMonthPrefix) && name.endsWith(".json"));
+  let bestProxyData = null;
+  let bestProxyOrderCount = -1;
+  for (const name of proxyCandidates) {
+    let data;
+    try {
+      data = JSON.parse(await readFile(join(workRoot, name), "utf8"));
+    } catch {
+      continue;
+    }
+    const count = Array.isArray(data?.orders) ? data.orders.length : 0;
+    if (count > bestProxyOrderCount) {
+      bestProxyOrderCount = count;
+      bestProxyData = data;
+    }
+  }
+  if (bestProxyData) {
+    for (const order of bestProxyData.orders || []) {
+      const normalized = normalizeCafe24ProxyOrder(order);
+      if (normalized) orders.push(normalized);
+    }
+  }
+
+  return orders
+    .map((order) => ({ ...order, matchKey: extractClientMatchKey(order.personalPaymentProductName) }))
+    .filter((order) => order.matchKey);
+}
+
+function safeReaddir(dir) {
+  return readdir(dir).catch(() => []);
+}
+
+// cafe24-csv-orders-*.json 스키마: {order_id, order_date(YYYY-MM-DD), actual_payment_amount, items:[{productName}]}
+function normalizeCafe24CsvOrder(order) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const ppItem = items.find((item) => String(item?.productName || "").includes("개인결제"));
+  if (!ppItem) return null;
+  const orderDate = String(order?.order_date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return null;
+  const paidAmount = Number(order?.actual_payment_amount);
+  return {
+    orderId: order?.order_id || null,
+    orderDate,
+    monthKey: orderDate.slice(0, 7),
+    paidAmount: Number.isFinite(paidAmount) ? paidAmount : 0,
+    personalPaymentProductName: ppItem.productName || ""
+  };
+}
+
+// cafe24-proxy-orders-*.json 스키마: {order_id, order_date(ISO+TZ), payment_amount, items:[{product_name}]}
+function normalizeCafe24ProxyOrder(order) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const ppItem = items.find((item) => String(item?.product_name || "").includes("개인결제"));
+  if (!ppItem) return null;
+  const orderDate = String(order?.order_date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return null;
+  const rawAmount = order?.payment_amount ?? order?.actual_order_amount?.payment_amount;
+  const paidAmount = Number(rawAmount);
+  return {
+    orderId: order?.order_id || null,
+    orderDate,
+    monthKey: orderDate.slice(0, 7),
+    paidAmount: Number.isFinite(paidAmount) ? paidAmount : 0,
+    personalPaymentProductName: ppItem.product_name || ""
+  };
 }
 
 async function loadEnv() {
