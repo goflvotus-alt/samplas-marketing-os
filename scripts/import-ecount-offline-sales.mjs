@@ -33,6 +33,8 @@ export function buildEcountSalesSnapshot(loaded, month = monthFromLoadedSales(lo
     totalLineCount: loaded.totalLineCount,
     revenueLineCount: loaded.revenueLineCount,
     nonRevenueLineCount: loaded.nonRevenueLineCount,
+    personalPaymentSales: loaded.personalPaymentSales,
+    personalPaymentCount: loaded.personalPaymentCount,
     dailySales: loaded.dailySales,
     salesLines: loaded.salesLines,
     rows: loaded.salesLines

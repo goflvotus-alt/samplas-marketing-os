@@ -23,6 +23,8 @@ export function loadEcountOfflineSalesExcel(filePath, options = {}) {
     const date = `${year}-${month}-${day}`;
     const salesAmount = parseNumber(row[header.columns.salesAmount]);
     const quantity = parseNumber(row[header.columns.quantity]);
+    const customerName = cleanText(row[header.columns.customerName] || "");
+    const personalPayment = detectPersonalPayment(customerName);
     salesLines.push({
       date,
       slipNo,
@@ -31,20 +33,44 @@ export function loadEcountOfflineSalesExcel(filePath, options = {}) {
       specification: cleanText(row[header.columns.specification] || ""),
       quantity,
       brandGroup: cleanText(row[header.columns.brandGroup] || ""),
-      customerName: cleanText(row[header.columns.customerName] || ""),
+      customerName,
       poNo: cleanText(row[header.columns.poNo] || ""),
       salesAmount,
-      isOfflineRevenue: Number.isFinite(salesAmount)
+      isPersonalPayment: personalPayment.isPersonalPayment,
+      personalPaymentReason: personalPayment.reason,
+      // isOfflineRevenue: 이 라인이 canonical offlineSales 집계에 포함되어야 하는지 여부.
+      // 합계(salesAmount)가 있고, 개인결제창 거래가 아닐 때만 true다.
+      // 개인결제창 금액은 Cafe24 쪽에서 이미 canonical 온라인 매출로 집계되므로
+      // 여기서 제외해 이중집계를 막는다(Personal Payment Canonicalization 정책,
+      // "Cafe24 = 결제금액의 유일한 기준, ECOUNT 개인결제창 금액은 offlineSales에서 제외").
+      isOfflineRevenue: Number.isFinite(salesAmount) && !personalPayment.isPersonalPayment
     });
   }
   return buildOfflineSalesResult({ filePath, sheetName, salesLines });
 }
 
-function buildOfflineSalesResult({ filePath, sheetName, salesLines }) {
+// customerName(거래처명)에 "개인결제" 패턴이 포함되면 개인결제창 거래로 판별한다.
+// 실제 원본 데이터에서 확인된 표기 변형(예: "개인결제창", "개인결제창(이름)",
+// "이름 개인결제창", "이름(개인결제)", "이름실장님(개인결제창)" 등)을 모두 포괄한다.
+// 판별 근거(reason)는 snapshot에 그대로 저장해 나중에 왜 제외됐는지 추적할 수 있게 한다.
+export function detectPersonalPayment(customerName) {
+  const text = String(customerName || "");
+  if (text.includes("개인결제")) {
+    return { isPersonalPayment: true, reason: "customerName_contains_개인결제" };
+  }
+  return { isPersonalPayment: false, reason: null };
+}
+
+export function buildOfflineSalesResult({ filePath, sheetName, salesLines }) {
   const dailyMap = new Map();
   let totalOfflineSales = 0;
   let revenueLineCount = 0;
   let quantity = 0;
+  // 개인결제창으로 판별돼 offlineSales 집계에서 제외된 금액/건수를 별도로 누적한다.
+  // personalPaymentSales = "제외되지 않았다면 offlineSales에 포함됐을 금액" 그대로이므로
+  // (제외 전 전체 offlineSales) - personalPaymentSales === (제외 후 totalOfflineSales) 가 항상 성립한다.
+  let personalPaymentSales = 0;
+  let personalPaymentCount = 0;
   for (const line of salesLines) {
     if (!dailyMap.has(line.date)) {
       dailyMap.set(line.date, {
@@ -61,6 +87,10 @@ function buildOfflineSalesResult({ filePath, sheetName, salesLines }) {
       day.quantity += line.quantity;
       quantity += line.quantity;
     }
+    if (line.isPersonalPayment) {
+      personalPaymentCount += 1;
+      if (Number.isFinite(line.salesAmount)) personalPaymentSales += line.salesAmount;
+    }
     if (line.isOfflineRevenue) {
       day.offlineSalesAmount += line.salesAmount;
       day.revenueLineCount += 1;
@@ -75,11 +105,14 @@ function buildOfflineSalesResult({ filePath, sheetName, salesLines }) {
     sheetName,
     periodStart: dates[0] || null,
     periodEnd: dates[dates.length - 1] || null,
+    // totalOfflineSales: 개인결제창 금액이 이미 제외된 순수 오프라인 매출(canonical).
     totalOfflineSales,
     totalLineCount: salesLines.length,
     revenueLineCount,
     nonRevenueLineCount: salesLines.length - revenueLineCount,
     quantity,
+    personalPaymentSales,
+    personalPaymentCount,
     dailySales: [...dailyMap.values()].sort((left, right) => left.date.localeCompare(right.date)),
     salesLines,
     rows: salesLines
