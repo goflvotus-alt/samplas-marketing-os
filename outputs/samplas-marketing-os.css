@@ -4565,6 +4565,17 @@ td {
   align-items: center;
 }
 
+.today-sales-calendar-month-switch {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.today-sales-calendar-month-switch select {
+  min-width: 132px;
+  text-align: center;
+}
+
 .today-sales-calendar-summary {
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
   margin-bottom: 14px;
@@ -4573,6 +4584,18 @@ td {
 
 .today-sales-calendar-summary .monthly-report-hero-main strong {
   font-size: clamp(26px, 2.9vw, 36px);
+}
+
+.today-sales-summary-trigger {
+  outline: none;
+  cursor: help;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.today-sales-summary-trigger:hover,
+.today-sales-summary-trigger:focus-visible {
+  border-color: rgba(32, 111, 84, 0.22);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .today-sales-calendar-weekdays,

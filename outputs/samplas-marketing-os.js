@@ -4466,6 +4466,37 @@ function salesCalendarMonthLabel(monthKey) {
   return `${year}년 ${Number(month)}월`;
 }
 
+function todaySalesCalendarMonths() {
+  return Array.from(new Set(months));
+}
+
+function normalizeTodaySalesCalendarMonth(monthKey) {
+  const options = todaySalesCalendarMonths();
+  return options.includes(monthKey) ? monthKey : options[0] || monthKey;
+}
+
+function shiftTodaySalesCalendarMonth(monthKey, offset) {
+  const options = todaySalesCalendarMonths();
+  const currentIndex = Math.max(0, options.indexOf(normalizeTodaySalesCalendarMonth(monthKey)));
+  const nextIndex = currentIndex - Number(offset || 0);
+  return options[nextIndex] || options[currentIndex] || monthKey;
+}
+
+function todaySalesCalendarMonthSwitchHtml(monthKey) {
+  const options = todaySalesCalendarMonths();
+  const current = normalizeTodaySalesCalendarMonth(monthKey);
+  const currentIndex = options.indexOf(current);
+  const olderDisabled = currentIndex === -1 || currentIndex >= options.length - 1;
+  const newerDisabled = currentIndex <= 0;
+  return `<div class="today-sales-calendar-month-switch" aria-label="캘린더 월 선택">
+    <button class="month-nav-btn" type="button" data-sales-calendar-nav="-1" ${olderDisabled ? "disabled" : ""} aria-label="이전 달">◀</button>
+    <select data-sales-calendar-month aria-label="캘린더 월 선택">
+      ${options.map((month) => `<option value="${esc(month)}" ${month === current ? "selected" : ""}>${esc(salesCalendarMonthLabel(month))}</option>`).join("")}
+    </select>
+    <button class="month-nav-btn" type="button" data-sales-calendar-nav="1" ${newerDisabled ? "disabled" : ""} aria-label="다음 달">▶</button>
+  </div>`;
+}
+
 function salesCalendarLongDate(dateKey) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return String(dateKey || "");
   const date = new Date(`${dateKey}T00:00:00`);
@@ -4582,6 +4613,14 @@ function finiteTooltipNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function finitePositiveDayCount(start, end) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(start || "")) || !/^\d{4}-\d{2}-\d{2}$/.test(String(end || ""))) return null;
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  const diff = Math.round((endDate - startDate) / 86400000) + 1;
+  return Number.isFinite(diff) && diff > 0 ? diff : null;
+}
+
 function todaySalesTooltipSection(title, value, details = [], tone = "") {
   return `<section class="today-sales-tooltip-section ${tone ? `is-${esc(tone)}` : ""}">
     <span>${esc(title)}</span>
@@ -4600,7 +4639,59 @@ function todaySalesCalendarTooltipHtml(target) {
   const offlineRevenueLines = finiteTooltipNumber(target?.dataset?.offlineRevenueLines);
   const offlineTotalLines = finiteTooltipNumber(target?.dataset?.offlineTotalLines);
   const offlineQuantity = finiteTooltipNumber(target?.dataset?.offlineQuantity);
+  const onlineQuantity = finiteTooltipNumber(target?.dataset?.onlineQuantity);
+  const onlineExcludedOrders = finiteTooltipNumber(target?.dataset?.onlineExcludedOrders);
+  const onlineCheckedOrders = finiteTooltipNumber(target?.dataset?.onlineCheckedOrders);
+  const onlinePaymentMethods = target?.dataset?.onlinePaymentMethods || "";
+  const offlineNonRevenueLines = finiteTooltipNumber(target?.dataset?.offlineNonRevenueLines);
+  const offlineAverageRevenueLines = finiteTooltipNumber(target?.dataset?.offlineAverageRevenueLines);
+  const offlinePeriod = target?.dataset?.offlinePeriod || "";
   const status = target?.dataset?.status || "상태 확인";
+  if (mode === "summary-online-sales") {
+    const averageOrder = online !== null && onlineOrders > 0 ? online / onlineOrders : null;
+    return `<div class="today-sales-tooltip-card">
+      <h5>온라인 판매 요약</h5>
+      ${todaySalesTooltipSection("매출", online === null ? "미확인" : apiWon(online), [
+        `정상 주문 ${onlineOrders === null ? "미확인" : `${apiNum(onlineOrders)}건`}`,
+        `객단가 ${averageOrder === null ? "-" : apiWon(averageOrder)}`,
+        `판매수량 ${onlineQuantity === null ? "미확인" : `${apiNum(onlineQuantity)}개`}`,
+        `제외 주문 ${onlineExcludedOrders === null ? "미확인" : `${apiNum(onlineExcludedOrders)}건`}`
+      ], "online")}
+      <p>Cafe24 Canonical 기준</p>
+    </div>`;
+  }
+  if (mode === "summary-online-orders") {
+    return `<div class="today-sales-tooltip-card">
+      <h5>온라인 주문 요약</h5>
+      ${todaySalesTooltipSection("Cafe24 canonical 기준", onlineOrders === null ? "미확인" : `정상 주문 ${apiNum(onlineOrders)}건`, [
+        `제외 주문 ${onlineExcludedOrders === null ? "미확인" : `${apiNum(onlineExcludedOrders)}건`}`,
+        `전체 확인 주문 ${onlineCheckedOrders === null ? "미확인" : `${apiNum(onlineCheckedOrders)}건`}`,
+        `판매수량 ${onlineQuantity === null ? "미확인" : `${apiNum(onlineQuantity)}개`}`
+      ], "online")}
+    </div>`;
+  }
+  if (mode === "summary-offline-sales") {
+    return `<div class="today-sales-tooltip-card">
+      <h5>오프라인 판매 요약</h5>
+      ${todaySalesTooltipSection("매출", offline === null ? "미확인" : apiWon(offline), [
+        `매출 Line ${offlineRevenueLines === null ? "미확인" : `${apiNum(offlineRevenueLines)}건`}`,
+        `전체 Line ${offlineTotalLines === null ? "미확인" : `${apiNum(offlineTotalLines)}건`}`,
+        `판매수량 ${offlineQuantity === null ? "미확인" : `${apiNum(offlineQuantity)}개`}`,
+        offlinePeriod ? `반영 범위 ${offlinePeriod}` : "ECOUNT 데이터 없음"
+      ], "offline")}
+    </div>`;
+  }
+  if (mode === "summary-offline-lines") {
+    return `<div class="today-sales-tooltip-card">
+      <h5>오프라인 거래 요약</h5>
+      ${todaySalesTooltipSection("매출 Line", offlineRevenueLines === null ? "미확인" : `${apiNum(offlineRevenueLines)}건`, [
+        `전체 Line ${offlineTotalLines === null ? "미확인" : `${apiNum(offlineTotalLines)}건`}`,
+        `비매출 Line ${offlineNonRevenueLines === null ? "미확인" : `${apiNum(offlineNonRevenueLines)}건`}`,
+        `판매수량 ${offlineQuantity === null ? "미확인" : `${apiNum(offlineQuantity)}개`}`,
+        `일평균 매출 Line ${offlineAverageRevenueLines === null ? "미확인" : `${offlineAverageRevenueLines.toFixed(1)}건`}`
+      ], "offline")}
+    </div>`;
+  }
   if (mode === "online") {
     const averageOrder = online !== null && onlineOrders > 0 ? online / onlineOrders : null;
     return `<div class="today-sales-tooltip-card">
@@ -4693,12 +4784,8 @@ function todaySalesCalendarLoadingHtml(monthKey) {
     <div class="monthly-report-block-head">
       <div>
         <h4>월간 일별 매출 캘린더</h4>
-        <span>${esc(salesCalendarMonthLabel(monthKey))}</span>
       </div>
-      <div class="ops-summary-action">
-        <button class="button secondary" type="button" data-sales-calendar-nav="-1">이전 달</button>
-        <button class="button secondary" type="button" data-sales-calendar-nav="1">다음 달</button>
-      </div>
+      ${todaySalesCalendarMonthSwitchHtml(monthKey)}
     </div>
     <div class="monthly-report-hero today-sales-calendar-summary">
       <div class="monthly-report-hero-main"><span>월 누적 총매출</span><strong>확인 중</strong><p class="monthly-report-muted">일별 온라인 + 오프라인 합산</p></div>
@@ -4706,6 +4793,7 @@ function todaySalesCalendarLoadingHtml(monthKey) {
         <div class="monthly-report-side-row"><span>온라인</span><strong>확인 중</strong></div>
         <div class="monthly-report-side-row"><span>오프라인</span><strong>확인 중</strong></div>
         <div class="monthly-report-side-row"><span>온라인 주문</span><strong>확인 중</strong></div>
+        <div class="monthly-report-side-row"><span>오프라인 매출 건수</span><strong>확인 중</strong></div>
       </div>
     </div>
     <div class="today-sales-calendar-weekdays">
@@ -4721,6 +4809,25 @@ function todaySalesCalendarSummaryHtml(rows = [], onlineData = {}, offlineData =
   const offlineTotal = rows.reduce((sumValue, row) => sumValue + (row.offlineAvailable ? Number(row.offlineSales || 0) : 0), 0);
   const total = onlineTotal + offlineTotal;
   const onlineOrderCount = rows.reduce((sumValue, row) => sumValue + (row.onlineAvailable ? Number(row.onlineOrderCount || 0) : 0), 0);
+  const onlineQuantity = Number(onlineData?.totals?.quantitySold);
+  const onlineExcludedOrders = Number(onlineData?.excludedOrderCount);
+  const onlineCheckedOrders = Number.isFinite(onlineExcludedOrders) ? onlineOrderCount + onlineExcludedOrders : null;
+  const onlinePaymentMethods = Array.isArray(onlineData?.paymentMethods)
+    ? onlineData.paymentMethods
+      .filter((item) => Number(item?.orderAmount || 0) > 0)
+      .slice(0, 4)
+      .map((item) => `${item.paymentMethod || "기타"} ${apiWon(item.orderAmount)}`)
+      .join(" · ")
+    : "";
+  const offlineRevenueLineCount = rows.reduce((sumValue, row) => sumValue + (row.offlineAvailable ? Number(row.offlineRevenueLineCount || 0) : 0), 0);
+  const offlineTotalLineCount = rows.reduce((sumValue, row) => sumValue + (row.offlineAvailable ? Number(row.offlineTotalLineCount || 0) : 0), 0);
+  const offlineQuantity = rows.reduce((sumValue, row) => sumValue + (row.offlineAvailable ? Number(row.offlineQuantity || 0) : 0), 0);
+  const offlineNonRevenueLineCount = Number.isFinite(offlineTotalLineCount) && Number.isFinite(offlineRevenueLineCount)
+    ? Math.max(0, offlineTotalLineCount - offlineRevenueLineCount)
+    : null;
+  const reflectedDayCount = finitePositiveDayCount(offlineData?.periodStart, offlineData?.periodEnd);
+  const offlineAverageRevenueLines = reflectedDayCount ? offlineRevenueLineCount / reflectedDayCount : null;
+  const offlinePeriod = offlineData?.periodStart && offlineData?.periodEnd ? `${offlineData.periodStart} ~ ${offlineData.periodEnd}` : "";
   const onlineApiTotal = Number(onlineData?.totals?.paidAmount);
   const offlineApiTotal = Number(offlineData?.totalOfflineSales);
   if (!onlineData.error && Number.isFinite(onlineApiTotal) && onlineApiTotal !== onlineTotal) {
@@ -4729,6 +4836,24 @@ function todaySalesCalendarSummaryHtml(rows = [], onlineData = {}, offlineData =
   if (!offlineData.error && Number.isFinite(offlineApiTotal) && offlineApiTotal !== offlineTotal) {
     console.warn("Today sales calendar offline total mismatch", { api: offlineApiTotal, daily: offlineTotal });
   }
+  const summaryAttrs = [
+    `data-online="${esc(onlineData.error ? "" : onlineTotal)}"`,
+    `data-online-orders="${esc(onlineData.error ? "" : onlineOrderCount)}"`,
+    `data-online-quantity="${esc(Number.isFinite(onlineQuantity) ? onlineQuantity : "")}"`,
+    `data-online-excluded-orders="${esc(Number.isFinite(onlineExcludedOrders) ? onlineExcludedOrders : "")}"`,
+    `data-online-checked-orders="${esc(onlineCheckedOrders ?? "")}"`,
+    `data-online-payment-methods="${esc(onlinePaymentMethods)}"`,
+    `data-offline="${esc(offlineData.error ? "" : offlineTotal)}"`,
+    `data-offline-revenue-lines="${esc(offlineData.error ? "" : offlineRevenueLineCount)}"`,
+    `data-offline-total-lines="${esc(offlineData.error ? "" : offlineTotalLineCount)}"`,
+    `data-offline-non-revenue-lines="${esc(offlineData.error ? "" : (offlineNonRevenueLineCount ?? ""))}"`,
+    `data-offline-quantity="${esc(offlineData.error ? "" : offlineQuantity)}"`,
+    `data-offline-average-revenue-lines="${esc(offlineData.error ? "" : (offlineAverageRevenueLines ?? ""))}"`,
+    `data-offline-period="${esc(offlineData.error ? "" : offlinePeriod)}"`
+  ].join(" ");
+  const summaryRow = (label, value, mode) => (
+    `<div class="monthly-report-side-row today-sales-summary-trigger" tabindex="0" role="button" aria-label="${esc(`${label} 상세 보기`)}" data-sales-calendar-tooltip="${esc(mode)}" ${summaryAttrs}><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`
+  );
   return `<div class="monthly-report-hero today-sales-calendar-summary">
     <div class="monthly-report-hero-main">
       <span>월 누적 총매출</span>
@@ -4736,9 +4861,10 @@ function todaySalesCalendarSummaryHtml(rows = [], onlineData = {}, offlineData =
       <p class="monthly-report-muted">일별 온라인 + 오프라인 합산</p>
     </div>
     <div class="monthly-report-side">
-      <div class="monthly-report-side-row"><span>온라인</span><strong>${onlineData.error ? "미확인" : apiWon(onlineTotal)}</strong></div>
-      <div class="monthly-report-side-row"><span>오프라인</span><strong>${offlineData.error ? "미확인" : apiWon(offlineTotal)}</strong></div>
-      <div class="monthly-report-side-row"><span>온라인 주문</span><strong>${onlineData.error ? "미확인" : `${apiNum(onlineOrderCount)}건`}</strong></div>
+      ${summaryRow("온라인 매출", onlineData.error ? "미확인" : apiWon(onlineTotal), "summary-online-sales")}
+      ${summaryRow("오프라인 매출", offlineData.error ? "미확인" : apiWon(offlineTotal), "summary-offline-sales")}
+      ${summaryRow("온라인 주문", onlineData.error ? "미확인" : `${apiNum(onlineOrderCount)}건`, "summary-online-orders")}
+      ${summaryRow("오프라인 매출 건수", offlineData.error ? "미확인" : `${apiNum(offlineRevenueLineCount)}건`, "summary-offline-lines")}
     </div>
   </div>`;
 }
@@ -4763,6 +4889,7 @@ function todaySalesCalendarCoverageNote(monthKey, onlineData = {}, offlineData =
 async function renderTodaySalesCalendar(monthKey = todaySalesCalendarMonth) {
   const target = $("#todaySalesCalendar");
   if (!target) return;
+  monthKey = normalizeTodaySalesCalendarMonth(monthKey);
   todaySalesCalendarMonth = monthKey;
   const renderSeq = ++todaySalesCalendarRenderSeq;
   const start = `${monthKey}-01`;
@@ -4771,7 +4898,8 @@ async function renderTodaySalesCalendar(monthKey = todaySalesCalendarMonth) {
   hideTodaySalesCalendarTooltip();
   if (existingCalendar) {
     existingCalendar.classList.add("is-loading");
-    existingCalendar.querySelector(".monthly-report-block-head span").textContent = salesCalendarMonthLabel(monthKey);
+    const switchTarget = existingCalendar.querySelector(".today-sales-calendar-month-switch");
+    if (switchTarget) switchTarget.outerHTML = todaySalesCalendarMonthSwitchHtml(monthKey);
   } else {
     target.innerHTML = todaySalesCalendarLoadingHtml(monthKey);
   }
@@ -4790,12 +4918,8 @@ async function renderTodaySalesCalendar(monthKey = todaySalesCalendarMonth) {
     <div class="monthly-report-block-head">
       <div>
         <h4>월간 일별 매출 캘린더</h4>
-        <span>${esc(salesCalendarMonthLabel(monthKey))}</span>
       </div>
-      <div class="ops-summary-action">
-        <button class="button secondary" type="button" data-sales-calendar-nav="-1">이전 달</button>
-        <button class="button secondary" type="button" data-sales-calendar-nav="1">다음 달</button>
-      </div>
+      ${todaySalesCalendarMonthSwitchHtml(monthKey)}
     </div>
     ${todaySalesCalendarSummaryHtml(rows, onlineData, offlineData)}
     ${todaySalesCalendarCoverageNote(monthKey, onlineData, offlineData)}
@@ -6476,7 +6600,12 @@ function bind() {
     if (!calendarButton) return;
     const offset = Number(calendarButton.dataset.salesCalendarNav || 0);
     if (!Number.isFinite(offset) || offset === 0) return;
-    renderTodaySalesCalendar(shiftMonthKey(todaySalesCalendarMonth, offset));
+    renderTodaySalesCalendar(shiftTodaySalesCalendarMonth(todaySalesCalendarMonth, offset));
+  });
+  document.addEventListener("change", (event) => {
+    const calendarMonth = event.target.closest("[data-sales-calendar-month]");
+    if (!calendarMonth) return;
+    renderTodaySalesCalendar(calendarMonth.value);
   });
   document.addEventListener("pointerover", (event) => {
     const target = event.target.closest("#todaySalesCalendar [data-sales-calendar-tooltip]");
