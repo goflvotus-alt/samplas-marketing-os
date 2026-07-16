@@ -49,7 +49,7 @@ let productSoldFilterAmount = "all";
 let productSoldSearch = "";
 let productSoldSort = "amount_desc";
 let activeBrandOrderPopoverCode = "";
-let commerceSummaryState = { cafe: null, comparison: null };
+let commerceSummaryState = { cafe: null, comparison: null, totalSales: null };
 let todaySummaryState = { data: null, cafe: null, meta: null, comparison: null, marketing: null, totalSales: null };
 const todaySalesCalendarInitialDate = new Date();
 let todaySalesCalendarMonth = `${todaySalesCalendarInitialDate.getFullYear()}-${String(todaySalesCalendarInitialDate.getMonth() + 1).padStart(2, "0")}`;
@@ -2796,7 +2796,7 @@ function renderOtherSections(data) {
   hideAdOrganicSection();
   renderAdvertising(data);
   $("#salesHealthBanner").innerHTML = `<span class="status-dot"></span><strong>Sales Health 확인 중</strong><span class="note">Meta · Cafe24 데이터를 불러오고 있습니다.</span>`;
-  commerceSummaryState = { cafe: null, comparison: null };
+  commerceSummaryState = { cafe: null, comparison: null, totalSales: null };
   $("#commerceSummaryHero").innerHTML = `<article class="action-item"><strong>Commerce 데이터 확인 중</strong><p>Cafe24 canonical 데이터를 불러오고 있습니다.</p></article>`;
   $("#commerceSummaryCompare").innerHTML = `<article class="action-item"><strong>Meta 비교 확인 중</strong><p>Meta 구매값과 Cafe24 실제 판매를 비교합니다.</p></article>`;
   $("#commerceSummaryPayments").innerHTML = `<article class="action-item"><strong>결제수단 확인 중</strong><p>결제수단 구성을 불러오고 있습니다.</p></article>`;
@@ -4409,20 +4409,24 @@ async function renderCafe24Sales(data, renderSeq) {
   const range = operationsDateRange(data);
   const startDate = range.since;
   const endDate = range.until;
-  const sales = await getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000);
+  const [sales, totalSales] = await Promise.all([
+    getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000),
+    getJson(`/api/sales/total?since=${startDate}&until=${endDate}`, 10000)
+  ]);
   if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
   if (sales.error) {
-    renderCommerceSummary(sales, null);
+    renderCommerceSummary(sales, null, totalSales);
     await renderCampaignPeriodComparison($("#campaignPeriodComparison"), renderSeq);
     return;
   }
-  renderCommerceSummary(sales, null);
+  renderCommerceSummary(sales, null, totalSales);
   await renderCampaignPeriodComparison($("#campaignPeriodComparison"), renderSeq);
 }
 
-function renderCommerceSummary(cafe, comparisonResult) {
+function renderCommerceSummary(cafe, comparisonResult, totalSales) {
   if (cafe !== undefined && cafe !== null) commerceSummaryState.cafe = cafe;
   if (comparisonResult !== undefined && comparisonResult !== null) commerceSummaryState.comparison = comparisonResult;
+  if (totalSales !== undefined && totalSales !== null) commerceSummaryState.totalSales = totalSales;
   const heroTarget = $("#commerceSummaryHero");
   const compareTarget = $("#commerceSummaryCompare");
   const paymentsTarget = $("#commerceSummaryPayments");
@@ -4430,18 +4434,21 @@ function renderCommerceSummary(cafe, comparisonResult) {
 
   const sales = commerceSummaryState.cafe || {};
   const totals = sales.totals || {};
+  const totalSalesState = commerceSummaryState.totalSales || {};
   const payments = sales.paymentMethods || [];
   const paidAmount = Number(totals.paidAmount || 0);
+  const salesInfo = todaySummarySalesInfo(totalSalesState, totals);
   heroTarget.innerHTML = `<section class="ops-summary-hero">
     <div class="ops-summary-hero-main">
-      <span>실제 판매</span>
-      <strong class="ops-summary-hero-num">${apiWon(totals.paidAmount)}</strong>
-      <p class="ops-summary-hero-sub">Cafe24 canonical 기준</p>
+      <span>${esc(salesInfo.label)}</span>
+      <strong class="ops-summary-hero-num">${esc(salesInfo.value)}</strong>
+      <p class="ops-summary-hero-sub">${esc(salesInfo.note)}</p>
     </div>
     <div class="ops-summary-side">
-      ${opsStatRow("정상 주문", `${apiNum(totals.orderCount)}건`)}
-      ${opsStatRow("객단가", apiWon(totals.averageOrderValue))}
-      ${opsStatRow("제외 주문", `${apiNum(sales.excludedOrderCount)}건`, { note: "canonical 집계 제외" })}
+      ${opsStatRow("온라인 매출", apiWon(totals.paidAmount))}
+      ${opsStatRow("온라인 주문", `${apiNum(totals.orderCount)}건`)}
+      ${opsStatRow("온라인 객단가", apiWon(totals.averageOrderValue))}
+      ${opsStatRow("온라인 제외 주문", `${apiNum(sales.excludedOrderCount)}건`, { note: "Cafe24 canonical 집계 제외" })}
     </div>
   </section>`;
 
@@ -4468,7 +4475,7 @@ function renderCommerceSummary(cafe, comparisonResult) {
   const paymentRowsTotal = paymentRows.reduce((total, item) => total + Number(item.orderAmount || 0), 0);
   const leadPayment = paymentRows.reduce((best, item) => Number(item.percentage || 0) > Number(best.percentage || 0) ? item : best, paymentRows[0] || null);
   paymentsTarget.innerHTML = paymentRows.length ? `<section class="ops-summary-block">
-    <div class="ops-summary-block-head"><h4>결제수단</h4><span>orderAmount / paidAmount</span></div>
+    <div class="ops-summary-block-head"><h4>결제수단</h4><span>orderAmount / 온라인 매출</span></div>
     <div class="ops-summary-lead">
       <strong>${esc(leadPayment?.paymentMethod || "미확인")} ${pct(leadPayment?.percentage)}</strong>
       <div class="ops-summary-bar"><i style="width:${monthlyReportRatio(leadPayment?.percentage, 100)}%"></i></div>
@@ -6165,7 +6172,7 @@ function renderOperationsSections() {
   setPending("#campaignPerformance", `<article class="action-item"><strong>캠페인 성과 확인 중</strong><p>Meta 캠페인 기준으로 불러옵니다.</p></article>`);
   setPending("#adReconciliationSummary", `<article class="action-item"><strong>데이터 일치 검증 확인 중</strong><p>Meta 계정 전체 합계와 비교하고 있습니다.</p></article>`);
   setPending("#adFullReportActiveRows", `<tr><td colspan="18">전체 캠페인 데이터를 확인하고 있습니다.</td></tr>`);
-  commerceSummaryState = { cafe: null, comparison: null };
+  commerceSummaryState = { cafe: null, comparison: null, totalSales: null };
   setPending("#salesHealthBanner", `<span class="status-dot"></span><strong>Sales Health 확인 중</strong><span class="note">Meta · Cafe24 데이터를 불러오고 있습니다.</span>`);
   setPending("#commerceSummaryHero", `<article class="action-item"><strong>Commerce 데이터 확인 중</strong><p>Cafe24 canonical 데이터를 불러오고 있습니다.</p></article>`);
   setPending("#commerceSummaryCompare", `<article class="action-item"><strong>Meta 비교 확인 중</strong><p>Meta 구매값과 Cafe24 실제 판매를 비교합니다.</p></article>`);
