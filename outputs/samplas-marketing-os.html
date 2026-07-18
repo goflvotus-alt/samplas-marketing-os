@@ -157,8 +157,8 @@
               <select id="productBrandSalesSort">
                 <option value="brand_asc">브랜드명 A → Z</option>
                 <option value="brand_desc">브랜드명 Z → A</option>
-                <option value="salesAmount_desc">매출 높은 순</option>
-                <option value="salesAmount_asc">매출 낮은 순</option>
+                <option value="salesAmount_desc">실결제 매출 높은 순</option>
+                <option value="salesAmount_asc">실결제 매출 낮은 순</option>
                 <option value="quantity_desc">판매수량 높은 순</option>
                 <option value="quantity_asc">판매수량 낮은 순</option>
                 <option value="orders_desc">주문수 높은 순</option>
@@ -170,7 +170,7 @@
                 <thead>
                   <tr>
                     <th>브랜드</th>
-                    <th>매출</th>
+                    <th>실결제 매출</th>
                     <th>판매수량</th>
                     <th>주문수</th>
                     <th>판매상품수</th>
@@ -191,14 +191,15 @@
               <option value="4_plus">4개 이상</option>
             </select>
             <select id="productSoldFilterAmount">
-              <option value="all">금액 전체</option>
+              <option value="all">실결제 금액 전체</option>
               <option value="300000">30만원 이상</option>
               <option value="500000">50만원 이상</option>
               <option value="1000000">100만원 이상</option>
             </select>
             <input id="productSoldSearch" type="search" placeholder="제품명 / 상품코드 검색">
             <select id="productSoldSort">
-              <option value="amount_desc">판매금액 높은순</option>
+              <option value="amount_desc">실결제 매출 높은순</option>
+              <option value="amount_asc">실결제 매출 낮은순</option>
               <option value="quantity_desc">판매수량 높은순</option>
               <option value="orders_desc">주문수 높은순</option>
               <option value="brand_asc">브랜드명순</option>
@@ -214,7 +215,7 @@
                   <th>판매수량</th>
                   <th>일평균 판매</th>
                   <th>주문수</th>
-                  <th>판매금액</th>
+                  <th>실결제 매출</th>
                 </tr>
               </thead>
               <tbody id="productDashboardRows"></tbody>

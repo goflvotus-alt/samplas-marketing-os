@@ -119,6 +119,36 @@ function apiWon(value) {
   return hasApiValue(value) ? `${nf.format(Math.round(Number(value)))}원` : "-";
 }
 
+function firstFiniteValue(...values) {
+  for (const value of values) {
+    if (!hasApiValue(value) || typeof value === "object") continue;
+    const parsed = Number(String(value).replace(/,/g, ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function canonicalPaidAmount(record = {}) {
+  return firstFiniteValue(record?.sales?.paidAmount, record?.canonicalPaidAmount, record?.paidAmount, record?.salesAmount, 0);
+}
+
+function canonicalBrandPaidAmount(record = {}) {
+  return firstFiniteValue(record?.sales?.paidAmount, record?.paidAmount, record?.salesAmount, 0);
+}
+
+function canonicalGrossAmount(record = {}) {
+  return firstFiniteValue(record?.sales?.grossAmount, record?.grossAmount, record?.rrpAmount);
+}
+
+function canonicalDiscountAmount(record = {}) {
+  return firstFiniteValue(record?.sales?.discountAmount, record?.canonicalDiscountAmount, record?.discountAmount);
+}
+
+function isExcludedCommerceBrandPerformanceCode(code) {
+  const normalized = String(code || "").trim().toUpperCase();
+  return normalized === "B0000000" || normalized === "UNASSIGNED";
+}
+
 function cafe24MoneyValue(value) {
   if (value === null || value === undefined || value === "") return 0;
   if (typeof value === "object") return 0;
@@ -3821,7 +3851,7 @@ async function renderCampaignPeriodComparison(target, renderSeq) {
       orderDelta: Number(current.orderCount || 0) - Number(previous.orderCount || 0),
       quantityDelta: Number(current.quantitySold || 0) - Number(previous.quantitySold || 0)
     };
-  }).filter((row) => row.salesDelta || row.orderDelta || row.quantityDelta);
+  }).filter((row) => !isExcludedCommerceBrandPerformanceCode(row.brandCode) && (row.salesDelta || row.orderDelta || row.quantityDelta));
   const increaseTop = brandRows.filter((row) => row.salesDelta > 0).sort((left, right) => right.salesDelta - left.salesDelta).slice(0, 5);
   const decreaseTop = brandRows.filter((row) => row.salesDelta < 0).sort((left, right) => left.salesDelta - right.salesDelta).slice(0, 5);
   const executionTotals = execution.totals || {};
@@ -4465,6 +4495,8 @@ function renderCommerceSummary(cafe, comparisonResult, totalSales) {
   const totalSalesState = commerceSummaryState.totalSales || {};
   const payments = sales.paymentMethods || [];
   const paidAmount = Number(totals.paidAmount || 0);
+  const productPaidAmount = firstFiniteValue(totals.sales?.paidAmount, totals.paidAmount, 0);
+  const shippingAmount = firstFiniteValue(totals.sales?.shippingAmount, 0);
   const salesInfo = todaySummarySalesInfo(totalSalesState, totals);
   heroTarget.innerHTML = `<section class="ops-summary-hero">
     <div class="ops-summary-hero-main">
@@ -4473,7 +4505,9 @@ function renderCommerceSummary(cafe, comparisonResult, totalSales) {
       <p class="ops-summary-hero-sub">${esc(salesInfo.note)}</p>
     </div>
     <div class="ops-summary-side">
-      ${opsStatRow("온라인 매출", apiWon(totals.paidAmount))}
+      ${opsStatRow("온라인 결제액", apiWon(totals.paidAmount), { note: "상품 실결제 + 배송비" })}
+      ${opsStatRow("상품 실결제", apiWon(productPaidAmount), { note: "브랜드·상품 성과 기준" })}
+      ${shippingAmount ? opsStatRow("배송비", apiWon(shippingAmount), { note: "브랜드·상품 성과 제외" }) : ""}
       ${opsStatRow("온라인 주문", `${apiNum(totals.orderCount)}건`)}
       ${opsStatRow("온라인 객단가", apiWon(totals.averageOrderValue))}
       ${opsStatRow("온라인 제외 주문", `${apiNum(sales.excludedOrderCount)}건`, { note: "Cafe24 canonical 집계 제외" })}
@@ -5409,8 +5443,8 @@ function renderProductBrandSalesTable() {
     return `${row.brand_name || ""} ${row.brand_code || ""}`.toLowerCase().includes(query);
   }).sort((left, right) => {
     if (productBrandSalesSort === "brand_desc") return (right.manufacturer_name || right.brand_name || right.brand_code || "").localeCompare(left.manufacturer_name || left.brand_name || left.brand_code || "");
-    if (productBrandSalesSort === "salesAmount_desc") return Number(right.salesAmount || 0) - Number(left.salesAmount || 0);
-    if (productBrandSalesSort === "salesAmount_asc") return Number(left.salesAmount || 0) - Number(right.salesAmount || 0);
+    if (productBrandSalesSort === "salesAmount_desc") return canonicalBrandPaidAmount(right) - canonicalBrandPaidAmount(left);
+    if (productBrandSalesSort === "salesAmount_asc") return canonicalBrandPaidAmount(left) - canonicalBrandPaidAmount(right);
     if (productBrandSalesSort === "quantity_desc") return Number(right.quantitySold || 0) - Number(left.quantitySold || 0);
     if (productBrandSalesSort === "quantity_asc") return Number(left.quantitySold || 0) - Number(right.quantitySold || 0);
     if (productBrandSalesSort === "orders_desc") return Number(right.orderCount || 0) - Number(left.orderCount || 0);
@@ -5421,9 +5455,10 @@ function renderProductBrandSalesTable() {
   metaTarget.textContent = `${range.label} · ${range.since} ~ ${range.until} · ${apiNum(rows.length)}개 브랜드 표시`;
   rowsTarget.innerHTML = rows.length ? rows.map((row) => {
     const brandName = row.brand_name && row.brand_name !== row.brand_code ? row.brand_name : "미분류";
+    const paidAmount = canonicalBrandPaidAmount(row);
     return `<tr>
       <td><strong>${esc(brandName)}</strong><br><span class="muted">${esc(row.brand_code || "-")}</span></td>
-      <td>${apiWon(row.salesAmount)}</td>
+      <td>${apiWon(paidAmount)}</td>
       <td>${apiNum(row.quantitySold)}</td>
       <td><button class="brand-order-history-trigger" type="button" data-brand-order-history="${esc(row.brand_code || "")}">${apiNum(row.orderCount)}</button></td>
       <td>${apiNum(row.soldProductCount)}</td>
@@ -5444,13 +5479,20 @@ function productBrandOrderHistoryHtml(brand = {}) {
   const orders = Array.isArray(brand.orderHistory) ? brand.orderHistory : [];
   return `<div class="brand-order-popover-head"><strong>${esc(brandName)}</strong><span>주문 ${apiNum(orders.length)}건</span></div>${orders.length ? orders.map((order) => `<section class="brand-order-popover-order">
     <h4>${esc(order.orderDate || "날짜 없음")}</h4>
-    ${(order.products || []).map((product) => `<div class="brand-order-popover-product">
+    ${(order.products || []).map((product) => {
+      const paidAmount = canonicalPaidAmount(product);
+      const grossAmount = canonicalGrossAmount(product);
+      const discountAmount = canonicalDiscountAmount(product);
+      return `<div class="brand-order-popover-product">
       <strong>${esc(product.productName || "상품명 없음")}</strong>
       <span>${apiNum(product.quantity)}개</span>
-      <p>RRP ${apiWon(product.rrpAmount)}</p>
-      <p>할인율 ${apiNum(product.discountRate)}%</p>
-      <p>실결제 ${apiWon(product.paidAmount)}</p>
-    </div>`).join("")}
+      <p>정상 판매금액 ${grossAmount === null ? "-" : apiWon(grossAmount)}</p>
+      <p>할인액 ${discountAmount === null ? "-" : apiWon(discountAmount)}</p>
+      <p>상품 실결제 ${apiWon(paidAmount)}</p>
+      ${product.paymentMethod ? `<p>결제수단 ${esc(product.paymentMethod)}</p>` : ""}
+      ${product.canceled ? `<p>취소됨</p>` : ""}
+    </div>`;
+    }).join("")}
   </section>`).join("") : `<p class="hint-text">주문 이력이 없습니다.</p>`}`;
 }
 
@@ -5468,16 +5510,19 @@ function showProductBrandOrderPopover(trigger) {
   popover.style.width = `${width}px`;
   let left = rect.left;
   if (left + width + 12 > window.innerWidth) left = Math.max(12, rect.right - width);
-  const top = Math.min(window.innerHeight - 80, rect.bottom + 8);
+  const height = Math.min(popover.offsetHeight || 0, window.innerHeight - 24);
+  let top = rect.bottom + 8;
+  if (top + height + 12 > window.innerHeight) top = rect.top - height - 8;
+  if (top < 12) top = 12;
   popover.style.left = `${Math.max(12, left)}px`;
-  popover.style.top = `${Math.max(12, top)}px`;
+  popover.style.top = `${top}px`;
 }
 
 function filterAndSortSoldProducts(products) {
   const search = productSoldSearch.trim().toLowerCase();
   return products.filter((product) => {
     const quantity = Number(product.quantitySold || 0);
-    const amount = Number(product.salesAmount || 0);
+    const amount = canonicalPaidAmount(product);
     const brandName = product.brand_name && product.brand_name !== product.brand_code ? product.brand_name : "미분류";
     if (quantity <= 0) return false;
     if (productSoldFilterBrand !== "all" && brandName !== productSoldFilterBrand) return false;
@@ -5493,7 +5538,8 @@ function filterAndSortSoldProducts(products) {
     if (productSoldSort === "quantity_desc") return Number(right.quantitySold || 0) - Number(left.quantitySold || 0);
     if (productSoldSort === "orders_desc") return Number(right.orderCount || 0) - Number(left.orderCount || 0);
     if (productSoldSort === "brand_asc") return (left.brand_name || left.brand_code || "").localeCompare(right.brand_name || right.brand_code || "");
-    return Number(right.salesAmount || 0) - Number(left.salesAmount || 0);
+    if (productSoldSort === "amount_asc") return canonicalPaidAmount(left) - canonicalPaidAmount(right);
+    return canonicalPaidAmount(right) - canonicalPaidAmount(left);
   });
 }
 
@@ -5517,6 +5563,7 @@ function renderProductSoldProductsTable() {
     const brandName = product.brand_name && product.brand_name !== product.brand_code ? product.brand_name : "미분류";
     const velocity = Number(product.salesVelocityPerDay || 0);
     const velocityLabel = Number.isFinite(velocity) ? Number(velocity.toFixed(2)).toString() : "0";
+    const paidAmount = canonicalPaidAmount(product);
     return `<tr>
       <td>${esc(brandName)}</td>
       <td><strong>${esc(product.productName || "상품명 없음")}</strong></td>
@@ -5524,13 +5571,13 @@ function renderProductSoldProductsTable() {
       <td>${apiNum(product.quantitySold)}</td>
       <td>${velocityLabel}개/일</td>
       <td>${apiNum(product.orderCount)}</td>
-      <td>${apiWon(product.salesAmount)}</td>
+      <td>${apiWon(paidAmount)}</td>
     </tr>`;
   }).join("") : `<tr><td colspan="7">조건에 맞는 판매 상품이 없습니다.</td></tr>`;
 }
 
 function productHasSales(product = {}) {
-  return Number(product.quantitySold || 0) > 0 || Number(product.orderCount || 0) > 0 || Number(product.salesAmount || 0) > 0;
+  return Number(product.quantitySold || 0) > 0 || Number(product.orderCount || 0) > 0 || canonicalPaidAmount(product) > 0;
 }
 
 function productActionKey(product = {}) {
@@ -5565,14 +5612,14 @@ function productSortRows(products = []) {
     return Number.isFinite(time) ? time : 0;
   };
   const sorters = {
-    salesAmount_desc: (a, b) => Number(b.salesAmount || 0) - Number(a.salesAmount || 0),
+    salesAmount_desc: (a, b) => canonicalPaidAmount(b) - canonicalPaidAmount(a),
     quantity_desc: (a, b) => Number(b.quantitySold || 0) - Number(a.quantitySold || 0),
     orders_desc: (a, b) => Number(b.orderCount || 0) - Number(a.orderCount || 0),
     lastSale_desc: (a, b) => dateValue(b.lastSaleDate) - dateValue(a.lastSaleDate),
     stock_asc: (a, b) => Number(a.inventoryQuantity || 0) - Number(b.inventoryQuantity || 0)
   };
   const sorter = sorters[activeProductSort] || sorters.salesAmount_desc;
-  return [...products].sort((a, b) => sorter(a, b) || Number(b.salesAmount || 0) - Number(a.salesAmount || 0));
+  return [...products].sort((a, b) => sorter(a, b) || canonicalPaidAmount(b) - canonicalPaidAmount(a));
 }
 
 function productSalesSummary(products = [], result = {}) {
@@ -5581,7 +5628,7 @@ function productSalesSummary(products = [], result = {}) {
     orderCount: Number(result.join?.orderCount || 0),
     soldProductCount: soldProducts.length,
     quantitySold: soldProducts.reduce((total, product) => total + Number(product.quantitySold || 0), 0),
-    salesAmount: soldProducts.reduce((total, product) => total + Number(product.salesAmount || 0), 0)
+    salesAmount: soldProducts.reduce((total, product) => total + canonicalPaidAmount(product), 0)
   };
 }
 
@@ -5602,7 +5649,7 @@ function renderProductSalesSummary(result = {}, products = []) {
     salesKpiCard("총 주문 수", ordersError ? "확인 필요" : `${apiNum(summary.orderCount)}건`, "Cafe24 결제 완료 주문 기준", ordersError ? "is-disabled" : ""),
     salesKpiCard("판매 상품 수", ordersError ? "확인 필요" : `${apiNum(summary.soldProductCount)}개`, "판매 발생 상품 기준", ordersError ? "is-disabled" : ""),
     salesKpiCard("총 판매 수량", ordersError ? "확인 필요" : `${apiNum(summary.quantitySold)}개`, "상품별 quantitySold 합계", ordersError ? "is-disabled" : ""),
-    salesKpiCard("총 실매출", ordersError ? "확인 필요" : apiWon(summary.salesAmount), "상품별 salesAmount 합계 · Cafe24 결제 완료 주문 기준과 차이 가능", ordersError ? "is-disabled" : "")
+    salesKpiCard("총 상품 실결제 매출", ordersError ? "확인 필요" : apiWon(summary.salesAmount), "상품별 canonical paid 합계 · 배송비 제외", ordersError ? "is-disabled" : "")
   ].filter(Boolean).join("");
 }
 
@@ -5640,7 +5687,7 @@ function productStockFiltersHtml(products = []) {
 
 function productSortControlsHtml() {
   const sorts = [
-    ["salesAmount_desc", "매출순"],
+    ["salesAmount_desc", "실결제 매출순"],
     ["quantity_desc", "판매수량"],
     ["orders_desc", "주문수"],
     ["lastSale_desc", "마지막 판매일"],
@@ -5758,12 +5805,13 @@ function productDashboardRowHtml(row, options = {}) {
   const warnings = (productAction.warnings || []).filter(Boolean).slice(0, 2);
   const lastSaleDate = row.lastSaleDate ? String(row.lastSaleDate).slice(0, 10) : "";
   const salesWarning = options.ordersError ? '<div class="hint-text urgent">주문 데이터 확인 필요</div>' : "";
+  const paidAmount = canonicalPaidAmount(row);
   return `<tr>
     <td>${esc(row.productName)}<div class="hint-text">${esc(row.productCode || "")}</div></td>
     <td><span class="badge ${actionClass}">${esc(productAction.label)}</span><div class="hint-text">Confidence · ${esc(productAction.confidence || "-")}</div></td>
     <td>${apiNum(row.inventoryQuantity)}<div class="hint-text">${row.daysOfStockLeft === null || row.daysOfStockLeft === undefined ? "소진일 미확인" : `소진 예상 ${apiNum(row.daysOfStockLeft)}일`}</div>${row.soldOut ? '<div class="hint-text">품절 플래그 있음</div>' : ""}</td>
     <td>${apiNum(row.quantitySold)}개<div class="hint-text">주문 ${apiNum(row.orderCount)}건 · 일 평균 ${Number(row.salesVelocityPerDay || 0).toFixed(2)}개</div>${salesWarning}</td>
-    <td>${apiWon(row.salesAmount)}</td>
+    <td>${apiWon(paidAmount)}</td>
     <td>${lastSaleDate ? esc(lastSaleDate) : "-"}</td>
     <td><span class="badge">Unavailable</span><div class="hint-text">상품 단위 광고 귀속 확인 불가</div></td>
     <td>

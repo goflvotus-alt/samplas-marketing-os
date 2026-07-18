@@ -1629,10 +1629,25 @@ function cafe24CanonicalDailySales(orders = []) {
 
 function cafe24OrderAmount(order = {}) {
   if (isCafe24CanceledOrRefunded(order)) return 0;
-  return firstCafe24Money([
+  const primary = firstCafe24MoneyOrNull([
     order.actual_order_amount?.payment_amount,
     order.actual_payment_amount,
-    order.payment_amount,
+    order.payment_amount
+  ]);
+  if (primary > 0) return primary;
+  if (primary === 0 && isCafe24StoredValuePayment(order)) {
+    const restored = firstPositiveCafe24Money([
+      order.actual_order_amount?.order_price_amount,
+      order.order_price_amount,
+      order.initial_order_amount?.order_price_amount,
+      order.initial_order_amount?.payment_amount,
+      order.order_amount,
+      order.total_price
+    ]);
+    if (restored > 0 && hasCafe24ActiveOrderItems(order)) return restored;
+  }
+  if (primary === 0) return 0;
+  return firstCafe24Money([
     order.actual_order_amount?.order_price_amount,
     order.order_price_amount,
     order.initial_order_amount?.payment_amount,
@@ -1640,6 +1655,51 @@ function cafe24OrderAmount(order = {}) {
     order.order_amount,
     order.total_price
   ]);
+}
+
+function firstCafe24MoneyOrNull(values = []) {
+  for (const value of values) {
+    const parsed = parseCafe24Money(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function firstPositiveCafe24Money(values = []) {
+  for (const value of values) {
+    const parsed = parseCafe24Money(value);
+    if (parsed !== null && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
+function isCafe24StoredValuePayment(order = {}) {
+  const paymentText = normalizeCafe24PaymentMethod(order).replace(/\s+/g, "").toLowerCase();
+  return paymentText.includes("선불금") || paymentText.includes("적립금") || paymentText.includes("prepaid") || paymentText.includes("point");
+}
+
+function isCafe24CanceledItem(item = {}) {
+  const status = String(item.status_code || item.status || "").toUpperCase();
+  const text = String(item.status_text || item.statusText || item.order_status || "").toLowerCase();
+  return status === "C2" || status === "CANCEL" || text.includes("취소완료") || text.includes("cancel");
+}
+
+function hasCafe24ActiveOrderItems(order = {}) {
+  return cafe24OrderItems(order).some((item) => !isCafe24CanceledItem(item) && cafe24ItemQuantity(item) > 0);
+}
+
+function cafe24ShippingFee(order = {}) {
+  if (isCafe24CanceledOrRefunded(order)) return 0;
+  return Math.max(0, firstCafe24Money([
+    order.actual_order_amount?.shipping_fee,
+    order.actual_order_amount?.shipping_fee_amount,
+    order.actual_order_amount?.ship_fee,
+    order.shipping_fee,
+    order.shipping_fee_amount,
+    order.total_shipping_fee,
+    order.actual_shipping_fee,
+    order.delivery_fee
+  ]));
 }
 
 function cafe24GrossOrderAmount(order = {}) {
@@ -2724,6 +2784,9 @@ function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new
       brand_name: master?.brand_name || brand_code,
       manufacturer_code: "",
       salesAmount: 0,
+      canonicalGrossAmount: 0,
+      canonicalPaidAmount: 0,
+      canonicalDiscountAmount: 0,
       quantitySold: 0,
       orderIds: new Set(),
       soldProductNos: new Set()
@@ -2733,6 +2796,9 @@ function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new
       bucket.manufacturer_code = product.manufacturer_code;
     }
     bucket.salesAmount += salesAmount;
+    bucket.canonicalGrossAmount += Number(sales.canonicalGrossAmount || 0);
+    bucket.canonicalPaidAmount += Number(sales.canonicalPaidAmount || 0);
+    bucket.canonicalDiscountAmount += Number(sales.canonicalDiscountAmount || 0);
     bucket.quantitySold += quantitySold;
     for (const orderId of orderIds) bucket.orderIds.add(orderId);
     bucket.soldProductNos.add(productNo);
@@ -2746,6 +2812,7 @@ function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new
       manufacturer_code: bucket.manufacturer_code,
       manufacturer_name: manufacturerNameByCode.get(bucket.manufacturer_code) || "",
       salesAmount: bucket.salesAmount,
+      sales: canonicalSalesObject(bucket.canonicalGrossAmount, bucket.canonicalPaidAmount, 0),
       quantitySold: bucket.quantitySold,
       orderCount: bucket.orderIds.size,
       soldProductCount: bucket.soldProductNos.size
@@ -2775,6 +2842,100 @@ function cafe24BrandSalesItemAmount(item = {}, quantity = 1) {
   return unitAmount * quantity;
 }
 
+function cafe24ItemGrossAmount(item = {}, quantity = 1) {
+  return firstCafe24Money([
+    item.product_price,
+    item.price,
+    item.salePrice,
+    item.sale_price,
+    item.supply_price
+  ]) * quantity;
+}
+
+function cafe24ItemDirectDiscountAmount(item = {}, quantity = 1) {
+  const unitDiscount = [
+    item.additional_discount_price,
+    item.coupon_discount_price,
+    item.market_discount_amount,
+    item.app_item_discount_amount,
+    item.item_discount_amount,
+    item.product_discount_amount
+  ].reduce((total, value) => total + firstCafe24Money([value]), 0);
+  return Math.max(0, unitDiscount * quantity);
+}
+
+function canonicalSalesObject(grossAmount = 0, paidAmount = 0, shippingAmount = 0) {
+  const gross = Math.round(Number(grossAmount || 0));
+  const paid = Math.round(Number(paidAmount || 0));
+  const discount = Math.round(gross - paid);
+  return {
+    grossAmount: gross,
+    paidAmount: paid,
+    discountAmount: discount,
+    discountRate: gross > 0 ? Math.round((discount / gross) * 10000) / 100 : null,
+    shippingAmount: Math.round(Number(shippingAmount || 0)),
+    basis: "cafe24_product_price"
+  };
+}
+
+function isPersonalPaymentBrandCode(code) {
+  return String(code || "").trim() === "B0000000";
+}
+
+function isUnassignedBrandCode(code) {
+  return String(code || "").trim().toUpperCase() === "UNASSIGNED";
+}
+
+function isExcludedFromBrandPerformance(code) {
+  return isPersonalPaymentBrandCode(code);
+}
+
+function allocateCanonicalPaidSalesForOrder(order = {}) {
+  const activeItems = cafe24OrderItems(order)
+    .filter((item) => !isCafe24CanceledItem(item))
+    .map((item) => {
+      const quantity = cafe24ItemQuantity(item);
+      const grossAmount = cafe24ItemGrossAmount(item, quantity);
+      const directDiscountAmount = Math.min(grossAmount, cafe24ItemDirectDiscountAmount(item, quantity));
+      const directNetAmount = Math.max(0, grossAmount - directDiscountAmount);
+      return { item, quantity, grossAmount, directDiscountAmount, directNetAmount };
+    });
+  const orderPaidAmount = cafe24OrderAmount(order);
+  const shippingAmount = Math.min(orderPaidAmount, cafe24ShippingFee(order));
+  const allocatablePaidAmount = Math.max(0, orderPaidAmount - shippingAmount);
+  const totalDirectNetAmount = activeItems.reduce((total, row) => total + row.directNetAmount, 0);
+  if (!activeItems.length) {
+    return { activeItems: [], orderPaidAmount, shippingAmount, allocatedProductPaidAmount: 0, difference: orderPaidAmount - shippingAmount, matched: orderPaidAmount === shippingAmount };
+  }
+  if (allocatablePaidAmount === 0 || totalDirectNetAmount <= 0) {
+    return {
+      activeItems: activeItems.map((row) => ({ ...row, paidAmount: 0, discountAmount: row.grossAmount, discountRate: row.grossAmount > 0 ? 100 : null })),
+      orderPaidAmount,
+      shippingAmount,
+      allocatedProductPaidAmount: 0,
+      difference: 0,
+      matched: true
+    };
+  }
+  let allocated = 0;
+  let largestIndex = 0;
+  activeItems.forEach((row, index) => {
+    if (row.directNetAmount > activeItems[largestIndex].directNetAmount) largestIndex = index;
+    const paidAmount = Math.round(allocatablePaidAmount * (row.directNetAmount / totalDirectNetAmount));
+    row.paidAmount = paidAmount;
+    allocated += paidAmount;
+  });
+  const residue = allocatablePaidAmount - allocated;
+  activeItems[largestIndex].paidAmount = Math.max(0, Number(activeItems[largestIndex].paidAmount || 0) + residue);
+  const allocatedProductPaidAmount = activeItems.reduce((total, row) => total + Number(row.paidAmount || 0), 0);
+  activeItems.forEach((row) => {
+    row.discountAmount = Math.round(row.grossAmount - Number(row.paidAmount || 0));
+    row.discountRate = row.grossAmount > 0 ? Math.round((row.discountAmount / row.grossAmount) * 10000) / 100 : null;
+  });
+  const difference = orderPaidAmount - shippingAmount - allocatedProductPaidAmount;
+  return { activeItems, orderPaidAmount, shippingAmount, allocatedProductPaidAmount, difference, matched: difference === 0 };
+}
+
 function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
   const catalogForBrandSales = [...catalog];
   const byProductNo = new Map();
@@ -2786,13 +2947,17 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
   const salesByProduct = new Map();
   const brandOrderHistory = new Map();
   const unassignedProducts = new Map();
+  const reconciliation = { orderPaidAmount: 0, allocatedProductPaidAmount: 0, shippingAmount: 0, difference: 0, matched: true };
   for (const order of orders) {
     if (isCafe24CanceledOrRefunded(order)) continue;
     const orderId = order.order_id || order.orderId || order.order_no || order.id || "";
-    for (const item of cafe24OrderItems(order)) {
-      if (item.status_code === "C2" || item.status_text === "취소완료") continue;
+    const orderAllocation = allocateCanonicalPaidSalesForOrder(order);
+    let includedOrderInBrandSales = false;
+    for (const allocation of orderAllocation.activeItems) {
+      const item = allocation.item;
       const productNo = String(item.product_no || item.productNo || "").trim();
       if (!productNo) continue;
+      includedOrderInBrandSales = true;
       const product = byProductNo.get(productNo);
       const productKey = product ? product.productNo : productNo;
       if (!product) {
@@ -2806,9 +2971,12 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
       }
       const quantity = cafe24ItemQuantity(item);
       const amount = cafe24BrandSalesItemAmount(item, quantity);
-      const entry = salesByProduct.get(productKey) || { quantity: 0, amount: 0, orderIds: new Set() };
+      const entry = salesByProduct.get(productKey) || { quantity: 0, amount: 0, canonicalGrossAmount: 0, canonicalPaidAmount: 0, canonicalDiscountAmount: 0, orderIds: new Set() };
       entry.quantity += quantity;
       entry.amount += amount;
+      entry.canonicalGrossAmount += allocation.grossAmount;
+      entry.canonicalPaidAmount += allocation.paidAmount;
+      entry.canonicalDiscountAmount += allocation.discountAmount;
       if (orderId) entry.orderIds.add(String(orderId));
       salesByProduct.set(productKey, entry);
 
@@ -2821,31 +2989,53 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
           orderDate: String(order.order_date || "").slice(0, 10),
           products: []
         };
-        const historyQuantity = Number(item.quantity || 0);
+        const historyQuantity = allocation.quantity;
         const productPrice = firstCafe24Money([item.product_price]);
         const discountUnit = firstCafe24Money([item.additional_discount_price]);
         const rrpAmount = productPrice * historyQuantity;
         const discountAmount = discountUnit * historyQuantity;
+        const canonicalDiscountRate = allocation.grossAmount > 0 ? Math.round(((allocation.grossAmount - allocation.paidAmount) / allocation.grossAmount) * 10000) / 100 : null;
         orderEntry.products.push({
           productNo,
           productCode: item.product_code || item.productCode || "",
           productName: item.product_name || item.productName || item.item_name || "상품명 없음",
+          brandCode: brand_code,
+          orderDate: orderEntry.orderDate,
           quantity: historyQuantity,
           rrpAmount,
           discountAmount,
           discountRate: productPrice > 0 ? Math.round(discountUnit / productPrice * 100) : 0,
-          paidAmount: rrpAmount - discountAmount
+          paidAmount: rrpAmount - discountAmount,
+          grossAmount: allocation.grossAmount,
+          canonicalPaidAmount: allocation.paidAmount,
+          canonicalDiscountAmount: allocation.grossAmount - allocation.paidAmount,
+          canonicalDiscountRate,
+          sales: canonicalSalesObject(allocation.grossAmount, allocation.paidAmount, 0),
+          salesBasis: "cafe24_product_price",
+          paymentMethod: normalizeCafe24PaymentMethod(order),
+          canceled: false,
+          source: "online"
         });
         brandOrders.set(orderKey, orderEntry);
         brandOrderHistory.set(brand_code, brandOrders);
       }
+    }
+    if (includedOrderInBrandSales) {
+      reconciliation.orderPaidAmount += orderAllocation.orderPaidAmount;
+      reconciliation.allocatedProductPaidAmount += orderAllocation.allocatedProductPaidAmount;
+      reconciliation.shippingAmount += orderAllocation.shippingAmount;
+      reconciliation.difference += orderAllocation.difference;
     }
   }
 
   return {
     catalog: [...catalogForBrandSales, ...unassignedProducts.values()],
     salesByProduct,
-    brandOrderHistory: Object.fromEntries([...brandOrderHistory.entries()].map(([brand_code, ordersById]) => [brand_code, [...ordersById.values()]]))
+    brandOrderHistory: Object.fromEntries([...brandOrderHistory.entries()].map(([brand_code, ordersById]) => [brand_code, [...ordersById.values()]])),
+    reconciliation: {
+      ...reconciliation,
+      matched: reconciliation.difference === 0
+    }
   };
 }
 
@@ -2892,7 +3082,10 @@ async function buildBrandSalesDiagnostics(since, until) {
         quantitySold: Number(sales.quantity || 0),
         salesVelocityPerDay: Number(sales.quantity || 0) / activeDaysForProduct(since, until, product.createdDate),
         orderCount: sales.orderIds instanceof Set ? sales.orderIds.size : 0,
-        salesAmount: Number(sales.amount || 0)
+        salesAmount: Number(sales.amount || 0),
+        canonicalPaidAmount: Number(sales.canonicalPaidAmount || 0),
+        canonicalDiscountAmount: Number(sales.canonicalDiscountAmount || 0),
+        sales: canonicalSalesObject(sales.canonicalGrossAmount, sales.canonicalPaidAmount, 0)
       };
     }).filter(Boolean).sort((left, right) => Number(right.salesAmount || 0) - Number(left.salesAmount || 0));
     const productsWithBrandCode = catalog.filter((product) => productBrandCode(product)).length;
@@ -2910,8 +3103,19 @@ async function buildBrandSalesDiagnostics(since, until) {
       acc.salesAmount += Number(brand.salesAmount || 0);
       acc.quantitySold += Number(brand.quantitySold || 0);
       acc.soldProductCount += Number(brand.soldProductCount || 0);
+      acc.canonicalGrossAmount += Number(brand.sales?.grossAmount || 0);
+      acc.canonicalPaidAmount += Number(brand.sales?.paidAmount || 0);
+      acc.canonicalDiscountAmount += Number(brand.sales?.discountAmount || 0);
       return acc;
-    }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0, paidAmount: commerceTotals.paidAmount, averageOrderValue: matchedOrderIds.size ? commerceTotals.paidAmount / matchedOrderIds.size : 0 });
+    }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0, paidAmount: commerceTotals.paidAmount, averageOrderValue: matchedOrderIds.size ? commerceTotals.paidAmount / matchedOrderIds.size : 0, canonicalGrossAmount: 0, canonicalPaidAmount: 0, canonicalDiscountAmount: 0 });
+    totals.sales = canonicalSalesObject(totals.canonicalGrossAmount, totals.canonicalPaidAmount, brandSalesInput.reconciliation.shippingAmount);
+    totals.reconciliation = {
+      orderPaidAmount: brandSalesInput.reconciliation.orderPaidAmount,
+      allocatedProductPaidAmount: brandSalesInput.reconciliation.allocatedProductPaidAmount,
+      shippingAmount: brandSalesInput.reconciliation.shippingAmount,
+      difference: brandSalesInput.reconciliation.difference,
+      matched: brandSalesInput.reconciliation.matched
+    };
     return {
       period: { since, until },
       source: ordersSource,
@@ -2926,6 +3130,7 @@ async function buildBrandSalesDiagnostics(since, until) {
         confirmedCount: brandMaster.confirmedCount || 0
       },
       totals,
+      reconciliation: totals.reconciliation,
       excludedOrderCount: Math.max(0, rawOrderIds.size - matchedOrderIds.size),
       paymentMethods: commerceTotals.paymentMethods,
       dailySales: dailySalesResult.dailySales,
@@ -2968,7 +3173,10 @@ async function buildBrandSalesDiagnostics(since, until) {
       quantitySold: Number(sales.quantity || 0),
       salesVelocityPerDay: Number(sales.quantity || 0) / activeDaysForProduct(since, until, product.createdDate),
       orderCount: sales.orderIds instanceof Set ? sales.orderIds.size : 0,
-      salesAmount: Number(sales.amount || 0)
+      salesAmount: Number(sales.amount || 0),
+      canonicalPaidAmount: Number(sales.canonicalPaidAmount || 0),
+      canonicalDiscountAmount: Number(sales.canonicalDiscountAmount || 0),
+      sales: canonicalSalesObject(sales.canonicalGrossAmount, sales.canonicalPaidAmount, 0)
     };
   }).filter(Boolean).sort((left, right) => Number(right.salesAmount || 0) - Number(left.salesAmount || 0));
   const productsWithBrandCode = catalog.filter((product) => productBrandCode(product)).length;
@@ -2986,8 +3194,19 @@ async function buildBrandSalesDiagnostics(since, until) {
     acc.salesAmount += Number(brand.salesAmount || 0);
     acc.quantitySold += Number(brand.quantitySold || 0);
     acc.soldProductCount += Number(brand.soldProductCount || 0);
+    acc.canonicalGrossAmount += Number(brand.sales?.grossAmount || 0);
+    acc.canonicalPaidAmount += Number(brand.sales?.paidAmount || 0);
+    acc.canonicalDiscountAmount += Number(brand.sales?.discountAmount || 0);
     return acc;
-  }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0, paidAmount: commerceTotals.paidAmount, averageOrderValue: matchedOrderIds.size ? commerceTotals.paidAmount / matchedOrderIds.size : 0 });
+  }, { salesAmount: 0, quantitySold: 0, orderCount: matchedOrderIds.size, soldProductCount: 0, paidAmount: commerceTotals.paidAmount, averageOrderValue: matchedOrderIds.size ? commerceTotals.paidAmount / matchedOrderIds.size : 0, canonicalGrossAmount: 0, canonicalPaidAmount: 0, canonicalDiscountAmount: 0 });
+  totals.sales = canonicalSalesObject(totals.canonicalGrossAmount, totals.canonicalPaidAmount, brandSalesInput.reconciliation.shippingAmount);
+  totals.reconciliation = {
+    orderPaidAmount: brandSalesInput.reconciliation.orderPaidAmount,
+    allocatedProductPaidAmount: brandSalesInput.reconciliation.allocatedProductPaidAmount,
+    shippingAmount: brandSalesInput.reconciliation.shippingAmount,
+    difference: brandSalesInput.reconciliation.difference,
+    matched: brandSalesInput.reconciliation.matched
+  };
 
   return {
     period: { since, until },
@@ -3003,6 +3222,7 @@ async function buildBrandSalesDiagnostics(since, until) {
       confirmedCount: brandMaster.confirmedCount || 0
     },
     totals,
+    reconciliation: totals.reconciliation,
     excludedOrderCount: Math.max(0, rawOrderIds.size - matchedOrderIds.size),
     paymentMethods: commerceTotals.paymentMethods,
     dailySales: dailySalesResult.dailySales,
