@@ -1,0 +1,180 @@
+{
+  "generatedAt": "2026-07-19T04:25:56.579Z",
+  "mode": "oauth_reauthentication_readiness",
+  "ready": true,
+  "oauthRoutes": {
+    "oauthStartRoutePresent": true,
+    "callbackRoutePresent": true,
+    "oauthConfigDiagnosticPresent": true,
+    "tokenStoreDiagnosticPresent": true,
+    "authorizeFunctionPresent": true,
+    "callbackFunctionPresent": true,
+    "randomUuidStatePresent": true,
+    "callbackChecksStateMismatch": true,
+    "callbackAllowsMissingServerState": true,
+    "callbackRedirectsWithoutTokenDisplay": true,
+    "tokenWriteAtomicRenamePresent": true,
+    "tokenWriteMode0600Present": true,
+    "tokenStoreDirectoryCreatePresent": true
+  },
+  "oauthDataFlow": [
+    "User Browser -> GET /api/cafe24/oauth/start",
+    "buildCafe24AuthorizeUrl() -> Cafe24 authorization URL with random state",
+    "Cafe24 authorization page -> configured redirect_uri",
+    "GET /api/cafe24/oauth/callback -> handleCafe24OAuthCallback()",
+    "authorization_code token exchange -> writeCafe24TokenRecord()",
+    "persistent token store -> ensureCafe24AccessToken()",
+    "Cafe24 Admin API GET"
+  ],
+  "redirectUri": {
+    "source": "CAFE24_REDIRECT_URI",
+    "parts": {
+      "scheme": "https",
+      "host": "samplas-marketing-os.onrender.com",
+      "path": "/api/cafe24/oauth/callback",
+      "portPresent": false,
+      "trailingSlash": false
+    },
+    "expectedPath": "/api/cafe24/oauth/callback"
+  },
+  "stateSecurity": {
+    "stateGeneratedWithRandomUUID": true,
+    "callbackChecksMismatch": true,
+    "callbackAllowsMissingServerState": true,
+    "verdict": "works_for_same_process_flow_but_missing_state_is_not_rejected"
+  },
+  "tokenStore": {
+    "directoryKind": "work_dir_default",
+    "directoryReady": true,
+    "fileExists": false,
+    "schema": {
+      "schema": "number",
+      "status": "string",
+      "accessToken": "string",
+      "refreshToken": "string",
+      "expiresAt": "string|null",
+      "updatedAt": "string",
+      "lastRefreshAt": "string|null",
+      "reauthRequiredAt": "string|null",
+      "lastError": "string|null"
+    },
+    "gitIgnored": true,
+    "gitIgnoreRule": ".gitignore:9:work/\t/Users/binggu/Documents/Codex/2026-06-28/samplas-os-https-www-instagram-com/work/secrets/cafe24-token-store.json",
+    "tracked": [],
+    "parentTracked": [],
+    "atomicWriteProbe": {
+      "skipped": false,
+      "directoryReady": true,
+      "atomicRenameWorked": true,
+      "mode0600Requested": true,
+      "fileMode": "0600"
+    }
+  },
+  "environment": {
+    "envPathExists": true,
+    "variables": [
+      {
+        "name": "CAFE24_MALL_ID",
+        "present": true,
+        "source": ".env",
+        "length": 6,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "valueRedacted": false
+      },
+      {
+        "name": "CAFE24_CLIENT_ID",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "valueRedacted": false
+      },
+      {
+        "name": "CAFE24_CLIENT_SECRET",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "valueRedacted": true
+      },
+      {
+        "name": "CAFE24_REDIRECT_URI",
+        "present": true,
+        "source": ".env",
+        "length": 67,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "valueRedacted": false
+      },
+      {
+        "name": "CAFE24_SCOPES",
+        "present": true,
+        "source": ".env",
+        "length": 54,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "valueRedacted": false
+      },
+      {
+        "name": "CAFE24_TOKEN_STORE_DIR",
+        "present": false,
+        "source": "missing",
+        "length": 0,
+        "empty": true,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "valueRedacted": true
+      },
+      {
+        "name": "CAFE24_PROXY_BASE_URL",
+        "present": true,
+        "source": ".env",
+        "length": 41,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "valueRedacted": false
+      },
+      {
+        "name": "CAFE24_ACCESS_TOKEN",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "valueRedacted": true
+      },
+      {
+        "name": "CAFE24_REFRESH_TOKEN",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "valueRedacted": true
+      }
+    ]
+  },
+  "postAuthVerification": {
+    "commands": [
+      "node scripts/check-cafe24-oauth-readiness.mjs",
+      "node scripts/recover-cafe24-api-access-and-probe.mjs --product-no=14600 --limit=5",
+      "node scripts/probe-cafe24-product-identity-api.mjs --product-no=14600 --product-no=14595 --product-no=14599 --product-no=14598 --product-no=14597"
+    ]
+  },
+  "blockingIssues": [],
+  "recommendation": {
+    "case": "A",
+    "nextStep": "Start server and open /api/cafe24/oauth/start manually, then run post-auth verification commands."
+  }
+}
