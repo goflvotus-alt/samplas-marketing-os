@@ -1,0 +1,608 @@
+{
+  "generatedAt": "2026-07-19T03:51:09.406Z",
+  "mode": "read_only_api_probe",
+  "apiCalls": {
+    "method": "GET only",
+    "attempted": 20,
+    "success": 0,
+    "failure": 20,
+    "tokenValuesLogged": false,
+    "usedStoredToken": true,
+    "mallIdConfigured": true
+  },
+  "sample": {
+    "requestedLimit": 5,
+    "actualCount": 5,
+    "productNos": [
+      "14600",
+      "14595",
+      "14599",
+      "14598",
+      "14597"
+    ],
+    "criteria": [
+      "explicit product-no if provided",
+      "single/no option",
+      "multi variant",
+      "manufacturer_code",
+      "productCode",
+      "stock > 0",
+      "stock = 0"
+    ]
+  },
+  "endpoints": [
+    {
+      "endpointName": "product_detail",
+      "requestMethod": "GET",
+      "sampleCount": 5,
+      "successCount": 0,
+      "failureCount": 5,
+      "responseTopLevelKeys": [],
+      "discoveredIdentityPaths": [],
+      "rateLimitInfo": {},
+      "errors": [
+        {
+          "productNo": "14600",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14595",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14599",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14598",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14597",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      ]
+    },
+    {
+      "endpointName": "product_inventories",
+      "requestMethod": "GET",
+      "sampleCount": 5,
+      "successCount": 0,
+      "failureCount": 5,
+      "responseTopLevelKeys": [],
+      "discoveredIdentityPaths": [],
+      "rateLimitInfo": {},
+      "errors": [
+        {
+          "productNo": "14600",
+          "category": "endpoint_not_found",
+          "httpStatus": 404,
+          "message": "No API found."
+        },
+        {
+          "productNo": "14595",
+          "category": "endpoint_not_found",
+          "httpStatus": 404,
+          "message": "No API found."
+        },
+        {
+          "productNo": "14599",
+          "category": "endpoint_not_found",
+          "httpStatus": 404,
+          "message": "No API found."
+        },
+        {
+          "productNo": "14598",
+          "category": "endpoint_not_found",
+          "httpStatus": 404,
+          "message": "No API found."
+        },
+        {
+          "productNo": "14597",
+          "category": "endpoint_not_found",
+          "httpStatus": 404,
+          "message": "No API found."
+        }
+      ]
+    },
+    {
+      "endpointName": "product_variants",
+      "requestMethod": "GET",
+      "sampleCount": 5,
+      "successCount": 0,
+      "failureCount": 5,
+      "responseTopLevelKeys": [],
+      "discoveredIdentityPaths": [],
+      "rateLimitInfo": {},
+      "errors": [
+        {
+          "productNo": "14600",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14595",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14599",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14598",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14597",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      ]
+    },
+    {
+      "endpointName": "product_variants_with_inventories",
+      "requestMethod": "GET",
+      "sampleCount": 5,
+      "successCount": 0,
+      "failureCount": 5,
+      "responseTopLevelKeys": [],
+      "discoveredIdentityPaths": [],
+      "rateLimitInfo": {},
+      "errors": [
+        {
+          "productNo": "14600",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14595",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14599",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14598",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        },
+        {
+          "productNo": "14597",
+          "category": "authentication_failed",
+          "httpStatus": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      ]
+    }
+  ],
+  "endpointRows": [
+    {
+      "endpointName": "product_detail",
+      "requestMethod": "GET",
+      "productNo": "14600",
+      "path": "/products/14600",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants",
+      "requestMethod": "GET",
+      "productNo": "14600",
+      "path": "/products/14600/variants",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants_with_inventories",
+      "requestMethod": "GET",
+      "productNo": "14600",
+      "path": "/products/14600/variants",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_inventories",
+      "requestMethod": "GET",
+      "productNo": "14600",
+      "path": "/products/14600/inventories",
+      "ok": false,
+      "httpStatus": 404,
+      "category": "endpoint_not_found",
+      "message": "No API found.",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 404,
+          "message": "No API found."
+        }
+      }
+    },
+    {
+      "endpointName": "product_detail",
+      "requestMethod": "GET",
+      "productNo": "14595",
+      "path": "/products/14595",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants",
+      "requestMethod": "GET",
+      "productNo": "14595",
+      "path": "/products/14595/variants",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants_with_inventories",
+      "requestMethod": "GET",
+      "productNo": "14595",
+      "path": "/products/14595/variants",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_inventories",
+      "requestMethod": "GET",
+      "productNo": "14595",
+      "path": "/products/14595/inventories",
+      "ok": false,
+      "httpStatus": 404,
+      "category": "endpoint_not_found",
+      "message": "No API found.",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 404,
+          "message": "No API found."
+        }
+      }
+    },
+    {
+      "endpointName": "product_detail",
+      "requestMethod": "GET",
+      "productNo": "14599",
+      "path": "/products/14599",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants",
+      "requestMethod": "GET",
+      "productNo": "14599",
+      "path": "/products/14599/variants",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants_with_inventories",
+      "requestMethod": "GET",
+      "productNo": "14599",
+      "path": "/products/14599/variants",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_inventories",
+      "requestMethod": "GET",
+      "productNo": "14599",
+      "path": "/products/14599/inventories",
+      "ok": false,
+      "httpStatus": 404,
+      "category": "endpoint_not_found",
+      "message": "No API found.",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 404,
+          "message": "No API found."
+        }
+      }
+    },
+    {
+      "endpointName": "product_detail",
+      "requestMethod": "GET",
+      "productNo": "14598",
+      "path": "/products/14598",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants",
+      "requestMethod": "GET",
+      "productNo": "14598",
+      "path": "/products/14598/variants",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants_with_inventories",
+      "requestMethod": "GET",
+      "productNo": "14598",
+      "path": "/products/14598/variants",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_inventories",
+      "requestMethod": "GET",
+      "productNo": "14598",
+      "path": "/products/14598/inventories",
+      "ok": false,
+      "httpStatus": 404,
+      "category": "endpoint_not_found",
+      "message": "No API found.",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 404,
+          "message": "No API found."
+        }
+      }
+    },
+    {
+      "endpointName": "product_detail",
+      "requestMethod": "GET",
+      "productNo": "14597",
+      "path": "/products/14597",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants",
+      "requestMethod": "GET",
+      "productNo": "14597",
+      "path": "/products/14597/variants",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants_with_inventories",
+      "requestMethod": "GET",
+      "productNo": "14597",
+      "path": "/products/14597/variants",
+      "ok": false,
+      "httpStatus": 401,
+      "category": "authentication_failed",
+      "message": "Invalid access_token (invalid_token)",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_inventories",
+      "requestMethod": "GET",
+      "productNo": "14597",
+      "path": "/products/14597/inventories",
+      "ok": false,
+      "httpStatus": 404,
+      "category": "endpoint_not_found",
+      "message": "No API found.",
+      "responseTopLevelKeys": [],
+      "identityHits": [],
+      "rateLimitInfo": {},
+      "errorBody": {
+        "error": {
+          "code": 404,
+          "message": "No API found."
+        }
+      }
+    }
+  ],
+  "identityFields": [],
+  "summary": {
+    "barcodeLikeExists": false,
+    "mediumCodeExists": false,
+    "barcodeComparison": {
+      "cafe24BarcodeLikePopulatedCount": 0,
+      "ecountExactBarcodeMatchCount": 0,
+      "duplicateBarcodeCount": 0,
+      "oneToOneMatchCount": 0,
+      "oneToManyMatchCount": 0,
+      "unmatchedCount": 0,
+      "ecountBarcodeUniverseCount": 9866
+    },
+    "failureCategories": {
+      "authentication_failed": 15,
+      "endpoint_not_found": 5
+    },
+    "conclusion": "api_probe_failed_no_field_absence_conclusion"
+  },
+  "recommendation": {
+    "case": "inconclusive",
+    "nextStep": "Resolve authentication/permission/API path failure before concluding whether Cafe24 has barcode-like fields."
+  }
+}
