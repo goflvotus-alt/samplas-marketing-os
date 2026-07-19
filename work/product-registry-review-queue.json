@@ -1,0 +1,6193 @@
+{
+  "generatedAt": "2026-07-19T05:08:29.788Z",
+  "mode": "product_registry_phase1_review_queue",
+  "source": "work/product-registry.json",
+  "summary": {
+    "registryCount": 131,
+    "verifiedCount": 17,
+    "reviewQueueCount": 114,
+    "confidenceDistribution": {
+      "100": 17,
+      "95-99": 0,
+      "80-94": 6,
+      "60-79": 108,
+      "0-59": 0
+    },
+    "brandCounts": [
+      {
+        "brandName": "본네",
+        "count": 20
+      },
+      {
+        "brandName": "OURSELVES REMAKE",
+        "count": 16
+      },
+      {
+        "brandName": "나밀리아",
+        "count": 14
+      },
+      {
+        "brandName": "에프엔케이 스튜디오",
+        "count": 11
+      },
+      {
+        "brandName": "파코서플라이",
+        "count": 10
+      },
+      {
+        "brandName": "레이서 월드 와이드",
+        "count": 7
+      },
+      {
+        "brandName": "아이필럭키",
+        "count": 5
+      },
+      {
+        "brandName": "레저렉션13",
+        "count": 4
+      },
+      {
+        "brandName": "KIMYO",
+        "count": 3
+      },
+      {
+        "brandName": "카르넷 아카이브",
+        "count": 3
+      },
+      {
+        "brandName": "AE SYNCTX",
+        "count": 2
+      },
+      {
+        "brandName": "ALEXII",
+        "count": 2
+      },
+      {
+        "brandName": "COZY WORLDWIDE",
+        "count": 2
+      },
+      {
+        "brandName": "DINGYUN ZHANG",
+        "count": 2
+      },
+      {
+        "brandName": "LIFE IS HELL",
+        "count": 2
+      },
+      {
+        "brandName": "게릿 제이콥",
+        "count": 2
+      },
+      {
+        "brandName": "리매진",
+        "count": 2
+      },
+      {
+        "brandName": "선데이오프클럽",
+        "count": 2
+      },
+      {
+        "brandName": "에잇아이쥐비",
+        "count": 2
+      },
+      {
+        "brandName": "604서비스",
+        "count": 1
+      },
+      {
+        "brandName": "DET BLEV SENT",
+        "count": 1
+      },
+      {
+        "brandName": "EMOSTANCECLUB",
+        "count": 1
+      },
+      {
+        "brandName": "FAR FROM WHAT",
+        "count": 1
+      },
+      {
+        "brandName": "HANBYEONGJU",
+        "count": 1
+      },
+      {
+        "brandName": "HYOVASMI",
+        "count": 1
+      },
+      {
+        "brandName": "데드우드",
+        "count": 1
+      },
+      {
+        "brandName": "민타임",
+        "count": 1
+      },
+      {
+        "brandName": "밍가",
+        "count": 1
+      },
+      {
+        "brandName": "아바바브",
+        "count": 1
+      },
+      {
+        "brandName": "어나더유스",
+        "count": 1
+      },
+      {
+        "brandName": "언본소사이어티",
+        "count": 1
+      },
+      {
+        "brandName": "얼라이브폼",
+        "count": 1
+      },
+      {
+        "brandName": "엘리엇 에밀",
+        "count": 1
+      },
+      {
+        "brandName": "젬젬 파라디스",
+        "count": 1
+      },
+      {
+        "brandName": "츄 포에버",
+        "count": 1
+      },
+      {
+        "brandName": "카미긴",
+        "count": 1
+      },
+      {
+        "brandName": "팩스00100",
+        "count": 1
+      },
+      {
+        "brandName": "퍼블릭하우징스케이트팀",
+        "count": 1
+      },
+      {
+        "brandName": "프로토타입스",
+        "count": 1
+      }
+    ]
+  },
+  "items": [
+    {
+      "canonicalProductId": "CP-C24-12418",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Pain mock neck top Ivory",
+        "cafe24": {
+          "productNo": "12418",
+          "productCode": "P0000SJQ",
+          "productName": "[BONNAE : 본네] Pain mock neck top Ivory"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON253ST00101",
+            "barcode": "BON253ST00101",
+            "productName": "BONNAE / Pain mock neck top (Ivory)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 80
+      },
+      "confidence": 80,
+      "reason": "high-confidence fuzzy match still requires human verification",
+      "diagnosticType": [
+        "fuzzy_high_confidence"
+      ],
+      "pendingReasons": [
+        "fuzzy_match_requires_review"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-12420",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Anime mock neck top Black",
+        "cafe24": {
+          "productNo": "12420",
+          "productCode": "P0000SJS",
+          "productName": "[BONNAE : 본네] Anime mock neck top Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON253ST00102",
+            "barcode": "BON253ST00102",
+            "productName": "BONNAE / Pain mock neck top (Ivory)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00201",
+            "barcode": "BON253ST00201",
+            "productName": "BONNAE / Pain mock neck top (Red)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00202",
+            "barcode": "BON253ST00202",
+            "productName": "BONNAE / Pain mock neck top (Red)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00301",
+            "barcode": "BON253ST00301",
+            "productName": "BONNAE / Anime mock neck top (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 80
+      },
+      "confidence": 80,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous",
+        "fuzzy_high_confidence"
+      ],
+      "pendingReasons": [
+        "fuzzy_match_requires_review",
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13733",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Embossed micro pleated skirt Black",
+        "cafe24": {
+          "productNo": "13733",
+          "productCode": "P0000UIF",
+          "productName": "[BONNAE : 본네] Embossed micro pleated skirt Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261BT00101",
+            "barcode": "BON261BT00101",
+            "productName": "BONNAE / Embossed micro pleated skirt (Ivory)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 80
+      },
+      "confidence": 80,
+      "reason": "high-confidence fuzzy match still requires human verification",
+      "diagnosticType": [
+        "fuzzy_high_confidence"
+      ],
+      "pendingReasons": [
+        "fuzzy_match_requires_review"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13740",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Beaded plunge neck top Beige",
+        "cafe24": {
+          "productNo": "13740",
+          "productCode": "P0000UIM",
+          "productName": "[BONNAE : 본네] Beaded plunge neck top Beige"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261ST00301",
+            "barcode": "BON261ST00301",
+            "productName": "BONNAE / Beaded plunge neck top (Beige)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 80
+      },
+      "confidence": 80,
+      "reason": "high-confidence fuzzy match still requires human verification",
+      "diagnosticType": [
+        "fuzzy_high_confidence"
+      ],
+      "pendingReasons": [
+        "fuzzy_match_requires_review"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13748",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Beaded knit zip-up Black",
+        "cafe24": {
+          "productNo": "13748",
+          "productCode": "P0000UIU",
+          "productName": "[BONNAE : 본네] Beaded knit zip-up Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261LT00101",
+            "barcode": "BON261LT00101",
+            "productName": "BONNAE / Beaded knit zip-up (Pink)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 80
+      },
+      "confidence": 80,
+      "reason": "high-confidence fuzzy match still requires human verification",
+      "diagnosticType": [
+        "fuzzy_high_confidence"
+      ],
+      "pendingReasons": [
+        "fuzzy_match_requires_review"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-8386",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000RI",
+        "brandName": "아이필럭키",
+        "canonicalProductName": "WHAT A LUCKY DAY! T-SHIRT CREAM",
+        "cafe24": {
+          "productNo": "8386",
+          "productCode": "P0000MKO",
+          "productName": "[IFEELLUCKY : 아이필럭키] WHAT A LUCKY DAY! T-SHIRT CREAM"
+        },
+        "ecount": [
+          {
+            "prodCd": "IFE261LT00603",
+            "barcode": "IFE261LT00603",
+            "productName": "IFEELUCKY / What a lucky day! shirt BULE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 80
+      },
+      "confidence": 80,
+      "reason": "high-confidence fuzzy match still requires human verification",
+      "diagnosticType": [
+        "fuzzy_high_confidence"
+      ],
+      "pendingReasons": [
+        "fuzzy_match_requires_review"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-10289",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000TQ",
+        "brandName": "얼라이브폼",
+        "canonicalProductName": "STRATUM MULE CHARCOAL",
+        "cafe24": {
+          "productNo": "10289",
+          "productCode": "P0000PFT",
+          "productName": "[ALIVEFORM : 얼라이브폼] STRATUM MULE CHARCOAL"
+        },
+        "ecount": [
+          {
+            "prodCd": "ALI251FW001040",
+            "barcode": "ALI251FW001040",
+            "productName": "ALIVEFORM / STRATUM MULE CHARCOAL",
+            "size": "40",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "ALI251FW001042",
+            "barcode": "ALI251FW001042",
+            "productName": "ALIVEFORM / STRATUM MULE CHARCOAL",
+            "size": "42",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "ALI251FW001043",
+            "barcode": "ALI251FW001043",
+            "productName": "ALIVEFORM / STRATUM MULE CHARCOAL",
+            "size": "43",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-10552",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Body suit",
+        "cafe24": {
+          "productNo": "10552",
+          "productCode": "P0000PPW",
+          "productName": "[BONNAE : 본네] Body suit (Black)"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON251LT00101",
+            "barcode": "BON251LT00101",
+            "productName": "BONNAE / Body suit (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON251LT00102",
+            "barcode": "BON251LT00102",
+            "productName": "BONNAE / Body suit (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON251LT00201",
+            "barcode": "BON251LT00201",
+            "productName": "BONNAE / Body suit (White)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON251LT00202",
+            "barcode": "BON251LT00202",
+            "productName": "BONNAE / Body suit (White)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26203701",
+            "barcode": "POP26203701",
+            "productName": "BONNAE / Body suit (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26203702",
+            "barcode": "POP26203702",
+            "productName": "BONNAE / Body suit (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26203801",
+            "barcode": "POP26203801",
+            "productName": "BONNAE / Body suit (White)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26203802",
+            "barcode": "POP26203802",
+            "productName": "BONNAE / Body suit (White)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-10755",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000UO",
+        "brandName": "에잇아이쥐비",
+        "canonicalProductName": "KEND denim NAVY",
+        "cafe24": {
+          "productNo": "10755",
+          "productCode": "P0000PXR",
+          "productName": "[8IGB : 에잇아이쥐비] KEND denim NAVY"
+        },
+        "ecount": [
+          {
+            "prodCd": "8IG251BT00503",
+            "barcode": "8IG251BT00503",
+            "productName": "8IGB / KEND denim NAVY",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "8IG251BT00504",
+            "barcode": "8IG251BT00504",
+            "productName": "8IGB / KEND denim NAVY",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-10832",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000KU",
+        "brandName": "카르넷 아카이브",
+        "canonicalProductName": "3 STITCHES - 3 METAL PLATES T-SHIRT WHITE",
+        "cafe24": {
+          "productNo": "10832",
+          "productCode": "P0000QAQ",
+          "productName": "[CARNET ARCHIVE : 카르넷 아카이브] 3 STITCHES - 3 METAL PLATES T-SHIRT WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "CAR251ST00301",
+            "barcode": "CAR251ST00301",
+            "productName": "CARNET ARCHIVE / 3 STITCHES - 3 METAL PLATES T-SHIRT WHITE",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "CAR251ST00302",
+            "barcode": "CAR251ST00302",
+            "productName": "CARNET ARCHIVE / 3 STITCHES - 3 METAL PLATES T-SHIRT WHITE",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "CAR251ST00303",
+            "barcode": "CAR251ST00303",
+            "productName": "CARNET ARCHIVE / 3 STITCHES - 3 METAL PLATES T-SHIRT WHITE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "CAR251ST00304",
+            "barcode": "CAR251ST00304",
+            "productName": "CARNET ARCHIVE / 3 STITCHES - 3 METAL PLATES T-SHIRT WHITE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "CAR251ST00305",
+            "barcode": "CAR251ST00305",
+            "productName": "CARNET ARCHIVE / 3 STITCHES - 3 METAL PLATES T-SHIRT WHITE",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-11019",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000MJ",
+        "brandName": "레저렉션13",
+        "canonicalProductName": "25-T005 Navy",
+        "cafe24": {
+          "productNo": "11019",
+          "productCode": "P0000QHV",
+          "productName": "[RESURRECITON 13 : 레저렉션13] 25-T005 Navy"
+        },
+        "ecount": [
+          {
+            "prodCd": "RES251ST00302",
+            "barcode": "RES251ST00302",
+            "productName": "RESURRECITON 13 / 25-T005 Navy",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES251ST00303",
+            "barcode": "RES251ST00303",
+            "productName": "RESURRECITON 13 / 25-T005 Navy",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES251ST00304",
+            "barcode": "RES251ST00304",
+            "productName": "RESURRECITON 13 / 25-T005 Navy",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-11033",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000OX",
+        "brandName": "HYOVASMI",
+        "canonicalProductName": "CHITIN T-SHIRTS WHITE",
+        "cafe24": {
+          "productNo": "11033",
+          "productCode": "P0000QIJ",
+          "productName": "[HYOVASMI : 효바스미] CHITIN T-SHIRTS WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "HYO251ST00103",
+            "barcode": "HYO251ST00103",
+            "productName": "HYOVASMI / CHITIN T-SHIRTS WHITE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "HYO251ST00104",
+            "barcode": "HYO251ST00104",
+            "productName": "HYOVASMI / CHITIN T-SHIRTS WHITE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "HYO251ST00105",
+            "barcode": "HYO251ST00105",
+            "productName": "HYOVASMI / CHITIN T-SHIRTS WHITE",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-11418",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000UO",
+        "brandName": "에잇아이쥐비",
+        "canonicalProductName": "Gourmet Polo Long Sleeves Navy",
+        "cafe24": {
+          "productNo": "11418",
+          "productCode": "P0000QXE",
+          "productName": "[8IGB : 에잇아이쥐비] Gourmet Polo Long Sleeves Navy"
+        },
+        "ecount": [
+          {
+            "prodCd": "8IG253LT00104",
+            "barcode": "8IG253LT00104",
+            "productName": "8IGB / Gourmet Polo Long Sleeves Navy",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "8IG253LT00105",
+            "barcode": "8IG253LT00105",
+            "productName": "8IGB / Gourmet Polo Long Sleeves Navy",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-11745",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000KU",
+        "brandName": "카르넷 아카이브",
+        "canonicalProductName": "DIPPED LUMP CARGO DENIM TROUSERS BLACK",
+        "cafe24": {
+          "productNo": "11745",
+          "productCode": "P0000RJT",
+          "productName": "[CARNET ARCHIVE : 카르넷 아카이브] DIPPED LUMP CARGO DENIM TROUSERS BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "CAR253BT00602",
+            "barcode": "CAR253BT00602",
+            "productName": "CARNET ARCHIVE / DIPPED LUMP CARGO DENIM TROUSERS BLACK",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "CAR253BT00603",
+            "barcode": "CAR253BT00603",
+            "productName": "CARNET ARCHIVE / DIPPED LUMP CARGO DENIM TROUSERS BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "CAR253BT00604",
+            "barcode": "CAR253BT00604",
+            "productName": "CARNET ARCHIVE / DIPPED LUMP CARGO DENIM TROUSERS BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "CAR253BT00605",
+            "barcode": "CAR253BT00605",
+            "productName": "CARNET ARCHIVE / DIPPED LUMP CARGO DENIM TROUSERS BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-11933",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000YL",
+        "brandName": "COZY WORLDWIDE",
+        "canonicalProductName": "ROYAL KNIGHT CLUB WAXED PANTS PINK",
+        "cafe24": {
+          "productNo": "11933",
+          "productCode": "P0000RQZ",
+          "productName": "[COZY WORLDWIDE : 코지 월드와이드] ROYAL KNIGHT CLUB WAXED PANTS PINK"
+        },
+        "ecount": [
+          {
+            "prodCd": "COZ253BT01602",
+            "barcode": "COZ253BT01602",
+            "productName": "COZY WORLDWIDE / ROYAL KNIGHT CLUB WAXED PANTS PINK",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "COZ253BT01603",
+            "barcode": "COZ253BT01603",
+            "productName": "COZY WORLDWIDE / ROYAL KNIGHT CLUB WAXED PANTS PINK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "COZ253BT01604",
+            "barcode": "COZ253BT01604",
+            "productName": "COZY WORLDWIDE / ROYAL KNIGHT CLUB WAXED PANTS PINK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "COZ261BT00702",
+            "barcode": "COZ261BT00702",
+            "productName": "COZY WORLDWIDE / ROYAL KNIGHT CLUB WAXED PANTS PINK",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "COZ261BT00703",
+            "barcode": "COZ261BT00703",
+            "productName": "COZY WORLDWIDE / ROYAL KNIGHT CLUB WAXED PANTS PINK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "COZ261BT00704",
+            "barcode": "COZ261BT00704",
+            "productName": "COZY WORLDWIDE / ROYAL KNIGHT CLUB WAXED PANTS PINK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-12059",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000WE",
+        "brandName": "레이서 월드 와이드",
+        "canonicalProductName": "Slim Low-Waist Denim Blue",
+        "cafe24": {
+          "productNo": "12059",
+          "productCode": "P0000RVV",
+          "productName": "[RACER WORLD WIDE : 레이서 월드 와이드] Slim Low-Waist Denim Blue"
+        },
+        "ecount": [
+          {
+            "prodCd": "RAC251BT01103",
+            "barcode": "RAC251BT01103",
+            "productName": "RACER WORLD WIDE / Slim Low-Waist Denim Blue",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC251BT01104",
+            "barcode": "RAC251BT01104",
+            "productName": "RACER WORLD WIDE / Slim Low-Waist Denim Blue",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC251BT01105",
+            "barcode": "RAC251BT01105",
+            "productName": "RACER WORLD WIDE / Slim Low-Waist Denim Blue",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC263BT00402",
+            "barcode": "RAC263BT00402",
+            "productName": "RACER WORLDWIDE / Slim Low-Waist Denim Blue",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC263BT00403",
+            "barcode": "RAC263BT00403",
+            "productName": "RACER WORLDWIDE / Slim Low-Waist Denim Blue",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC263BT00404",
+            "barcode": "RAC263BT00404",
+            "productName": "RACER WORLDWIDE / Slim Low-Waist Denim Blue",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC263BT00405",
+            "barcode": "RAC263BT00405",
+            "productName": "RACER WORLDWIDE / Slim Low-Waist Denim Blue",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-12329",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SS",
+        "brandName": "아바바브",
+        "canonicalProductName": "Avavav hooded t-shirt cutout washed grey",
+        "cafe24": {
+          "productNo": "12329",
+          "productCode": "P0000SGF",
+          "productName": "[AVAVAV : 아바바브] Avavav hooded t-shirt cutout washed grey"
+        },
+        "ecount": [
+          {
+            "prodCd": "AVA253ST00803",
+            "barcode": "AVA253ST00803",
+            "productName": "AVAVAV / Avavav hooded t-shirt cutout washed grey",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "AVA253ST00804",
+            "barcode": "AVA253ST00804",
+            "productName": "AVAVAV / Avavav hooded t-shirt cutout washed grey",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-12483",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SD",
+        "brandName": "프로토타입스",
+        "canonicalProductName": "TWISTED HOODIE WHITE",
+        "cafe24": {
+          "productNo": "12483",
+          "productCode": "P0000SMD",
+          "productName": "[PROTOTYPES : 프로토타입스] TWISTED HOODIE WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "PRO253LT00602",
+            "barcode": "PRO253LT00602",
+            "productName": "PROTOTYPES / TWISTED HOODIE WHITE",
+            "size": "S / M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PRO253LT00604",
+            "barcode": "PRO253LT00604",
+            "productName": "PROTOTYPES / TWISTED HOODIE WHITE",
+            "size": "L / XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-12587",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000OO",
+        "brandName": "604서비스",
+        "canonicalProductName": "DISTRESSED SKINNY JEAN IN COATED BLACK",
+        "cafe24": {
+          "productNo": "12587",
+          "productCode": "P0000SQD",
+          "productName": "[604SERVICE : 604서비스] DISTRESSED SKINNY JEAN IN COATED BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "604253BT00102",
+            "barcode": "604253BT00102",
+            "productName": "604SERVICE / DISTRESSED SKINNY JEAN IN COATED BLACK",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "604253BT00103",
+            "barcode": "604253BT00103",
+            "productName": "604SERVICE / DISTRESSED SKINNY JEAN IN COATED BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "604253BT00104",
+            "barcode": "604253BT00104",
+            "productName": "604SERVICE / DISTRESSED SKINNY JEAN IN COATED BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-12845",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZT",
+        "brandName": "파코서플라이",
+        "canonicalProductName": "FALLING ANGEL ZIP UP  HOODIE BLACK",
+        "cafe24": {
+          "productNo": "12845",
+          "productCode": "P0000TAB",
+          "productName": "[PACOSPLY : 파코서플라이] FALLING ANGEL ZIP UP  HOODIE BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "PAC253LT00201",
+            "barcode": "PAC253LT00201",
+            "productName": "PACOSPLY / FALLING ANGEL ZIP UP HOODIE BLACK",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC253LT00202",
+            "barcode": "PAC253LT00202",
+            "productName": "PACOSPLY / FALLING ANGEL ZIP UP HOODIE BLACK",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC253LT00901",
+            "barcode": "PAC253LT00901",
+            "productName": "PACOSPLY / FALLING ANGEL ZIP UP HOODIE BLACK",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC253LT00902",
+            "barcode": "PAC253LT00902",
+            "productName": "PACOSPLY / FALLING ANGEL ZIP UP HOODIE BLACK",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261LT01801",
+            "barcode": "PAC261LT01801",
+            "productName": "PACOSPLY / FALLING ANGEL ZIP UP HOODIE BLACK",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261LT01802",
+            "barcode": "PAC261LT01802",
+            "productName": "PACOSPLY / FALLING ANGEL ZIP UP HOODIE BLACK",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-12932",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZT",
+        "brandName": "파코서플라이",
+        "canonicalProductName": "GRAMMY LONG SLEEVE WHITE",
+        "cafe24": {
+          "productNo": "12932",
+          "productCode": "P0000TDK",
+          "productName": "[PACOSPLY : 파코서플라이] GRAMMY LONG SLEEVE WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "PAC253LT00801",
+            "barcode": "PAC253LT00801",
+            "productName": "PACOSPLY / GRAMMY LONG SLEEVE WHITE",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC253LT00802",
+            "barcode": "PAC253LT00802",
+            "productName": "PACOSPLY / GRAMMY LONG SLEEVE WHITE",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13080",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000UX",
+        "brandName": "리매진",
+        "canonicalProductName": "The Core Black",
+        "cafe24": {
+          "productNo": "13080",
+          "productCode": "P0000TJC",
+          "productName": "[REMAGINE : 리매진] The Core Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "REM253AC003250",
+            "barcode": "REM253AC003250",
+            "productName": "REMAGINE / THE CORE black",
+            "size": "250",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM253AC003270",
+            "barcode": "REM253AC003270",
+            "productName": "REMAGINE / THE CORE black",
+            "size": "270",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM261AC006040",
+            "barcode": "REM261AC006040",
+            "productName": "REMAGINE / The CORE Black",
+            "size": "40",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM261AC006041",
+            "barcode": "REM261AC006041",
+            "productName": "REMAGINE / The CORE Black",
+            "size": "41",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM261AC006042",
+            "barcode": "REM261AC006042",
+            "productName": "REMAGINE / The CORE Black",
+            "size": "42",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM261AC006043",
+            "barcode": "REM261AC006043",
+            "productName": "REMAGINE / The CORE Black",
+            "size": "43",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13087",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000UX",
+        "brandName": "리매진",
+        "canonicalProductName": "Starting bigger hybrid derby Wheat Nasty",
+        "cafe24": {
+          "productNo": "13087",
+          "productCode": "P0000TJJ",
+          "productName": "[REMAGINE : 리매진] Starting bigger hybrid derby Wheat Nasty"
+        },
+        "ecount": [
+          {
+            "prodCd": "REM253AC007240",
+            "barcode": "REM253AC007240",
+            "productName": "REMAGINE / Starting bigger hybrid derby Wheat Nasty",
+            "size": "240",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM253AC007250",
+            "barcode": "REM253AC007250",
+            "productName": "REMAGINE / Starting bigger hybrid derby Wheat Nasty",
+            "size": "250",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM253AC007260",
+            "barcode": "REM253AC007260",
+            "productName": "REMAGINE / Starting bigger hybrid derby Wheat Nasty",
+            "size": "260",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM253AC007270",
+            "barcode": "REM253AC007270",
+            "productName": "REMAGINE / Starting bigger hybrid derby Wheat Nasty",
+            "size": "270",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM253AC007280",
+            "barcode": "REM253AC007280",
+            "productName": "REMAGINE / Starting bigger hybrid derby Wheat Nasty",
+            "size": "280",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM261AC009039",
+            "barcode": "REM261AC009039",
+            "productName": "REMAGINE / Starting bigger hybrid derby Wheat Nasty",
+            "size": "39",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM261AC009040",
+            "barcode": "REM261AC009040",
+            "productName": "REMAGINE / Starting bigger hybrid derby Wheat Nasty",
+            "size": "40",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM261AC009041",
+            "barcode": "REM261AC009041",
+            "productName": "REMAGINE / Starting bigger hybrid derby Wheat Nasty",
+            "size": "41",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM261AC009042",
+            "barcode": "REM261AC009042",
+            "productName": "REMAGINE / Starting bigger hybrid derby Wheat Nasty",
+            "size": "42",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "REM261AC009043",
+            "barcode": "REM261AC009043",
+            "productName": "REMAGINE / Starting bigger hybrid derby Wheat Nasty",
+            "size": "43",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13233",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000WE",
+        "brandName": "레이서 월드 와이드",
+        "canonicalProductName": "Waxed Slim Denim Blue",
+        "cafe24": {
+          "productNo": "13233",
+          "productCode": "P0000TOZ",
+          "productName": "[RACER WORLDWIDE : 레이서 월드 와이드] Waxed Slim Denim Blue"
+        },
+        "ecount": [
+          {
+            "prodCd": "RAC261BT00104",
+            "barcode": "RAC261BT00104",
+            "productName": "RACER WORLDWIDE / Waxed Slim Denim Blue",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC261BT00105",
+            "barcode": "RAC261BT00105",
+            "productName": "RACER WORLDWIDE / Waxed Slim Denim Blue",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC261BT00106",
+            "barcode": "RAC261BT00106",
+            "productName": "RACER WORLDWIDE / Waxed Slim Denim Blue",
+            "size": "XXL",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC261BT01303",
+            "barcode": "RAC261BT01303",
+            "productName": "RACER WORLDWIDE / Waxed Slim Denim Blue",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC261BT01304",
+            "barcode": "RAC261BT01304",
+            "productName": "RACER WORLDWIDE / Waxed Slim Denim Blue",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC261BT01305",
+            "barcode": "RAC261BT01305",
+            "productName": "RACER WORLDWIDE / Waxed Slim Denim Blue",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13565",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000KU",
+        "brandName": "카르넷 아카이브",
+        "canonicalProductName": "ADJUSTABLE NAILS ON DOUBLE COLLAR POLO WHITE",
+        "cafe24": {
+          "productNo": "13565",
+          "productCode": "P0000UBT",
+          "productName": "[CARNET ARCHIVE : 카르넷 아카이브] ADJUSTABLE NAILS ON DOUBLE COLLAR POLO WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "CAR261ST01202",
+            "barcode": "CAR261ST01202",
+            "productName": "CARNET ARCHIVE / ADJUSTABLE NAILS ON DOUBLE COLLAR POLO WHITE",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "CAR261ST01203",
+            "barcode": "CAR261ST01203",
+            "productName": "CARNET ARCHIVE / ADJUSTABLE NAILS ON DOUBLE COLLAR POLO WHITE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "CAR261ST01204",
+            "barcode": "CAR261ST01204",
+            "productName": "CARNET ARCHIVE / ADJUSTABLE NAILS ON DOUBLE COLLAR POLO WHITE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13744",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Dusty dot zip-up hoodie",
+        "cafe24": {
+          "productNo": "13744",
+          "productCode": "P0000UIQ",
+          "productName": "[BONNAE : 본네] Dusty dot zip-up hoodie"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261LT00701",
+            "barcode": "BON261LT00701",
+            "productName": "BONNAE / Dusty dot zip-up hoodie",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261LT00703",
+            "barcode": "BON261LT00703",
+            "productName": "BONNAE / Dusty dot zip-up hoodie",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13791",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000HD",
+        "brandName": "선데이오프클럽",
+        "canonicalProductName": "Waxed Straight Leg Jeans",
+        "cafe24": {
+          "productNo": "13791",
+          "productCode": "P0000UKL",
+          "productName": "[SUNDAYOFFCLUB : 선데이오프클럽] Waxed Straight Leg Jeans"
+        },
+        "ecount": [
+          {
+            "prodCd": "POP264SUN01201",
+            "barcode": "POP264SUN01201",
+            "productName": "SUNDAYOFFCLUB / Waxed Straight Leg Jeans",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP264SUN01202",
+            "barcode": "POP264SUN01202",
+            "productName": "SUNDAYOFFCLUB / Waxed Straight Leg Jeans",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13798",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000HD",
+        "brandName": "선데이오프클럽",
+        "canonicalProductName": "Object Of Desire Zip Up Hoodie",
+        "cafe24": {
+          "productNo": "13798",
+          "productCode": "P0000UKS",
+          "productName": "[SUNDAYOFFCLUB : 선데이오프클럽] Object Of Desire Zip Up Hoodie"
+        },
+        "ecount": [
+          {
+            "prodCd": "POP264SUN00601",
+            "barcode": "POP264SUN00601",
+            "productName": "SUNDAYOFFCLUB / Object Of Desire Zip up Hoodie",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP264SUN00602",
+            "barcode": "POP264SUN00602",
+            "productName": "SUNDAYOFFCLUB / Object Of Desire Zip up Hoodie",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13942",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000RI",
+        "brandName": "아이필럭키",
+        "canonicalProductName": "Feelin' lucky tshirt pink",
+        "cafe24": {
+          "productNo": "13942",
+          "productCode": "P0000UQG",
+          "productName": "[IFEELUCKY : 아이필럭키] Feelin' lucky tshirt pink"
+        },
+        "ecount": [
+          {
+            "prodCd": "IFE261ST00403",
+            "barcode": "IFE261ST00403",
+            "productName": "IFEELUCKY / Feelin lucky tshirt pink",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261ST00404",
+            "barcode": "IFE261ST00404",
+            "productName": "IFEELUCKY / Feelin lucky tshirt pink",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14078",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000MT",
+        "brandName": "AE SYNCTX",
+        "canonicalProductName": "METAL LOGO HALF SLEEVE BLACK",
+        "cafe24": {
+          "productNo": "14078",
+          "productCode": "P0000UVM",
+          "productName": "[AE SYNCTX : 에이시넥틱스] METAL LOGO HALF SLEEVE BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "AEY261ST00701",
+            "barcode": "AEY261ST00701",
+            "productName": "AE SYNCTX / METAL LOGO HALF SLEEVE BLACK",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "AEY261ST00702",
+            "barcode": "AEY261ST00702",
+            "productName": "AE SYNCTX / METAL LOGO HALF SLEEVE BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "AEY261ST00703",
+            "barcode": "AEY261ST00703",
+            "productName": "AE SYNCTX / METAL LOGO HALF SLEEVE BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "AEY261ST00704",
+            "barcode": "AEY261ST00704",
+            "productName": "AE SYNCTX / METAL LOGO HALF SLEEVE BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14087",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZT",
+        "brandName": "파코서플라이",
+        "canonicalProductName": "WonderLand T-shirts WHITE",
+        "cafe24": {
+          "productNo": "14087",
+          "productCode": "P0000UVV",
+          "productName": "[PACOSPLY : 파코서플라이] WonderLand T-shirts WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "PAC261ST00301",
+            "barcode": "PAC261ST00301",
+            "productName": "PACOSPLY / WonderLand T-shirts WHITE",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261ST00302",
+            "barcode": "PAC261ST00302",
+            "productName": "PACOSPLY / WonderLand T-shirts WHITE",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261ST00303",
+            "barcode": "PAC261ST00303",
+            "productName": "PACOSPLY / WonderLand T-shirts WHITE",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14089",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZT",
+        "brandName": "파코서플라이",
+        "canonicalProductName": "DOLLY T-SHRITS BLACK",
+        "cafe24": {
+          "productNo": "14089",
+          "productCode": "P0000UVX",
+          "productName": "[PACOSPLY : 파코서플라이] DOLLY T-SHRITS BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "PAC261ST00501",
+            "barcode": "PAC261ST00501",
+            "productName": "PACOSPLY / DOLLY T-SHRITS BLACK",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261ST00502",
+            "barcode": "PAC261ST00502",
+            "productName": "PACOSPLY / DOLLY T-SHRITS BLACK",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261ST00503",
+            "barcode": "PAC261ST00503",
+            "productName": "PACOSPLY / DOLLY T-SHRITS BLACK",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14090",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZT",
+        "brandName": "파코서플라이",
+        "canonicalProductName": "DOLLY T-SHRITS WHITE",
+        "cafe24": {
+          "productNo": "14090",
+          "productCode": "P0000UVY",
+          "productName": "[PACOSPLY : 파코서플라이] DOLLY T-SHRITS WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "PAC261ST00401",
+            "barcode": "PAC261ST00401",
+            "productName": "PACOSPLY / DOLLY T-SHRITS WHITE",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261ST00402",
+            "barcode": "PAC261ST00402",
+            "productName": "PACOSPLY / DOLLY T-SHRITS WHITE",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261ST00403",
+            "barcode": "PAC261ST00403",
+            "productName": "PACOSPLY / DOLLY T-SHRITS WHITE",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14091",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZT",
+        "brandName": "파코서플라이",
+        "canonicalProductName": "Liberty fragile T-shirts CHARCOAL",
+        "cafe24": {
+          "productNo": "14091",
+          "productCode": "P0000UVZ",
+          "productName": "[PACOSPLY : 파코서플라이] Liberty fragile T-shirts CHARCOAL"
+        },
+        "ecount": [
+          {
+            "prodCd": "PAC261ST00701",
+            "barcode": "PAC261ST00701",
+            "productName": "PACOSPLY / Liberty fragile T-shirts CHARCOAL",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261ST00702",
+            "barcode": "PAC261ST00702",
+            "productName": "PACOSPLY / Liberty fragile T-shirts CHARCOAL",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261ST00703",
+            "barcode": "PAC261ST00703",
+            "productName": "PACOSPLY / Liberty fragile T-shirts CHARCOAL",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14097",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZT",
+        "brandName": "파코서플라이",
+        "canonicalProductName": "Dirty Falling angel zip-up hoodie CAMO",
+        "cafe24": {
+          "productNo": "14097",
+          "productCode": "P0000UWF",
+          "productName": "[PACOSPLY : 파코서플라이] Dirty Falling angel zip-up hoodie CAMO"
+        },
+        "ecount": [
+          {
+            "prodCd": "PAC261LT01201",
+            "barcode": "PAC261LT01201",
+            "productName": "PACOSPLY / Dirty Falling angel zip-up hoodie CAMO",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261LT01202",
+            "barcode": "PAC261LT01202",
+            "productName": "PACOSPLY / Dirty Falling angel zip-up hoodie CAMO",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14106",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000YL",
+        "brandName": "COZY WORLDWIDE",
+        "canonicalProductName": "OBSIDIAN ARMOR BRIEF BLACK",
+        "cafe24": {
+          "productNo": "14106",
+          "productCode": "P0000UWO",
+          "productName": "[COZY WORLDWIDE : 코지 월드와이드] OBSIDIAN ARMOR BRIEF BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "COZ261BT02702",
+            "barcode": "COZ261BT02702",
+            "productName": "COZY WORLDWIDE / OBSIDIAN ARMOR BRIEF BLACK",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "COZ261BT02703",
+            "barcode": "COZ261BT02703",
+            "productName": "COZY WORLDWIDE / OBSIDIAN ARMOR BRIEF BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14212",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000RO",
+        "brandName": "KIMYO",
+        "canonicalProductName": "RAW CUT MICRO SHORTS WHITE",
+        "cafe24": {
+          "productNo": "14212",
+          "productCode": "P0000VAQ",
+          "productName": "[KIMYO : 키묘] RAW CUT MICRO SHORTS WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "KIM261BT00201",
+            "barcode": "KIM261BT00201",
+            "productName": "KIMYO / RAW CUT MICRO SHORTS WHITE",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "KIM261BT00202",
+            "barcode": "KIM261BT00202",
+            "productName": "KIMYO / RAW CUT MICRO SHORTS WHITE",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14263",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000TH",
+        "brandName": "EMOSTANCECLUB",
+        "canonicalProductName": "DISTRESSED SLIM BLANK T - BLACK",
+        "cafe24": {
+          "productNo": "14263",
+          "productCode": "P0000VCP",
+          "productName": "[EMOSTANCECLUB : 에모스탠스클럽] DISTRESSED SLIM BLANK T - BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "EMO261ST00201",
+            "barcode": "EMO261ST00201",
+            "productName": "EMOSTANCECLUB / DISTRESSED SLIM BLANK T - BLACK",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "EMO261ST00202",
+            "barcode": "EMO261ST00202",
+            "productName": "EMOSTANCECLUB / DISTRESSED SLIM BLANK T - BLACK",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14284",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BBS",
+        "brandName": "츄 포에버",
+        "canonicalProductName": "Camo longsleeve w gold",
+        "cafe24": {
+          "productNo": "14284",
+          "productCode": "P0000VDK",
+          "productName": "[CHEW FOREVER : 츄 포에버] Camo longsleeve w gold"
+        },
+        "ecount": [
+          {
+            "prodCd": "CHE261LT00202",
+            "barcode": "CHE261LT00202",
+            "productName": "CHEW FOREVER / Camo longsleeve w gold",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "CHE261LT00203",
+            "barcode": "CHE261LT00203",
+            "productName": "CHEW FOREVER / Camo longsleeve w gold",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14292",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZT",
+        "brandName": "파코서플라이",
+        "canonicalProductName": "ALLDAY JEANS BLUE",
+        "cafe24": {
+          "productNo": "14292",
+          "productCode": "P0000VDS",
+          "productName": "[PACOSPLY : 파코서플라이] ALLDAY JEANS BLUE"
+        },
+        "ecount": [
+          {
+            "prodCd": "PAC261BT00802",
+            "barcode": "PAC261BT00802",
+            "productName": "PACOSPLY / ALLDAY JEANS BLUE",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261BT00803",
+            "barcode": "PAC261BT00803",
+            "productName": "PACOSPLY / ALLDAY JEANS BLUE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261BT00804",
+            "barcode": "PAC261BT00804",
+            "productName": "PACOSPLY / ALLDAY JEANS BLUE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14294",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZT",
+        "brandName": "파코서플라이",
+        "canonicalProductName": "ALLDAY JEANS SKY BLUE",
+        "cafe24": {
+          "productNo": "14294",
+          "productCode": "P0000VDU",
+          "productName": "[PACOSPLY : 파코서플라이] ALLDAY JEANS SKY BLUE"
+        },
+        "ecount": [
+          {
+            "prodCd": "PAC261BT00902",
+            "barcode": "PAC261BT00902",
+            "productName": "PACOSPLY / ALLDAY JEANS SKY BLUE",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261BT00903",
+            "barcode": "PAC261BT00903",
+            "productName": "PACOSPLY / ALLDAY JEANS SKY BLUE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261BT00904",
+            "barcode": "PAC261BT00904",
+            "productName": "PACOSPLY / ALLDAY JEANS SKY BLUE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14341",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000HM",
+        "brandName": "민타임",
+        "canonicalProductName": "DELTA G DAGGER EMBROIDERED SHORT SLEEVES SHIRT BLACK",
+        "cafe24": {
+          "productNo": "14341",
+          "productCode": "P0000VFP",
+          "productName": "[MEANTIME : 민타임] DELTA G DAGGER EMBROIDERED SHORT SLEEVES SHIRT BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "MEA261ST00103",
+            "barcode": "MEA261ST00103",
+            "productName": "Meantime / DELTA G DAGGER EMBROIDERED SHORT SLEEVES SHIRT BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MEA261ST00104",
+            "barcode": "MEA261ST00104",
+            "productName": "Meantime / DELTA G DAGGER EMBROIDERED SHORT SLEEVES SHIRT BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MEA261ST00105",
+            "barcode": "MEA261ST00105",
+            "productName": "Meantime / DELTA G DAGGER EMBROIDERED SHORT SLEEVES SHIRT BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14420",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCH",
+        "brandName": "DINGYUN ZHANG",
+        "canonicalProductName": "HYBRID DENIM PANTS BLUE WHITE",
+        "cafe24": {
+          "productNo": "14420",
+          "productCode": "P0000VIQ",
+          "productName": "[DINGYUN ZHANG : 딩윤 장] HYBRID DENIM PANTS BLUE WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "DIN261BT00503",
+            "barcode": "DIN261BT00503",
+            "productName": "DINGYUN ZHANG / HYBRID DENIM PANTS BLUE WHITE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "DIN261BT00504",
+            "barcode": "DIN261BT00504",
+            "productName": "DINGYUN ZHANG / HYBRID DENIM PANTS BLUE WHITE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14425",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCH",
+        "brandName": "DINGYUN ZHANG",
+        "canonicalProductName": "FIELD MINI SKIRT CAMO",
+        "cafe24": {
+          "productNo": "14425",
+          "productCode": "P0000VIV",
+          "productName": "[DINGYUN ZHANG : 딩윤 장] FIELD MINI SKIRT CAMO"
+        },
+        "ecount": [
+          {
+            "prodCd": "DIN261BT00602",
+            "barcode": "DIN261BT00602",
+            "productName": "DINGYUN ZHANG / FIELD MINI SKIRT CAMO",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "DIN261BT00603",
+            "barcode": "DIN261BT00603",
+            "productName": "DINGYUN ZHANG / FIELD MINI SKIRT CAMO",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14431",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZT",
+        "brandName": "파코서플라이",
+        "canonicalProductName": "FALLING ANGEL SPORTS JACKET NAVY",
+        "cafe24": {
+          "productNo": "14431",
+          "productCode": "P0000VJB",
+          "productName": "[PACOSPLY : 파코서플라이] FALLING ANGEL SPORTS JACKET NAVY"
+        },
+        "ecount": [
+          {
+            "prodCd": "PAC261LT00701",
+            "barcode": "PAC261LT00701",
+            "productName": "PACOSPLY / FALLING ANGEL SPORTS JACKET NAVY",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PAC261LT00702",
+            "barcode": "PAC261LT00702",
+            "productName": "PACOSPLY / FALLING ANGEL SPORTS JACKET NAVY",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14446",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCK",
+        "brandName": "밍가",
+        "canonicalProductName": "Riot Bootcut Jeans",
+        "cafe24": {
+          "productNo": "14446",
+          "productCode": "P0000VJQ",
+          "productName": "[MINGA : 밍가] Riot Bootcut Jeans"
+        },
+        "ecount": [
+          {
+            "prodCd": "MIN261BT00401",
+            "barcode": "MIN261BT00401",
+            "productName": "MINGA / Riot Bootcut Jeans",
+            "size": "26",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN261BT00402",
+            "barcode": "MIN261BT00402",
+            "productName": "MINGA / Riot Bootcut Jeans",
+            "size": "28",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN261BT00403",
+            "barcode": "MIN261BT00403",
+            "productName": "MINGA / Riot Bootcut Jeans",
+            "size": "30",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14470",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZW",
+        "brandName": "LIFE IS HELL",
+        "canonicalProductName": "CORDUROY HAGI WAX FLARED PANTS",
+        "cafe24": {
+          "productNo": "14470",
+          "productCode": "P0000VKO",
+          "productName": "[LIFE IS HELL : 라이프 이즈 헬] CORDUROY HAGI WAX FLARED PANTS"
+        },
+        "ecount": [
+          {
+            "prodCd": "LIF263BT00403",
+            "barcode": "LIF263BT00403",
+            "productName": "LIFE IS HELL / CORDUROY HAGI WAX FLARED PANTS",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "LIF263BT00404",
+            "barcode": "LIF263BT00404",
+            "productName": "LIFE IS HELL / CORDUROY HAGI WAX FLARED PANTS",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "LIF263BT00405",
+            "barcode": "LIF263BT00405",
+            "productName": "LIFE IS HELL / CORDUROY HAGI WAX FLARED PANTS",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14479",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000ZW",
+        "brandName": "LIFE IS HELL",
+        "canonicalProductName": "Runway laceup Jacket",
+        "cafe24": {
+          "productNo": "14479",
+          "productCode": "P0000VKX",
+          "productName": "[LIFE IS HELL : 라이프 이즈 헬] Runway laceup Jacket"
+        },
+        "ecount": [
+          {
+            "prodCd": "LIF263OT00604",
+            "barcode": "LIF263OT00604",
+            "productName": "LIFE IS HELL / Runway laceup Jacket",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "LIF263OT00605",
+            "barcode": "LIF263OT00605",
+            "productName": "LIFE IS HELL / Runway laceup Jacket",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14527",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCQ",
+        "brandName": "카미긴",
+        "canonicalProductName": "TECHNICAL ARMOR VEST",
+        "cafe24": {
+          "productNo": "14527",
+          "productCode": "P0000VMT",
+          "productName": "[KAMIGIN : 카미긴] TECHNICAL ARMOR VEST"
+        },
+        "ecount": [
+          {
+            "prodCd": "KAM261OT00202",
+            "barcode": "KAM261OT00202",
+            "productName": "KAMIGIN / TECHNICAL ARMOR VEST",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "KAM261OT00203",
+            "barcode": "KAM261OT00203",
+            "productName": "KAMIGIN / TECHNICAL ARMOR VEST",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14537",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000WE",
+        "brandName": "레이서 월드 와이드",
+        "canonicalProductName": "Studded Denim Blue",
+        "cafe24": {
+          "productNo": "14537",
+          "productCode": "P0000VND",
+          "productName": "[RACER WORLDWIDE : 레이서 월드 와이드] Studded Denim Blue"
+        },
+        "ecount": [
+          {
+            "prodCd": "RAC263BT00203",
+            "barcode": "RAC263BT00203",
+            "productName": "RACER WORLDWIDE / Studded Denim Blue",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC263BT00204",
+            "barcode": "RAC263BT00204",
+            "productName": "RACER WORLDWIDE / Studded Denim Blue",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC263BT00205",
+            "barcode": "RAC263BT00205",
+            "productName": "RACER WORLDWIDE / Studded Denim Blue",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14538",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000WE",
+        "brandName": "레이서 월드 와이드",
+        "canonicalProductName": "Plaid Longsleeve Grey",
+        "cafe24": {
+          "productNo": "14538",
+          "productCode": "P0000VNE",
+          "productName": "[RACER WORLDWIDE : 레이서 월드 와이드] Plaid Longsleeve Grey"
+        },
+        "ecount": [
+          {
+            "prodCd": "RAC263LT00103",
+            "barcode": "RAC263LT00103",
+            "productName": "RACER WORLDWIDE / Plaid Longsleeve Grey",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC263LT00104",
+            "barcode": "RAC263LT00104",
+            "productName": "RACER WORLDWIDE / Plaid Longsleeve Grey",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14539",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000WE",
+        "brandName": "레이서 월드 와이드",
+        "canonicalProductName": "Waxed Wide Rib Slim Knit Hoodie Waxed Black",
+        "cafe24": {
+          "productNo": "14539",
+          "productCode": "P0000VNF",
+          "productName": "[RACER WORLDWIDE : 레이서 월드 와이드] Waxed Wide Rib Slim Knit Hoodie Waxed Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "RAC263OT00302",
+            "barcode": "RAC263OT00302",
+            "productName": "RACER WORLDWIDE / Waxed Wide Rib Slim Knit Hoodie Waxed Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC263OT00303",
+            "barcode": "RAC263OT00303",
+            "productName": "RACER WORLDWIDE / Waxed Wide Rib Slim Knit Hoodie Waxed Black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC263OT00305",
+            "barcode": "RAC263OT00305",
+            "productName": "RACER WORLDWIDE / Waxed Wide Rib Slim Knit Hoodie Waxed Black",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14541",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000WE",
+        "brandName": "레이서 월드 와이드",
+        "canonicalProductName": "Slim Leather Jacket Black",
+        "cafe24": {
+          "productNo": "14541",
+          "productCode": "P0000VNH",
+          "productName": "[RACER WORLDWIDE : 레이서 월드 와이드] Slim Leather Jacket Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "RAC263OT00202",
+            "barcode": "RAC263OT00202",
+            "productName": "RACER WORLDWIDE / Slim Leather Jacket Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RAC263OT00203",
+            "barcode": "RAC263OT00203",
+            "productName": "RACER WORLDWIDE / Slim Leather Jacket Black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14542",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Octane Moto Gloves Black",
+        "cafe24": {
+          "productNo": "14542",
+          "productCode": "P0000VNI",
+          "productName": "[NAMILIA : 나밀리아] Octane Moto Gloves Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263AC00102",
+            "barcode": "NAM263AC00102",
+            "productName": "NAMILIA / Octane Moto Gloves Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263AC00104",
+            "barcode": "NAM263AC00104",
+            "productName": "NAMILIA / Octane Moto Gloves Black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14543",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Octane Moto Gloves Red",
+        "cafe24": {
+          "productNo": "14543",
+          "productCode": "P0000VNJ",
+          "productName": "[NAMILIA : 나밀리아] Octane Moto Gloves Red"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263AC00202",
+            "barcode": "NAM263AC00202",
+            "productName": "NAMILIA / Octane Moto Gloves Red",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263AC00204",
+            "barcode": "NAM263AC00204",
+            "productName": "NAMILIA / Octane Moto Gloves Red",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14544",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Octane Mini Skirt Black White",
+        "cafe24": {
+          "productNo": "14544",
+          "productCode": "P0000VNK",
+          "productName": "[NAMILIA : 나밀리아] Octane Mini Skirt Black White"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263BT00601",
+            "barcode": "NAM263BT00601",
+            "productName": "NAMILIA / Octane Mini Skirt Black White",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263BT00602",
+            "barcode": "NAM263BT00602",
+            "productName": "NAMILIA / Octane Mini Skirt Black White",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263BT00604",
+            "barcode": "NAM263BT00604",
+            "productName": "NAMILIA / Octane Mini Skirt Black White",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14545",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Pleated Mini Skirt Black",
+        "cafe24": {
+          "productNo": "14545",
+          "productCode": "P0000VNL",
+          "productName": "[NAMILIA : 나밀리아] Pleated Mini Skirt Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263BT00501",
+            "barcode": "NAM263BT00501",
+            "productName": "NAMILIA / Pleated Mini Skirt Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263BT00502",
+            "barcode": "NAM263BT00502",
+            "productName": "NAMILIA / Pleated Mini Skirt Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14546",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Heiress Handbag Pants Black",
+        "cafe24": {
+          "productNo": "14546",
+          "productCode": "P0000VNM",
+          "productName": "[NAMILIA : 나밀리아] Heiress Handbag Pants Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263BT00201",
+            "barcode": "NAM263BT00201",
+            "productName": "NAMILIA / Heiress Handbag Pants Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263BT00202",
+            "barcode": "NAM263BT00202",
+            "productName": "NAMILIA / Heiress Handbag Pants Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14547",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Octane Oversize Pants Black",
+        "cafe24": {
+          "productNo": "14547",
+          "productCode": "P0000VNN",
+          "productName": "[NAMILIA : 나밀리아] Octane Oversize Pants Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263BT00301",
+            "barcode": "NAM263BT00301",
+            "productName": "NAMILIA / Octane Oversize Pants Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263BT00302",
+            "barcode": "NAM263BT00302",
+            "productName": "NAMILIA / Octane Oversize Pants Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263BT00304",
+            "barcode": "NAM263BT00304",
+            "productName": "NAMILIA / Octane Oversize Pants Black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14548",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Octane Leather Panty Trousers Black",
+        "cafe24": {
+          "productNo": "14548",
+          "productCode": "P0000VNO",
+          "productName": "[NAMILIA : 나밀리아] Octane Leather Panty Trousers Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263BT00401",
+            "barcode": "NAM263BT00401",
+            "productName": "NAMILIA / Octane Leather Panty Trousers Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263BT00402",
+            "barcode": "NAM263BT00402",
+            "productName": "NAMILIA / Octane Leather Panty Trousers Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14549",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Studded Heiress Handbag Corset Black",
+        "cafe24": {
+          "productNo": "14549",
+          "productCode": "P0000VNP",
+          "productName": "[NAMILIA : 나밀리아] Studded Heiress Handbag Corset Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263OT00101",
+            "barcode": "NAM263OT00101",
+            "productName": "NAMILIA / Studded Heiress Handbag Corset Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263OT00102",
+            "barcode": "NAM263OT00102",
+            "productName": "NAMILIA / Studded Heiress Handbag Corset Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263OT00103",
+            "barcode": "NAM263OT00103",
+            "productName": "NAMILIA / Studded Heiress Handbag Corset Black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14550",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Heiress Handbag Corset Black",
+        "cafe24": {
+          "productNo": "14550",
+          "productCode": "P0000VNQ",
+          "productName": "[NAMILIA : 나밀리아] Heiress Handbag Corset Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263OT00301",
+            "barcode": "NAM263OT00301",
+            "productName": "NAMILIA / Heiress Handbag Corset Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263OT00302",
+            "barcode": "NAM263OT00302",
+            "productName": "NAMILIA / Heiress Handbag Corset Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14552",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Heiress Handbag Corset Green",
+        "cafe24": {
+          "productNo": "14552",
+          "productCode": "P0000VNS",
+          "productName": "[NAMILIA : 나밀리아] Heiress Handbag Corset Green"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263OT00201",
+            "barcode": "NAM263OT00201",
+            "productName": "NAMILIA / Heiress Handbag Corset Green",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263OT00202",
+            "barcode": "NAM263OT00202",
+            "productName": "NAMILIA / Heiress Handbag Corset Green",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14553",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Studded Octane Body Black",
+        "cafe24": {
+          "productNo": "14553",
+          "productCode": "P0000VNT",
+          "productName": "[NAMILIA : 나밀리아] Studded Octane Body Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263OT00401",
+            "barcode": "NAM263OT00401",
+            "productName": "NAMILIA / Studded Octane Body Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263OT00402",
+            "barcode": "NAM263OT00402",
+            "productName": "NAMILIA / Studded Octane Body Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14554",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Studded Octane Body Red",
+        "cafe24": {
+          "productNo": "14554",
+          "productCode": "P0000VNU",
+          "productName": "[NAMILIA : 나밀리아] Studded Octane Body Red"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263OT00501",
+            "barcode": "NAM263OT00501",
+            "productName": "NAMILIA / Studded Octane Body Red",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263OT00502",
+            "barcode": "NAM263OT00502",
+            "productName": "NAMILIA / Studded Octane Body Red",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14555",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Octane Moto Floating Pants Black White",
+        "cafe24": {
+          "productNo": "14555",
+          "productCode": "P0000VNV",
+          "productName": "[NAMILIA : 나밀리아] Octane Moto Floating Pants Black White"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263BT00101",
+            "barcode": "NAM263BT00101",
+            "productName": "NAMILIA / Octane Moto Floating Pants Black White",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263BT00102",
+            "barcode": "NAM263BT00102",
+            "productName": "NAMILIA / Octane Moto Floating Pants Black White",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263BT00103",
+            "barcode": "NAM263BT00103",
+            "productName": "NAMILIA / Octane Moto Floating Pants Black White",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14556",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000SK",
+        "brandName": "나밀리아",
+        "canonicalProductName": "Octane Moto Floating Crop Jacket Black",
+        "cafe24": {
+          "productNo": "14556",
+          "productCode": "P0000VNW",
+          "productName": "[NAMILIA : 나밀리아] Octane Moto Floating Crop Jacket Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "NAM263OT00602",
+            "barcode": "NAM263OT00602",
+            "productName": "NAMILIA / Octane Moto Floating Crop Jacket Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NAM263OT00604",
+            "barcode": "NAM263OT00604",
+            "productName": "NAMILIA / Octane Moto Floating Crop Jacket Black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14568",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BBD",
+        "brandName": "에프엔케이 스튜디오",
+        "canonicalProductName": "FRICK TANK TOP BLACK",
+        "cafe24": {
+          "productNo": "14568",
+          "productCode": "P0000VOI",
+          "productName": "[FNK STUDIOS : 에프엔케이 스튜디오] FRICK TANK TOP BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "FNK261ST00603",
+            "barcode": "FNK261ST00603",
+            "productName": "FNK STUDIOS / FRICK TANK TOP BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261ST00604",
+            "barcode": "FNK261ST00604",
+            "productName": "FNK STUDIOS / FRICK TANK TOP BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261ST00605",
+            "barcode": "FNK261ST00605",
+            "productName": "FNK STUDIOS / FRICK TANK TOP BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14569",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BBD",
+        "brandName": "에프엔케이 스튜디오",
+        "canonicalProductName": "SMK TRANSLUCENT LST-SHIRT BLACK",
+        "cafe24": {
+          "productNo": "14569",
+          "productCode": "P0000VOJ",
+          "productName": "[FNK STUDIOS : 에프엔케이 스튜디오] SMK TRANSLUCENT LST-SHIRT BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "FNK261LT00303",
+            "barcode": "FNK261LT00303",
+            "productName": "FNK STUDIOS / SMK TRANSLUCENT LST-SHIRT BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261LT00304",
+            "barcode": "FNK261LT00304",
+            "productName": "FNK STUDIOS / SMK TRANSLUCENT LST-SHIRT BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14570",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BBD",
+        "brandName": "에프엔케이 스튜디오",
+        "canonicalProductName": "RIVALS T-SHIRT BLACK",
+        "cafe24": {
+          "productNo": "14570",
+          "productCode": "P0000VOK",
+          "productName": "[FNK STUDIOS : 에프엔케이 스튜디오] RIVALS T-SHIRT BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "FNK261ST00503",
+            "barcode": "FNK261ST00503",
+            "productName": "FNK STUDIOS / RIVALS T-SHIRT BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261ST00504",
+            "barcode": "FNK261ST00504",
+            "productName": "FNK STUDIOS / RIVALS T-SHIRT BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261ST00505",
+            "barcode": "FNK261ST00505",
+            "productName": "FNK STUDIOS / RIVALS T-SHIRT BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14571",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BBD",
+        "brandName": "에프엔케이 스튜디오",
+        "canonicalProductName": "TEAM SPIRIT T-SHIRT BLACK",
+        "cafe24": {
+          "productNo": "14571",
+          "productCode": "P0000VOL",
+          "productName": "[FNK STUDIOS : 에프엔케이 스튜디오] TEAM SPIRIT T-SHIRT BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "FNK261ST00403",
+            "barcode": "FNK261ST00403",
+            "productName": "FNK STUDIOS / TEAM SPIRIT T-SHIRT BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261ST00404",
+            "barcode": "FNK261ST00404",
+            "productName": "FNK STUDIOS / TEAM SPIRIT T-SHIRT BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261ST00405",
+            "barcode": "FNK261ST00405",
+            "productName": "FNK STUDIOS / TEAM SPIRIT T-SHIRT BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14572",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BBD",
+        "brandName": "에프엔케이 스튜디오",
+        "canonicalProductName": "VINTAGE ALT T-SHIRT WHITE",
+        "cafe24": {
+          "productNo": "14572",
+          "productCode": "P0000VOM",
+          "productName": "[FNK STUDIOS : 에프엔케이 스튜디오] VINTAGE ALT T-SHIRT WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "FNK261ST00303",
+            "barcode": "FNK261ST00303",
+            "productName": "FNK STUDIOS / VINTAGE ALT T-SHIRT WHITE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261ST00304",
+            "barcode": "FNK261ST00304",
+            "productName": "FNK STUDIOS / VINTAGE ALT T-SHIRT WHITE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14573",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BBD",
+        "brandName": "에프엔케이 스튜디오",
+        "canonicalProductName": "EOL T-SHIRT WHITE",
+        "cafe24": {
+          "productNo": "14573",
+          "productCode": "P0000VON",
+          "productName": "[FNK STUDIOS : 에프엔케이 스튜디오] EOL T-SHIRT WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "FNK261ST00103",
+            "barcode": "FNK261ST00103",
+            "productName": "FNK STUDIOS / EOL T-SHIRT WHITE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261ST00104",
+            "barcode": "FNK261ST00104",
+            "productName": "FNK STUDIOS / EOL T-SHIRT WHITE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14574",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BBD",
+        "brandName": "에프엔케이 스튜디오",
+        "canonicalProductName": "SORE LOSER T-SHIRT",
+        "cafe24": {
+          "productNo": "14574",
+          "productCode": "P0000VOO",
+          "productName": "[FNK STUDIOS : 에프엔케이 스튜디오] SORE LOSER T-SHIRT"
+        },
+        "ecount": [
+          {
+            "prodCd": "FNK261ST00203",
+            "barcode": "FNK261ST00203",
+            "productName": "FNK STUDIOS / SORE LOSER T-SHIRT",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261ST00204",
+            "barcode": "FNK261ST00204",
+            "productName": "FNK STUDIOS / SORE LOSER T-SHIRT",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14575",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BBD",
+        "brandName": "에프엔케이 스튜디오",
+        "canonicalProductName": "ALT HOME JERSEY T-SHIRT WHITE",
+        "cafe24": {
+          "productNo": "14575",
+          "productCode": "P0000VOP",
+          "productName": "[FNK STUDIOS : 에프엔케이 스튜디오] ALT HOME JERSEY T-SHIRT WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "FNK261LT00103",
+            "barcode": "FNK261LT00103",
+            "productName": "FNK STUDIOS / ALT HOME JERSEY T-SHIRT WHITE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261LT00104",
+            "barcode": "FNK261LT00104",
+            "productName": "FNK STUDIOS / ALT HOME JERSEY T-SHIRT WHITE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14576",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BBD",
+        "brandName": "에프엔케이 스튜디오",
+        "canonicalProductName": "JDUB MONOGRAM DRESS SHIRT",
+        "cafe24": {
+          "productNo": "14576",
+          "productCode": "P0000VOQ",
+          "productName": "[FNK STUDIOS : 에프엔케이 스튜디오] JDUB MONOGRAM DRESS SHIRT"
+        },
+        "ecount": [
+          {
+            "prodCd": "FNK261LT00203",
+            "barcode": "FNK261LT00203",
+            "productName": "FNK STUDIOS / JDUB MONOGRAM DRESS SHIRT",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FNK261LT00204",
+            "barcode": "FNK261LT00204",
+            "productName": "FNK STUDIOS / JDUB MONOGRAM DRESS SHIRT",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14577",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "Leather Foil -pants",
+        "cafe24": {
+          "productNo": "14577",
+          "productCode": "P0000VOR",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] Leather Foil -pants"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263BT00301",
+            "barcode": "OUR263BT00301",
+            "productName": "OURSELVES REMAKE / Leather Foil -pants",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263BT00302",
+            "barcode": "OUR263BT00302",
+            "productName": "OURSELVES REMAKE / Leather Foil -pants",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263BT00303",
+            "barcode": "OUR263BT00303",
+            "productName": "OURSELVES REMAKE / Leather Foil -pants",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14578",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "Phanknit01 -pants",
+        "cafe24": {
+          "productNo": "14578",
+          "productCode": "P0000VOS",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] Phanknit01 -pants"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263BT00101",
+            "barcode": "OUR263BT00101",
+            "productName": "OURSELVES REMAKE / Phanknit01 -pants",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263BT00102",
+            "barcode": "OUR263BT00102",
+            "productName": "OURSELVES REMAKE / Phanknit01 -pants",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14579",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "Phanknit01 Polo-shirt",
+        "cafe24": {
+          "productNo": "14579",
+          "productCode": "P0000VOT",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] Phanknit01 Polo-shirt"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263ST00101",
+            "barcode": "OUR263ST00101",
+            "productName": "OURSELVES REMAKE / Phanknit01 Polo-shirt",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263ST00102",
+            "barcode": "OUR263ST00102",
+            "productName": "OURSELVES REMAKE / Phanknit01 Polo-shirt",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14580",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "Phanknit02 -pants",
+        "cafe24": {
+          "productNo": "14580",
+          "productCode": "P0000VOU",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] Phanknit02 -pants"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263BT00201",
+            "barcode": "OUR263BT00201",
+            "productName": "OURSELVES REMAKE / Phanknit02 -pants",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263BT00202",
+            "barcode": "OUR263BT00202",
+            "productName": "OURSELVES REMAKE / Phanknit02 -pants",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14582",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "SplitKnit01 Layered-shirt Plaid",
+        "cafe24": {
+          "productNo": "14582",
+          "productCode": "P0000VOW",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] SplitKnit01 Layered-shirt Plaid"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263LT00201",
+            "barcode": "OUR263LT00201",
+            "productName": "OURSELVES REMAKE / SplitKnit01 Layered-shirt Plaid",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263LT00202",
+            "barcode": "OUR263LT00202",
+            "productName": "OURSELVES REMAKE / SplitKnit01 Layered-shirt Plaid",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263LT00203",
+            "barcode": "OUR263LT00203",
+            "productName": "OURSELVES REMAKE / SplitKnit01 Layered-shirt Plaid",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14583",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "SplitKnit02 Layered-shirt Grey",
+        "cafe24": {
+          "productNo": "14583",
+          "productCode": "P0000VOX",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] SplitKnit02 Layered-shirt Grey"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263LT00101",
+            "barcode": "OUR263LT00101",
+            "productName": "OURSELVES REMAKE / SplitKnit02 Layered-shirt Grey",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263LT00102",
+            "barcode": "OUR263LT00102",
+            "productName": "OURSELVES REMAKE / SplitKnit02 Layered-shirt Grey",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14584",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "Knuckle -bra",
+        "cafe24": {
+          "productNo": "14584",
+          "productCode": "P0000VOY",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] Knuckle -bra"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263AC00101",
+            "barcode": "OUR263AC00101",
+            "productName": "OURSELVES REMAKE / Knuckle -bra",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263AC00102",
+            "barcode": "OUR263AC00102",
+            "productName": "OURSELVES REMAKE / Knuckle -bra",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14586",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "Sock Reborn LST-shirt",
+        "cafe24": {
+          "productNo": "14586",
+          "productCode": "P0000VPA",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] Sock Reborn LST-shirt"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263LT00302",
+            "barcode": "OUR263LT00302",
+            "productName": "OURSELVES REMAKE / Sock Reborn LST-shirt",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263LT00303",
+            "barcode": "OUR263LT00303",
+            "productName": "OURSELVES REMAKE / Sock Reborn LST-shirt",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14589",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "GhostMA01 -jacket",
+        "cafe24": {
+          "productNo": "14589",
+          "productCode": "P0000VPD",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] GhostMA01 -jacket"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263OT00201",
+            "barcode": "OUR263OT00201",
+            "productName": "OURSELVES REMAKE / GhostMA01 -jacket",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263OT00202",
+            "barcode": "OUR263OT00202",
+            "productName": "OURSELVES REMAKE / GhostMA01 -jacket",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14590",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "GhostTrace02 -pants",
+        "cafe24": {
+          "productNo": "14590",
+          "productCode": "P0000VPE",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] GhostTrace02 -pants"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263BT00401",
+            "barcode": "OUR263BT00401",
+            "productName": "OURSELVES REMAKE / GhostTrace02 -pants",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263BT00402",
+            "barcode": "OUR263BT00402",
+            "productName": "OURSELVES REMAKE / GhostTrace02 -pants",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14591",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "GhostMA02 -jacket",
+        "cafe24": {
+          "productNo": "14591",
+          "productCode": "P0000VPF",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] GhostMA02 -jacket"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263OT00101",
+            "barcode": "OUR263OT00101",
+            "productName": "OURSELVES REMAKE / GhostMA02 -jacket",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263OT00102",
+            "barcode": "OUR263OT00102",
+            "productName": "OURSELVES REMAKE / GhostMA02 -jacket",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14593",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "Solk Patch Tank top",
+        "cafe24": {
+          "productNo": "14593",
+          "productCode": "P0000VPH",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] Solk Patch Tank top"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263ST00301",
+            "barcode": "OUR263ST00301",
+            "productName": "OURSELVES REMAKE / Solk Patch Tank top",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263ST00302",
+            "barcode": "OUR263ST00302",
+            "productName": "OURSELVES REMAKE / Solk Patch Tank top",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14594",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "Retread Denim -pants",
+        "cafe24": {
+          "productNo": "14594",
+          "productCode": "P0000VPI",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] Retread Denim -pants"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263BT00601",
+            "barcode": "OUR263BT00601",
+            "productName": "OURSELVES REMAKE / Retread Denim -pants",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263BT00602",
+            "barcode": "OUR263BT00602",
+            "productName": "OURSELVES REMAKE / Retread Denim -pants",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14595",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B0000BCU",
+        "brandName": "OURSELVES REMAKE",
+        "canonicalProductName": "Retread Vest -jacket",
+        "cafe24": {
+          "productNo": "14595",
+          "productCode": "P0000VPJ",
+          "productName": "[OURSELVES REMAKE : 아워셀브즈 리메이크] Retread Vest -jacket"
+        },
+        "ecount": [
+          {
+            "prodCd": "OUR263OT00302",
+            "barcode": "OUR263OT00302",
+            "productName": "OURSELVES REMAKE / Retread Vest -jacket",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "OUR263OT00303",
+            "barcode": "OUR263OT00303",
+            "productName": "OURSELVES REMAKE / Retread Vest -jacket",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-8580",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000TN",
+        "brandName": "FAR FROM WHAT",
+        "canonicalProductName": "FAR STAR LOGO T-SHIRTS BLACK",
+        "cafe24": {
+          "productNo": "8580",
+          "productCode": "P0000MSA",
+          "productName": "[FAR FROM WHAT : 파 프롬 왓] FAR STAR LOGO T-SHIRTS BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "FAR251ST00101",
+            "barcode": "FAR251ST00101",
+            "productName": "FAR FROM WHAT / FAR STAR LOGO T-SHIRTS BLACK",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "FAR251ST00102",
+            "barcode": "FAR251ST00102",
+            "productName": "FAR FROM WHAT / FAR STAR LOGO T-SHIRTS BLACK",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-9208",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000UR",
+        "brandName": "데드우드",
+        "canonicalProductName": "FLYNN upcylce lambskin panel pants poison",
+        "cafe24": {
+          "productNo": "9208",
+          "productCode": "P0000NQE",
+          "productName": "[DEADWOOD : 데드우드] FLYNN upcylce lambskin panel pants poison"
+        },
+        "ecount": [
+          {
+            "prodCd": "DEA243BT00201",
+            "barcode": "DEA243BT00201",
+            "productName": "DEADWOOD / FLYNN upcylce lambskin panel pants poison",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "DEA243BT00202",
+            "barcode": "DEA243BT00202",
+            "productName": "DEADWOOD / FLYNN upcylce lambskin panel pants poison",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "DEA243BT00203",
+            "barcode": "DEA243BT00203",
+            "productName": "DEADWOOD / FLYNN upcylce lambskin panel pants poison",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "DEA243BT00204",
+            "barcode": "DEA243BT00204",
+            "productName": "DEADWOOD / FLYNN upcylce lambskin panel pants poison",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "DEA243BT00205",
+            "barcode": "DEA243BT00205",
+            "productName": "DEADWOOD / FLYNN upcylce lambskin panel pants poison",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-9753",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000VJ",
+        "brandName": "게릿 제이콥",
+        "canonicalProductName": "WIDE LEG JEANS - indigo blue",
+        "cafe24": {
+          "productNo": "9753",
+          "productCode": "P0000OLD",
+          "productName": "[GERRIT JACOB : 게릿 제이콥] WIDE LEG JEANS - indigo blue"
+        },
+        "ecount": [
+          {
+            "prodCd": "GER243BT00504",
+            "barcode": "GER243BT00504",
+            "productName": "GERRIT JACOB / WIDE LEG JEANS - indigo blue",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "GER243BT00505",
+            "barcode": "GER243BT00505",
+            "productName": "GERRIT JACOB / WIDE LEG JEANS - indigo blue",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-9759",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000VJ",
+        "brandName": "게릿 제이콥",
+        "canonicalProductName": "CARGO PANTS - green black",
+        "cafe24": {
+          "productNo": "9759",
+          "productCode": "P0000OLJ",
+          "productName": "[GERRIT JACOB : 게릿 제이콥] CARGO PANTS - green black"
+        },
+        "ecount": [
+          {
+            "prodCd": "GER243BT00104",
+            "barcode": "GER243BT00104",
+            "productName": "GERRIT JACOB / CARGO PANTS - green black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "GER243BT00105",
+            "barcode": "GER243BT00105",
+            "productName": "GERRIT JACOB / CARGO PANTS - green black",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-9847",
+      "priority": "HIGH",
+      "recommendedCandidate": {
+        "brandId": "B00000VM",
+        "brandName": "퍼블릭하우징스케이트팀",
+        "canonicalProductName": "GUN ANATOMY JEANS BLACK",
+        "cafe24": {
+          "productNo": "9847",
+          "productCode": "P0000OOT",
+          "productName": "[Publichousingskateteam : 퍼블릭하우징스케이트팀] GUN ANATOMY JEANS BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "PUB243BT00103",
+            "barcode": "PUB243BT00103",
+            "productName": "Publichousingskateteam / GUN ANATOMY JEANS BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PUB243BT00104",
+            "barcode": "PUB243BT00104",
+            "productName": "Publichousingskateteam / GUN ANATOMY JEANS BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PUB243BT00105",
+            "barcode": "PUB243BT00105",
+            "productName": "Publichousingskateteam / GUN ANATOMY JEANS BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 78
+      },
+      "confidence": 78,
+      "reason": "normalized brand and product name matched, but multiple ECOUNT candidates exist",
+      "diagnosticType": [
+        "exact_one_to_many"
+      ],
+      "pendingReasons": [
+        "multiple_exact_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-11992",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000RI",
+        "brandName": "아이필럭키",
+        "canonicalProductName": "EDUCATION TSHIRT WHITE",
+        "cafe24": {
+          "productNo": "11992",
+          "productCode": "P0000RTG",
+          "productName": "[IFEELUCKY : 아이필럭키] EDUCATION TSHIRT WHITE"
+        },
+        "ecount": [
+          {
+            "prodCd": "IFE251ST00403",
+            "barcode": "IFE251ST00403",
+            "productName": "IFEELUCKY / Lucky bling tshirt white",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE251ST00404",
+            "barcode": "IFE251ST00404",
+            "productName": "IFEELUCKY / Lucky bling tshirt white",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE253ST00203",
+            "barcode": "IFE253ST00203",
+            "productName": "IFEELUCKY / EDUCATION TEE WHITE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE253ST00204",
+            "barcode": "IFE253ST00204",
+            "productName": "IFEELUCKY / EDUCATION TEE WHITE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263IFE00303",
+            "barcode": "POP263IFE00303",
+            "productName": "IFEELUCKY / Education tshirt yellow / m SIZE",
+            "size": "m",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263IFE00304",
+            "barcode": "POP263IFE00304",
+            "productName": "IFEELUCKY / Education tshirt yellow / L SIZE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263IFE00403",
+            "barcode": "POP263IFE00403",
+            "productName": "IFEELUCKY / Education tshirt white / m SIZE",
+            "size": "m",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263IFE00404",
+            "barcode": "POP263IFE00404",
+            "productName": "IFEELUCKY / Education tshirt white / L SIZE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 75
+      },
+      "confidence": 75,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-12413",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Strap micro shorts Ivory",
+        "cafe24": {
+          "productNo": "12413",
+          "productCode": "P0000SJL",
+          "productName": "[BONNAE : 본네] Strap micro shorts Ivory"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON253BT00101",
+            "barcode": "BON253BT00101",
+            "productName": "BONNAE / Belted micro shorts (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00102",
+            "barcode": "BON253BT00102",
+            "productName": "BONNAE / Belted micro shorts (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00103",
+            "barcode": "BON253BT00103",
+            "productName": "BONNAE / Belted micro shorts (Black)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00201",
+            "barcode": "BON253BT00201",
+            "productName": "BONNAE / Belted micro shorts (Ivory)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00202",
+            "barcode": "BON253BT00202",
+            "productName": "BONNAE / Belted micro shorts (Ivory)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00203",
+            "barcode": "BON253BT00203",
+            "productName": "BONNAE / Belted micro shorts (Ivory)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00301",
+            "barcode": "BON253BT00301",
+            "productName": "BONNAE / Strap micro shorts (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00302",
+            "barcode": "BON253BT00302",
+            "productName": "BONNAE / Strap micro shorts (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00303",
+            "barcode": "BON253BT00303",
+            "productName": "BONNAE / Strap micro shorts (Black)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00401",
+            "barcode": "BON253BT00401",
+            "productName": "BONNAE / Strap micro shorts (Ivory)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 75
+      },
+      "confidence": 75,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-12416",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Belted micro shorts Ivory",
+        "cafe24": {
+          "productNo": "12416",
+          "productCode": "P0000SJO",
+          "productName": "[BONNAE : 본네] Belted micro shorts Ivory"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON253BT00101",
+            "barcode": "BON253BT00101",
+            "productName": "BONNAE / Belted micro shorts (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00102",
+            "barcode": "BON253BT00102",
+            "productName": "BONNAE / Belted micro shorts (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00103",
+            "barcode": "BON253BT00103",
+            "productName": "BONNAE / Belted micro shorts (Black)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00201",
+            "barcode": "BON253BT00201",
+            "productName": "BONNAE / Belted micro shorts (Ivory)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00202",
+            "barcode": "BON253BT00202",
+            "productName": "BONNAE / Belted micro shorts (Ivory)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00203",
+            "barcode": "BON253BT00203",
+            "productName": "BONNAE / Belted micro shorts (Ivory)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00301",
+            "barcode": "BON253BT00301",
+            "productName": "BONNAE / Strap micro shorts (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00302",
+            "barcode": "BON253BT00302",
+            "productName": "BONNAE / Strap micro shorts (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00303",
+            "barcode": "BON253BT00303",
+            "productName": "BONNAE / Strap micro shorts (Black)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253BT00401",
+            "barcode": "BON253BT00401",
+            "productName": "BONNAE / Strap micro shorts (Ivory)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 75
+      },
+      "confidence": 75,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13945",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000RI",
+        "brandName": "아이필럭키",
+        "canonicalProductName": "SUPER LUCKY tshirt green",
+        "cafe24": {
+          "productNo": "13945",
+          "productCode": "P0000UQJ",
+          "productName": "[IFEELUCKY : 아이필럭키] SUPER LUCKY tshirt green"
+        },
+        "ecount": [
+          {
+            "prodCd": "IFE251ST00203",
+            "barcode": "IFE251ST00203",
+            "productName": "IFEELUCKY / Lucky waffle tshirt black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE251ST00204",
+            "barcode": "IFE251ST00204",
+            "productName": "IFEELUCKY / Lucky waffle tshirt black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE251ST00303",
+            "barcode": "IFE251ST00303",
+            "productName": "IFEELUCKY / Lucky bling tshirt black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE251ST00304",
+            "barcode": "IFE251ST00304",
+            "productName": "IFEELUCKY / Lucky bling tshirt black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE251ST00403",
+            "barcode": "IFE251ST00403",
+            "productName": "IFEELUCKY / Lucky bling tshirt white",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE251ST00404",
+            "barcode": "IFE251ST00404",
+            "productName": "IFEELUCKY / Lucky bling tshirt white",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261ST00103",
+            "barcode": "IFE261ST00103",
+            "productName": "IFEELUCKY / super lucky t shirt BULE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261ST00104",
+            "barcode": "IFE261ST00104",
+            "productName": "IFEELUCKY / super lucky t shirt BULE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261ST00203",
+            "barcode": "IFE261ST00203",
+            "productName": "IFEELUCKY / super lucky t shirt GREEN",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261ST00204",
+            "barcode": "IFE261ST00204",
+            "productName": "IFEELUCKY / super lucky t shirt GREEN",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 75
+      },
+      "confidence": 75,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14387",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Bandage leg warmer black",
+        "cafe24": {
+          "productNo": "14387",
+          "productCode": "P0000VHJ",
+          "productName": "[BONNAE : 본네] Bandage leg warmer black"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261BT00801",
+            "barcode": "BON261BT00801",
+            "productName": "BONNAE / Bandage leg warmer (Skin)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00802",
+            "barcode": "BON261BT00802",
+            "productName": "BONNAE / Bandage leg warmer (Skin)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26207001",
+            "barcode": "POP26207001",
+            "productName": "BONNAE / strap leg warmer (black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26207002",
+            "barcode": "POP26207002",
+            "productName": "BONNAE / strap leg warmer (black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26207101",
+            "barcode": "POP26207101",
+            "productName": "BONNAE / strap leg warmer (skin)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26207102",
+            "barcode": "POP26207102",
+            "productName": "BONNAE / strap leg warmer (skin)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 75
+      },
+      "confidence": 75,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14388",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Bandage leg warmer skin",
+        "cafe24": {
+          "productNo": "14388",
+          "productCode": "P0000VHK",
+          "productName": "[BONNAE : 본네] Bandage leg warmer skin"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261BT00801",
+            "barcode": "BON261BT00801",
+            "productName": "BONNAE / Bandage leg warmer (Skin)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00802",
+            "barcode": "BON261BT00802",
+            "productName": "BONNAE / Bandage leg warmer (Skin)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26207001",
+            "barcode": "POP26207001",
+            "productName": "BONNAE / strap leg warmer (black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26207002",
+            "barcode": "POP26207002",
+            "productName": "BONNAE / strap leg warmer (black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26207101",
+            "barcode": "POP26207101",
+            "productName": "BONNAE / strap leg warmer (skin)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26207102",
+            "barcode": "POP26207102",
+            "productName": "BONNAE / strap leg warmer (skin)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 75
+      },
+      "confidence": 75,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14398",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Corset mini dress black",
+        "cafe24": {
+          "productNo": "14398",
+          "productCode": "P0000VHU",
+          "productName": "[BONNAE : 본네] Corset mini dress black"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON251DR00101",
+            "barcode": "BON251DR00101",
+            "productName": "BONNAE / Off-shoulder mini dress (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON251DR00102",
+            "barcode": "BON251DR00102",
+            "productName": "BONNAE / Off-shoulder mini dress (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON251DR00201",
+            "barcode": "BON251DR00201",
+            "productName": "BONNAE / Off-shoulder mini dress (White)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON251DR00202",
+            "barcode": "BON251DR00202",
+            "productName": "BONNAE / Off-shoulder mini dress (White)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261AC00600",
+            "barcode": "BON261AC00600",
+            "productName": "BONNAE / Pleated mini dress (Ivory)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261AC00700",
+            "barcode": "BON261AC00700",
+            "productName": "BONNAE / Pleated mini dress (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST01001",
+            "barcode": "BON261ST01001",
+            "productName": "BONNAE / Corset mini dress (Skin)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST01002",
+            "barcode": "BON261ST01002",
+            "productName": "BONNAE / Corset mini dress (Skin)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST01003",
+            "barcode": "BON261ST01003",
+            "productName": "BONNAE / Corset mini dress (Skin)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26203901",
+            "barcode": "POP26203901",
+            "productName": "BONNAE / Off-shoulder mini dress (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 75
+      },
+      "confidence": 75,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-12869",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000LF",
+        "brandName": "언본소사이어티",
+        "canonicalProductName": "UNBORN SOCIETY SIGNATURE KNIT HOODIE",
+        "cafe24": {
+          "productNo": "12869",
+          "productCode": "P0000TAZ",
+          "productName": "[UNBORN SOCIETY : 언본소사이어티] UNBORN SOCIETY SIGNATURE KNIT HOODIE (Army Camo)"
+        },
+        "ecount": [
+          {
+            "prodCd": "POP253UNB01401",
+            "barcode": "POP253UNB01401",
+            "productName": "UNBORN SOCIETY / UNBORN SOCIETY CORPORATION KNIT HOODIE BLACK",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP253UNB01402",
+            "barcode": "POP253UNB01402",
+            "productName": "UNBORN SOCIETY / UNBORN SOCIETY CORPORATION KNIT HOODIE BLACK",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP253UNB01403",
+            "barcode": "POP253UNB01403",
+            "productName": "UNBORN SOCIETY / UNBORN SOCIETY CORPORATION KNIT HOODIE BLACK",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263UNB00501",
+            "barcode": "POP263UNB00501",
+            "productName": "UNBORN SOCIETY / FW25-005 UNBORN SOCIETY SIGNATURE KNIT HOODIE (Army Camo) XS / SIZE",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263UNB00502",
+            "barcode": "POP263UNB00502",
+            "productName": "UNBORN SOCIETY / FW25-005 UNBORN SOCIETY SIGNATURE KNIT HOODIE (Army Camo) S / SIZE",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263UNB00503",
+            "barcode": "POP263UNB00503",
+            "productName": "UNBORN SOCIETY / FW25-005 UNBORN SOCIETY SIGNATURE KNIT HOODIE (Army Camo) M / SIZE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263UNB00504",
+            "barcode": "POP263UNB00504",
+            "productName": "UNBORN SOCIETY / FW25-005 UNBORN SOCIETY SIGNATURE KNIT HOODIE (Army Camo) L / SIZE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263UNB00601",
+            "barcode": "POP263UNB00601",
+            "productName": "UNBORN SOCIETY / FW25-006 UNBORN SOCIETY SIGNATURE KNIT HOODIE (Desert Camo) XS / SIZE",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263UNB00602",
+            "barcode": "POP263UNB00602",
+            "productName": "UNBORN SOCIETY / FW25-006 UNBORN SOCIETY SIGNATURE KNIT HOODIE (Desert Camo) S / SIZE",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263UNB00603",
+            "barcode": "POP263UNB00603",
+            "productName": "UNBORN SOCIETY / FW25-006 UNBORN SOCIETY SIGNATURE KNIT HOODIE (Desert Camo) M / SIZE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 67
+      },
+      "confidence": 67,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13731",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Studded shorts Black",
+        "cafe24": {
+          "productNo": "13731",
+          "productCode": "P0000UID",
+          "productName": "[BONNAE : 본네] Studded shorts Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261BT00301",
+            "barcode": "BON261BT00301",
+            "productName": "BONNAE / Studded shorts (White)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00302",
+            "barcode": "BON261BT00302",
+            "productName": "BONNAE / Studded shorts (White)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00303",
+            "barcode": "BON261BT00303",
+            "productName": "BONNAE / Studded shorts (White)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00401",
+            "barcode": "BON261BT00401",
+            "productName": "BONNAE / Studded shorts (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00402",
+            "barcode": "BON261BT00402",
+            "productName": "BONNAE / Studded shorts (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00403",
+            "barcode": "BON261BT00403",
+            "productName": "BONNAE / Studded shorts (Black)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 67
+      },
+      "confidence": 67,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13732",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Studded shorts White",
+        "cafe24": {
+          "productNo": "13732",
+          "productCode": "P0000UIE",
+          "productName": "[BONNAE : 본네] Studded shorts White"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261BT00301",
+            "barcode": "BON261BT00301",
+            "productName": "BONNAE / Studded shorts (White)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00302",
+            "barcode": "BON261BT00302",
+            "productName": "BONNAE / Studded shorts (White)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00303",
+            "barcode": "BON261BT00303",
+            "productName": "BONNAE / Studded shorts (White)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00401",
+            "barcode": "BON261BT00401",
+            "productName": "BONNAE / Studded shorts (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00402",
+            "barcode": "BON261BT00402",
+            "productName": "BONNAE / Studded shorts (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261BT00403",
+            "barcode": "BON261BT00403",
+            "productName": "BONNAE / Studded shorts (Black)",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 67
+      },
+      "confidence": 67,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13735",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Asymmetric dress Black",
+        "cafe24": {
+          "productNo": "13735",
+          "productCode": "P0000UIH",
+          "productName": "[BONNAE : 본네] Asymmetric dress Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261ST00501",
+            "barcode": "BON261ST00501",
+            "productName": "BONNAE / Asymmetric dress (Dusty pink)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00502",
+            "barcode": "BON261ST00502",
+            "productName": "BONNAE / Asymmetric dress (Dusty pink)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00601",
+            "barcode": "BON261ST00601",
+            "productName": "BONNAE / Asymmetric dress (Ivory)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00602",
+            "barcode": "BON261ST00602",
+            "productName": "BONNAE / Asymmetric dress (Ivory)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00701",
+            "barcode": "BON261ST00701",
+            "productName": "BONNAE / Asymmetric dress (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00702",
+            "barcode": "BON261ST00702",
+            "productName": "BONNAE / Asymmetric dress (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 67
+      },
+      "confidence": 67,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13738",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Muffler dress Black",
+        "cafe24": {
+          "productNo": "13738",
+          "productCode": "P0000UIK",
+          "productName": "[BONNAE : 본네] Muffler dress Black"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261ST00801",
+            "barcode": "BON261ST00801",
+            "productName": "BONNAE / Muffler dress (White)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00802",
+            "barcode": "BON261ST00802",
+            "productName": "BONNAE / Muffler dress (White)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00901",
+            "barcode": "BON261ST00901",
+            "productName": "BONNAE / Muffler dress (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00902",
+            "barcode": "BON261ST00902",
+            "productName": "BONNAE / Muffler dress (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 67
+      },
+      "confidence": 67,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-13739",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Muffler dress White",
+        "cafe24": {
+          "productNo": "13739",
+          "productCode": "P0000UIL",
+          "productName": "[BONNAE : 본네] Muffler dress White"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON261ST00801",
+            "barcode": "BON261ST00801",
+            "productName": "BONNAE / Muffler dress (White)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00802",
+            "barcode": "BON261ST00802",
+            "productName": "BONNAE / Muffler dress (White)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00901",
+            "barcode": "BON261ST00901",
+            "productName": "BONNAE / Muffler dress (Black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON261ST00902",
+            "barcode": "BON261ST00902",
+            "productName": "BONNAE / Muffler dress (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 67
+      },
+      "confidence": 67,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14232",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000RI",
+        "brandName": "아이필럭키",
+        "canonicalProductName": "Double waist carpenter pants Travertine",
+        "cafe24": {
+          "productNo": "14232",
+          "productCode": "P0000VBK",
+          "productName": "[IFEELUCKY : 아이필럭키] Double waist carpenter pants Travertine"
+        },
+        "ecount": [
+          {
+            "prodCd": "IFE251BT00302",
+            "barcode": "IFE251BT00302",
+            "productName": "IFEELUCKY / Big x2 Double carpenter pants Travertine",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE251BT00303",
+            "barcode": "IFE251BT00303",
+            "productName": "IFEELUCKY / Big x2 Double carpenter pants Travertine",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE251BT00304",
+            "barcode": "IFE251BT00304",
+            "productName": "IFEELUCKY / Big x2 Double carpenter pants Travertine",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261BT00302",
+            "barcode": "IFE261BT00302",
+            "productName": "IFEELUCKY / Double waist carpanter pants gray",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261BT00303",
+            "barcode": "IFE261BT00303",
+            "productName": "IFEELUCKY / Double waist carpanter pants gray",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261BT00304",
+            "barcode": "IFE261BT00304",
+            "productName": "IFEELUCKY / Double waist carpanter pants gray",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261BT00402",
+            "barcode": "IFE261BT00402",
+            "productName": "IFEELUCKY / Double waist carpanter pants blue",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261BT00403",
+            "barcode": "IFE261BT00403",
+            "productName": "IFEELUCKY / Double waist carpanter pants blue",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "IFE261BT00404",
+            "barcode": "IFE261BT00404",
+            "productName": "IFEELUCKY / Double waist carpanter pants blue",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 67
+      },
+      "confidence": 67,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14559",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000MJ",
+        "brandName": "레저렉션13",
+        "canonicalProductName": "26-AC011 BLACK",
+        "cafe24": {
+          "productNo": "14559",
+          "productCode": "P0000VNZ",
+          "productName": "[RESURRECITON 13 : 레저렉션13] 26-AC011 BLACK(CANVAS)"
+        },
+        "ecount": [
+          {
+            "prodCd": "RES253AC00800",
+            "barcode": "RES253AC00800",
+            "productName": "RESURRECITON 13 / 25-AC011 black",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 67
+      },
+      "confidence": 67,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14563",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000MJ",
+        "brandName": "레저렉션13",
+        "canonicalProductName": "26-T011 BLACK",
+        "cafe24": {
+          "productNo": "14563",
+          "productCode": "P0000VOD",
+          "productName": "[RESURRECITON 13 : 레저렉션13] 26-T011 BLACK"
+        },
+        "ecount": [
+          {
+            "prodCd": "POP263RES02202",
+            "barcode": "POP263RES02202",
+            "productName": "RESURRECITON 13 / 25-T011 black / S SIZE",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP263RES02204",
+            "barcode": "POP263RES02204",
+            "productName": "RESURRECITON 13 / 25-T011 black / L SIZE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES253LT01302",
+            "barcode": "RES253LT01302",
+            "productName": "RESURRECITON 13 / 25-T011 black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES253LT01303",
+            "barcode": "RES253LT01303",
+            "productName": "RESURRECITON 13 / 25-T011 black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES253LT01304",
+            "barcode": "RES253LT01304",
+            "productName": "RESURRECITON 13 / 25-T011 black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 67
+      },
+      "confidence": 67,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-9421",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Mesh top gray",
+        "cafe24": {
+          "productNo": "9421",
+          "productCode": "P0000NYJ",
+          "productName": "[BONNAE : 본네] Mesh top gray"
+        },
+        "ecount": [
+          {
+            "prodCd": "POP26205501",
+            "barcode": "POP26205501",
+            "productName": "BONNAE / Mesh top (black)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26205502",
+            "barcode": "POP26205502",
+            "productName": "BONNAE / Mesh top (black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26205601",
+            "barcode": "POP26205601",
+            "productName": "BONNAE / Mesh top (gray)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26205602",
+            "barcode": "POP26205602",
+            "productName": "BONNAE / Mesh top (gray)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 67
+      },
+      "confidence": 67,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14394",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Essential mock neck top skin",
+        "cafe24": {
+          "productNo": "14394",
+          "productCode": "P0000VHQ",
+          "productName": "[BONNAE : 본네] Essential mock neck top skin"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON253ST00102",
+            "barcode": "BON253ST00102",
+            "productName": "BONNAE / Pain mock neck top (Ivory)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00201",
+            "barcode": "BON253ST00201",
+            "productName": "BONNAE / Pain mock neck top (Red)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00202",
+            "barcode": "BON253ST00202",
+            "productName": "BONNAE / Pain mock neck top (Red)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00302",
+            "barcode": "BON253ST00302",
+            "productName": "BONNAE / Anime mock neck top (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00401",
+            "barcode": "BON253ST00401",
+            "productName": "BONNAE / Anime mock neck top (White)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00402",
+            "barcode": "BON253ST00402",
+            "productName": "BONNAE / Anime mock neck top (White)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26201001",
+            "barcode": "POP26201001",
+            "productName": "BONNAE / Pain mock neck top (Ivory)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26201002",
+            "barcode": "POP26201002",
+            "productName": "BONNAE / Pain mock neck top (Ivory)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26201101",
+            "barcode": "POP26201101",
+            "productName": "BONNAE / Pain mock neck top (Red)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26201102",
+            "barcode": "POP26201102",
+            "productName": "BONNAE / Pain mock neck top (Red)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 60
+      },
+      "confidence": 60,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    },
+    {
+      "canonicalProductId": "CP-C24-14395",
+      "priority": "LOW",
+      "recommendedCandidate": {
+        "brandId": "B00000SA",
+        "brandName": "본네",
+        "canonicalProductName": "Essential mock neck top white",
+        "cafe24": {
+          "productNo": "14395",
+          "productCode": "P0000VHR",
+          "productName": "[BONNAE : 본네] Essential mock neck top white"
+        },
+        "ecount": [
+          {
+            "prodCd": "BON253ST00102",
+            "barcode": "BON253ST00102",
+            "productName": "BONNAE / Pain mock neck top (Ivory)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00201",
+            "barcode": "BON253ST00201",
+            "productName": "BONNAE / Pain mock neck top (Red)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00202",
+            "barcode": "BON253ST00202",
+            "productName": "BONNAE / Pain mock neck top (Red)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00302",
+            "barcode": "BON253ST00302",
+            "productName": "BONNAE / Anime mock neck top (Black)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00401",
+            "barcode": "BON253ST00401",
+            "productName": "BONNAE / Anime mock neck top (White)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "BON253ST00402",
+            "barcode": "BON253ST00402",
+            "productName": "BONNAE / Anime mock neck top (White)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26201001",
+            "barcode": "POP26201001",
+            "productName": "BONNAE / Pain mock neck top (Ivory)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26201002",
+            "barcode": "POP26201002",
+            "productName": "BONNAE / Pain mock neck top (Ivory)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26201101",
+            "barcode": "POP26201101",
+            "productName": "BONNAE / Pain mock neck top (Red)",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "POP26201102",
+            "barcode": "POP26201102",
+            "productName": "BONNAE / Pain mock neck top (Red)",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ],
+        "confidence": 60
+      },
+      "confidence": 60,
+      "reason": "token similarity produced multiple review candidates",
+      "diagnosticType": [
+        "fuzzy_ambiguous"
+      ],
+      "pendingReasons": [
+        "manual_review_required",
+        "multiple_fuzzy_candidates"
+      ]
+    }
+  ]
+}
