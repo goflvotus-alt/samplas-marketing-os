@@ -1,0 +1,1081 @@
+{
+  "generatedAt": "2026-07-19T03:06:15.606Z",
+  "mode": "read_only_diagnostic",
+  "sources": {
+    "schema": {
+      "path": "config/canonical-product-matching-registry-schema.json"
+    },
+    "ecountLatest": {
+      "path": "work/ecount-inventory/latest.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T09:45:57.629Z",
+      "error": null
+    },
+    "ecountRawProducts": {
+      "path": "work/ecount-inventory/raw-products.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T09:45:57.077Z",
+      "error": null
+    },
+    "ecountRawInventory": {
+      "path": "work/ecount-inventory/raw-inventory.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T09:45:57.594Z",
+      "error": null
+    },
+    "cafe24ProductDashboard": {
+      "path": "work/product-dashboard-proxy-2026-06-24_2026-07-18.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T11:14:50.199Z",
+      "error": null
+    },
+    "productBrandMap": {
+      "path": "work/product-brand-map.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T11:12:02.376Z",
+      "error": null
+    },
+    "brandMaster": {
+      "path": "work/brand-master.json",
+      "exists": true,
+      "modifiedAt": "2026-07-15T06:43:56.429Z",
+      "error": null
+    },
+    "existingRegistries": []
+  },
+  "summary": {
+    "ecountProductCount": 10000,
+    "cafe24ProductCount": 177,
+    "totalMatchRows": 10156,
+    "confirmed": 0,
+    "candidate": 10,
+    "ambiguous": 23,
+    "duplicate": 0,
+    "rejected": 0,
+    "unresolved": 0,
+    "missing_ecount": 156,
+    "missing_cafe24": 9967,
+    "coverage": {
+      "confirmedEcountCoverageRate": 0,
+      "confirmedCafe24CoverageRate": 0
+    },
+    "duplicateDiagnostics": {
+      "ecountProductCodeCount": 0,
+      "cafe24ProductIdCount": 11,
+      "productIdCount": 0,
+      "ecountProductCodes": [],
+      "cafe24ProductIds": [
+        "13735",
+        "12416",
+        "10552",
+        "13733",
+        "13739",
+        "12413",
+        "13731",
+        "10832",
+        "11745",
+        "11992",
+        "12675"
+      ],
+      "productIds": []
+    },
+    "brandCoverage": [
+      {
+        "brandId": "UNASSIGNED",
+        "total": 9967,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 9967
+      },
+      {
+        "brandId": "B00000SA",
+        "total": 29,
+        "confirmed": 0,
+        "candidate": 6,
+        "ambiguous": 14,
+        "duplicate": 0,
+        "missing": 9
+      },
+      {
+        "brandId": "B0000BCU",
+        "total": 16,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 16
+      },
+      {
+        "brandId": "B00000SK",
+        "total": 14,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 14
+      },
+      {
+        "brandId": "B0000BBD",
+        "total": 11,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 11
+      },
+      {
+        "brandId": "B0000000",
+        "total": 10,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 10
+      },
+      {
+        "brandId": "B00000ZT",
+        "total": 10,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 10
+      },
+      {
+        "brandId": "B00000MJ",
+        "total": 9,
+        "confirmed": 0,
+        "candidate": 2,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 7
+      },
+      {
+        "brandId": "B00000RO",
+        "total": 7,
+        "confirmed": 0,
+        "candidate": 2,
+        "ambiguous": 2,
+        "duplicate": 0,
+        "missing": 3
+      },
+      {
+        "brandId": "B00000WE",
+        "total": 7,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 7
+      },
+      {
+        "brandId": "B0000BAR",
+        "total": 7,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 7
+      },
+      {
+        "brandId": "B00000KU",
+        "total": 6,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 5,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000RI",
+        "total": 6,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 2,
+        "duplicate": 0,
+        "missing": 4
+      },
+      {
+        "brandId": "B00000UI",
+        "total": 3,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 3
+      },
+      {
+        "brandId": "B00000HD",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000LC",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000LF",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000LI",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000MT",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000OR",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000QH",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000UO",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000UX",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000VJ",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000YL",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000ZW",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B0000BCH",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B0000BCN",
+        "total": 2,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 2
+      },
+      {
+        "brandId": "B00000HM",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000JA",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000OE",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000OO",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000OX",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000PM",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000PY",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000RF",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000SD",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000SS",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000SY",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000TH",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000TN",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000TQ",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000UR",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000VM",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000WH",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000XD",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000XM",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000XW",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B00000ZE",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B0000BAO",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B0000BBS",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B0000BBV",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B0000BCK",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      },
+      {
+        "brandId": "B0000BCQ",
+        "total": 1,
+        "confirmed": 0,
+        "candidate": 0,
+        "ambiguous": 0,
+        "duplicate": 0,
+        "missing": 1
+      }
+    ]
+  },
+  "availableSignals": {
+    "ecount": {
+      "productCodeCount": 10000,
+      "barcodeCount": 9866,
+      "productNameCount": 10000
+    },
+    "cafe24": {
+      "productNoCount": 177,
+      "productCodeCount": 177,
+      "manufacturerCodeCount": 177,
+      "variantIdCount": 525,
+      "productNameCount": 177,
+      "brandIdCount": 177
+    }
+  },
+  "duplicate": 0,
+  "brandCoverage": [
+    {
+      "brandId": "UNASSIGNED",
+      "total": 9967,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 9967
+    },
+    {
+      "brandId": "B00000SA",
+      "total": 29,
+      "confirmed": 0,
+      "candidate": 6,
+      "ambiguous": 14,
+      "duplicate": 0,
+      "missing": 9
+    },
+    {
+      "brandId": "B0000BCU",
+      "total": 16,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 16
+    },
+    {
+      "brandId": "B00000SK",
+      "total": 14,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 14
+    },
+    {
+      "brandId": "B0000BBD",
+      "total": 11,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 11
+    },
+    {
+      "brandId": "B0000000",
+      "total": 10,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 10
+    },
+    {
+      "brandId": "B00000ZT",
+      "total": 10,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 10
+    },
+    {
+      "brandId": "B00000MJ",
+      "total": 9,
+      "confirmed": 0,
+      "candidate": 2,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 7
+    },
+    {
+      "brandId": "B00000RO",
+      "total": 7,
+      "confirmed": 0,
+      "candidate": 2,
+      "ambiguous": 2,
+      "duplicate": 0,
+      "missing": 3
+    },
+    {
+      "brandId": "B00000WE",
+      "total": 7,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 7
+    },
+    {
+      "brandId": "B0000BAR",
+      "total": 7,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 7
+    },
+    {
+      "brandId": "B00000KU",
+      "total": 6,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 5,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000RI",
+      "total": 6,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 2,
+      "duplicate": 0,
+      "missing": 4
+    },
+    {
+      "brandId": "B00000UI",
+      "total": 3,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 3
+    },
+    {
+      "brandId": "B00000HD",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000LC",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000LF",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000LI",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000MT",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000OR",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000QH",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000UO",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000UX",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000VJ",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000YL",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000ZW",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B0000BCH",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B0000BCN",
+      "total": 2,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 2
+    },
+    {
+      "brandId": "B00000HM",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000JA",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000OE",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000OO",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000OX",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000PM",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000PY",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000RF",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000SD",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000SS",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000SY",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000TH",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000TN",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000TQ",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000UR",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000VM",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000WH",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000XD",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000XM",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000XW",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B00000ZE",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B0000BAO",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B0000BBS",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B0000BBV",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B0000BCK",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    },
+    {
+      "brandId": "B0000BCQ",
+      "total": 1,
+      "confirmed": 0,
+      "candidate": 0,
+      "ambiguous": 0,
+      "duplicate": 0,
+      "missing": 1
+    }
+  ],
+  "dataQuality": {
+    "existingRegistryCount": 0,
+    "ecountMissingBarcodeCount": 134,
+    "cafe24MissingManufacturerCodeCount": 0,
+    "cafe24MultipleVariantProductCount": 139
+  }
+}

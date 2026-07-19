@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SAMPLAS Canonical Product Matching Registry",
+  "type": "object",
+  "required": ["generatedAt", "mode", "metadata", "sources", "summary", "matches"],
+  "properties": {
+    "generatedAt": { "type": "string" },
+    "mode": { "const": "read_only_discovery" },
+    "metadata": {
+      "type": "object",
+      "required": ["confidenceFormula", "confirmedPolicy", "statusValues"]
+    },
+    "sources": { "type": "object" },
+    "summary": { "type": "object" },
+    "matches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "productId",
+          "brandId",
+          "ecountProductCode",
+          "cafe24ProductId",
+          "variantIds",
+          "matchStatus",
+          "matchMethod",
+          "confidence",
+          "evidence",
+          "pendingReasons",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  }
+}
