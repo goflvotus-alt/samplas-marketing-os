@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SAMPLAS Inventory Intelligence Read Only Diagnostic",
+  "type": "object",
+  "required": ["generatedAt", "mode", "sources", "summary", "thresholds", "items"],
+  "properties": {
+    "generatedAt": { "type": "string" },
+    "mode": { "const": "read_only_diagnostic" },
+    "sources": { "type": "object" },
+    "summary": {
+      "type": "object",
+      "required": [
+        "confirmedMatchCount",
+        "comparedCount",
+        "exactMatchCount",
+        "mismatchCount",
+        "missingEcountInventoryCount",
+        "missingCafe24InventoryCount",
+        "invalidInventoryValueCount",
+        "excludedUnconfirmedMatchCount",
+        "totalEcountStock",
+        "totalCafe24Stock",
+        "totalAbsoluteDifference",
+        "exactMatchRate",
+        "withinToleranceRate",
+        "mismatchRate"
+      ]
+    },
+    "thresholds": {
+      "type": "object",
+      "required": ["absoluteToleranceUnits", "relativeToleranceRate", "stockDifferenceFormula", "differenceRateFormula"]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "productId",
+          "ecountProductCode",
+          "cafe24ProductId",
+          "matchStatus",
+          "ecountStock",
+          "cafe24Stock",
+          "stockDifference",
+          "absoluteDifference",
+          "differenceRate",
+          "reconciliationStatus",
+          "dataQualityFlags",
+          "sourceRefs"
+        ]
+      }
+    }
+  }
+}

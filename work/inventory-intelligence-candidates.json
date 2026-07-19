@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-07-19T02:48:12.975Z",
+  "mode": "read_only_diagnostic",
+  "sources": {
+    "schema": {
+      "path": "config/inventory-intelligence-schema.json"
+    },
+    "ecountLatest": {
+      "path": "work/ecount-inventory/latest.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T09:45:57.629Z",
+      "error": null
+    },
+    "ecountRawInventory": {
+      "path": "work/ecount-inventory/raw-inventory.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T09:45:57.594Z",
+      "error": null
+    },
+    "ecountRawProducts": {
+      "path": "work/ecount-inventory/raw-products.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T09:45:57.077Z",
+      "error": null
+    },
+    "ecountSyncDiagnostic": {
+      "path": "work/ecount-inventory/diagnostic.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T09:45:57.631Z",
+      "error": null
+    },
+    "cafe24ProductDashboard": {
+      "path": "work/product-dashboard-proxy-2026-06-24_2026-07-18.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T11:14:50.199Z",
+      "error": null
+    },
+    "matchingRegistries": [],
+    "matchingRegistryStatus": "not_found"
+  },
+  "summary": {
+    "confirmedMatchCount": 0,
+    "comparedCount": 0,
+    "exactMatchCount": 0,
+    "withinToleranceCount": 0,
+    "mismatchCount": 0,
+    "missingEcountInventoryCount": 0,
+    "missingCafe24InventoryCount": 0,
+    "invalidInventoryValueCount": 0,
+    "duplicateMappingCount": 0,
+    "excludedUnconfirmedMatchCount": 0,
+    "totalEcountStock": 0,
+    "totalCafe24Stock": 0,
+    "totalAbsoluteDifference": 0,
+    "exactMatchRate": null,
+    "withinToleranceRate": null,
+    "mismatchRate": null
+  },
+  "thresholds": {
+    "absoluteToleranceUnits": 1,
+    "relativeToleranceRate": 0.02,
+    "stockDifferenceFormula": "ecountStock - cafe24Stock",
+    "differenceRateFormula": "absoluteDifference / max(abs(ecountStock), abs(cafe24Stock))"
+  },
+  "items": []
+}
