@@ -1,0 +1,474 @@
+{
+  "generatedAt": "2026-07-19T04:05:32.499Z",
+  "mode": "read_only_access_diagnostic",
+  "environment": {
+    "cwd": "repo_root",
+    "repoRoot": "/Users/binggu/Documents/Codex/2026-06-28/samplas-os-https-www-instagram-com",
+    "envPathExists": true,
+    "variables": [
+      {
+        "name": "CAFE24_MALL_ID",
+        "present": true,
+        "source": ".env",
+        "length": 6,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "looksPlaceholder": false
+      },
+      {
+        "name": "CAFE24_CLIENT_ID",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "looksPlaceholder": false
+      },
+      {
+        "name": "CAFE24_CLIENT_SECRET",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "looksPlaceholder": false
+      },
+      {
+        "name": "CAFE24_SCOPES",
+        "present": true,
+        "source": ".env",
+        "length": 54,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "looksPlaceholder": false
+      },
+      {
+        "name": "CAFE24_API_VERSION",
+        "present": false,
+        "source": "missing",
+        "length": 0,
+        "empty": true,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "looksPlaceholder": false
+      },
+      {
+        "name": "CAFE24_ADMIN_API_VERSION",
+        "present": false,
+        "source": "missing",
+        "length": 0,
+        "empty": true,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "looksPlaceholder": false
+      },
+      {
+        "name": "CAFE24_TOKEN_STORE_DIR",
+        "present": false,
+        "source": "missing",
+        "length": 0,
+        "empty": true,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "looksPlaceholder": false
+      },
+      {
+        "name": "CAFE24_ACCESS_TOKEN",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "looksPlaceholder": false
+      },
+      {
+        "name": "CAFE24_REFRESH_TOKEN",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "looksPlaceholder": false
+      },
+      {
+        "name": "CAFE24_PROXY_BASE_URL",
+        "present": true,
+        "source": ".env",
+        "length": 41,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false,
+        "looksPlaceholder": false
+      }
+    ]
+  },
+  "token": {
+    "tokenStore": {
+      "pathKind": "work_dir_default",
+      "configured": false,
+      "exists": false,
+      "parseError": null
+    },
+    "record": {
+      "status": "missing",
+      "hasAccessToken": false,
+      "accessTokenLength": 0,
+      "hasRefreshToken": false,
+      "refreshTokenLength": 0,
+      "expiresAt": null,
+      "updatedAt": null,
+      "lastRefreshAt": null,
+      "reauthRequiredAt": null,
+      "needsRefresh": null,
+      "lastError": null
+    },
+    "effectiveAccessToken": {
+      "name": "CAFE24_ACCESS_TOKEN",
+      "present": true,
+      "source": ".env",
+      "length": 22,
+      "empty": false,
+      "containsWhitespace": false,
+      "hasLeadingOrTrailingWhitespace": false,
+      "looksPlaceholder": false
+    }
+  },
+  "existingProductDashboardCache": {
+    "relativePath": "work/product-dashboard-proxy-2026-06-24_2026-07-18.json",
+    "size": 338596,
+    "modifiedAt": "2026-07-18T11:14:50.199Z",
+    "productCount": 177,
+    "source": "product_dashboard_proxy",
+    "syncedAt": null,
+    "firstProductNo": 14600
+  },
+  "existingAccessPath": {
+    "tokenSource": "readCafe24TokenRecord() -> hydrateCafe24EnvFromTokenRecord()",
+    "envLoading": "server.mjs process env + existing server bootstrap",
+    "tokenRefreshBehavior": "ensureCafe24AccessToken() refreshes expired/invalid tokens and retries GET once",
+    "baseUrl": "https://scause.cafe24api.com/api/v2/admin",
+    "apiVersion": "2025-06-01",
+    "headers": {
+      "Authorization": "Bearer [REDACTED]",
+      "Content-Type": "application/json",
+      "X-Cafe24-Api-Version": "2025-06-01"
+    },
+    "productList": "GET /products?limit&offset",
+    "productDetail": "GET /products/{productNo}",
+    "variants": "GET /products/{productNo}/variants?limit=100&embed=inventories",
+    "diagnosticsEndpoint": "/api/diagnostics/cafe24-product-access"
+  },
+  "probeAccessPath": {
+    "tokenSource": "scripts/probe-cafe24-product-identity-api.mjs -> token store or env access token",
+    "envLoading": ".env parsed from repository root, process.env wins",
+    "tokenRefreshBehavior": "no refresh; GET-only product API probe after Phase 2C adjustment",
+    "baseUrl": "https://scause.cafe24api.com/api/v2/admin",
+    "apiVersion": "2025-06-01",
+    "headers": {
+      "Authorization": "Bearer [REDACTED]",
+      "Content-Type": "application/json",
+      "X-Cafe24-Api-Version": "2025-06-01"
+    },
+    "productDetail": "GET /products/{productNo}",
+    "variants": "GET /products/{productNo}/variants",
+    "variantsWithInventories": "GET /products/{productNo}/variants?embed=inventories",
+    "inventories": "GET /products/{productNo}/inventories"
+  },
+  "differences": [
+    {
+      "field": "tokenSource",
+      "existing": "readCafe24TokenRecord() -> hydrateCafe24EnvFromTokenRecord()",
+      "probe": "scripts/probe-cafe24-product-identity-api.mjs -> token store or env access token"
+    },
+    {
+      "field": "envLoading",
+      "existing": "server.mjs process env + existing server bootstrap",
+      "probe": ".env parsed from repository root, process.env wins"
+    },
+    {
+      "field": "tokenRefreshBehavior",
+      "existing": "ensureCafe24AccessToken() refreshes expired/invalid tokens and retries GET once",
+      "probe": "no refresh; GET-only product API probe after Phase 2C adjustment"
+    }
+  ],
+  "authentication": {
+    "status": "access_token_invalid_or_expired",
+    "evidence": [
+      {
+        "endpointName": "product_detail",
+        "httpStatus": 401,
+        "category": "access_token_invalid",
+        "messageHash": "94e5d9f40564"
+      },
+      {
+        "endpointName": "product_variants",
+        "httpStatus": 401,
+        "category": "access_token_invalid",
+        "messageHash": "94e5d9f40564"
+      },
+      {
+        "endpointName": "product_variants_with_inventories",
+        "httpStatus": 401,
+        "category": "access_token_invalid",
+        "messageHash": "94e5d9f40564"
+      },
+      {
+        "endpointName": "product_inventories",
+        "httpStatus": 404,
+        "category": "endpoint_not_found_unconfirmed",
+        "messageHash": "f044661df88e"
+      }
+    ],
+    "confidence": 0.8,
+    "unresolvedReasons": [
+      "No successful product GET response in this diagnostic run",
+      "404 endpoint responses may be masked or secondary while authentication is failing"
+    ]
+  },
+  "scopes": {
+    "configured": [
+      "mall.read_order",
+      "mall.read_product",
+      "mall.read_collection"
+    ],
+    "productReadScopeVisible": true,
+    "note": "Stored OAuth token scopes are not introspected by this diagnostic unless exposed through CAFE24_SCOPES."
+  },
+  "endpoints": [
+    {
+      "endpointName": "product_detail",
+      "requestMethod": "GET",
+      "path": "/products/14600",
+      "params": {},
+      "existingCodeUses": true,
+      "ok": false,
+      "httpStatus": 401,
+      "category": "access_token_invalid",
+      "conclusion": "access_token_invalid",
+      "message": "Invalid access_token (invalid_token)",
+      "errorCode": 401,
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null,
+      "identityLikePathCount": 0,
+      "identityLikePaths": [],
+      "compactErrorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants",
+      "requestMethod": "GET",
+      "path": "/products/14600/variants",
+      "params": {
+        "limit": 20
+      },
+      "existingCodeUses": true,
+      "ok": false,
+      "httpStatus": 401,
+      "category": "access_token_invalid",
+      "conclusion": "access_token_invalid",
+      "message": "Invalid access_token (invalid_token)",
+      "errorCode": 401,
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null,
+      "identityLikePathCount": 0,
+      "identityLikePaths": [],
+      "compactErrorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_variants_with_inventories",
+      "requestMethod": "GET",
+      "path": "/products/14600/variants",
+      "params": {
+        "limit": 20,
+        "embed": "inventories"
+      },
+      "existingCodeUses": true,
+      "ok": false,
+      "httpStatus": 401,
+      "category": "access_token_invalid",
+      "conclusion": "access_token_invalid",
+      "message": "Invalid access_token (invalid_token)",
+      "errorCode": 401,
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null,
+      "identityLikePathCount": 0,
+      "identityLikePaths": [],
+      "compactErrorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    {
+      "endpointName": "product_inventories",
+      "requestMethod": "GET",
+      "path": "/products/14600/inventories",
+      "params": {},
+      "existingCodeUses": true,
+      "ok": false,
+      "httpStatus": 404,
+      "category": "endpoint_not_found_unconfirmed",
+      "conclusion": "cannot_confirm_until_auth_succeeds",
+      "message": "No API found.",
+      "errorCode": 404,
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null,
+      "identityLikePathCount": 0,
+      "identityLikePaths": [],
+      "compactErrorBody": {
+        "error": {
+          "code": 404,
+          "message": "No API found."
+        }
+      }
+    }
+  ],
+  "minimalVerification": {
+    "productNo": "14600",
+    "productDetail": {
+      "endpointName": "product_detail",
+      "requestMethod": "GET",
+      "path": "/products/14600",
+      "params": {},
+      "existingCodeUses": true,
+      "ok": false,
+      "httpStatus": 401,
+      "category": "access_token_invalid",
+      "conclusion": "access_token_invalid",
+      "message": "Invalid access_token (invalid_token)",
+      "errorCode": 401,
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null,
+      "identityLikePathCount": 0,
+      "identityLikePaths": [],
+      "compactErrorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    "variants": {
+      "endpointName": "product_variants",
+      "requestMethod": "GET",
+      "path": "/products/14600/variants",
+      "params": {
+        "limit": 20
+      },
+      "existingCodeUses": true,
+      "ok": false,
+      "httpStatus": 401,
+      "category": "access_token_invalid",
+      "conclusion": "access_token_invalid",
+      "message": "Invalid access_token (invalid_token)",
+      "errorCode": 401,
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null,
+      "identityLikePathCount": 0,
+      "identityLikePaths": [],
+      "compactErrorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    "variantsWithInventories": {
+      "endpointName": "product_variants_with_inventories",
+      "requestMethod": "GET",
+      "path": "/products/14600/variants",
+      "params": {
+        "limit": 20,
+        "embed": "inventories"
+      },
+      "existingCodeUses": true,
+      "ok": false,
+      "httpStatus": 401,
+      "category": "access_token_invalid",
+      "conclusion": "access_token_invalid",
+      "message": "Invalid access_token (invalid_token)",
+      "errorCode": 401,
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null,
+      "identityLikePathCount": 0,
+      "identityLikePaths": [],
+      "compactErrorBody": {
+        "error": {
+          "code": 401,
+          "message": "Invalid access_token (invalid_token)"
+        }
+      }
+    },
+    "inventories": {
+      "endpointName": "product_inventories",
+      "requestMethod": "GET",
+      "path": "/products/14600/inventories",
+      "params": {},
+      "existingCodeUses": true,
+      "ok": false,
+      "httpStatus": 404,
+      "category": "endpoint_not_found_unconfirmed",
+      "conclusion": "cannot_confirm_until_auth_succeeds",
+      "message": "No API found.",
+      "errorCode": 404,
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null,
+      "identityLikePathCount": 0,
+      "identityLikePaths": [],
+      "compactErrorBody": {
+        "error": {
+          "code": 404,
+          "message": "No API found."
+        }
+      }
+    }
+  },
+  "summary": {
+    "productNo": "14600",
+    "attemptedGetCalls": 4,
+    "successCount": 0,
+    "failureCount": 4,
+    "authenticationStatus": "access_token_invalid_or_expired",
+    "endpointNotFoundCount": 1,
+    "endpointNotFoundConclusion": "cannot_confirm_endpoint_absence_until_auth_succeeds",
+    "minimalProductDetailGetSucceeded": false,
+    "tokenValuesLogged": false,
+    "mutationRequestsMade": false
+  },
+  "recommendation": {
+    "case": "B",
+    "nextStep": "Cafe24 OAuth 재인증 또는 기존 server refresh 경로 확인이 필요합니다. 이번 진단은 refresh token 재발급을 실행하지 않았습니다."
+  }
+}
