@@ -1,0 +1,216 @@
+{
+  "generatedAt": "2026-07-19T04:15:44.680Z",
+  "mode": "oauth_recovery_and_identity_probe_safety_gate",
+  "environment": {
+    "envPathExists": true,
+    "variables": [
+      {
+        "name": "CAFE24_MALL_ID",
+        "present": true,
+        "source": ".env",
+        "length": 6,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false
+      },
+      {
+        "name": "CAFE24_CLIENT_ID",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false
+      },
+      {
+        "name": "CAFE24_CLIENT_SECRET",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false
+      },
+      {
+        "name": "CAFE24_ACCESS_TOKEN",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false
+      },
+      {
+        "name": "CAFE24_REFRESH_TOKEN",
+        "present": true,
+        "source": ".env",
+        "length": 22,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false
+      },
+      {
+        "name": "CAFE24_SCOPES",
+        "present": true,
+        "source": ".env",
+        "length": 54,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false
+      },
+      {
+        "name": "CAFE24_API_VERSION",
+        "present": false,
+        "source": "missing",
+        "length": 0,
+        "empty": true,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false
+      },
+      {
+        "name": "CAFE24_ADMIN_API_VERSION",
+        "present": false,
+        "source": "missing",
+        "length": 0,
+        "empty": true,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false
+      },
+      {
+        "name": "CAFE24_TOKEN_STORE_DIR",
+        "present": false,
+        "source": "missing",
+        "length": 0,
+        "empty": true,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false
+      },
+      {
+        "name": "CAFE24_PROXY_BASE_URL",
+        "present": true,
+        "source": ".env",
+        "length": 41,
+        "empty": false,
+        "containsWhitespace": false,
+        "hasLeadingOrTrailingWhitespace": false
+      }
+    ]
+  },
+  "tokenStore": {
+    "configured": false,
+    "exists": false,
+    "pathKind": "work_dir_default",
+    "parseError": null
+  },
+  "authenticationRecovery": {
+    "refreshAttempted": false,
+    "refreshSucceeded": false,
+    "tokenStoreUpdated": false,
+    "refreshTokenRotated": false,
+    "previousTokenStatus": "missing",
+    "resultingTokenStatus": "missing",
+    "failureCategory": "token_store_missing",
+    "refreshGate": {
+      "canRefreshSafely": false,
+      "reason": "token_store_missing"
+    },
+    "note": "No refresh POST was executed because Phase 2E requires preserving operational credentials; without an existing persistent token store, refresh-token rotation could not be safely captured."
+  },
+  "minimalVerification": {
+    "productDetailSuccess": false,
+    "productDetailStatus": 401,
+    "variantsSuccess": false,
+    "variantsStatus": 401,
+    "inventoriesSuccess": false,
+    "inventoriesStatus": 404,
+    "inventoriesConclusion": "cannot_confirm_until_auth_succeeds"
+  },
+  "endpoints": [
+    {
+      "endpointName": "product_detail",
+      "requestMethod": "GET",
+      "path": "/products/14600",
+      "params": {},
+      "ok": false,
+      "httpStatus": 401,
+      "category": "access_token_invalid",
+      "message": "Invalid access_token (invalid_token)",
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null
+    },
+    {
+      "endpointName": "product_variants",
+      "requestMethod": "GET",
+      "path": "/products/14600/variants",
+      "params": {
+        "limit": 20
+      },
+      "ok": false,
+      "httpStatus": 401,
+      "category": "access_token_invalid",
+      "message": "Invalid access_token (invalid_token)",
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null
+    },
+    {
+      "endpointName": "product_variants_with_inventories",
+      "requestMethod": "GET",
+      "path": "/products/14600/variants",
+      "params": {
+        "limit": 20,
+        "embed": "inventories"
+      },
+      "ok": false,
+      "httpStatus": 401,
+      "category": "access_token_invalid",
+      "message": "Invalid access_token (invalid_token)",
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null
+    },
+    {
+      "endpointName": "product_inventories",
+      "requestMethod": "GET",
+      "path": "/products/14600/inventories",
+      "params": {},
+      "ok": false,
+      "httpStatus": 404,
+      "category": "endpoint_not_found_unconfirmed",
+      "message": "No API found.",
+      "topLevelKeys": [
+        "error"
+      ],
+      "responseShape": null
+    }
+  ],
+  "identityProbe": {
+    "sampledProductCount": 0,
+    "successfulApiCalls": 0,
+    "failedApiCalls": 0,
+    "discoveredIdentityPaths": [],
+    "barcodeLikeFieldCount": 0,
+    "mediumIdentityFieldCount": 0,
+    "ecountExactMatchCount": 0,
+    "skipped": true,
+    "reason": "minimal_product_detail_get_failed"
+  },
+  "summary": {
+    "result": "reauth_or_token_store_setup_required",
+    "productNo": "14600",
+    "refreshAttempted": false,
+    "productDetailGetSucceeded": false,
+    "identityProbeReran": false,
+    "tokenValuesLogged": false,
+    "mutationRequestsMade": false,
+    "operationalTokenStoreModified": false
+  },
+  "recommendation": {
+    "case": "D",
+    "nextStep": "Cafe24 OAuth 재인증 또는 persistent token store 구성이 필요합니다. 기존 /api/cafe24/oauth/start 경로로 사용자 승인 후 재실행하세요."
+  }
+}
