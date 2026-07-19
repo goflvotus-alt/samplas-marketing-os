@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-19T05:08:29.788Z",
+  "generatedAt": "2026-07-19T05:29:36.915Z",
   "mode": "product_registry_phase1_diagnostic_only",
   "source": {
     "diagnostic": "work/cafe24-ecount-product-matching-diagnostic.json",
@@ -11,20 +11,26 @@
     "auxiliaryCodes": "manufacturer_code and supplier_code are retained as evidence only; they are not standalone match keys."
   },
   "summary": {
-    "registryCount": 131,
+    "registryCount": 177,
     "verifiedCount": 17,
-    "reviewQueueCount": 114,
+    "reviewQueueCount": 160,
     "confidenceDistribution": {
       "100": 17,
       "95-99": 0,
       "80-94": 6,
       "60-79": 108,
-      "0-59": 0
+      "0-59": 46
+    },
+    "cafe24AnchorCoverage": {
+      "cafe24AnchorCount": 177,
+      "registryAnchorCount": 177,
+      "missingCafe24Anchors": [],
+      "duplicateCafe24Anchors": []
     },
     "brandCounts": [
       {
         "brandName": "본네",
-        "count": 20
+        "count": 22
       },
       {
         "brandName": "OURSELVES REMAKE",
@@ -39,28 +45,44 @@
         "count": 11
       },
       {
+        "brandName": "B0000000",
+        "count": 10
+      },
+      {
         "brandName": "파코서플라이",
         "count": 10
+      },
+      {
+        "brandName": "레저렉션13",
+        "count": 9
       },
       {
         "brandName": "레이서 월드 와이드",
         "count": 7
       },
       {
+        "brandName": "보헤미안 서울",
+        "count": 7
+      },
+      {
+        "brandName": "KIMYO",
+        "count": 6
+      },
+      {
         "brandName": "아이필럭키",
         "count": 5
       },
       {
-        "brandName": "레저렉션13",
-        "count": 4
-      },
-      {
-        "brandName": "KIMYO",
+        "brandName": "산쿠안즈",
         "count": 3
       },
       {
         "brandName": "카르넷 아카이브",
         "count": 3
+      },
+      {
+        "brandName": "AAH MIDNIGHT CLUB",
+        "count": 2
       },
       {
         "brandName": "AE SYNCTX",
@@ -76,6 +98,10 @@
       },
       {
         "brandName": "DINGYUN ZHANG",
+        "count": 2
+      },
+      {
+        "brandName": "LIBERAL YOUTH MINISTRY",
         "count": 2
       },
       {
@@ -95,7 +121,19 @@
         "count": 2
       },
       {
+        "brandName": "소마",
+        "count": 2
+      },
+      {
+        "brandName": "언본소사이어티",
+        "count": 2
+      },
+      {
         "brandName": "에잇아이쥐비",
+        "count": 2
+      },
+      {
+        "brandName": "엑슬림",
         "count": 2
       },
       {
@@ -123,6 +161,22 @@
         "count": 1
       },
       {
+        "brandName": "WANGXINGYU",
+        "count": 1
+      },
+      {
+        "brandName": "YORI",
+        "count": 1
+      },
+      {
+        "brandName": "YUEQI QI",
+        "count": 1
+      },
+      {
+        "brandName": "노페이스스튜디오",
+        "count": 1
+      },
+      {
         "brandName": "데드우드",
         "count": 1
       },
@@ -135,15 +189,19 @@
         "count": 1
       },
       {
+        "brandName": "스페로",
+        "count": 1
+      },
+      {
+        "brandName": "써저리",
+        "count": 1
+      },
+      {
         "brandName": "아바바브",
         "count": 1
       },
       {
         "brandName": "어나더유스",
-        "count": 1
-      },
-      {
-        "brandName": "언본소사이어티",
         "count": 1
       },
       {
@@ -164,6 +222,10 @@
       },
       {
         "brandName": "카미긴",
+        "count": 1
+      },
+      {
+        "brandName": "토가",
         "count": 1
       },
       {
@@ -237,6 +299,64 @@
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
       "updatedAt": "2026-07-19T05:08:29.788Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-12576",
+      "brandId": "B00000QH",
+      "brandName": "AAH MIDNIGHT CLUB",
+      "canonicalProductName": "Everybody Dies Pants",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "12576",
+        "productCode": "P0000SPS",
+        "productName": "[AAH MIDNIGHT CLUB : 아 미드나잇 클럽] Everybody Dies Pants"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-12574",
+      "brandId": "B00000QH",
+      "brandName": "AAH MIDNIGHT CLUB",
+      "canonicalProductName": "Kiss Of Death Oversized Pants",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "12574",
+        "productCode": "P0000SPQ",
+        "productName": "[AAH MIDNIGHT CLUB : 아 미드나잇 클럽] Kiss Of Death Oversized Pants"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
     },
     {
       "canonicalProductId": "CP-C24-14064",
@@ -419,6 +539,296 @@
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
       "updatedAt": "2026-07-19T05:08:29.788Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14384",
+      "brandId": "B0000000",
+      "brandName": "B0000000",
+      "canonicalProductName": "이백일호님팀 개인결제창 26.06.22",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14384",
+        "productCode": "P0000VHG",
+        "productName": "이백일호님팀 개인결제창 26.06.22"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14355",
+      "brandId": "B0000000",
+      "brandName": "B0000000",
+      "canonicalProductName": "이승엽 실장님 개인결제창 26.06.19",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14355",
+        "productCode": "P0000VGD",
+        "productName": "이승엽 실장님 개인결제창 26.06.19"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14566",
+      "brandId": "B0000000",
+      "brandName": "B0000000",
+      "canonicalProductName": "이승엽 실장님 개인결제창 26.07.09",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14566",
+        "productCode": "P0000VOG",
+        "productName": "이승엽 실장님 개인결제창 26.07.09"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14599",
+      "brandId": "B0000000",
+      "brandName": "B0000000",
+      "canonicalProductName": "이승엽 실장님 개인결제창 26.07.17",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14599",
+        "productCode": "P0000VPN",
+        "productName": "이승엽 실장님 개인결제창 26.07.17"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14600",
+      "brandId": "B0000000",
+      "brandName": "B0000000",
+      "canonicalProductName": "이승엽 실장님 개인결제창 26.07.18",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14600",
+        "productCode": "P0000VPO",
+        "productName": "이승엽 실장님 개인결제창 26.07.18"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14416",
+      "brandId": "B0000000",
+      "brandName": "B0000000",
+      "canonicalProductName": "장희준 실장님 팀 개인결제창 26.06.26",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14416",
+        "productCode": "P0000VIM",
+        "productName": "장희준 실장님 팀 개인결제창 26.06.26"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14432",
+      "brandId": "B0000000",
+      "brandName": "B0000000",
+      "canonicalProductName": "전예린 실장님 개인결제창 26.06.26",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14432",
+        "productCode": "P0000VJC",
+        "productName": "전예린 실장님 개인결제창 26.06.26"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14433",
+      "brandId": "B0000000",
+      "brandName": "B0000000",
+      "canonicalProductName": "전예린 실장님 개인결제창 26.06.27",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14433",
+        "productCode": "P0000VJD",
+        "productName": "전예린 실장님 개인결제창 26.06.27"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14517",
+      "brandId": "B0000000",
+      "brandName": "B0000000",
+      "canonicalProductName": "주현 실장님 개인결제창 26.07.03",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14517",
+        "productCode": "P0000VMJ",
+        "productName": "주현 실장님 개인결제창 26.07.03"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14567",
+      "brandId": "B0000000",
+      "brandName": "B0000000",
+      "canonicalProductName": "주현 실장님 개인결제창 26.07.12",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14567",
+        "productCode": "P0000VOH",
+        "productName": "주현 실장님 개인결제창 26.07.12"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
     },
     {
       "canonicalProductId": "CP-C24-14106",
@@ -970,6 +1380,93 @@
       "updatedAt": "2026-07-19T05:08:29.788Z"
     },
     {
+      "canonicalProductId": "CP-C24-14596",
+      "brandId": "B00000RO",
+      "brandName": "KIMYO",
+      "canonicalProductName": "SPIDER ZIP SET",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14596",
+        "productCode": "P0000VPK",
+        "productName": "[KIMYO : 키묘] SPIDER ZIP SET"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14597",
+      "brandId": "B00000RO",
+      "brandName": "KIMYO",
+      "canonicalProductName": "TUXEDO BUTTON SET",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14597",
+        "productCode": "P0000VPL",
+        "productName": "[KIMYO : 키묘] TUXEDO BUTTON SET"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14598",
+      "brandId": "B00000RO",
+      "brandName": "KIMYO",
+      "canonicalProductName": "TUXEDO BUTTON SET",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14598",
+        "productCode": "P0000VPM",
+        "productName": "[KIMYO : 키묘] TUXEDO BUTTON SET"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
       "canonicalProductId": "CP-C24-12675",
       "brandId": "B00000RO",
       "brandName": "KIMYO",
@@ -1007,6 +1504,64 @@
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
       "updatedAt": "2026-07-19T05:08:29.788Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-10429",
+      "brandId": "B00000LI",
+      "brandName": "LIBERAL YOUTH MINISTRY",
+      "canonicalProductName": "DENIM CARGO PANTS WASHED BLUE",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "10429",
+        "productCode": "P0000PLD",
+        "productName": "[LIBERAL YOUTH MINSTRY : 리버럴 유스 미니스트리] DENIM CARGO PANTS WASHED BLUE"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-6931",
+      "brandId": "B00000LI",
+      "brandName": "LIBERAL YOUTH MINISTRY",
+      "canonicalProductName": "ESCUDO PRINT BLUE DENIM PANTS",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "6931",
+        "productCode": "P0000KGP",
+        "productName": "[LIBERAL YOUTH MINSTRY : 리버럴 유스 미니스트리] ESCUDO PRINT BLUE DENIM PANTS"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
     },
     {
       "canonicalProductId": "CP-C24-14470",
@@ -1895,6 +2450,93 @@
       "updatedAt": "2026-07-19T05:08:29.788Z"
     },
     {
+      "canonicalProductId": "CP-C24-14190",
+      "brandId": "B00000WH",
+      "brandName": "WANGXINGYU",
+      "canonicalProductName": "MOTTLED PATCH EMBROIDERY BADGE CROSS PRINT RIVET SHORT SLEEVE T-SHIRT",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14190",
+        "productCode": "P0000UZU",
+        "productName": "[WANGXINGYU : 왕신규] MOTTLED PATCH EMBROIDERY BADGE CROSS PRINT RIVET SHORT SLEEVE T-SHIRT"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-12545",
+      "brandId": "B00000ZE",
+      "brandName": "YORI",
+      "canonicalProductName": "YORI SPORT M10 WIDE WAISTBAND SWEATPANTS BLACK/CHEETAH",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "12545",
+        "productCode": "P0000SON",
+        "productName": "[YORI : 요리] YORI SPORT M10 WIDE WAISTBAND SWEATPANTS BLACK/CHEETAH"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-11520",
+      "brandId": "B00000XM",
+      "brandName": "YUEQI QI",
+      "canonicalProductName": "Feline Airbrush Knit Hood Cream",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "11520",
+        "productCode": "P0000RBC",
+        "productName": "[YUEQI QI : 위에치 치] Feline Airbrush Knit Hood Cream"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
       "canonicalProductId": "CP-C24-9759",
       "brandId": "B00000VJ",
       "brandName": "게릿 제이콥",
@@ -2711,6 +3353,35 @@
       "updatedAt": "2026-07-19T05:08:29.788Z"
     },
     {
+      "canonicalProductId": "CP-C24-14514",
+      "brandId": "B00000PM",
+      "brandName": "노페이스스튜디오",
+      "canonicalProductName": "SEWN & WORN BOOTCUT DENIM",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14514",
+        "productCode": "P0000VMG",
+        "productName": "[NO/FAITH STUDIOS : 노페이스스튜디오] SEWN & WORN BOOTCUT DENIM"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
       "canonicalProductId": "CP-C24-9208",
       "brandId": "B00000UR",
       "brandName": "데드우드",
@@ -3343,6 +4014,35 @@
       "updatedAt": "2026-07-19T05:08:29.788Z"
     },
     {
+      "canonicalProductId": "CP-C24-14560",
+      "brandId": "B00000MJ",
+      "brandName": "레저렉션13",
+      "canonicalProductName": "26-AC011 CREAM",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14560",
+        "productCode": "P0000VOA",
+        "productName": "[RESURRECITON 13 : 레저렉션13] 26-AC011 CREAM(CANVAS)"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
       "canonicalProductId": "CP-C24-14563",
       "brandId": "B00000MJ",
       "brandName": "레저렉션13",
@@ -3415,6 +4115,122 @@
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
       "updatedAt": "2026-07-19T05:08:29.788Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14561",
+      "brandId": "B00000MJ",
+      "brandName": "레저렉션13",
+      "canonicalProductName": "26-T013 BLACK",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14561",
+        "productCode": "P0000VOB",
+        "productName": "[RESURRECITON 13 : 레저렉션13] 26-T013 BLACK"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14562",
+      "brandId": "B00000MJ",
+      "brandName": "레저렉션13",
+      "canonicalProductName": "26-T013 CREAM",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14562",
+        "productCode": "P0000VOC",
+        "productName": "[RESURRECITON 13 : 레저렉션13] 26-T013 CREAM"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14565",
+      "brandId": "B00000MJ",
+      "brandName": "레저렉션13",
+      "canonicalProductName": "26-T015 BLUE",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14565",
+        "productCode": "P0000VOF",
+        "productName": "[RESURRECITON 13 : 레저렉션13] 26-T015 BLUE"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14564",
+      "brandId": "B00000MJ",
+      "brandName": "레저렉션13",
+      "canonicalProductName": "26-T015 BROWN",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14564",
+        "productCode": "P0000VOE",
+        "productName": "[RESURRECITON 13 : 레저렉션13] 26-T015 BROWN"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
     },
     {
       "canonicalProductId": "CP-C24-13087",
@@ -3723,6 +4539,209 @@
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
       "updatedAt": "2026-07-19T05:08:29.788Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14137",
+      "brandId": "B0000BAR",
+      "brandName": "보헤미안 서울",
+      "canonicalProductName": "BOHEMSEO trompe-loeil TOP WHITE",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14137",
+        "productCode": "P0000UXT",
+        "productName": "[Bohemian Seoul : 보헤미안 서울] BOHEMSEO trompe-loeil TOP WHITE"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14136",
+      "brandId": "B0000BAR",
+      "brandName": "보헤미안 서울",
+      "canonicalProductName": "FLOW NECK DRAPE HALF-T NUDE",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14136",
+        "productCode": "P0000UXS",
+        "productName": "[Bohemian Seoul : 보헤미안 서울] FLOW NECK DRAPE HALF-T NUDE"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14151",
+      "brandId": "B0000BAR",
+      "brandName": "보헤미안 서울",
+      "canonicalProductName": "HALTER COLLAR SHIRT IVORY",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14151",
+        "productCode": "P0000UYH",
+        "productName": "[Bohemian Seoul : 보헤미안 서울] HALTER COLLAR SHIRT IVORY"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14129",
+      "brandId": "B0000BAR",
+      "brandName": "보헤미안 서울",
+      "canonicalProductName": "HIGHLIGHT DAMAGE WIDE PANTS GRAY",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14129",
+        "productCode": "P0000UXL",
+        "productName": "[Bohemian Seoul : 보헤미안 서울] HIGHLIGHT DAMAGE WIDE PANTS GRAY"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14134",
+      "brandId": "B0000BAR",
+      "brandName": "보헤미안 서울",
+      "canonicalProductName": "JEWEL TANK TOP IVORY",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14134",
+        "productCode": "P0000UXQ",
+        "productName": "[Bohemian Seoul : 보헤미안 서울] JEWEL TANK TOP IVORY"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14147",
+      "brandId": "B0000BAR",
+      "brandName": "보헤미안 서울",
+      "canonicalProductName": "LACE-UP HALF SLEEVE BEIGE",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14147",
+        "productCode": "P0000UYD",
+        "productName": "[Bohemian Seoul : 보헤미안 서울] LACE-UP HALF SLEEVE BEIGE"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14146",
+      "brandId": "B0000BAR",
+      "brandName": "보헤미안 서울",
+      "canonicalProductName": "LACE-UP HALF SLEEVE CHARCOAL",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14146",
+        "productCode": "P0000UYC",
+        "productName": "[Bohemian Seoul : 보헤미안 서울] LACE-UP HALF SLEEVE CHARCOAL"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
     },
     {
       "canonicalProductId": "CP-C24-12420",
@@ -4768,6 +5787,35 @@
       "updatedAt": "2026-07-19T05:08:29.788Z"
     },
     {
+      "canonicalProductId": "CP-C24-14390",
+      "brandId": "B00000SA",
+      "brandName": "본네",
+      "canonicalProductName": "Essential micro skort black",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14390",
+        "productCode": "P0000VHM",
+        "productName": "[BONNAE : 본네] Essential micro skort black"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
       "canonicalProductId": "CP-C24-14394",
       "brandId": "B00000SA",
       "brandName": "본네",
@@ -5785,6 +6833,122 @@
       "updatedAt": "2026-07-19T05:08:29.788Z"
     },
     {
+      "canonicalProductId": "CP-C24-14385",
+      "brandId": "B00000SA",
+      "brandName": "본네",
+      "canonicalProductName": "Twintail phone grip white",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14385",
+        "productCode": "P0000VHH",
+        "productName": "[BONNAE : 본네] Twintail phone grip white"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-12978",
+      "brandId": "B00000UI",
+      "brandName": "산쿠안즈",
+      "canonicalProductName": "Graffiti BUMPY SNEAKERS BLACK",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "12978",
+        "productCode": "P0000TFE",
+        "productName": "[SANKUANZ : 산쿠안즈] Graffiti BUMPY SNEAKERS BLACK"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-12979",
+      "brandId": "B00000UI",
+      "brandName": "산쿠안즈",
+      "canonicalProductName": "Graffiti BUMPY SNEAKERS PINK",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "12979",
+        "productCode": "P0000TFF",
+        "productName": "[SANKUANZ : 산쿠안즈] Graffiti BUMPY SNEAKERS PINK"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-12981",
+      "brandId": "B00000UI",
+      "brandName": "산쿠안즈",
+      "canonicalProductName": "Graffiti BUMPY SNEAKERS SILVER BLACK",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "12981",
+        "productCode": "P0000TFH",
+        "productName": "[SANKUANZ : 산쿠안즈] Graffiti BUMPY SNEAKERS SILVER BLACK"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
       "canonicalProductId": "CP-C24-13798",
       "brandId": "B00000HD",
       "brandName": "선데이오프클럽",
@@ -5881,6 +7045,122 @@
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
       "updatedAt": "2026-07-19T05:08:29.788Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14505",
+      "brandId": "B0000BCN",
+      "brandName": "소마",
+      "canonicalProductName": "HUNK JACKET FADED BLACK",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14505",
+        "productCode": "P0000VLX",
+        "productName": "[SOMAR : 소마] HUNK JACKET FADED BLACK"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14500",
+      "brandId": "B0000BCN",
+      "brandName": "소마",
+      "canonicalProductName": "TRIGGER FINGER GLOVE BLACK",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14500",
+        "productCode": "P0000VLS",
+        "productName": "[SOMAR : 소마] TRIGGER FINGER GLOVE BLACK"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-11728",
+      "brandId": "B00000XW",
+      "brandName": "스페로",
+      "canonicalProductName": "00’ Tribal – Rosa Pink",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "11728",
+        "productCode": "P0000RJC",
+        "productName": "[SFERO : 스페로] 00’ Tribal – Rosa Pink"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-4866",
+      "brandId": "B00000JA",
+      "brandName": "써저리",
+      "canonicalProductName": "back zip boot-cut pants 'mustard'",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "4866",
+        "productCode": "P0000HFE",
+        "productName": "[SURGERY : 써저리] back zip boot-cut pants 'mustard'"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
     },
     {
       "canonicalProductId": "CP-C24-12329",
@@ -6409,6 +7689,35 @@
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
       "updatedAt": "2026-07-19T05:08:29.788Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-14409",
+      "brandId": "B00000LF",
+      "brandName": "언본소사이어티",
+      "canonicalProductName": "Distressed Washed Chest Pocket Hoodie",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "14409",
+        "productCode": "P0000VIF",
+        "productName": "[UNBORN SOCIETY : 언본소사이어티] Distressed Washed Chest Pocket Hoodie (Cherry Red)"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
     },
     {
       "canonicalProductId": "CP-C24-12869",
@@ -7223,6 +8532,64 @@
       "updatedAt": "2026-07-19T05:08:29.788Z"
     },
     {
+      "canonicalProductId": "CP-C24-12761",
+      "brandId": "B00000LC",
+      "brandName": "엑슬림",
+      "canonicalProductName": "EP.8 SYNOPSIS 01 WATCH STRAP RED",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "12761",
+        "productCode": "P0000SWV",
+        "productName": "[XLIM : 엑슬림] EP.8 SYNOPSIS 01 WATCH STRAP RED"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-13455",
+      "brandId": "B00000LC",
+      "brandName": "엑슬림",
+      "canonicalProductName": "EP.9 02 BAG ROYAL BLUE",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "13455",
+        "productCode": "P0000TXN",
+        "productName": "[XLIM : 엑슬림] EP.9 02 BAG ROYAL BLUE"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
+    },
+    {
       "canonicalProductId": "CP-C24-14350",
       "brandId": "B00000PY",
       "brandName": "엘리엇 에밀",
@@ -7592,6 +8959,35 @@
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
       "updatedAt": "2026-07-19T05:08:29.788Z"
+    },
+    {
+      "canonicalProductId": "CP-C24-13269",
+      "brandId": "B0000BAO",
+      "brandName": "토가",
+      "canonicalProductName": "VIRILIS 26S AJ1066 - BLACK LEATHER",
+      "status": "unmatched",
+      "confidence": 0,
+      "verified": false,
+      "cafe24": {
+        "productNo": "13269",
+        "productCode": "P0000TQJ",
+        "productName": "[TOGA : 토가] VIRILIS 26S AJ1066 - BLACK LEATHER"
+      },
+      "ecount": {
+        "matchedProducts": []
+      },
+      "matching": {
+        "strategy": "none",
+        "diagnosticType": [
+          "cafe24_only"
+        ],
+        "evidence": [],
+        "pendingReasons": [
+          "no_ecount_candidate"
+        ]
+      },
+      "createdAt": "2026-07-19T05:29:36.915Z",
+      "updatedAt": "2026-07-19T05:29:36.915Z"
     },
     {
       "canonicalProductId": "CP-C24-14292",

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +14,8 @@ const MATCHABLE_TYPES = new Set([
   "exact_one_to_one",
   "exact_one_to_many",
   "fuzzy_high_confidence",
-  "fuzzy_ambiguous"
+  "fuzzy_ambiguous",
+  "cafe24_only"
 ]);
 
 function parseArgs(argv) {
@@ -38,6 +40,11 @@ async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, "utf8"));
 }
 
+async function readJsonIfExists(filePath) {
+  if (!existsSync(filePath)) return null;
+  return readJson(filePath).catch(() => null);
+}
+
 function slugPart(value) {
   const slug = String(value || "")
     .normalize("NFKC")
@@ -56,6 +63,7 @@ function confidenceForDiagnostic(result, group) {
 }
 
 function statusForGroup(group) {
+  if (group.diagnosticTypes.size === 1 && group.diagnosticTypes.has("cafe24_only")) return "unmatched";
   if (group.diagnosticTypes.size === 1 && group.diagnosticTypes.has("exact_one_to_one") && group.ecountProducts.size === 1) return "confirmed";
   if (group.diagnosticTypes.has("fuzzy_ambiguous") || group.diagnosticTypes.has("exact_one_to_many")) return "ambiguous";
   return "candidate";
@@ -63,6 +71,7 @@ function statusForGroup(group) {
 
 function priorityForEntry(entry) {
   if (entry.status === "confirmed" && entry.verified) return null;
+  if (entry.matching.diagnosticType.includes("cafe24_only")) return "HIGH";
   if (entry.matching.diagnosticType.includes("exact_one_to_many")) return "HIGH";
   if (entry.matching.diagnosticType.includes("fuzzy_high_confidence")) return "HIGH";
   if (entry.confidence >= 80) return "MEDIUM";
@@ -70,6 +79,7 @@ function priorityForEntry(entry) {
 }
 
 function reasonForEntry(entry) {
+  if (entry.matching.diagnosticType.includes("cafe24_only")) return "no ECOUNT candidate was found for this Cafe24 product";
   if (entry.matching.diagnosticType.includes("exact_one_to_many")) return "normalized brand and product name matched, but multiple ECOUNT candidates exist";
   if (entry.matching.diagnosticType.includes("fuzzy_ambiguous")) return "token similarity produced multiple review candidates";
   if (entry.matching.diagnosticType.includes("fuzzy_high_confidence")) return "high-confidence fuzzy match still requires human verification";
@@ -136,7 +146,7 @@ function buildRegistryEntry(group, now) {
       matchedProducts: [...group.ecountProducts.values()].sort((a, b) => String(a.prodCd).localeCompare(String(b.prodCd)))
     },
     matching: {
-      strategy: verified ? "normalized_brand_product_exact" : "diagnostic_candidate_review",
+      strategy: status === "unmatched" ? "none" : verified ? "normalized_brand_product_exact" : "diagnostic_candidate_review",
       diagnosticType: [...group.diagnosticTypes].sort(),
       evidence: [...group.evidence].sort(),
       pendingReasons: [...group.pendingReasons].sort()
@@ -175,7 +185,26 @@ function confidenceBucket(confidence) {
   return "0-59";
 }
 
-function summarizeRegistry(entries, reviewQueue) {
+function summarizeAnchorCoverage(diagnostic, entries) {
+  const expected = new Set();
+  for (const result of diagnostic?.results || []) {
+    if (result.cafe24?.productNo) expected.add(result.cafe24.productNo);
+  }
+  const seen = new Map();
+  for (const entry of entries) {
+    const productNo = entry.cafe24?.productNo;
+    if (!productNo) continue;
+    seen.set(productNo, (seen.get(productNo) || 0) + 1);
+  }
+  return {
+    cafe24AnchorCount: expected.size,
+    registryAnchorCount: seen.size,
+    missingCafe24Anchors: [...expected].filter((productNo) => !seen.has(productNo)).sort(),
+    duplicateCafe24Anchors: [...seen.entries()].filter(([, count]) => count > 1).map(([productNo, count]) => ({ productNo, count })).sort((a, b) => a.productNo.localeCompare(b.productNo))
+  };
+}
+
+function summarizeRegistry(entries, reviewQueue, diagnostic = null) {
   const confidenceDistribution = { "100": 0, "95-99": 0, "80-94": 0, "60-79": 0, "0-59": 0 };
   const byBrand = new Map();
   for (const entry of entries) {
@@ -188,6 +217,7 @@ function summarizeRegistry(entries, reviewQueue) {
     verifiedCount: entries.filter((entry) => entry.verified).length,
     reviewQueueCount: reviewQueue.length,
     confidenceDistribution,
+    cafe24AnchorCoverage: diagnostic ? summarizeAnchorCoverage(diagnostic, entries) : null,
     brandCounts: [...byBrand.entries()]
       .map(([brandName, count]) => ({ brandName, count }))
       .sort((a, b) => b.count - a.count || a.brandName.localeCompare(b.brandName))
@@ -197,8 +227,18 @@ function summarizeRegistry(entries, reviewQueue) {
 export function buildProductRegistryFromDiagnostic(diagnostic, options = {}) {
   const now = options.now || new Date().toISOString();
   const groups = groupDiagnosticResults(diagnostic);
+  const existingEntries = new Map((options.existingRegistry?.entries || []).map((entry) => [entry.canonicalProductId, entry]));
   const entries = [...groups.values()]
     .map((group) => buildRegistryEntry(group, now))
+    .map((entry) => {
+      const existing = existingEntries.get(entry.canonicalProductId);
+      if (!existing) return entry;
+      return {
+        ...entry,
+        createdAt: existing.createdAt || entry.createdAt,
+        updatedAt: existing.updatedAt || entry.updatedAt
+      };
+    })
     .sort((a, b) => slugPart(a.brandName).localeCompare(slugPart(b.brandName)) || a.canonicalProductName.localeCompare(b.canonicalProductName) || a.canonicalProductId.localeCompare(b.canonicalProductId));
   const reviewQueue = entries
     .map(buildReviewItem)
@@ -220,14 +260,14 @@ export function buildProductRegistryFromDiagnostic(diagnostic, options = {}) {
         verifiedRule: "Only exact_one_to_one entries are verified in Phase 1.",
         auxiliaryCodes: "manufacturer_code and supplier_code are retained as evidence only; they are not standalone match keys."
       },
-      summary: summarizeRegistry(entries, reviewQueue),
+      summary: summarizeRegistry(entries, reviewQueue, diagnostic),
       entries
     },
     reviewQueue: {
       generatedAt: now,
       mode: "product_registry_phase1_review_queue",
       source: "work/product-registry.json",
-      summary: summarizeRegistry(entries, reviewQueue),
+      summary: summarizeRegistry(entries, reviewQueue, diagnostic),
       items: reviewQueue
     }
   };
@@ -236,7 +276,8 @@ export function buildProductRegistryFromDiagnostic(diagnostic, options = {}) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const diagnostic = await readJson(options.input);
-  const { registry, reviewQueue } = buildProductRegistryFromDiagnostic(diagnostic);
+  const existingRegistry = await readJsonIfExists(options.registry);
+  const { registry, reviewQueue } = buildProductRegistryFromDiagnostic(diagnostic, { existingRegistry });
   await writeFile(options.registry, `${JSON.stringify(registry, null, 2)}\n`);
   await writeFile(options.reviewQueue, `${JSON.stringify(reviewQueue, null, 2)}\n`);
   console.log("SAMPLAS Product Registry Phase 1");

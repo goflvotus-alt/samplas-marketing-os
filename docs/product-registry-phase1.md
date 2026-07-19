@@ -39,11 +39,21 @@ Review required:
 - `exact_one_to_many`
 - `fuzzy_high_confidence`
 - `fuzzy_ambiguous`
+- `cafe24_only`
+
+Cafe24-only anchor policy:
+
+- every Cafe24 product must exist in the registry
+- `status = unmatched`
+- `confidence = 0`
+- `verified = false`
+- `ecount.matchedProducts = []`
+- `matching.strategy = none`
+- `matching.diagnosticType = cafe24_only`
 
 Excluded from Phase 1 registry:
 
 - `ecount_only`
-- `cafe24_only`
 - `excluded_qqq`
 - `consignment_candidate`
 - `unresolved`
@@ -81,9 +91,12 @@ Each registry entry includes:
 
 | Metric | Value |
 | --- | ---: |
-| Registry entries | 131 |
+| Registry entries | 177 |
 | Verified entries | 17 |
-| Review queue entries | 114 |
+| Review queue entries | 160 |
+| Cafe24-only unmatched entries | 46 |
+| Missing Cafe24 anchors | 0 |
+| Duplicate Cafe24 anchors | 0 |
 
 Confidence distribution:
 
@@ -93,7 +106,7 @@ Confidence distribution:
 | 95-99 | 0 |
 | 80-94 | 6 |
 | 60-79 | 108 |
-| 0-59 | 0 |
+| 0-59 | 46 |
 
 Top brand counts:
 
