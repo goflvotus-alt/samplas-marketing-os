@@ -1,0 +1,402 @@
+{
+  "generatedAt": "2026-07-19T03:33:30.026Z",
+  "mode": "read_only_identity_source_diagnostic",
+  "sources": {
+    "cafe24ProductDashboard": {
+      "path": "work/product-dashboard-proxy-2026-06-24_2026-07-18.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T11:14:50.199Z",
+      "error": null
+    },
+    "ecountLatest": {
+      "path": "work/ecount-inventory/latest.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T09:45:57.629Z",
+      "error": null
+    },
+    "ecountRawProducts": {
+      "path": "work/ecount-inventory/raw-products.json",
+      "exists": true,
+      "modifiedAt": "2026-07-18T09:45:57.077Z",
+      "error": null
+    },
+    "server": {
+      "path": "server.mjs",
+      "exists": true,
+      "error": null
+    }
+  },
+  "summary": {
+    "cafe24ProductCount": 177,
+    "ecountLatestProductCount": 10000,
+    "ecountRawProductCount": 10000,
+    "cafe24BarcodeLikeFieldCount": 0,
+    "ecountBarcodeCount": 9866,
+    "barcodeConclusion": "not_present_in_current_cafe24_dashboard_cache",
+    "apiConclusion": "not_verified_from_external_api_in_this_read_only_run; existing loader would drop barcode-like fields if returned because normalizeCafe24ProductRow does not retain them"
+  },
+  "apiSurfaces": [
+    {
+      "api": "GET /api/v2/admin/products",
+      "codeFunction": "fetchCafe24ProductList",
+      "currentCacheRole": "base product list",
+      "identityFieldsRetained": [
+        "product_no",
+        "product_code/custom_product_code",
+        "product_name",
+        "brand_code",
+        "manufacturer_code"
+      ],
+      "barcodeVerified": false,
+      "note": "Current diagnostic did not call external Cafe24 API; existing cache has no barcode/ean/upc/gtin field."
+    },
+    {
+      "api": "GET /api/v2/admin/products/{productNo}",
+      "codeFunction": "fetchCafe24ProductDetail",
+      "currentCacheRole": "detail merge before normalization",
+      "identityFieldsRetained": [
+        "product_no",
+        "product_code/custom_product_code",
+        "product_name",
+        "brand_code",
+        "manufacturer_code"
+      ],
+      "barcodeVerified": false,
+      "note": "normalizeCafe24ProductRow would drop barcode-like fields if they exist unless explicitly retained."
+    },
+    {
+      "api": "GET /api/v2/admin/products/{productNo}/variants?embed=inventories",
+      "codeFunction": "fetchCafe24ProductVariantsWithInventory",
+      "currentCacheRole": "variant inventory and options",
+      "identityFieldsRetained": [
+        "variant_code",
+        "options.name/value",
+        "inventory.quantity",
+        "sold_out"
+      ],
+      "barcodeVerified": false,
+      "note": "Current cache retains variantCode and optionSummary only; variant barcode/ean fields are not retained if present."
+    },
+    {
+      "api": "GET /api/v2/admin/products/{productNo}/inventories",
+      "codeFunction": "diagnoseCafe24ProductAccess only",
+      "currentCacheRole": "diagnostic check, not dashboard cache source",
+      "identityFieldsRetained": [],
+      "barcodeVerified": false,
+      "note": "Existing access diagnostic checks inventory readiness but not barcode aliases."
+    }
+  ],
+  "loaderDataFlow": [
+    "fetchCafe24ProductList() → base product fields",
+    "fetchCafe24ProductDetail(productNo) → detail merge",
+    "fetchCafe24ProductVariantsWithInventory(productNo) → variants + inventories",
+    "normalizeCafe24ProductRow(item, detail, variants) → Product Dashboard row",
+    "buildProductDashboardWithCache() → work/product-dashboard-proxy-*.json"
+  ],
+  "serverImplementation": {
+    "apiCallsInCode": {
+      "productsList": true,
+      "productDetail": true,
+      "variants": true,
+      "inventories": true
+    },
+    "normalizeCafe24ProductRowFound": true,
+    "retainedDashboardFields": [
+      "productNo",
+      "productCode",
+      "productName",
+      "brand",
+      "manufacturer_code",
+      "categoryNos",
+      "mainImage",
+      "display",
+      "selling",
+      "createdDate",
+      "options.variantCode",
+      "options.optionSummary",
+      "options.quantity",
+      "options.soldOut",
+      "inventoryQuantity",
+      "soldOut"
+    ],
+    "droppedIdentitySignals": [
+      "barcode",
+      "ean",
+      "jan",
+      "isbn",
+      "upc",
+      "gtin",
+      "supplier_code",
+      "variant_id",
+      "option_code",
+      "option_value"
+    ],
+    "productAccessDiagnosticEndpoint": "/api/diagnostics/cafe24-product-access",
+    "productAccessDiagnosticChecksBarcodeAliases": false
+  },
+  "identityFields": [
+    {
+      "field": "barcode",
+      "grade": "Strong",
+      "cafe24CacheRecordCount": 0,
+      "cafe24CacheAliases": [],
+      "cafe24CacheSamples": [],
+      "ecountLatestRecordCount": 9866,
+      "ecountRawRecordCount": 9866,
+      "identityUsability": "Not usable in current cache"
+    },
+    {
+      "field": "ean",
+      "grade": "Strong",
+      "cafe24CacheRecordCount": 0,
+      "cafe24CacheAliases": [],
+      "cafe24CacheSamples": [],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Not usable in current cache"
+    },
+    {
+      "field": "jan",
+      "grade": "Strong",
+      "cafe24CacheRecordCount": 0,
+      "cafe24CacheAliases": [],
+      "cafe24CacheSamples": [],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Not usable in current cache"
+    },
+    {
+      "field": "isbn",
+      "grade": "Strong",
+      "cafe24CacheRecordCount": 0,
+      "cafe24CacheAliases": [],
+      "cafe24CacheSamples": [],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Not usable in current cache"
+    },
+    {
+      "field": "upc",
+      "grade": "Strong",
+      "cafe24CacheRecordCount": 0,
+      "cafe24CacheAliases": [],
+      "cafe24CacheSamples": [],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Not usable in current cache"
+    },
+    {
+      "field": "gtin",
+      "grade": "Strong",
+      "cafe24CacheRecordCount": 0,
+      "cafe24CacheAliases": [],
+      "cafe24CacheSamples": [],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Not usable in current cache"
+    },
+    {
+      "field": "productCode",
+      "grade": "Medium",
+      "cafe24CacheRecordCount": 177,
+      "cafe24CacheAliases": [
+        "productCode"
+      ],
+      "cafe24CacheSamples": [
+        "P0000VPO",
+        "P0000VPN",
+        "P0000VPM",
+        "P0000VPL",
+        "P0000VPK"
+      ],
+      "ecountLatestRecordCount": 10000,
+      "ecountRawRecordCount": 10000,
+      "identityUsability": "Medium"
+    },
+    {
+      "field": "productNo",
+      "grade": "Medium",
+      "cafe24CacheRecordCount": 177,
+      "cafe24CacheAliases": [
+        "productNo"
+      ],
+      "cafe24CacheSamples": [
+        "14600",
+        "14599",
+        "14598",
+        "14597",
+        "14596"
+      ],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Medium"
+    },
+    {
+      "field": "manufacturerCode",
+      "grade": "Medium",
+      "cafe24CacheRecordCount": 177,
+      "cafe24CacheAliases": [
+        "manufacturer_code"
+      ],
+      "cafe24CacheSamples": [
+        "M0000000",
+        "M0000000",
+        "M00000RM",
+        "M00000RM",
+        "M00000RM"
+      ],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Medium"
+    },
+    {
+      "field": "supplierCode",
+      "grade": "Medium",
+      "cafe24CacheRecordCount": 0,
+      "cafe24CacheAliases": [],
+      "cafe24CacheSamples": [],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Not usable in current cache"
+    },
+    {
+      "field": "variantCode",
+      "grade": "Medium",
+      "cafe24CacheRecordCount": 177,
+      "cafe24CacheAliases": [
+        "variantCode"
+      ],
+      "cafe24CacheSamples": [
+        "P0000VPO000A",
+        "P0000VPN000A",
+        "P0000VPM000A",
+        "P0000VPL000A",
+        "P0000VPK000A"
+      ],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Medium"
+    },
+    {
+      "field": "variantId",
+      "grade": "Medium",
+      "cafe24CacheRecordCount": 0,
+      "cafe24CacheAliases": [],
+      "cafe24CacheSamples": [],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Not usable in current cache"
+    },
+    {
+      "field": "optionCode",
+      "grade": "Weak",
+      "cafe24CacheRecordCount": 0,
+      "cafe24CacheAliases": [],
+      "cafe24CacheSamples": [],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Not usable in current cache"
+    },
+    {
+      "field": "optionValue",
+      "grade": "Weak",
+      "cafe24CacheRecordCount": 177,
+      "cafe24CacheAliases": [
+        "optionSummary",
+        "options"
+      ],
+      "cafe24CacheSamples": [
+        "[object Object]",
+        "[object Object]",
+        "[object Object]",
+        "[object Object]",
+        "[object Object]"
+      ],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 0,
+      "identityUsability": "Weak"
+    },
+    {
+      "field": "customFields",
+      "grade": "Weak",
+      "cafe24CacheRecordCount": 0,
+      "cafe24CacheAliases": [],
+      "cafe24CacheSamples": [],
+      "ecountLatestRecordCount": 0,
+      "ecountRawRecordCount": 1691,
+      "identityUsability": "Not usable in current cache"
+    }
+  ],
+  "ecountConnection": [
+    {
+      "label": "ECOUNT BAR_CODE ↔ Cafe24 barcode/ean/upc/gtin",
+      "ecountAvailable": 9866,
+      "cafe24CacheAvailable": 0,
+      "grade": "Strong",
+      "verdict": "not_available_in_current_cache"
+    },
+    {
+      "label": "ECOUNT PROD_CD ↔ Cafe24 productCode",
+      "ecountAvailable": 10000,
+      "cafe24CacheAvailable": 177,
+      "grade": "Medium",
+      "verdict": "possible_but_not_unique_enough_without_review"
+    },
+    {
+      "label": "ECOUNT PROD_CD ↔ Cafe24 manufacturer_code",
+      "ecountAvailable": 10000,
+      "cafe24CacheAvailable": 177,
+      "grade": "Medium",
+      "verdict": "possible_but_current_values_do_not_match_ecount_codes_reliably"
+    },
+    {
+      "label": "ECOUNT PROD_DES/SIZE_DES ↔ Cafe24 productName/options",
+      "ecountAvailable": 10000,
+      "cafe24CacheAvailable": 177,
+      "grade": "Weak",
+      "verdict": "candidate_only_manual_review_required"
+    }
+  ],
+  "discardedOrUnverifiedFields": {
+    "definitelyAbsentFromCurrentCache": [
+      "barcode",
+      "ean",
+      "jan",
+      "isbn",
+      "upc",
+      "gtin",
+      "supplierCode",
+      "variantId",
+      "optionCode",
+      "customFields"
+    ],
+    "retainedInCurrentCache": [
+      "productCode",
+      "productNo",
+      "manufacturerCode",
+      "variantCode",
+      "optionValue"
+    ],
+    "loaderDropsIfApiReturns": [
+      "barcode",
+      "ean",
+      "jan",
+      "isbn",
+      "upc",
+      "gtin",
+      "supplier_code",
+      "variant_id",
+      "option_code",
+      "option_value"
+    ],
+    "apiDiagnosticGap": [
+      "barcode/ean/jan/isbn/upc/gtin aliases are not checked by /api/diagnostics/cafe24-product-access"
+    ]
+  },
+  "recommendations": [
+    "Do not confirm ECOUNT↔Cafe24 matches from current Product Dashboard cache alone; barcode-like Cafe24 identity is absent.",
+    "Next read-only API probe should extend /api/diagnostics/cafe24-product-access or add a separate diagnostic to inspect barcode/ean/upc/gtin fields in product detail, variant, inventory, and custom/additional fields.",
+    "If Cafe24 API returns barcode-like fields, update the cache loader in a later approved phase to retain them before rebuilding matching candidates.",
+    "Until barcode is verified, productCode/manufacturer_code/name signals should remain candidate or manual-review evidence only."
+  ]
+}
