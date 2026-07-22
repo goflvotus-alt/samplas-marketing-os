@@ -5,6 +5,7 @@ const navItems = [
   { view: "Content", label: "Content", hidden: false },
   { view: "Reports", label: "Monthly Report", hidden: false },
   { view: "Intelligence", label: "Intelligence", hidden: false },
+  { view: "ProductRegistry", label: "Product Registry", hidden: false },
   { view: "Settings", label: "Settings", hidden: false },
   { view: "Product", label: "Product", hidden: true },
   { view: "Editorial AI", label: "Editorial AI", hidden: true }
@@ -82,6 +83,9 @@ let cafe24OAuthErrorReason = null;
 let brandMasterSuspectOnly = false;
 let brandMasterCatalogOnly = true;
 
+let productRegistryRenderSeq = 0;
+let productRegistryState = { registry: null, reviewQueue: null, items: [], activeTab: "all", selectedId: null };
+let productRegistryFilters = { search: "", brand: "all", confidence: "all", status: "all", diagnostic: "all", candidateCount: "all" };
 const nf = new Intl.NumberFormat("ko-KR");
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -446,6 +450,7 @@ const viewHashMap = {
   Advertising: "marketing",
   Content: "content",
   Reports: "monthly-report",
+  ProductRegistry: "product-registry",
   Intelligence: "intelligence",
   Settings: "settings"
 };
@@ -472,6 +477,7 @@ function setActiveView(view, options = {}) {
   setTopbarTitle(targetView);
   updateTopbarControls(targetView);
   if (targetView === "Intelligence") refreshActiveIntelligencePanel();
+  if (targetView === "ProductRegistry") renderProductRegistryView();
   if (options.updateHash !== false) updateViewHash(targetView);
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: options.smooth === false ? "auto" : "smooth" });
 }
@@ -7959,6 +7965,56 @@ function bind() {
       if (current) renderAdvertising(current);
     });
   });
+  document.addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-product-registry-tab]");
+    if (!tab) return;
+    productRegistryState.activeTab = tab.dataset.productRegistryTab || "all";
+    renderProductRegistryTabs(productRegistryState.items);
+    renderProductRegistryList();
+  });
+  $("#productRegistrySearch")?.addEventListener("input", (event) => {
+    productRegistryFilters.search = event.target.value || "";
+    renderProductRegistryList();
+  });
+  $("#productRegistryBrandFilter")?.addEventListener("change", (event) => {
+    productRegistryFilters.brand = event.target.value || "all";
+    renderProductRegistryList();
+  });
+  $("#productRegistryConfidenceFilter")?.addEventListener("change", (event) => {
+    productRegistryFilters.confidence = event.target.value || "all";
+    renderProductRegistryList();
+  });
+  $("#productRegistryStatusFilter")?.addEventListener("change", (event) => {
+    productRegistryFilters.status = event.target.value || "all";
+    renderProductRegistryList();
+  });
+  $("#productRegistryDiagnosticFilter")?.addEventListener("change", (event) => {
+    productRegistryFilters.diagnostic = event.target.value || "all";
+    renderProductRegistryList();
+  });
+  $("#productRegistryCandidateFilter")?.addEventListener("change", (event) => {
+    productRegistryFilters.candidateCount = event.target.value || "all";
+    renderProductRegistryList();
+  });
+  document.addEventListener("click", (event) => {
+    const card = event.target.closest("[data-product-registry-card]");
+    if (!card) return;
+    productRegistryState.selectedId = card.dataset.productRegistryCard || null;
+    renderProductRegistryList();
+  });
+  document.addEventListener("keydown", (event) => {
+    const card = event.target.closest("[data-product-registry-card]");
+    if (!card || !["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    productRegistryState.selectedId = card.dataset.productRegistryCard || null;
+    renderProductRegistryList();
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-product-registry-readonly]");
+    if (!button) return;
+    event.preventDefault();
+    toast("승인 기능은 Phase 2B에서 제공됩니다.");
+  });
 }
 
 // server.mjs의 /api/cafe24/oauth/callback은 성공/실패 모두 "/"로 리다이렉트하며
@@ -7978,6 +8034,328 @@ function handleCafe24OAuthRedirect() {
   } else if (result === "error") {
     toast("Cafe24 재인증에 실패했습니다. Settings에서 자세한 내용을 확인하세요.");
     cafe24OAuthErrorReason = reason || "원인을 확인할 수 없습니다.";
+  }
+}
+
+
+function productRegistryDiagnosticTypes(item) {
+  return Array.isArray(item?.diagnosticType) ? item.diagnosticType : Array.isArray(item?.entry?.matching?.diagnosticType) ? item.entry.matching.diagnosticType : [];
+}
+
+function productRegistryCandidates(item) {
+  return item?.entry?.ecount?.matchedProducts || item?.recommendedCandidate?.ecount || [];
+}
+
+function productRegistryTabKind(item) {
+  const types = productRegistryDiagnosticTypes(item);
+  const candidates = productRegistryCandidates(item);
+  if (types.includes("cafe24_only") || candidates.length === 0) return "none";
+  if (types.includes("exact_one_to_many") || candidates.length >= 2) return "family";
+  if (types.includes("fuzzy_high_confidence") || types.includes("fuzzy_ambiguous") || (Number(item.confidence) > 0 && Number(item.confidence) < 95)) return "similar";
+  return "similar";
+}
+
+function productRegistryBadgeLabel(item) {
+  const entry = item.entry || {};
+  const kind = productRegistryTabKind(item);
+  if (entry.verified) return "Verified";
+  if (kind === "family") return "상품군 후보";
+  if (kind === "similar") return "유사 후보";
+  if (kind === "none") return "후보 없음";
+  return entry.status || "Review";
+}
+
+function productRegistryReason(item) {
+  const types = productRegistryDiagnosticTypes(item);
+  if (item.reason) return item.reason;
+  if (types.includes("cafe24_only")) return "ECOUNT 후보 없음";
+  return (item.entry?.matching?.pendingReasons || []).join(", ") || "검토 필요";
+}
+
+function productRegistryConfidenceVisual(item) {
+  const confidence = Number(item.confidence || 0);
+  const noCandidate = productRegistryTabKind(item) === "none";
+  if (noCandidate) return { stars: "☆☆☆☆☆", label: "후보 없음", tone: "none" };
+  if (confidence >= 100) return { stars: "★★★★★", label: "100", tone: "high" };
+  if (confidence >= 80) return { stars: "★★★★☆", label: "80+", tone: "medium" };
+  if (confidence >= 60) return { stars: "★★★☆☆", label: "60+", tone: "low" };
+  return { stars: "☆☆☆☆☆", label: "후보 없음", tone: "none" };
+}
+
+function productRegistryCandidatePreview(candidates) {
+  const sizes = [...new Set(candidates.map((candidate) => candidate.size).filter(Boolean))];
+  if (!sizes.length) return "";
+  const visible = sizes.slice(0, 5);
+  return `${visible.map((size) => `<span>${esc(size)}</span>`).join("")}${sizes.length > visible.length ? `<small>+${apiNum(sizes.length - visible.length)}</small>` : ""}`;
+}
+
+function productRegistryBuildItems(registry, reviewQueue) {
+  const entries = Array.isArray(registry?.entries) ? registry.entries : [];
+  const entryById = new Map(entries.map((entry) => [entry.canonicalProductId, entry]));
+  return (reviewQueue?.items || []).map((item) => {
+    const entry = entryById.get(item.canonicalProductId) || {};
+    const candidate = item.recommendedCandidate || {};
+    return {
+      ...item,
+      entry,
+      brandName: candidate.brandName || entry.brandName || "-",
+      productName: candidate.canonicalProductName || entry.canonicalProductName || entry.cafe24?.productName || "-",
+      cafe24: candidate.cafe24 || entry.cafe24 || {},
+      confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : Number(entry.confidence || 0)
+    };
+  });
+}
+
+function productRegistryTabCounts(items) {
+  return {
+    all: items.length,
+    family: items.filter((item) => productRegistryTabKind(item) === "family").length,
+    similar: items.filter((item) => productRegistryTabKind(item) === "similar").length,
+    none: items.filter((item) => productRegistryTabKind(item) === "none").length
+  };
+}
+
+function productRegistryMatchesFilters(item) {
+  const filters = productRegistryFilters;
+  const text = `${item.brandName} ${item.productName} ${item.cafe24?.productCode || ""} ${item.cafe24?.productNo || ""}`.toLowerCase();
+  if (filters.search && !text.includes(filters.search.toLowerCase())) return false;
+  if (filters.brand !== "all" && item.brandName !== filters.brand) return false;
+  if (filters.status !== "all" && (item.entry?.status || "") !== filters.status) return false;
+  if (filters.diagnostic !== "all" && !productRegistryDiagnosticTypes(item).includes(filters.diagnostic)) return false;
+  const confidence = Number(item.confidence || 0);
+  if (filters.confidence === "100" && confidence !== 100) return false;
+  if (filters.confidence === "80-94" && (confidence < 80 || confidence > 94)) return false;
+  if (filters.confidence === "60-79" && (confidence < 60 || confidence > 79)) return false;
+  if (filters.confidence === "0-59" && (confidence < 0 || confidence > 59)) return false;
+  const candidateCount = productRegistryCandidates(item).length;
+  if (filters.candidateCount === "none" && candidateCount !== 0) return false;
+  if (filters.candidateCount === "one" && candidateCount !== 1) return false;
+  if (filters.candidateCount === "multi" && candidateCount < 2) return false;
+  const tab = productRegistryState.activeTab || "all";
+  if (tab !== "all" && productRegistryTabKind(item) !== tab) return false;
+  return true;
+}
+
+function productRegistrySortItems(items) {
+  const kindRank = { none: 0, similar: 1, family: 2 };
+  const diagnosticRank = (item) => {
+    const types = productRegistryDiagnosticTypes(item);
+    if (types.includes("cafe24_only")) return 0;
+    if (types.includes("fuzzy_ambiguous")) return 1;
+    if (types.includes("exact_one_to_many")) return 2;
+    if (types.includes("fuzzy_high_confidence")) return 3;
+    return 4;
+  };
+  return items.slice().sort((a, b) => (
+    (kindRank[productRegistryTabKind(a)] - kindRank[productRegistryTabKind(b)]) ||
+    (diagnosticRank(a) - diagnosticRank(b)) ||
+    (Number(b.confidence || 0) - Number(a.confidence || 0)) ||
+    String(a.brandName || "").localeCompare(String(b.brandName || ""), "ko") ||
+    String(a.productName || "").localeCompare(String(b.productName || ""), "ko")
+  ));
+}
+
+function renderProductRegistrySummary(registry, queue) {
+  const target = $("#productRegistrySummary");
+  if (!target) return;
+  const summary = registry?.summary || {};
+  const items = productRegistryBuildItems(registry, queue);
+  const counts = productRegistryTabCounts(items);
+  const total = Number(summary.registryCount || 0);
+  const verified = Number(summary.verifiedCount || 0);
+  const review = Number(summary.reviewQueueCount || 0);
+  const verifiedPct = total > 0 ? Math.floor((verified / total) * 100) : null;
+  const reviewPct = verifiedPct == null ? null : Math.max(0, 100 - verifiedPct);
+  target.innerHTML = [
+    ["전체 상품", apiNum(total), ""],
+    ["자동 완료", apiNum(verified), verifiedPct == null ? "-" : `${verifiedPct}%`],
+    ["검토 필요", apiNum(review), reviewPct == null ? "-" : `${reviewPct}%`],
+    ["후보 없음", apiNum(counts.none || 0), ""]
+  ].map(([label, value, sub]) => `<div class="action-item sales-kpi-card product-registry-summary-card"><span>${esc(label)}</span><strong>${esc(value)}</strong>${sub ? `<small>${esc(sub)}</small>` : ""}</div>`).join("");
+}
+
+function renderProductRegistryTabs(items) {
+  const target = $("#productRegistryTabs");
+  if (!target) return;
+  const counts = productRegistryTabCounts(items);
+  const tabs = [
+    ["all", "자동 연결 가능"],
+    ["family", "상품군 후보"],
+    ["similar", "애매한 후보"],
+    ["none", "후보 없음"]
+  ];
+  target.innerHTML = tabs.map(([key, label]) => (
+    `<button type="button" class="product-action-filter ${productRegistryState.activeTab === key ? "active" : ""}" data-product-registry-tab="${key}">
+      ${esc(label)} <span>${apiNum(counts[key] || 0)}</span>
+    </button>`
+  )).join("");
+}
+
+function renderProductRegistryFilterOptions(items) {
+  const brandSelect = $("#productRegistryBrandFilter");
+  const statusSelect = $("#productRegistryStatusFilter");
+  const diagnosticSelect = $("#productRegistryDiagnosticFilter");
+  if (brandSelect) {
+    const brands = [...new Set(items.map((item) => item.brandName).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
+    brandSelect.innerHTML = `<option value="all">브랜드 전체</option>${brands.map((brand) => `<option value="${esc(brand)}">${esc(brand)}</option>`).join("")}`;
+    brandSelect.value = brands.includes(productRegistryFilters.brand) ? productRegistryFilters.brand : "all";
+    productRegistryFilters.brand = brandSelect.value;
+  }
+  if (statusSelect) {
+    const statuses = [...new Set(items.map((item) => item.entry?.status).filter(Boolean))].sort();
+    statusSelect.innerHTML = `<option value="all">상태 전체</option>${statuses.map((status) => `<option value="${esc(status)}">${esc(status)}</option>`).join("")}`;
+    statusSelect.value = statuses.includes(productRegistryFilters.status) ? productRegistryFilters.status : "all";
+    productRegistryFilters.status = statusSelect.value;
+  }
+  if (diagnosticSelect) {
+    const diagnostics = [...new Set(items.flatMap((item) => productRegistryDiagnosticTypes(item)))].sort();
+    diagnosticSelect.innerHTML = `<option value="all">Diagnostic 전체</option>${diagnostics.map((type) => `<option value="${esc(type)}">${esc(type)}</option>`).join("")}`;
+    diagnosticSelect.value = diagnostics.includes(productRegistryFilters.diagnostic) ? productRegistryFilters.diagnostic : "all";
+    productRegistryFilters.diagnostic = diagnosticSelect.value;
+  }
+}
+
+function productRegistryCardHtml(item) {
+  const candidates = productRegistryCandidates(item);
+  const types = productRegistryDiagnosticTypes(item);
+  const selected = productRegistryState.selectedId === item.canonicalProductId ? " is-selected" : "";
+  const consignment = candidates.some((candidate) => candidate.consignment);
+  const confidence = productRegistryConfidenceVisual(item);
+  const preview = productRegistryCandidatePreview(candidates);
+  return `
+    <article class="product-registry-card${selected}" tabindex="0" role="button" data-product-registry-card="${esc(item.canonicalProductId)}">
+      <div class="product-registry-card-head">
+        <div>
+          <span class="product-registry-brand">${esc(item.brandName)}</span>
+          <strong>${esc(item.productName)}</strong>
+        </div>
+        <span class="sales-status-badge">${esc(productRegistryBadgeLabel(item))}</span>
+      </div>
+      <div class="product-registry-row-meta">
+        <span class="product-registry-confidence ${esc(confidence.tone)}"><b>${esc(confidence.stars)}</b><small>${esc(confidence.label)}</small></span>
+        <span>후보 ${apiNum(candidates.length)}</span>
+        <span>${esc(item.entry?.status || "-")}</span>
+      </div>
+      ${preview ? `<div class="product-registry-size-preview">${preview}</div>` : `<p class="product-registry-candidate-summary">ECOUNT 후보가 아직 없습니다.</p>`}
+      <div class="product-registry-diags">${types.slice(0, 2).map((type) => `<span>${esc(type)}</span>`).join("")}${consignment ? `<span>위탁 후보</span>` : ""}</div>
+      <p class="hint-text">${esc(productRegistryReason(item))}</p>
+    </article>`;
+}
+
+function renderProductRegistryList() {
+  const list = $("#productRegistryList");
+  const empty = $("#productRegistryEmpty");
+  if (!list || !empty) return;
+  const filtered = productRegistrySortItems(productRegistryState.items.filter(productRegistryMatchesFilters));
+  list.innerHTML = filtered.map(productRegistryCardHtml).join("");
+  empty.hidden = filtered.length > 0;
+  if (!filtered.some((item) => item.canonicalProductId === productRegistryState.selectedId)) {
+    productRegistryState.selectedId = filtered[0]?.canonicalProductId || null;
+  }
+  renderProductRegistryDetail();
+}
+
+function productRegistryCandidateSort(a, b) {
+  return String(a.size || "").localeCompare(String(b.size || ""), "ko", { numeric: true }) ||
+    String(a.prodCd || "").localeCompare(String(b.prodCd || ""));
+}
+
+function renderProductRegistryDetail() {
+  const target = $("#productRegistryDetail");
+  if (!target) return;
+  const item = productRegistryState.items.find((row) => row.canonicalProductId === productRegistryState.selectedId);
+  if (!item) {
+    target.innerHTML = `<div class="sales-empty-card"><strong>상품을 선택하세요</strong><p>왼쪽 후보 카드를 선택하면 상세 비교가 표시됩니다.</p></div>`;
+    return;
+  }
+  const entry = item.entry || {};
+  const candidates = productRegistryCandidates(item).slice().sort(productRegistryCandidateSort);
+  const confidence = productRegistryConfidenceVisual(item);
+  const candidateHtml = candidates.length ? candidates.map((candidate) => `
+    <li class="product-registry-candidate-row">
+      <strong>${esc(candidate.size || "-")}</strong>
+      <span>${esc(candidate.productName || "-")}</span>
+      <small>prodCd ${esc(candidate.prodCd || "-")} · BAR_CODE ${esc(candidate.barcode || "-")} · supplier ${esc(candidate.supplier || "-")}</small>
+      <em>${candidate.consignment ? "위탁 후보" : "일반 후보"} · ${esc(productRegistryReason(item))}</em>
+    </li>
+  `).join("") : `<li class="product-registry-candidate-row is-empty"><strong>ECOUNT 후보가 아직 없습니다.</strong><span>Review Queue에서 직접 검색이 필요한 Cafe24 상품입니다.</span></li>`;
+  target.innerHTML = `
+    <div class="product-registry-detail-head">
+      <div>
+        <span class="product-registry-brand">${esc(item.brandName)}</span>
+        <h3>${esc(item.productName)}</h3>
+      </div>
+      <span class="sales-status-badge">${esc(productRegistryBadgeLabel(item))}</span>
+    </div>
+    <div class="clients-tooltip-stats clients-detail-stats-grid product-registry-detail-kpis">
+      <div class="clients-tooltip-stat"><span>Confidence</span><strong>${esc(confidence.stars)}</strong><small>${esc(confidence.label)}</small></div>
+      <div class="clients-tooltip-stat"><span>후보 수</span><strong>${apiNum(candidates.length)}</strong></div>
+      <div class="clients-tooltip-stat"><span>Status</span><strong>${esc(entry.status || "-")}</strong></div>
+    </div>
+    <div class="product-registry-detail-section">
+      <p class="clients-tooltip-subhead">Cafe24</p>
+      <div class="clients-detail-period-block">
+        <div class="clients-detail-period-row"><span>브랜드</span><strong>${esc(item.brandName)}</strong></div>
+        <div class="clients-detail-period-row"><span>상품명</span><strong>${esc(item.cafe24?.productName || item.productName || "-")}</strong></div>
+        <div class="clients-detail-period-row"><span>productCode</span><strong>${esc(item.cafe24?.productCode || "-")}</strong></div>
+        <div class="clients-detail-period-row"><span>productNo</span><strong>${esc(item.cafe24?.productNo || "-")}</strong></div>
+      </div>
+    </div>
+    <div class="product-registry-detail-section">
+      <p class="clients-tooltip-subhead">ECOUNT 후보</p>
+      <ul class="product-registry-candidate-list">${candidateHtml}</ul>
+    </div>
+    <div class="product-registry-detail-section">
+      <p class="clients-tooltip-subhead">진단</p>
+      <div class="clients-detail-period-block">
+        <div class="clients-detail-period-row"><span>Confidence</span><strong>${apiNum(item.confidence)}</strong></div>
+        <div class="clients-detail-period-row"><span>Matching 이유</span><strong>${esc(productRegistryReason(item))}</strong></div>
+        <div class="clients-detail-period-row"><span>Diagnostic</span><strong>${productRegistryDiagnosticTypes(item).map(esc).join(", ") || "-"}</strong></div>
+      </div>
+    </div>
+    <div class="product-registry-detail-section">
+      <p class="clients-tooltip-subhead">Phase 2B Actions</p>
+      <div class="product-registry-actions">
+        ${["상품군으로 승인", "선택 후보 승인", "온라인 전용", "직접 검색", "보류"].map((label) => `<button class="button secondary" type="button" data-product-registry-readonly>${esc(label)}</button>`).join("")}
+      </div>
+      <p class="hint-text">승인 기능은 Phase 2B에서 제공됩니다.</p>
+    </div>`;
+}
+
+async function renderProductRegistryView() {
+  const seq = ++productRegistryRenderSeq;
+  const status = $("#productRegistryStatus");
+  if (status) {
+    status.className = "ad-status-banner loading";
+    status.textContent = "Product Registry 로딩 중...";
+  }
+  try {
+    const [registryResp, queueResp] = await Promise.all([
+      getJson(intelligenceUrl("/api/intelligence/product-registry"), 12000),
+      getJson(intelligenceUrl("/api/intelligence/product-registry/review-queue"), 12000)
+    ]);
+    if (seq !== productRegistryRenderSeq) return;
+    if (registryResp.error || queueResp.error || registryResp.ok === false || queueResp.ok === false) throw new Error(registryResp.message || queueResp.message || registryResp.error || queueResp.error || "Product Registry 로딩 실패");
+    productRegistryState.registry = registryResp.registry;
+    productRegistryState.reviewQueue = queueResp.reviewQueue;
+    productRegistryState.items = productRegistryBuildItems(registryResp.registry, queueResp.reviewQueue);
+    if (!productRegistryState.activeTab) productRegistryState.activeTab = "all";
+    if (status) {
+      status.className = "ad-status-banner good";
+      status.textContent = `Read-only · Review Queue ${apiNum(productRegistryState.items.length)}개`;
+    }
+    renderProductRegistrySummary(registryResp.registry, queueResp.reviewQueue);
+    renderProductRegistryTabs(productRegistryState.items);
+    renderProductRegistryFilterOptions(productRegistryState.items);
+    renderProductRegistryList();
+  } catch (error) {
+    if (seq !== productRegistryRenderSeq) return;
+    if (status) {
+      status.className = "ad-status-banner urgent";
+      status.textContent = `Product Registry를 불러오지 못했습니다. ${error.message || ""}`;
+    }
+    $("#productRegistryList") && ($("#productRegistryList").innerHTML = "");
+    $("#productRegistryDetail") && ($("#productRegistryDetail").innerHTML = `<div class="sales-empty-card"><strong>오류</strong><p>${esc(error.message || "데이터 로딩 실패")}</p></div>`);
   }
 }
 

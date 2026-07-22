@@ -19,6 +19,8 @@ const brandTimelineFile = join(intelligenceWorkDir, "brand-timeline.json");
 const decisionHistoryFile = join(intelligenceWorkDir, "decision-history.json");
 const learningDbFile = join(intelligenceWorkDir, "learning-db.json");
 const missionCacheFile = join(intelligenceWorkDir, "mission-cache.json");
+const productRegistryFile = join(workRoot, "product-registry.json");
+const productRegistryReviewQueueFile = join(workRoot, "product-registry-review-queue.json");
 const naverAdsBaseUrl = env.NAVER_ADS_BASE_URL || "https://api.searchad.naver.com";
 const naverAdsTimeoutMs = 10000;
 const marketingOsBaseUrl = env.INTELLIGENCE_MARKETING_OS_BASE_URL || env.MARKETING_OS_BASE_URL || `http://127.0.0.1:${env.PORT || 8787}`;
@@ -112,6 +114,14 @@ const server = createServer(async (req, res) => {
     if (brandIntelligenceMatch) {
       return handleBrandIntelligenceRoute(brandIntelligenceMatch[1], url, res);
     }
+    if (url.pathname === "/api/intelligence/product-registry") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleProductRegistryGet(res);
+    }
+    if (url.pathname === "/api/intelligence/product-registry/review-queue") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleProductRegistryReviewQueueGet(res);
+    }
     if (url.pathname === "/api/intelligence/naver/search") {
       return handleNaverSearchRoute(url, res);
     }
@@ -164,6 +174,20 @@ function corsHeaders() {
     "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type"
   };
+}
+
+async function readProductRegistryJson(filePath) {
+  return JSON.parse(await readFile(filePath, "utf8"));
+}
+
+async function handleProductRegistryGet(res) {
+  const registry = await readProductRegistryJson(productRegistryFile);
+  return json(res, { ok: true, registry });
+}
+
+async function handleProductRegistryReviewQueueGet(res) {
+  const reviewQueue = await readProductRegistryJson(productRegistryReviewQueueFile);
+  return json(res, { ok: true, reviewQueue });
 }
 
 async function handleBrandIntelligenceInputRoute(rawBrandId, url, res) {

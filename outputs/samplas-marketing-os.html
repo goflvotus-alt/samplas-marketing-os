@@ -614,6 +614,55 @@
         </div>
       </section>
 
+
+      <section id="ProductRegistry" class="view">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Product Registry</p>
+            <h3>Product Registry</h3>
+          </div>
+        </div>
+        <p class="hint-text">Cafe24 상품과 ECOUNT 품목의 연결 후보를 검수하는 화면입니다. Phase 2A에서는 승인/저장 없이 read-only 비교만 제공합니다.</p>
+
+        <div class="section-block">
+          <div id="productRegistryStatus" class="ad-status-banner loading">Product Registry 로딩 중...</div>
+          <div id="productRegistrySummary" class="cards"></div>
+        </div>
+
+        <div class="section-block product-registry-workbench">
+          <div class="section-title compact">
+            <div><p class="eyebrow">검토 필요</p><h3>상품 매칭 후보 검토</h3></div>
+          </div>
+          <div id="productRegistryTabs" class="product-action-filters"></div>
+          <div class="product-action-filters product-registry-filters">
+            <input id="productRegistrySearch" type="search" placeholder="브랜드명 / Cafe24 상품명 / productCode / productNo 검색">
+            <select id="productRegistryBrandFilter" aria-label="Product Registry 브랜드 필터"></select>
+            <select id="productRegistryConfidenceFilter" aria-label="Product Registry confidence 필터">
+              <option value="all">Confidence 전체</option>
+              <option value="100">100</option>
+              <option value="80-94">80-94</option>
+              <option value="60-79">60-79</option>
+              <option value="0-59">0-59</option>
+            </select>
+            <select id="productRegistryStatusFilter" aria-label="Product Registry 상태 필터"></select>
+            <select id="productRegistryDiagnosticFilter" aria-label="Product Registry diagnostic 필터"></select>
+            <select id="productRegistryCandidateFilter" aria-label="Product Registry 후보 개수 필터">
+              <option value="all">후보 개수 전체</option>
+              <option value="none">후보 없음</option>
+              <option value="one">후보 1개</option>
+              <option value="multi">후보 2개 이상</option>
+            </select>
+          </div>
+          <div class="product-registry-layout">
+            <div>
+              <div id="productRegistryList" class="product-registry-list"></div>
+              <div id="productRegistryEmpty" class="sales-empty-card" hidden>조건에 맞는 상품 후보가 없습니다.</div>
+            </div>
+            <aside id="productRegistryDetail" class="product-registry-detail" aria-live="polite"></aside>
+          </div>
+        </div>
+      </section>
+
       <section id="Settings" class="view">
         <div class="section-title">
           <div>
