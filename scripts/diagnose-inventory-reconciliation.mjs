@@ -1,446 +1,904 @@
-#!/usr/bin/env node
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+// SAMPLAS Inventory Intelligence Phase 2A — ECOUNT ↔ Cafe24 재고 정합성 진단
+//
+// 이 스크립트는 Diagnostic Only다. Canonical Product Registry(work/product-registry.json)에서
+// verified === true (Phase 1 정의상 exact_one_to_one, confidence 100, status "confirmed"와 동일 집합)로
+// 확정된 상품과 ECOUNT 음수 재고를 대상으로, 실제 조치가 필요한 재고 후보만 만든다.
+// Cafe24는 재고 차이 판정용이 아니라 Product Registry 연결과 판매 증거 확인용으로만 사용한다.
+//
+// 원본 데이터(Product Registry, ECOUNT 캐시, Cafe24 캐시)는 전부 읽기 전용이다. 이 스크립트가
+// 쓰는 파일은 --output 경로(기본 work/inventory-intelligence-candidates.json) 하나뿐이다.
+//
+// 실행:
+//   node scripts/diagnose-inventory-reconciliation.mjs
+//   node scripts/diagnose-inventory-reconciliation.mjs --dry-run --strict
+//   node scripts/diagnose-inventory-reconciliation.mjs --output=work/foo.json --registry=work/product-registry.json
+//
+// 옵션:
+//   --output=<path>    출력 JSON 경로 (기본 work/inventory-intelligence-candidates.json)
+//   --registry=<path>  Product Registry 경로 (기본 work/product-registry.json)
+//   --ecount=<path>    ECOUNT 재고 스냅샷 경로 (기본 work/ecount-inventory/latest.json)
+//   --cafe24=<path>    Cafe24 재고 캐시 경로를 명시적으로 강제 지정 (기본은 자동 선택)
+//   --dry-run          파일을 쓰지 않고 콘솔 요약만 출력한다
+//   --strict           필수 source가 없거나 필드가 불명확하면 추정하지 않고 즉시 실패한다
+
+import { mkdir, readFile, writeFile, rename, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const rootDir = resolve(fileURLToPath(import.meta.url), "..", "..");
-const workDir = join(rootDir, "work");
-const defaultOutputPath = join(workDir, "inventory-intelligence-candidates.json");
+const root = resolve(import.meta.dirname, "..");
+const workDir = join(root, "work");
 
-export const DEFAULT_THRESHOLDS = Object.freeze({
-  absoluteToleranceUnits: 1,
-  relativeToleranceRate: 0.02,
-  stockDifferenceFormula: "ecountStock - cafe24Stock",
-  differenceRateFormula: "absoluteDifference / max(abs(ecountStock), abs(cafe24Stock))"
-});
-
-const CONFIRMED_MATCH_STATUSES = new Set([
-  "confirmed",
-  "matched",
-  "approved",
-  "manually_confirmed",
-  "manual_confirmed",
-  "verified"
-]);
-
-const STATUS_SORT_ORDER = {
-  duplicate_mapping: 0,
-  invalid_value: 1,
-  missing_ecount: 2,
-  missing_cafe24: 2,
-  mismatch: 3,
-  within_tolerance: 4,
-  exact_match: 5,
-  excluded: 6
+const DEFAULT_PATHS = {
+  registry: join(workDir, "product-registry.json"),
+  ecount: join(workDir, "ecount-inventory", "latest.json"),
+  output: join(workDir, "inventory-intelligence-candidates.json"),
+  cafe24ProductCatalog: join(workDir, "cafe24-product-catalog.json")
 };
 
+const THRESHOLDS = {
+  nearMatchAbsoluteUnits: 2,
+  nearMatchRate: 0.1
+};
+
+const BRAND_ALIASES = new Map([
+  ["aah midnight", "AAH MIDNIGHT CLUB"],
+  ["aah midnight club", "AAH MIDNIGHT CLUB"]
+]);
+
+function compactText(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+function normalizeBrandName(value) {
+  const compact = compactText(value);
+  if (!compact) return null;
+  const key = compact.toLowerCase();
+  return BRAND_ALIASES.get(key) || compact.toUpperCase();
+}
+
+function brandFromEcountProductName(productName) {
+  const text = compactText(productName);
+  const bracket = text.match(/^\[([^:\]]+)/);
+  if (bracket) return normalizeBrandName(bracket[1]);
+  if (!text.includes("/")) return null;
+  return normalizeBrandName(text.split("/")[0]);
+}
+
+function brandFromCafe24ProductName(productName) {
+  const text = compactText(productName);
+  const match = text.match(/^\[([^:\]]+)/);
+  return match ? normalizeBrandName(match[1]) : null;
+}
+
+function resolveBrand(entry, ecountItems = [], cafe24Product = null) {
+  const canonical = normalizeBrandName(entry?.brandName);
+  if (canonical) return { name: canonical, source: "product_registry" };
+  for (const item of ecountItems) {
+    const ecountBrand = brandFromEcountProductName(item.productName);
+    if (ecountBrand) return { name: ecountBrand, source: "ecount_alias" };
+  }
+  const cafe24Brand = brandFromCafe24ProductName(cafe24Product?.productName);
+  if (cafe24Brand) return { name: cafe24Brand, source: "cafe24_canonical" };
+  return { name: "UNKNOWN", source: "unknown" };
+}
+
+function repoRelativePath(value) {
+  return relative(root, resolve(value)).split(sep).join("/");
+}
+
+function productSalesEvidence(product) {
+  const quantitySold = Number(product?.quantitySold || 0);
+  const orderCount = Number(product?.orderCount || 0);
+  const salesAmount = Number(product?.salesAmount || 0);
+  return {
+    quantitySold,
+    orderCount,
+    salesAmount,
+    lastSaleDate: product?.lastSaleDate || null,
+    hasSalesVoucher: quantitySold > 0 || orderCount > 0 || salesAmount > 0
+  };
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
 function parseCliArgs(argv) {
-  const options = { dryRun: false, output: defaultOutputPath, top: 20 };
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
+  const options = { dryRun: false, strict: false, output: null, registry: null, ecount: null, cafe24: null };
+  for (const arg of argv) {
     if (arg === "--dry-run") options.dryRun = true;
-    else if (arg === "--output") options.output = resolve(rootDir, argv[++index] || "");
-    else if (arg.startsWith("--output=")) options.output = resolve(rootDir, arg.slice("--output=".length));
-    else if (arg === "--top") options.top = Math.max(1, Number(argv[++index]) || 20);
-    else if (arg.startsWith("--top=")) options.top = Math.max(1, Number(arg.slice("--top=".length)) || 20);
+    else if (arg === "--strict") options.strict = true;
+    else if (arg.startsWith("--output=")) options.output = arg.slice("--output=".length);
+    else if (arg.startsWith("--registry=")) options.registry = arg.slice("--registry=".length);
+    else if (arg.startsWith("--ecount=")) options.ecount = arg.slice("--ecount=".length);
+    else if (arg.startsWith("--cafe24=")) options.cafe24 = arg.slice("--cafe24=".length);
   }
   return options;
 }
 
-async function readJsonIfExists(filePath) {
-  if (!existsSync(filePath)) return { exists: false, data: null, error: null, stat: null };
+// ---------------------------------------------------------------------------
+// 안전한 JSON 읽기
+// ---------------------------------------------------------------------------
+
+async function readJsonSafe(path) {
+  if (!existsSync(path)) return { ok: false, reason: "missing_file", path };
   try {
-    const [text, fileStat] = await Promise.all([readFile(filePath, "utf8"), stat(filePath)]);
-    return { exists: true, data: JSON.parse(text), error: null, stat: fileStat };
-  } catch (error) {
-    return { exists: true, data: null, error: error.message, stat: null };
+    const raw = await readFile(path, "utf8");
+    const parsed = JSON.parse(raw);
+    return { ok: true, data: parsed, path };
+  } catch (err) {
+    return { ok: false, reason: "invalid_json", path, error: err.message };
   }
 }
 
-function sourceMeta(filePath, loaded) {
+// ---------------------------------------------------------------------------
+// Product Registry 로드 + 신뢰 가능한(verified) 대상 추출
+// ---------------------------------------------------------------------------
+
+function isTrustedEntry(entry) {
+  // 세 조건이 실제 데이터에서는 항상 같은 집합을 가리키지만(Phase1 정책상
+  // exact_one_to_one만 verified=true), 향후 데이터 변화에 대비해 OR로 판단한다.
+  const verifiedFlag = entry.verified === true;
+  const confirmedStatus = entry.status === "confirmed";
+  const fullConfidenceWithEcount =
+    entry.confidence === 100 && Array.isArray(entry.ecount?.matchedProducts) && entry.ecount.matchedProducts.length > 0;
+  return verifiedFlag || confirmedStatus || fullConfidenceWithEcount;
+}
+
+function loadRegistry(registryResult) {
+  const data = registryResult.data;
+  if (!data || !Array.isArray(data.entries)) {
+    return { ok: false, reason: "registry_missing_entries" };
+  }
+  const entries = data.entries;
+  const trusted = entries.filter(isTrustedEntry);
+  const verifiedFlagCount = entries.filter((e) => e.verified === true).length;
+  const confirmedStatusCount = entries.filter((e) => e.status === "confirmed").length;
+  const fullConfidenceCount = entries.filter(
+    (e) => e.confidence === 100 && Array.isArray(e.ecount?.matchedProducts) && e.ecount.matchedProducts.length > 0
+  ).length;
   return {
-    path: filePath.replace(`${rootDir}/`, ""),
-    exists: loaded.exists,
-    modifiedAt: loaded.stat ? loaded.stat.mtime.toISOString() : null,
-    error: loaded.error || null
+    ok: true,
+    entries,
+    trusted,
+    registryEntryCount: entries.length,
+    verifiedFlagCount,
+    confirmedStatusCount,
+    fullConfidenceCount
   };
 }
 
-function extractList(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.items)) return payload.items;
-  if (Array.isArray(payload?.products)) return payload.products;
-  if (Array.isArray(payload?.matches)) return payload.matches;
-  if (Array.isArray(payload?.mappings)) return payload.mappings;
-  if (Array.isArray(payload?.Data?.Result)) return payload.Data.Result;
-  if (payload?.products && typeof payload.products === "object") return Object.entries(payload.products).map(([key, value]) => ({ productId: key, ...value }));
-  if (payload?.matches && typeof payload.matches === "object") return Object.entries(payload.matches).map(([key, value]) => ({ productId: key, ...value }));
-  return [];
-}
+// ---------------------------------------------------------------------------
+// ECOUNT 재고 소스 로드 (work/ecount-inventory/latest.json)
+// 실제 필드: {productCode, productName, specification, barcode, purchasePrice, salesPrice, stockQuantity}
+// ---------------------------------------------------------------------------
 
-function firstNonEmpty(record, keys) {
-  for (const key of keys) {
-    const value = record?.[key];
-    if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+function loadEcountSource(ecountResult) {
+  const data = ecountResult.data;
+  if (!Array.isArray(data)) {
+    return { ok: false, reason: "ecount_not_array" };
   }
-  return null;
-}
-
-export function normalizeInventoryValue(raw) {
-  if (raw === undefined || raw === null || String(raw).trim() === "") {
-    return { value: null, status: "missing", raw };
+  const map = new Map();
+  for (const row of data) {
+    const code = row?.productCode;
+    if (!code) continue;
+    map.set(String(code), row);
   }
-  if (typeof raw === "number") {
-    return Number.isFinite(raw) ? { value: raw, status: raw < 0 ? "negative" : "valid", raw } : { value: null, status: "invalid", raw };
-  }
-  const text = String(raw).trim().replace(/,/g, "");
-  const negativeByParens = /^\(.+\)$/.test(text);
-  const normalized = negativeByParens ? `-${text.slice(1, -1)}` : text;
-  if (!/^-?\d+(\.\d+)?$/.test(normalized)) return { value: null, status: "invalid", raw };
-  const value = Number(normalized);
-  if (!Number.isFinite(value)) return { value: null, status: "invalid", raw };
-  return { value, status: value < 0 ? "negative" : "valid", raw };
+  return { ok: true, map, itemCount: data.length };
 }
 
-function normalizeMatchStatus(value) {
-  return String(value ?? "").trim().toLowerCase();
+// ---------------------------------------------------------------------------
+// Cafe24 재고 소스 선택
+//
+// 우선순위:
+//  1. --cafe24 명시 경로 (강제 지정, fallback 없음)
+//  2. work/cafe24-product-catalog.json (전체 카탈로그 캐시 — 존재하면 이것이 canonical)
+//  3. work/product-dashboard-proxy-*.json 중 "현재 월" 조회 구간(프론트엔드 기본 동작:
+//     since=이번달-01, until=이번달 말일)과 일치하는 파일을 최우선으로 하고,
+//     없으면 catalogSyncedAt이 가장 최신인 파일을 사용한다.
+//     연도가 현재로부터 비정상적으로 먼(합성/테스트로 추정되는) 파일은 제외 후보로 별도 기록한다.
+//
+// 추가로, 선택된 1개 파일에 없는 productNo를 위해 "모든 product-dashboard-proxy 파일 중
+// 해당 productNo가 존재하는 가장 catalogSyncedAt이 최신인 레코드"를 찾는 fallback 인덱스를
+// 만든다. 이건 새로운 매칭 로직이 아니라, 이미 존재하는 캐시 파일들 중 더 최신 사본을
+// 그대로 재사용하는 것뿐이다. 사용 여부는 각 item의 cafe24SourceUsed에 투명하게 기록한다.
+// ---------------------------------------------------------------------------
+
+function monthWindow(date) {
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth(); // 0-based
+  const since = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const until = `${y}-${String(m + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  return { since, until };
 }
 
-function isConfirmedMatch(entry) {
-  const status = normalizeMatchStatus(firstNonEmpty(entry, ["matchStatus", "status", "state", "reviewStatus"]));
-  return CONFIRMED_MATCH_STATUSES.has(status);
+function isPlausibleYear(dateStr, referenceYear) {
+  if (!dateStr) return false;
+  const year = Number(dateStr.slice(0, 4));
+  if (!Number.isFinite(year)) return false;
+  return year >= referenceYear - 3 && year <= referenceYear + 1;
 }
 
-function matchStatus(entry) {
-  return normalizeMatchStatus(firstNonEmpty(entry, ["matchStatus", "status", "state", "reviewStatus"])) || null;
-}
-
-function canonicalMatchEntry(entry, sourcePath) {
-  const productId = firstNonEmpty(entry, ["productId", "canonicalProductId", "canonical_product_id", "id"]);
-  const ecountProductCode = firstNonEmpty(entry, ["ecountProductCode", "ecount_product_code", "PROD_CD", "prodCd", "productCodeEcount"]);
-  const cafe24ProductId = firstNonEmpty(entry, ["cafe24ProductId", "cafe24_product_id", "cafe24ProductNo", "productNo", "product_no"]);
-  return {
-    productId: productId === null ? null : String(productId),
-    brandId: firstNonEmpty(entry, ["brandId", "brand_code", "brandCode", "brand"]),
-    canonicalProductName: firstNonEmpty(entry, ["canonicalProductName", "productName", "product_name", "name"]),
-    ecountProductCode: ecountProductCode === null ? null : String(ecountProductCode).trim(),
-    cafe24ProductId: cafe24ProductId === null ? null : String(cafe24ProductId).trim(),
-    cafe24VariantIds: normalizeVariantIds(firstNonEmpty(entry, ["cafe24VariantIds", "variantIds", "variants"])),
-    matchStatus: matchStatus(entry),
-    matchMethod: firstNonEmpty(entry, ["matchMethod", "method", "source"]),
-    matchConfidence: firstNonEmpty(entry, ["matchConfidence", "confidence"]),
-    raw: entry,
-    sourcePath
-  };
-}
-
-function normalizeVariantIds(value) {
-  if (Array.isArray(value)) return value.map((entry) => String(entry?.variantCode || entry?.variant_code || entry?.id || entry)).filter(Boolean);
-  if (value === null || value === undefined || value === "") return [];
-  return [String(value)];
-}
-
-async function findMatchingRegistrySources() {
-  const candidateFiles = [
-    "work/inventory-matching-registry.json",
-    "work/product-inventory-matching-registry.json",
-    "work/canonical-product-registry.json",
-    "work/canonical-product-matching-registry.json",
-    "work/inventory-intelligence-matches.json",
-    "work/product-matching-registry.json"
-  ];
-  const loaded = [];
-  for (const relativePath of candidateFiles) {
-    const absolutePath = join(rootDir, relativePath);
-    const result = await readJsonIfExists(absolutePath);
-    if (!result.exists) continue;
-    loaded.push({ relativePath, result, entries: extractList(result.data).map((entry) => canonicalMatchEntry(entry, relativePath)) });
-  }
-  return loaded;
-}
-
-async function latestProductDashboardSource() {
+async function scanProductDashboardProxyFiles(dir = workDir) {
   let files = [];
   try {
-    files = (await readdir(workDir)).filter((name) => /^product-dashboard-proxy-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.json$/.test(name));
+    files = (await readdir(dir)).filter((name) =>
+      /^product-dashboard-proxy-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.json$/.test(name)
+    );
   } catch {
-    return null;
+    return [];
   }
-  const candidates = [];
-  for (const file of files) {
-    const absolutePath = join(workDir, file);
-    const loaded = await readJsonIfExists(absolutePath);
-    const products = extractList(loaded.data);
-    if (products.length) candidates.push({ relativePath: `work/${file}`, loaded, products, mtimeMs: loaded.stat?.mtimeMs || 0 });
+  const rows = [];
+  for (const name of files) {
+    const match = name.match(/^product-dashboard-proxy-(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.json$/);
+    const filePath = join(dir, name);
+    const parsed = await readJsonSafe(filePath);
+    if (!parsed.ok || !Array.isArray(parsed.data?.products)) continue;
+    rows.push({
+      file: name,
+      path: filePath,
+      since: match[1],
+      until: match[2],
+      catalogSyncedAt: parsed.data.catalogSyncedAt || null,
+      catalogSource: parsed.data.catalogSource || null,
+      productCount: parsed.data.products.length,
+      products: parsed.data.products
+    });
   }
-  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs || right.relativePath.localeCompare(left.relativePath));
-  return candidates[0] || null;
+  return rows;
 }
 
-function buildEcountInventoryIndex(latestRows) {
-  const index = new Map();
-  for (const row of latestRows) {
-    const code = firstNonEmpty(row, ["productCode", "PROD_CD", "prodCd"]);
-    if (!code) continue;
-    const normalized = normalizeInventoryValue(firstNonEmpty(row, ["stockQuantity", "BAL_QTY", "quantity"]));
-    index.set(String(code).trim(), { row, inventory: normalized });
+async function selectCafe24Source(explicitPath, options = {}) {
+  const scanDir = options.scanDir || workDir;
+  const catalogPath = options.catalogPath || DEFAULT_PATHS.cafe24ProductCatalog;
+  const now = options.now || new Date();
+
+  if (explicitPath) {
+    const explicit = await readJsonSafe(explicitPath);
+    if (!explicit.ok) {
+      return { ok: false, reason: explicit.reason, path: explicitPath };
+    }
+    const products = Array.isArray(explicit.data) ? explicit.data : explicit.data?.products;
+    if (!Array.isArray(products)) {
+      return { ok: false, reason: "cafe24_explicit_not_product_array", path: explicitPath };
+    }
+    return {
+      ok: true,
+      mode: "explicit",
+      primary: { file: explicitPath, since: null, until: null, catalogSyncedAt: explicit.data?.catalogSyncedAt || null, productCount: products.length },
+      productMap: buildCafe24ProductMap(products),
+      fallbackIndex: new Map(),
+      excludedSyntheticFiles: []
+    };
   }
-  return index;
+
+  const catalogResult = await readJsonSafe(catalogPath);
+  if (catalogResult.ok) {
+    const products = Array.isArray(catalogResult.data) ? catalogResult.data : catalogResult.data?.products;
+    if (Array.isArray(products) && products.length) {
+      return {
+        ok: true,
+        mode: "cafe24_product_catalog",
+        primary: { file: catalogPath, since: null, until: null, catalogSyncedAt: catalogResult.data?.generatedAt || null, productCount: products.length },
+        productMap: buildCafe24ProductMap(products),
+        fallbackIndex: new Map(),
+        excludedSyntheticFiles: []
+      };
+    }
+  }
+
+  const rows = await scanProductDashboardProxyFiles(scanDir);
+  if (!rows.length) {
+    return { ok: false, reason: "no_cafe24_source_found" };
+  }
+
+  const currentYear = now.getUTCFullYear();
+  const { since: curSince, until: curUntil } = monthWindow(now);
+
+  const excludedSyntheticFiles = rows
+    .filter((r) => !isPlausibleYear(r.since, currentYear) || !isPlausibleYear(r.until, currentYear))
+    .map((r) => ({ file: r.file, since: r.since, until: r.until }));
+
+  const plausible = rows.filter((r) => isPlausibleYear(r.since, currentYear) && isPlausibleYear(r.until, currentYear));
+  const candidatePool = plausible.length ? plausible : rows;
+
+  let primaryRow = candidatePool.find((r) => r.since === curSince && r.until === curUntil && r.productCount > 0);
+  let selectionRule = "current_month_window_exact_match";
+
+  if (!primaryRow) {
+    const withSyncedAt = candidatePool.filter((r) => r.catalogSyncedAt);
+    const pool = withSyncedAt.length ? withSyncedAt : candidatePool;
+    primaryRow = pool.reduce((best, r) => {
+      if (!best) return r;
+      const a = r.catalogSyncedAt || "";
+      const b = best.catalogSyncedAt || "";
+      if (a > b) return r;
+      if (a === b && r.productCount > best.productCount) return r;
+      return best;
+    }, null);
+    selectionRule = "max_catalogSyncedAt_fallback";
+  }
+
+  if (!primaryRow) {
+    return { ok: false, reason: "no_usable_cafe24_cache_after_filtering" };
+  }
+
+  // 보조 fallback 인덱스: 모든(합성 제외) 파일 중 productNo별 catalogSyncedAt 최신 레코드
+  const fallbackIndex = new Map();
+  for (const row of candidatePool) {
+    for (const product of row.products) {
+      const key = String(product.productNo);
+      const existing = fallbackIndex.get(key);
+      const candidateSyncedAt = row.catalogSyncedAt || "";
+      if (!existing || candidateSyncedAt > existing.catalogSyncedAt) {
+        fallbackIndex.set(key, { product, file: row.file, catalogSyncedAt: candidateSyncedAt });
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    mode: "product_dashboard_proxy_auto",
+    selectionRule,
+    primary: {
+      file: primaryRow.file,
+      since: primaryRow.since,
+      until: primaryRow.until,
+      catalogSyncedAt: primaryRow.catalogSyncedAt,
+      catalogSource: primaryRow.catalogSource,
+      productCount: primaryRow.productCount
+    },
+    productMap: buildCafe24ProductMap(primaryRow.products),
+    fallbackIndex,
+    excludedSyntheticFiles
+  };
 }
 
-function buildCafe24ProductIndex(products) {
-  const index = new Map();
+function buildCafe24ProductMap(products) {
+  const map = new Map();
   for (const product of products) {
-    const productId = firstNonEmpty(product, ["productNo", "product_no", "cafe24ProductId", "id"]);
-    if (productId === null) continue;
-    const inventory = normalizeInventoryValue(product.inventoryQuantity);
-    const variantFlags = variantInventoryFlags(product.options || product.variants || []);
-    index.set(String(productId).trim(), { product, inventory, variantFlags });
+    if (product?.productNo === undefined || product?.productNo === null) continue;
+    map.set(String(product.productNo), product);
   }
-  return index;
+  return map;
 }
 
-function variantInventoryFlags(variants) {
-  if (!Array.isArray(variants) || !variants.length) return [];
-  let withValue = 0;
-  let withoutValue = 0;
-  for (const variant of variants) {
-    const raw = firstNonEmpty(variant, ["quantity", "inventoryQuantity", "stockQuantity"]);
-    const normalized = normalizeInventoryValue(raw);
-    if (normalized.status === "missing" || normalized.status === "invalid") withoutValue += 1;
-    else withValue += 1;
-  }
-  if (withValue > 0 && withoutValue > 0) return ["partial_variant_inventory"];
-  if (withValue === 0 && withoutValue > 0) return ["missing_variant_inventory"];
-  return [];
+// ---------------------------------------------------------------------------
+// 비교 로직
+// ---------------------------------------------------------------------------
+
+function toCafe24Variants(product) {
+  if (!Array.isArray(product?.options)) return [];
+  return product.options.map((o) => ({
+    variantCode: o.variantCode ?? null,
+    optionName: o.optionSummary ?? null,
+    quantity: typeof o.quantity === "number" ? o.quantity : null
+  }));
 }
 
-export function reconcileInventoryPair(match, ecountEntry, cafe24Entry, duplicateFlags = [], thresholds = DEFAULT_THRESHOLDS) {
-  const flags = [...duplicateFlags];
-  const ecount = ecountEntry?.inventory || { value: null, status: "missing", raw: null };
-  const cafe24 = cafe24Entry?.inventory || { value: null, status: "missing", raw: null };
-  if (ecount.status === "negative") flags.push("negative_ecount_inventory");
-  if (cafe24.status === "negative") flags.push("negative_cafe24_inventory");
-  flags.push(...(cafe24Entry?.variantFlags || []));
+function isConsignmentProductName(name) {
+  return typeof name === "string" && /\bCON\s*-/i.test(name);
+}
 
-  let reconciliationStatus;
-  let stockDifference = null;
+function computeDifferenceRate(absoluteDifference, a, b) {
+  const denom = Math.max(Math.abs(a ?? 0), Math.abs(b ?? 0));
+  if (denom === 0) return 0;
+  return absoluteDifference / denom;
+}
+
+function compareEntry(entry, ecountMap, cafe24Source) {
+  const flags = [];
+  const canonicalProductId = entry.canonicalProductId ?? null;
+  const brandId = entry.brandId ?? null;
+  const canonicalBrandName = entry.brandName ?? null;
+  const canonicalProductName = entry.canonicalProductName ?? null;
+
+  const cafe24ProductNo = entry.cafe24?.productNo ?? null;
+  const cafe24ProductCode = entry.cafe24?.productCode ?? null;
+
+  // --- Cafe24 side ---
+  let cafe24SourceUsed = "missing";
+  let cafe24Product = cafe24ProductNo ? cafe24Source.productMap.get(String(cafe24ProductNo)) : undefined;
+  if (cafe24Product) {
+    cafe24SourceUsed = "primary";
+  } else if (cafe24ProductNo && cafe24Source.fallbackIndex.has(String(cafe24ProductNo))) {
+    const fb = cafe24Source.fallbackIndex.get(String(cafe24ProductNo));
+    cafe24Product = fb.product;
+    cafe24SourceUsed = `fallback:${fb.file}`;
+    flags.push("cafe24_from_fallback_cache");
+  }
+
+  const salesEvidence = productSalesEvidence(cafe24Product);
+  const cafe24Variants = cafe24Product ? toCafe24Variants(cafe24Product) : [];
+  const cafe24InventoryQuantity =
+    cafe24Product && typeof cafe24Product.inventoryQuantity === "number" ? cafe24Product.inventoryQuantity : null;
+  const cafe24VariantCount = cafe24Variants.length;
+
+  if (!cafe24Product) flags.push("missing_cafe24_product");
+  if (cafe24InventoryQuantity === null && cafe24Product) flags.push("cafe24_inventory_quantity_null");
+  if (typeof cafe24InventoryQuantity === "number" && cafe24InventoryQuantity < 0) flags.push("negative_cafe24_stock");
+  if (cafe24VariantCount > 1) flags.push("multiple_cafe24_variants");
+
+  // --- ECOUNT side ---
+  const matchedProducts = Array.isArray(entry.ecount?.matchedProducts) ? entry.ecount.matchedProducts : [];
+  const ecountItems = [];
+  let ecountStockSum = 0;
+  let ecountStockKnownCount = 0;
+  let ecountAnyNull = false;
+  let ecountMissingCount = 0;
+
+  for (const mp of matchedProducts) {
+    const prodCd = mp.prodCd;
+    const row = prodCd ? ecountMap.get(String(prodCd)) : undefined;
+    if (!row) {
+      ecountMissingCount += 1;
+      ecountItems.push({ prodCd, barcode: mp.barcode ?? null, productName: mp.productName ?? null, size: mp.size ?? null, stockQuantity: null, foundInEcount: false });
+      continue;
+    }
+    const stockQuantity = typeof row.stockQuantity === "number" ? row.stockQuantity : null;
+    if (stockQuantity === null) ecountAnyNull = true;
+    else {
+      ecountStockSum += stockQuantity;
+      ecountStockKnownCount += 1;
+    }
+    ecountItems.push({
+      prodCd,
+      barcode: row.barcode ?? mp.barcode ?? null,
+      productName: row.productName ?? mp.productName ?? null,
+      size: mp.size ?? null,
+      stockQuantity,
+      foundInEcount: true
+    });
+    if (typeof stockQuantity === "number" && stockQuantity < 0) flags.push("negative_ecount_stock");
+    if (String(prodCd).toUpperCase().startsWith("QQQ")) flags.push("qqq_product");
+    if (mp.consignment === true || isConsignmentProductName(mp.productName) || isConsignmentProductName(row.productName)) {
+      flags.push("consignment_product");
+    }
+  }
+
+  const ecountProdCdCount = matchedProducts.length;
+  if (matchedProducts.length > 1) flags.push("multiple_ecount_sizes");
+  if (ecountProdCdCount === 0) flags.push("verified_without_ecount_prodcd");
+  if (ecountMissingCount > 0) flags.push("missing_ecount_item");
+  if (ecountAnyNull) flags.push("ecount_stock_partial_or_full_null");
+
+  const ecountStockQuantity = ecountStockKnownCount > 0 ? ecountStockSum : null;
+  const brand = resolveBrand(entry, ecountItems, cafe24Product);
+
+  // --- 비교 및 상태 분류 ---
+  let status;
+  let difference = null;
   let absoluteDifference = null;
   let differenceRate = null;
 
-  if (duplicateFlags.length) {
-    reconciliationStatus = "duplicate_mapping";
-  } else if (!ecountEntry || ecount.status === "missing") {
-    reconciliationStatus = "missing_ecount";
-    flags.push("missing_ecount_inventory");
-  } else if (!cafe24Entry || cafe24.status === "missing") {
-    reconciliationStatus = "missing_cafe24";
-    flags.push("missing_cafe24_inventory");
-  } else if ([ecount.status, cafe24.status].includes("invalid") || [ecount.status, cafe24.status].includes("negative")) {
-    reconciliationStatus = "invalid_value";
-    if (ecount.status === "invalid") flags.push("invalid_ecount_inventory");
-    if (cafe24.status === "invalid") flags.push("invalid_cafe24_inventory");
+  const uniqueFlags = [...new Set(flags)];
+
+  if (ecountProdCdCount === 0 || cafe24ProductNo === null || cafe24ProductCode === null) {
+    status = "invalid_data";
+  } else if (cafe24InventoryQuantity === null || ecountStockQuantity === null) {
+    status = "one_source_missing";
+  } else if (!Number.isFinite(cafe24InventoryQuantity) || !Number.isFinite(ecountStockQuantity)) {
+    status = "invalid_data";
   } else {
-    stockDifference = ecount.value - cafe24.value;
-    absoluteDifference = Math.abs(stockDifference);
-    const denominator = Math.max(Math.abs(ecount.value), Math.abs(cafe24.value));
-    differenceRate = denominator === 0 ? 0 : absoluteDifference / denominator;
-    if (absoluteDifference === 0) reconciliationStatus = "exact_match";
-    else if (absoluteDifference <= thresholds.absoluteToleranceUnits || differenceRate <= thresholds.relativeToleranceRate) reconciliationStatus = "within_tolerance";
-    else reconciliationStatus = "mismatch";
+    difference = ecountStockQuantity - cafe24InventoryQuantity;
+    absoluteDifference = Math.abs(difference);
+    differenceRate = computeDifferenceRate(absoluteDifference, ecountStockQuantity, cafe24InventoryQuantity);
+    if (difference === 0) status = "exact_match";
+    else if (absoluteDifference <= THRESHOLDS.nearMatchAbsoluteUnits || differenceRate <= THRESHOLDS.nearMatchRate) status = "near_match";
+    else status = "mismatch";
   }
 
   return {
-    productId: match.productId,
-    brandId: match.brandId || cafe24Entry?.product?.brand || null,
-    canonicalProductName: match.canonicalProductName || cafe24Entry?.product?.productName || ecountEntry?.row?.productName || null,
-    ecountProductCode: match.ecountProductCode,
-    cafe24ProductId: match.cafe24ProductId,
-    cafe24VariantIds: match.cafe24VariantIds || [],
-    matchStatus: match.matchStatus,
-    matchMethod: match.matchMethod || null,
-    matchConfidence: match.matchConfidence ?? null,
-    ecountStock: ecount.value,
-    cafe24Stock: cafe24.value,
-    stockDifference,
-    absoluteDifference,
-    differenceRate,
-    reconciliationStatus,
-    dataQualityFlags: [...new Set(flags)].sort(),
-    sourceRefs: {
-      match: match.sourcePath || null,
-      ecount: ecountEntry ? "work/ecount-inventory/latest.json" : null,
-      cafe24: cafe24Entry?.product?.sourceRef || null
+    canonicalProductId,
+    brandId,
+    canonicalBrandName: brand.name,
+    rawCanonicalBrandName: canonicalBrandName,
+    brandGroupKey: brand.name,
+    brandSource: brand.source,
+    canonicalProductName,
+    cafe24: {
+      cafe24ProductNo,
+      cafe24ProductCode,
+      cafe24VariantCount,
+      cafe24InventoryQuantity,
+      cafe24Variants,
+      cafe24SourceUsed,
+      salesEvidence
     },
-    rawInventoryValues: {
-      ecount: ecount.raw,
-      cafe24: cafe24.raw
+    ecount: {
+      ecountProdCdCount,
+      ecountProdCds: matchedProducts.map((m) => m.prodCd),
+      ecountStockQuantity,
+      ecountItems
+    },
+    comparison: {
+      difference,
+      absoluteDifference,
+      differenceRate
+    },
+    status,
+    flags: uniqueFlags
+  };
+}
+
+function isActionCandidate(item) {
+  if (item.status === "negative_stock") return true;
+  if (item.status === "invalid_data" && item.flags.includes("verified_without_ecount_prodcd")) return true;
+  if (item.status === "one_source_missing") {
+    return item.flags.includes("missing_cafe24_product") || item.flags.includes("missing_ecount_item");
+  }
+  return false;
+}
+
+function buildProdCdEntryMap(entries) {
+  const map = new Map();
+  for (const entry of entries) {
+    for (const mp of entry.ecount?.matchedProducts || []) {
+      if (mp.prodCd && !map.has(String(mp.prodCd))) map.set(String(mp.prodCd), entry);
+    }
+  }
+  return map;
+}
+
+function findCafe24ProductForEntry(entry, cafe24Source) {
+  const productNo = entry?.cafe24?.productNo;
+  if (!productNo || !cafe24Source?.productMap) return null;
+  return cafe24Source.productMap.get(String(productNo)) || cafe24Source.fallbackIndex?.get(String(productNo))?.product || null;
+}
+
+function auditAahMidnightRegistry(entries) {
+  const before = new Set();
+  const after = new Set();
+  for (const entry of entries) {
+    const names = [entry.brandName, ...(entry.ecount?.matchedProducts || []).map((mp) => brandFromEcountProductName(mp.productName))];
+    for (const name of names) {
+      const compact = compactText(name);
+      if (!/^aah midnight( club)?$/i.test(compact)) continue;
+      before.add(compact);
+      after.add(normalizeBrandName(compact));
+    }
+  }
+  return { before: [...before], after: [...after] };
+}
+
+function buildNegativeStockCandidates(ecountMap, registryEntries, cafe24Source) {
+  const entryByProdCd = buildProdCdEntryMap(registryEntries);
+  const candidates = [];
+  const stats = { excludedNonQqqNegativeWithoutSales: 0, keptQqqNegative: 0, keptNonQqqNegativeWithSales: 0 };
+  const beforeBrandNames = new Set();
+  const afterBrandNames = new Set();
+  const aahBefore = new Set();
+
+  for (const [prodCd, row] of ecountMap) {
+    const stockQuantity = typeof row.stockQuantity === "number" ? row.stockQuantity : null;
+    if (!(stockQuantity < 0)) continue;
+    const isQqq = String(prodCd).toUpperCase().startsWith("QQQ");
+    const entry = entryByProdCd.get(String(prodCd)) || null;
+    const cafe24Product = findCafe24ProductForEntry(entry, cafe24Source);
+    const salesEvidence = productSalesEvidence(cafe24Product);
+    const rawBrand = entry?.brandName || brandFromEcountProductName(row.productName) || brandFromCafe24ProductName(cafe24Product?.productName);
+    if (rawBrand) beforeBrandNames.add(compactText(rawBrand));
+    if (/^aah midnight( club)?$/i.test(compactText(rawBrand))) aahBefore.add(compactText(rawBrand));
+
+    if (!isQqq && !salesEvidence.hasSalesVoucher) {
+      stats.excludedNonQqqNegativeWithoutSales += 1;
+      continue;
+    }
+    if (isQqq) stats.keptQqqNegative += 1;
+    else stats.keptNonQqqNegativeWithSales += 1;
+
+    const ecountItem = {
+      prodCd,
+      barcode: row.barcode ?? null,
+      productName: row.productName ?? null,
+      size: entry?.ecount?.matchedProducts?.find((m) => String(m.prodCd) === String(prodCd))?.size ?? null,
+      stockQuantity,
+      foundInEcount: true
+    };
+    const brand = resolveBrand(entry, [ecountItem], cafe24Product);
+    afterBrandNames.add(brand.name);
+    const cafe24Variants = cafe24Product ? toCafe24Variants(cafe24Product) : [];
+    candidates.push({
+      canonicalProductId: entry?.canonicalProductId ?? null,
+      brandId: entry?.brandId ?? null,
+      canonicalBrandName: brand.name,
+      rawCanonicalBrandName: entry?.brandName ?? null,
+      brandGroupKey: brand.name,
+      brandSource: brand.source,
+      canonicalProductName: entry?.canonicalProductName ?? (compactText(String(row.productName || "").split("/").slice(1).join("/")) || null),
+      cafe24: {
+        cafe24ProductNo: entry?.cafe24?.productNo ?? null,
+        cafe24ProductCode: entry?.cafe24?.productCode ?? null,
+        cafe24VariantCount: cafe24Variants.length,
+        cafe24InventoryQuantity: typeof cafe24Product?.inventoryQuantity === "number" ? cafe24Product.inventoryQuantity : null,
+        cafe24Variants,
+        cafe24SourceUsed: cafe24Product ? "registry_link" : "missing",
+        salesEvidence
+      },
+      ecount: {
+        ecountProdCdCount: 1,
+        ecountProdCds: [prodCd],
+        ecountStockQuantity: stockQuantity,
+        ecountItems: [ecountItem]
+      },
+      comparison: { difference: null, absoluteDifference: null, differenceRate: null },
+      status: "negative_stock",
+      issueType: "negative_stock",
+      flags: ["negative_ecount_stock", ...(isQqq ? ["qqq_product"] : ["non_qqq_product", "sales_voucher_found"])]
+    });
+  }
+
+  return {
+    candidates,
+    stats,
+    brandStats: {
+      beforeBrandGroupCount: beforeBrandNames.size,
+      afterBrandGroupCount: afterBrandNames.size,
+      caseDuplicateMergedCount: Math.max(0, beforeBrandNames.size - afterBrandNames.size),
+      aahMidnightBefore: [...aahBefore],
+      aahMidnightAfter: aahBefore.size ? "AAH MIDNIGHT CLUB" : null
     }
   };
 }
 
-function duplicateFlagsForMatches(matches) {
-  const byEcount = new Map();
-  const byCafe24 = new Map();
-  const byProductId = new Map();
-  for (const match of matches) {
-    pushMap(byEcount, match.ecountProductCode, match);
-    pushMap(byCafe24, match.cafe24ProductId, match);
-    pushMap(byProductId, match.productId, match);
-  }
-  const flags = new Map();
-  for (const match of matches) flags.set(match, []);
-  for (const [key, list] of byEcount) if (key && list.length > 1) for (const match of list) flags.get(match).push("duplicate_ecount_product_code");
-  for (const [key, list] of byCafe24) if (key && list.length > 1) for (const match of list) flags.get(match).push("duplicate_cafe24_product_id");
-  for (const [key, list] of byProductId) if (key && list.length > 1) for (const match of list) flags.get(match).push("duplicate_product_id");
-  return flags;
-}
+// ---------------------------------------------------------------------------
+// 중복/충돌 진단 (전체 Registry 177건 기준으로 계산, verified 여부와 무관하게 존재 자체를 진단)
+// ---------------------------------------------------------------------------
 
-function pushMap(map, key, value) {
-  if (key === null || key === undefined || key === "") return;
-  const normalized = String(key);
-  const list = map.get(normalized) || [];
-  list.push(value);
-  map.set(normalized, list);
-}
+function detectConflicts(allEntries, trustedCanonicalIds) {
+  const ecountOwners = new Map(); // prodCd -> Set(canonicalProductId)
+  const cafe24Owners = new Map(); // productNo -> Set(canonicalProductId)
 
-export function summarizeItems(items, excludedUnconfirmedMatchCount = 0) {
-  const comparable = items.filter((item) => !["duplicate_mapping", "invalid_value", "missing_ecount", "missing_cafe24", "excluded"].includes(item.reconciliationStatus));
-  const exactMatchCount = items.filter((item) => item.reconciliationStatus === "exact_match").length;
-  const withinToleranceCount = items.filter((item) => item.reconciliationStatus === "within_tolerance").length;
-  const mismatchCount = items.filter((item) => item.reconciliationStatus === "mismatch").length;
-  const missingEcountInventoryCount = items.filter((item) => item.reconciliationStatus === "missing_ecount").length;
-  const missingCafe24InventoryCount = items.filter((item) => item.reconciliationStatus === "missing_cafe24").length;
-  const invalidInventoryValueCount = items.filter((item) => item.reconciliationStatus === "invalid_value").length;
-  const duplicateMappingCount = items.filter((item) => item.reconciliationStatus === "duplicate_mapping").length;
-  const totalEcountStock = comparable.reduce((total, item) => total + (Number.isFinite(item.ecountStock) ? item.ecountStock : 0), 0);
-  const totalCafe24Stock = comparable.reduce((total, item) => total + (Number.isFinite(item.cafe24Stock) ? item.cafe24Stock : 0), 0);
-  const totalAbsoluteDifference = comparable.reduce((total, item) => total + (Number.isFinite(item.absoluteDifference) ? item.absoluteDifference : 0), 0);
-  const comparedCount = comparable.length;
-  return {
-    confirmedMatchCount: items.length,
-    comparedCount,
-    exactMatchCount,
-    withinToleranceCount,
-    mismatchCount,
-    missingEcountInventoryCount,
-    missingCafe24InventoryCount,
-    invalidInventoryValueCount,
-    duplicateMappingCount,
-    excludedUnconfirmedMatchCount,
-    totalEcountStock,
-    totalCafe24Stock,
-    totalAbsoluteDifference,
-    exactMatchRate: comparedCount ? exactMatchCount / comparedCount : null,
-    withinToleranceRate: comparedCount ? (exactMatchCount + withinToleranceCount) / comparedCount : null,
-    mismatchRate: comparedCount ? mismatchCount / comparedCount : null
-  };
-}
-
-function sortItems(items) {
-  return [...items].sort((left, right) => {
-    const statusDiff = (STATUS_SORT_ORDER[left.reconciliationStatus] ?? 99) - (STATUS_SORT_ORDER[right.reconciliationStatus] ?? 99);
-    if (statusDiff) return statusDiff;
-    return (right.absoluteDifference ?? -1) - (left.absoluteDifference ?? -1);
-  });
-}
-
-export async function buildInventoryReconciliationDiagnostic(options = {}) {
-  const thresholds = { ...DEFAULT_THRESHOLDS, ...(options.thresholds || {}) };
-  const ecountLatestPath = join(rootDir, "work/ecount-inventory/latest.json");
-  const rawInventoryPath = join(rootDir, "work/ecount-inventory/raw-inventory.json");
-  const rawProductsPath = join(rootDir, "work/ecount-inventory/raw-products.json");
-  const ecountDiagnosticPath = join(rootDir, "work/ecount-inventory/diagnostic.json");
-  const [ecountLatest, rawInventory, rawProducts, ecountDiagnostic, matchingSources, dashboardSource] = await Promise.all([
-    readJsonIfExists(ecountLatestPath),
-    readJsonIfExists(rawInventoryPath),
-    readJsonIfExists(rawProductsPath),
-    readJsonIfExists(ecountDiagnosticPath),
-    findMatchingRegistrySources(),
-    latestProductDashboardSource()
-  ]);
-
-  const allMatchEntries = matchingSources.flatMap((source) => source.entries);
-  const confirmedMatches = allMatchEntries.filter((entry) => isConfirmedMatch(entry) && entry.ecountProductCode && entry.cafe24ProductId);
-  const excludedUnconfirmedMatchCount = allMatchEntries.length - confirmedMatches.length;
-  const duplicateFlags = duplicateFlagsForMatches(confirmedMatches);
-  const ecountIndex = buildEcountInventoryIndex(extractList(ecountLatest.data));
-  const cafe24Products = (dashboardSource?.products || []).map((product) => ({ ...product, sourceRef: dashboardSource.relativePath }));
-  const cafe24Index = buildCafe24ProductIndex(cafe24Products);
-
-  const items = sortItems(confirmedMatches.map((match) => reconcileInventoryPair(
-    match,
-    ecountIndex.get(match.ecountProductCode),
-    cafe24Index.get(match.cafe24ProductId),
-    duplicateFlags.get(match) || [],
-    thresholds
-  )));
-
-  const summary = summarizeItems(items, excludedUnconfirmedMatchCount);
-  return {
-    generatedAt: new Date().toISOString(),
-    mode: "read_only_diagnostic",
-    sources: {
-      schema: { path: "config/inventory-intelligence-schema.json" },
-      ecountLatest: sourceMeta(ecountLatestPath, ecountLatest),
-      ecountRawInventory: sourceMeta(rawInventoryPath, rawInventory),
-      ecountRawProducts: sourceMeta(rawProductsPath, rawProducts),
-      ecountSyncDiagnostic: sourceMeta(ecountDiagnosticPath, ecountDiagnostic),
-      cafe24ProductDashboard: dashboardSource ? sourceMeta(join(rootDir, dashboardSource.relativePath), dashboardSource.loaded) : { exists: false, error: "No product-dashboard-proxy cache found" },
-      matchingRegistries: matchingSources.map((source) => ({ ...sourceMeta(join(rootDir, source.relativePath), source.result), entryCount: source.entries.length })),
-      matchingRegistryStatus: matchingSources.length ? "loaded" : "not_found"
-    },
-    summary,
-    thresholds,
-    items
-  };
-}
-
-function printSummary(result, top) {
-  const s = result.summary;
-  const pct = (value) => value === null || value === undefined ? "n/a" : `${(value * 100).toFixed(1)}%`;
-  console.log("Inventory reconciliation diagnostic");
-  console.log(`- 확정 매칭 수: ${s.confirmedMatchCount}`);
-  console.log(`- 실제 비교 성공 수: ${s.comparedCount}`);
-  console.log(`- 완전 일치: ${s.exactMatchCount} (${pct(s.exactMatchRate)})`);
-  console.log(`- 허용 오차 내 일치: ${s.exactMatchCount + s.withinToleranceCount} (${pct(s.withinToleranceRate)})`);
-  console.log(`- 불일치: ${s.mismatchCount} (${pct(s.mismatchRate)})`);
-  console.log(`- 누락: ECOUNT ${s.missingEcountInventoryCount}, Cafe24 ${s.missingCafe24InventoryCount}`);
-  console.log(`- 비정상 값: ${s.invalidInventoryValueCount}`);
-  console.log(`- 중복 매핑: ${s.duplicateMappingCount}`);
-  console.log(`- ECOUNT 총재고: ${s.totalEcountStock}`);
-  console.log(`- Cafe24 총재고: ${s.totalCafe24Stock}`);
-  console.log(`- 총 절대 차이: ${s.totalAbsoluteDifference}`);
-  if (result.sources.matchingRegistryStatus === "not_found") {
-    console.log("- Matching Registry: 확인 불가(not_found). 자동 추정 매칭은 수행하지 않았습니다.");
-  }
-  const mismatches = result.items.filter((item) => ["duplicate_mapping", "invalid_value", "missing_ecount", "missing_cafe24", "mismatch"].includes(item.reconciliationStatus)).slice(0, top);
-  console.log(`- 차이가 큰 상품 TOP ${top}:`);
-  if (!mismatches.length) {
-    console.log("  (표시할 상품 없음)");
-  } else {
-    for (const item of mismatches) {
-      console.log(`  ${item.reconciliationStatus} | ${item.canonicalProductName || item.productId || item.cafe24ProductId || item.ecountProductCode} | ECOUNT ${item.ecountStock ?? "n/a"} / Cafe24 ${item.cafe24Stock ?? "n/a"} / diff ${item.absoluteDifference ?? "n/a"}`);
+  for (const entry of allEntries) {
+    const id = entry.canonicalProductId;
+    for (const mp of entry.ecount?.matchedProducts || []) {
+      if (!mp.prodCd) continue;
+      if (!ecountOwners.has(mp.prodCd)) ecountOwners.set(mp.prodCd, new Set());
+      ecountOwners.get(mp.prodCd).add(id);
+    }
+    const productNo = entry.cafe24?.productNo;
+    if (productNo !== undefined && productNo !== null) {
+      const key = String(productNo);
+      if (!cafe24Owners.has(key)) cafe24Owners.set(key, new Set());
+      cafe24Owners.get(key).add(id);
     }
   }
+
+  const duplicateEcountProdCds = [...ecountOwners.entries()]
+    .filter(([, owners]) => owners.size > 1)
+    .map(([prodCd, owners]) => ({ prodCd, canonicalProductIds: [...owners] }));
+
+  const duplicateCafe24Products = [...cafe24Owners.entries()]
+    .filter(([, owners]) => owners.size > 1)
+    .map(([productNo, owners]) => ({ productNo, canonicalProductIds: [...owners] }));
+
+  const duplicateEcountProdCdsAffectingVerified = duplicateEcountProdCds.filter((d) =>
+    d.canonicalProductIds.some((id) => trustedCanonicalIds.has(id))
+  );
+  const duplicateCafe24ProductsAffectingVerified = duplicateCafe24Products.filter((d) =>
+    d.canonicalProductIds.some((id) => trustedCanonicalIds.has(id))
+  );
+
+  return {
+    duplicateEcountProdCds,
+    duplicateCafe24Products,
+    duplicateEcountProdCdsAffectingVerified,
+    duplicateCafe24ProductsAffectingVerified
+  };
 }
+
+// ---------------------------------------------------------------------------
+// 안전한 파일 쓰기 (atomic rename, server.mjs의 writeJsonAtomic 패턴과 동일)
+// ---------------------------------------------------------------------------
+
+async function writeJsonAtomic(file, data) {
+  await mkdir(workDir, { recursive: true });
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  const json = JSON.stringify(data, null, 2);
+  // 쓰기 전 재파싱하여 유효성 확인
+  JSON.parse(json);
+  await writeFile(tmp, json);
+  await rename(tmp, file);
+}
+
+// ---------------------------------------------------------------------------
+// 콘솔 리포트
+// ---------------------------------------------------------------------------
+
+function printReport(result) {
+  const { meta, summary, conflicts, items } = result;
+  console.log("Inventory Reconciliation Diagnostic");
+  console.log("====================================");
+  console.log(`Registry entries: ${meta.registryEntryCount}`);
+  console.log(`Verified entries: ${meta.verifiedEntryCount}`);
+  console.log(`Compared entries: ${meta.comparedEntryCount}`);
+  console.log(`Action candidates: ${summary.actionCandidateCount}`);
+  console.log(`Negative stock: ${summary.negativeStockCount}`);
+  console.log(`Connection issue: ${summary.connectionIssueCount}`);
+  console.log(`Excluded non-QQQ negative without sales: ${meta.policy.excludedNonQqqNegativeWithoutSales}`);
+  console.log(`Kept QQQ negative: ${meta.policy.keptQqqNegative}`);
+  console.log(`Kept non-QQQ negative with sales: ${meta.policy.keptNonQqqNegativeWithSales}`);
+  console.log();
+  console.log("Top 20 action candidates:");
+  for (const m of items.slice(0, 20)) {
+    console.log(
+      `- ${m.status} | ${m.canonicalBrandName} | ${m.canonicalProductName || "-"} | ECOUNT ${m.ecount.ecountStockQuantity ?? "n/a"} | flags [${m.flags.join(", ")}]`
+    );
+  }
+  console.log();
+  console.log("Conflict summary:");
+  console.log(`- duplicate ECOUNT links (전체 Registry 기준): ${conflicts.duplicateEcountProdCds.length}`);
+  console.log(`- duplicate Cafe24 anchors (전체 Registry 기준): ${conflicts.duplicateCafe24Products.length}`);
+  console.log(`- duplicate ECOUNT links affecting verified set: ${conflicts.duplicateEcountProdCdsAffectingVerified.length}`);
+  console.log(`- duplicate Cafe24 anchors affecting verified set: ${conflicts.duplicateCafe24ProductsAffectingVerified.length}`);
+  console.log(`- missing ECOUNT codes (verified 대상 중): ${meta.missingEcountProdCdCount}`);
+  console.log(`- missing Cafe24 products (verified 대상 중): ${meta.missingCafe24ProductCount}`);
+}
+
+// ---------------------------------------------------------------------------
+// main
+// ---------------------------------------------------------------------------
 
 async function main() {
-  const options = parseCliArgs(process.argv.slice(2));
-  const result = await buildInventoryReconciliationDiagnostic(options);
-  printSummary(result, options.top);
-  if (!options.dryRun) {
-    await writeFile(options.output, `${JSON.stringify(result, null, 2)}\n`, "utf8");
-    console.log(`- output: ${options.output.replace(`${rootDir}/`, "")}`);
-  } else {
-    console.log("- dry-run: 결과 파일을 쓰지 않았습니다.");
+  const cli = parseCliArgs(process.argv.slice(2));
+  const registryPath = cli.registry || DEFAULT_PATHS.registry;
+  const ecountPath = cli.ecount || DEFAULT_PATHS.ecount;
+  const outputPath = cli.output || DEFAULT_PATHS.output;
+
+  const registryRaw = await readJsonSafe(registryPath);
+  if (!registryRaw.ok) {
+    console.error(`[FATAL] Product Registry를 읽을 수 없습니다: ${registryPath} (${registryRaw.reason})`);
+    process.exitCode = 1;
+    return;
   }
+  const registry = loadRegistry(registryRaw);
+  if (!registry.ok) {
+    console.error(`[FATAL] Product Registry 구조가 예상과 다릅니다: ${registry.reason}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const ecountRaw = await readJsonSafe(ecountPath);
+  if (!ecountRaw.ok) {
+    console.error(`[FATAL] ECOUNT 재고 스냅샷을 읽을 수 없습니다: ${ecountPath} (${ecountRaw.reason})`);
+    process.exitCode = 1;
+    return;
+  }
+  const ecountSource = loadEcountSource(ecountRaw);
+  if (!ecountSource.ok) {
+    console.error(`[FATAL] ECOUNT 재고 스냅샷 구조가 예상과 다릅니다: ${ecountSource.reason}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const cafe24Source = await selectCafe24Source(cli.cafe24);
+  if (!cafe24Source.ok) {
+    if (cli.strict) {
+      console.error(`[FATAL] --strict 모드: Cafe24 재고 source를 확정할 수 없습니다 (${cafe24Source.reason}).`);
+      process.exitCode = 1;
+      return;
+    }
+    console.error(`[WARN] Cafe24 재고 source를 찾지 못했습니다 (${cafe24Source.reason}). 모든 항목이 one_source_missing으로 분류됩니다.`);
+  }
+
+  const trustedIds = new Set(registry.trusted.map((e) => e.canonicalProductId));
+  const conflicts = detectConflicts(registry.entries, trustedIds);
+
+  const compareSource = cafe24Source.ok ? cafe24Source : { productMap: new Map(), fallbackIndex: new Map() };
+  const comparedItems = registry.trusted.map((entry) => compareEntry(entry, ecountSource.map, compareSource));
+  const registryConnectionItems = comparedItems.filter(isActionCandidate);
+  const negativeStock = buildNegativeStockCandidates(ecountSource.map, registry.entries, compareSource);
+  const aahMidnightRegistryAudit = auditAahMidnightRegistry(registry.entries);
+  const items = [...negativeStock.candidates, ...registryConnectionItems].sort((a, b) =>
+    String(a.canonicalBrandName || "").localeCompare(String(b.canonicalBrandName || ""), "ko") ||
+    String(a.canonicalProductName || "").localeCompare(String(b.canonicalProductName || ""), "ko")
+  );
+
+  const missingEcountProdCds = items.filter((i) => i.flags.includes("missing_ecount_item") || i.flags.includes("verified_without_ecount_prodcd"));
+  const missingCafe24Products = items.filter((i) => i.flags.includes("missing_cafe24_product"));
+
+  const summaryCounts = items.reduce(
+    (acc, i) => {
+      acc[i.status] = (acc[i.status] || 0) + 1;
+      return acc;
+    },
+    {}
+  );
+
+  const result = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    mode: "diagnostic_only",
+    meta: {
+      registryPath: repoRelativePath(registryPath),
+      ecountPath: repoRelativePath(ecountPath),
+      cafe24Source: cafe24Source.ok
+        ? {
+            mode: cafe24Source.mode,
+            selectionRule: cafe24Source.selectionRule || null,
+            primary: cafe24Source.primary,
+            excludedSyntheticFiles: cafe24Source.excludedSyntheticFiles || []
+          }
+        : { mode: "unavailable", reason: cafe24Source.reason },
+      registryEntryCount: registry.registryEntryCount,
+      verifiedEntryCount: registry.trusted.length,
+      verifiedFlagCount: registry.verifiedFlagCount,
+      confirmedStatusCount: registry.confirmedStatusCount,
+      fullConfidenceCount: registry.fullConfidenceCount,
+      comparedEntryCount: comparedItems.length,
+      missingEcountProdCdCount: missingEcountProdCds.length,
+      missingCafe24ProductCount: missingCafe24Products.length,
+      thresholds: THRESHOLDS,
+      policy: {
+        negativeStock: "QQQ negative always included; non-QQQ negative only included with Cafe24 sales evidence",
+        cafe24Usage: "connection_and_sales_evidence_only",
+        beforeCandidateCount: comparedItems.length,
+        afterCandidateCount: items.length,
+        ...negativeStock.stats,
+        ...negativeStock.brandStats,
+        aahMidnightRegistryBefore: aahMidnightRegistryAudit.before,
+        aahMidnightRegistryAfter: aahMidnightRegistryAudit.after
+      }
+    },
+    summary: {
+      actionCandidateCount: items.length,
+      negativeStockCount: summaryCounts.negative_stock || 0,
+      connectionIssueCount: (summaryCounts.invalid_data || 0) + (summaryCounts.one_source_missing || 0),
+      exactMatchCount: 0,
+      nearMatchCount: 0,
+      mismatchCount: 0,
+      oneSourceMissingCount: summaryCounts.one_source_missing || 0,
+      invalidDataCount: summaryCounts.invalid_data || 0
+    },
+    conflicts: {
+      duplicateEcountProdCds: conflicts.duplicateEcountProdCds,
+      duplicateCafe24Products: conflicts.duplicateCafe24Products,
+      duplicateEcountProdCdsAffectingVerified: conflicts.duplicateEcountProdCdsAffectingVerified,
+      duplicateCafe24ProductsAffectingVerified: conflicts.duplicateCafe24ProductsAffectingVerified,
+      missingEcountProdCds: missingEcountProdCds.map((i) => ({ canonicalProductId: i.canonicalProductId, ecountProdCds: i.ecount.ecountProdCds })),
+      missingCafe24Products: missingCafe24Products.map((i) => ({ canonicalProductId: i.canonicalProductId, cafe24ProductNo: i.cafe24.cafe24ProductNo }))
+    },
+    items
+  };
+
+  printReport(result);
+
+  if (cli.dryRun) {
+    console.log();
+    console.log("[dry-run] 파일을 쓰지 않았습니다.");
+    return;
+  }
+
+  await writeJsonAtomic(outputPath, result);
+  console.log();
+  console.log(`[OK] 진단 결과 저장: ${outputPath}`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
+  main();
 }
+
+export {
+  parseCliArgs,
+  isTrustedEntry,
+  loadRegistry,
+  loadEcountSource,
+  monthWindow,
+  isPlausibleYear,
+  buildCafe24ProductMap,
+  toCafe24Variants,
+  isConsignmentProductName,
+  computeDifferenceRate,
+  compareEntry,
+  isActionCandidate,
+  buildNegativeStockCandidates,
+  auditAahMidnightRegistry,
+  normalizeBrandName,
+  brandFromEcountProductName,
+  productSalesEvidence,
+  detectConflicts,
+  selectCafe24Source,
+  scanProductDashboardProxyFiles
+};

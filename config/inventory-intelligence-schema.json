@@ -1,54 +1,172 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SAMPLAS Inventory Intelligence Read Only Diagnostic",
-  "type": "object",
-  "required": ["generatedAt", "mode", "sources", "summary", "thresholds", "items"],
-  "properties": {
-    "generatedAt": { "type": "string" },
-    "mode": { "const": "read_only_diagnostic" },
-    "sources": { "type": "object" },
-    "summary": {
-      "type": "object",
-      "required": [
-        "confirmedMatchCount",
-        "comparedCount",
-        "exactMatchCount",
-        "mismatchCount",
-        "missingEcountInventoryCount",
-        "missingCafe24InventoryCount",
-        "invalidInventoryValueCount",
-        "excludedUnconfirmedMatchCount",
-        "totalEcountStock",
-        "totalCafe24Stock",
-        "totalAbsoluteDifference",
-        "exactMatchRate",
-        "withinToleranceRate",
-        "mismatchRate"
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-21T00:00:00.000Z",
+  "mode": "schema_definition_only_not_operational_yet",
+  "note": "이 문서는 Inventory Intelligence Phase 2A 진단(scripts/diagnose-inventory-reconciliation.mjs)의 결과물을 바탕으로 필드의 의미와 source만 정의한다. 실제 운영 스키마 확정, API 구현, UI 반영은 이번 단계에 포함하지 않는다.",
+  "fields": {
+    "productId": {
+      "meaning": "Canonical Product Registry의 canonicalProductId를 그대로 재사용한다.",
+      "source": "work/product-registry.json entries[].canonicalProductId",
+      "availability": "available"
+    },
+    "brandId": {
+      "meaning": "Canonical Brand Registry의 brandId를 그대로 재사용한다.",
+      "source": "work/product-registry.json entries[].brandId",
+      "availability": "available"
+    },
+    "currentStock": {
+      "meaning": "현재 재고 수량. 단, ECOUNT BAL_QTY와 Cafe24 inventoryQuantity가 항상 일치한다는 보장이 없으므로(diagnose-inventory-reconciliation.mjs 진단 결과 참고), 이 필드 하나만으로는 '진짜 재고'를 단정하지 않는다.",
+      "source": "work/ecount-inventory/latest.json stockQuantity 또는 product-dashboard-proxy-*.json inventoryQuantity 중 currentStockSource가 가리키는 쪽",
+      "availability": "available_with_caveat",
+      "caveat": "두 소스가 다를 수 있음 — 반드시 currentStockSource와 stockDifference를 함께 확인해야 한다."
+    },
+    "currentStockSource": {
+      "meaning": "currentStock 값이 ECOUNT와 Cafe24 중 어느 쪽에서 왔는지, 혹은 둘 다 존재해 병기하는지 표시한다.",
+      "source": "diagnose-inventory-reconciliation.mjs 비교 로직에서 파생",
+      "availability": "available",
+      "enum": [
+        "ecount",
+        "cafe24",
+        "both_shown_separately",
+        "unavailable"
       ]
     },
-    "thresholds": {
-      "type": "object",
-      "required": ["absoluteToleranceUnits", "relativeToleranceRate", "stockDifferenceFormula", "differenceRateFormula"]
+    "cafe24Stock": {
+      "meaning": "Cafe24 variant별 quantity 합산값(inventoryQuantity).",
+      "source": "work/product-dashboard-proxy-*.json products[].inventoryQuantity",
+      "availability": "available"
     },
-    "items": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "productId",
-          "ecountProductCode",
-          "cafe24ProductId",
-          "matchStatus",
-          "ecountStock",
-          "cafe24Stock",
-          "stockDifference",
-          "absoluteDifference",
-          "differenceRate",
-          "reconciliationStatus",
-          "dataQualityFlags",
-          "sourceRefs"
-        ]
-      }
+    "ecountStock": {
+      "meaning": "ECOUNT 해당 상품에 연결된 모든 PROD_CD(사이즈별)의 BAL_QTY 합산값.",
+      "source": "work/ecount-inventory/latest.json stockQuantity 합산",
+      "availability": "available_with_caveat",
+      "caveat": "ECOUNT 재고조회 API가 인증 문제 등으로 null을 반환하는 경우가 있어(Phase 1 진단 참고), 항상 값이 채워진다는 보장은 없다."
+    },
+    "stockDifference": {
+      "meaning": "ecountStock - cafe24Stock. Phase 2A 진단 스크립트가 이미 계산하는 값 그대로 재사용.",
+      "source": "diagnose-inventory-reconciliation.mjs items[].comparison.difference",
+      "availability": "available"
+    },
+    "salesVelocity": {
+      "meaning": "일평균 판매속도. 기존 Product Dashboard(server.mjs buildProductDashboardWithCache)가 이미 계산하는 salesVelocityPerDay를 재사용한다.",
+      "source": "work/product-dashboard-proxy-*.json products[].salesVelocityPerDay",
+      "availability": "available"
+    },
+    "stockDays": {
+      "meaning": "현재 재고 ÷ 판매속도로 역산한 재고소진 예상일수. 기존 daysOfStockLeft를 재사용한다.",
+      "source": "work/product-dashboard-proxy-*.json products[].daysOfStockLeft",
+      "availability": "available_but_is_estimate",
+      "isEstimatedNote": "판매속도가 앞으로도 동일하게 유지된다는 가정 위의 추정치이며, 실측 재고 시계열이 아니다."
+    },
+    "turnover": {
+      "meaning": "재고회전율 (매출원가 ÷ 평균재고). ECOUNT 원가(IN_PRICE)는 있으나, '평균재고'를 계산할 시계열 재고 데이터가 없어 현재 시점 스냅샷 재고로만 근사해야 한다.",
+      "source": "ECOUNT IN_PRICE(purchasePrice) × 판매수량, 분모는 currentStock 스냅샷으로 근사",
+      "availability": "estimate_only",
+      "turnoverIsEstimated": true
+    },
+    "turnoverIsEstimated": {
+      "meaning": "turnover 값이 실측 평균재고가 아닌 현재 스냅샷 기반 근사치임을 명시하는 플래그. 항상 true로 표시되어야 한다(재고 시계열이 쌓이기 전까지).",
+      "source": "계산 시 하드코딩",
+      "availability": "available"
+    },
+    "deadStock": {
+      "meaning": "장기간 판매 없음 경고. 기존 PRODUCT_ACTION_THRESHOLDS.noSalesDays(30일) 규칙을 그대로 재사용한다.",
+      "source": "work/product-dashboard-proxy-*.json products[].productAction (stop_promotion 판정 근거) + lastSaleDate",
+      "availability": "available"
+    },
+    "warningLevel": {
+      "meaning": "재고 관련 경고 등급(예: out_of_stock/low/healthy/limited는 기존 productStockRisk 재사용, 신규로 위탁+무판매/재고과다 등은 규칙 추가 필요).",
+      "source": "work/product-dashboard-proxy-*.json products[].stockRisk (부분) + 신규 규칙(미구현)",
+      "availability": "partially_available",
+      "unavailableReason": "재고 과다(overstock)와 '위탁인데 판매 없음' 규칙은 현재 코드에 없다. 새 규칙 정의가 필요하다(설계만 되어 있고 구현 전)."
+    },
+    "ownershipType": {
+      "meaning": "재고 소유권 유형 — CON 표기/30% 마진 구조/QQQ/POP/일반 여부.",
+      "source": "ECOUNT PROD_CD 접두(QQQ/POP)와 PROD_DES의 CON 표기, IN_PRICE/OUT_PRICE 30% 마진 구조(위탁 단가 비율 진단 결과)",
+      "availability": "available_with_confidence_levels",
+      "enum": [
+        "consignment_confirmed",
+        "consignment_candidate",
+        "direct_ship_qqq",
+        "popup_pop",
+        "owned"
+      ],
+      "note": "confirmed는 CON 표기 존재, candidate는 CON 없이 30% 구조만 존재하는 경우. 이 구분을 유지해야 한다."
+    },
+    "inventoryValue": {
+      "meaning": "재고금액 (재고수량 × 단가). ownershipType별로 분리 집계해야 위탁재고가 일반재고 자산가치를 왜곡하지 않는다.",
+      "source": "currentStock × ECOUNT purchasePrice 또는 salesPrice",
+      "availability": "available_with_estimate_flag",
+      "inventoryValueIsEstimated": true,
+      "note": "어느 재고 소스(ECOUNT/Cafe24)를 currentStock으로 채택했는지에 따라 값이 달라질 수 있어 추정으로 표시한다."
+    },
+    "inventoryValueIsEstimated": {
+      "meaning": "inventoryValue가 currentStockSource 선택에 따라 달라질 수 있는 추정치임을 명시하는 플래그.",
+      "source": "계산 시 하드코딩",
+      "availability": "available"
+    },
+    "salesVoucherEvidence": {
+      "meaning": "비QQQ 음수 재고를 후보로 유지할지 판단하는 판매 증거. 현재 사용 가능한 Product Dashboard 캐시의 quantitySold/orderCount/salesAmount를 사용한다.",
+      "source": "work/product-dashboard-proxy-*.json products[].quantitySold/orderCount/salesAmount",
+      "availability": "available_from_cafe24_sales_cache"
+    },
+    "brandGroupKey": {
+      "meaning": "브랜드 집계용 정규화 키. 제품명 전체나 SKU 전체를 fallback으로 쓰지 않는다.",
+      "source": "Product Registry brandName → ECOUNT productName의 slash 앞 alias → Cafe24 productName bracket brand → UNKNOWN",
+      "availability": "available"
+    },
+    "issueType": {
+      "meaning": "실제 조치 후보 유형. 현재 negative_stock과 registry connection issue만 후보로 남기며 단순 Cafe24/ECOUNT 수량 차이는 후보가 아니다.",
+      "source": "diagnose-inventory-reconciliation.mjs candidate policy",
+      "availability": "available"
+    }
+  },
+  "fieldsNotYetAvailable": {
+    "reserved": {
+      "unavailableReason": "ECOUNT 재고조회 API(GetListInventoryBalanceStatus) 응답에 예약수량 필드 자체가 없다(Phase 2 사전진단에서 확인). 추가 API 연동 필요."
+    },
+    "availableStock": {
+      "unavailableReason": "reserved가 없으므로 availableStock은 항상 currentStock과 동일해져 별도 필드로서 의미가 없다. reserved 연동 후 재검토."
+    },
+    "incoming": {
+      "unavailableReason": "ECOUNT 입고예정 조회 API가 연동되어 있지 않다. 입고 관련 API 확인 및 추가 연동 필요."
+    },
+    "warehouseStock": {
+      "unavailableReason": "ECOUNT 품목 마스터의 WH_CD(창고코드) 필드가 10,000건 전부 공백으로 실측 확인되어(Phase 1/Phase 2 진단), 창고별 구분이 불가능하다."
+    },
+    "leadTime": {
+      "unavailableReason": "발주/리드타임 관련 데이터소스가 현재 연동되어 있지 않다."
+    },
+    "reorderQuantity": {
+      "unavailableReason": "재주문 수량 산정에는 리드타임/MOQ 등 추가 데이터가 필요하며 현재 확보되어 있지 않다."
+    }
+  },
+  "policy": {
+    "negativeStock": {
+      "qqqNegative": "include_even_without_sales_voucher",
+      "nonQqqNegativeWithSalesVoucher": "include",
+      "nonQqqNegativeWithoutSalesVoucher": "exclude",
+      "nonNegativeStock": "exclude_from_negative_stock_candidates"
+    },
+    "cafe24Usage": "connection_and_sales_evidence_only_not_stock_mismatch_issue",
+    "brandGroupingOrder": [
+      "product_registry_canonical_brand",
+      "ecount_alias_normalized",
+      "cafe24_canonical_brand",
+      "UNKNOWN"
+    ],
+    "brandNormalization": [
+      "trim",
+      "collapse_spaces",
+      "case_insensitive",
+      "official_english_display",
+      "no_product_or_sku_fallback"
+    ],
+    "aliases": {
+      "AAH MIDNIGHT": "AAH MIDNIGHT CLUB",
+      "aah midnight": "AAH MIDNIGHT CLUB",
+      "AAH MIDNIGHT CLUB": "AAH MIDNIGHT CLUB",
+      "aah midnight club": "AAH MIDNIGHT CLUB"
     }
   }
 }
