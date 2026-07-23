@@ -3437,12 +3437,13 @@ async function renderAdvertising(data, renderSeq) {
   const tableTarget = $("#adPerformanceRows");
   const reconTarget = $("#adReconciliationSummary");
   const decisionCenterTarget = $("#adDecisionCenter");
+  const salesAnalysisTarget = $("#adCampaignSalesAnalysis");
   const fullReportTargets = {
     active: $("#adFullReportActiveRows"),
     other: $("#adFullReportOtherRows")
   };
   bindAdFullReportToggles();
-  if (!briefingTarget || !statusTarget || !coreKpiTarget || !summaryTarget || !campaignTarget || !contentTarget || !tableTarget || !reconTarget || !decisionCenterTarget || !fullReportTargets.active || !fullReportTargets.other) return;
+  if (!briefingTarget || !statusTarget || !coreKpiTarget || !summaryTarget || !campaignTarget || !contentTarget || !tableTarget || !reconTarget || !decisionCenterTarget || !salesAnalysisTarget || !fullReportTargets.active || !fullReportTargets.other) return;
   hideAdOrganicSection();
 
   const range = operationsDateRange(data);
@@ -3470,6 +3471,7 @@ async function renderAdvertising(data, renderSeq) {
     statusTarget.innerHTML = `<span class="status-dot"></span><strong>${esc(badge.icon)} ${esc(badge.label)} · ${esc(status)}</strong><span class="note">${esc(startDate)} ~ ${esc(endDate)} · ${esc(meta.error)}</span>`;
     coreKpiTarget.innerHTML = `<article class="action-item"><strong>핵심 지표 확인 불가</strong><p>Meta API 오류가 해결되면 광고비 · ROAS · 실매출이 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     decisionCenterTarget.innerHTML = `<article class="action-item"><strong>Decision Center 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
+    salesAnalysisTarget.innerHTML = `<article class="action-item"><strong>Campaign Sales Analysis 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     summaryTarget.innerHTML = [
       `<article class="action-item"><strong>Meta API 상태</strong><span>${esc(status)}</span><p>${esc(meta.error)}</p></article>`,
       `<article class="action-item"><strong>권한 오류 안내</strong><p>Meta API 권한 또는 토큰 권한이 막히면 광고 성과를 불러올 수 없습니다. Settings의 Meta Ads 연결 상태를 확인하세요. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`
@@ -3494,6 +3496,7 @@ async function renderAdvertising(data, renderSeq) {
 
   const briefingCount = renderAdAiBriefing(fullReport, scoreWeights, briefingTarget);
   renderAdDecisionCenter(decisionCenterTarget, fullReport, scoreWeights, startDate, endDate);
+  renderCampaignSalesAnalysis(salesAnalysisTarget, fullReport, scoreWeights);
 
   const totals = meta.totals || {};
   const tableSpend = Number(fullReport?.reconciliation?.tableSpend);
@@ -4876,6 +4879,56 @@ function renderAdDecisionCenter(target, fullReport, scoreWeights, periodStart, p
     <div class="ad-decision-summary">${adDecisionCenterSummaryHtml(result.counts)}</div>
     <div class="ad-ai-briefing">${shown.map((card) => adDecisionCenterCardHtml(card)).join("")}</div>
     ${result.cards.length > shown.length ? `<p class="hint-text">우선순위 상위 ${shown.length}개만 표시합니다. 전체 캠페인은 아래 Campaign Full Report에서 확인하세요.</p>` : ""}
+  `;
+}
+
+// ===== Campaign Sales Analysis · MVP =====
+// 신규 API 없이 기존 renderAdvertising()이 받아온 fullReport.rows만 재사용합니다.
+// 제품별 판매 상세/기여분석은 이번 범위에 포함하지 않으며, 성과 판단은 기존
+// metaAdsPerformanceScore/metaAdsStarDecision을 그대로 재사용합니다.
+function campaignSalesAnalysisRows(fullReport = {}) {
+  return (fullReport.rows || [])
+    .filter((row) => metaAdsIsExecuted(row))
+    .sort((a, b) => Number(b.spend || 0) - Number(a.spend || 0));
+}
+
+function campaignSalesAnalysisRowHtml(row, weights) {
+  const decision = metaAdsStarDecision(metaAdsPerformanceScore(row, weights));
+  const roas = row.roas === null || row.roas === undefined ? null : Number(row.roas);
+  const purchases = row.purchases === null || row.purchases === undefined ? null : Number(row.purchases);
+  const ctr = row.ctr === null || row.ctr === undefined ? null : Number(row.ctr);
+  return `<tr>
+    <td>${esc(row.campaignName || "-")}</td>
+    <td>${esc(metaAdsObjectiveLabel(row))}</td>
+    <td>${apiWon(row.spend)}</td>
+    <td>${purchases === null ? "-" : apiNum(purchases)}</td>
+    <td>${apiWon(row.purchaseValue)}</td>
+    <td>${roas === null ? "-" : multiple(roas)}</td>
+    <td>${ctr === null ? "-" : pct(ctr * 100)}</td>
+    <td><span class="badge ${esc(decision.tone)}">${esc(decision.label)}</span></td>
+  </tr>`;
+}
+
+function renderCampaignSalesAnalysis(target, fullReport, scoreWeights) {
+  if (!target) return;
+  if (fullReport.error) {
+    target.innerHTML = `<article class="action-item"><strong>Campaign Sales Analysis 확인 불가</strong><p>${esc(fullReport.error)}</p></article>`;
+    return;
+  }
+  const rows = campaignSalesAnalysisRows(fullReport);
+  if (!rows.length) {
+    target.innerHTML = `<p class="hint-text">이번 기간에 집행된 캠페인이 없습니다.</p>`;
+    return;
+  }
+  target.innerHTML = `
+    <div class="table-wrap">
+      <table class="campaign-sales-analysis-table">
+        <thead>
+          <tr><th>캠페인명</th><th>상태</th><th>광고비</th><th>구매 수</th><th>Meta 구매 전환값</th><th>ROAS</th><th>CTR</th><th>성과 판단</th></tr>
+        </thead>
+        <tbody>${rows.map((row) => campaignSalesAnalysisRowHtml(row, scoreWeights)).join("")}</tbody>
+      </table>
+    </div>
   `;
 }
 
