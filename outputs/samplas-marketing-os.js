@@ -61,6 +61,20 @@ let reportsMonth = "";
 let reportsRenderSeq = 0;
 let intelligenceRenderSeq = 0;
 let intelligenceBrandRenderSeq = 0;
+// Meta Product Performance · Phase 1 (2026-07-23): Marketing 화면(#Advertising view)에 새로
+// 추가된 카드 전용 상태. GET /api/meta-ads/products(신규 endpoint 없음, 기존 API 재사용)의
+// rows를 그대로 보관하고, 클릭한 행의 content_id만 열어(accordion) 상세를 보여준다.
+let metaProductPerformanceRows = [];
+let metaProductPerformanceOpenContentId = null;
+let metaProductPerformanceRenderSeq = 0;
+// Marketing Analytics Phase 2 (2026-07-23): Product → Brand → Order drill-down 전용 상태.
+// GET /api/diagnostics/brand-sales(기존 API, 새 API 아님) 응답을 productNo/brand_code로
+// 인덱싱해 재사용한다. 이 두 Map은 Registry나 Meta Product Performance rows를 수정하지
+// 않고 순수 조인(join) 캐시로만 쓰인다.
+let metaProductPerformanceSalesByProductNo = new Map();
+let metaProductPerformanceBrandsByCode = new Map();
+let metaProductPerformanceSalesFetchFailed = false;
+let metaProductPerformanceBrandFilter = null;
 let intelligenceDecisionsRenderSeq = 0;
 let intelligenceTimelineRenderSeq = 0;
 let intelligenceLearningRenderSeq = 0;
@@ -2857,6 +2871,10 @@ function renderOtherSections(data) {
   $("#campaignPerformance").innerHTML = `<article class="action-item"><strong>캠페인 성과 확인 중</strong><p>Meta 캠페인 기준으로 불러옵니다.</p></article>`;
   $("#adReconciliationSummary").innerHTML = `<article class="action-item"><strong>데이터 일치 검증 확인 중</strong><p>Meta 계정 전체 합계와 비교하고 있습니다.</p></article>`;
   $("#adFullReportActiveRows").innerHTML = `<tr><td colspan="18">전체 캠페인 데이터를 확인하고 있습니다.</td></tr>`;
+  $("#metaProductPerformanceSummary").innerHTML = `<article class="action-item"><strong>Meta Product Performance 확인 중</strong><p>Meta 구매 상품을 content_id 기준으로 확인하고 있습니다.</p></article>`;
+  $("#metaProductPerformanceRows").innerHTML = `<tr><td colspan="4">데이터를 불러오고 있습니다.</td></tr>`;
+  $("#metaBrandContributionSummary").innerHTML = `<article class="action-item"><strong>Brand Contribution 확인 중</strong><p>브랜드별 광고 기여를 집계하고 있습니다.</p></article>`;
+  $("#metaBrandContributionRows").innerHTML = `<tr><td colspan="6">데이터를 불러오고 있습니다.</td></tr>`;
   hideAdOrganicSection();
   renderAdvertising(data);
   $("#salesHealthBanner").innerHTML = `<span class="status-dot"></span><strong>Sales Health 확인 중</strong><span class="note">Meta · Cafe24 데이터를 불러오고 있습니다.</span>`;
@@ -3459,6 +3477,14 @@ async function renderAdvertising(data, renderSeq) {
     reconTarget.innerHTML = `<article class="action-item"><strong>검증 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     fullReportTargets.active.innerHTML = `<tr><td colspan="18">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
     fullReportTargets.other.innerHTML = "";
+    const metaProductPerformanceSummaryTarget = $("#metaProductPerformanceSummary");
+    const metaProductPerformanceRowsTarget = $("#metaProductPerformanceRows");
+    if (metaProductPerformanceSummaryTarget) metaProductPerformanceSummaryTarget.innerHTML = `<article class="action-item"><strong>Meta Product Performance 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
+    if (metaProductPerformanceRowsTarget) metaProductPerformanceRowsTarget.innerHTML = `<tr><td colspan="4">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
+    const metaBrandContributionSummaryTarget = $("#metaBrandContributionSummary");
+    const metaBrandContributionRowsTarget = $("#metaBrandContributionRows");
+    if (metaBrandContributionSummaryTarget) metaBrandContributionSummaryTarget.innerHTML = `<article class="action-item"><strong>Brand Contribution 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
+    if (metaBrandContributionRowsTarget) metaBrandContributionRowsTarget.innerHTML = `<tr><td colspan="6">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
     contentTarget.innerHTML = "";
     renderMarketingSummary({ meta, fullReport, commerce, adSpendShare: null, briefingTarget, reconTarget, periodLabel: `${startDate} ~ ${endDate}` });
     return;
@@ -3507,6 +3533,7 @@ async function renderAdvertising(data, renderSeq) {
   tableTarget.innerHTML = renderMetaAdsRows(metaAdsRowsForLevel(meta));
   renderMetaAdsReconciliation(fullReport, reconTarget);
   renderMetaAdsFullReportGroups(fullReport, scoreWeights, fullReportTargets);
+  renderMetaProductPerformance(startDate, endDate, renderSeq);
   renderMarketingSummary({ meta, fullReport, commerce, adSpendShare, briefingTarget, reconTarget, briefingCount, reportingSpend, reportingPurchaseValue, periodLabel: `${startDate} ~ ${endDate}` });
   contentTarget.innerHTML = "";
 }
@@ -4399,6 +4426,363 @@ function renderAdAiBriefing(fullReport = {}, weights = {}, target) {
     </article>
   `).join("");
   return managementCount;
+}
+// ============================================================================
+// Meta Product Performance · Phase 1 (2026-07-23) — Marketing 화면(#Advertising view)
+// 전용 신규 카드. GET /api/meta-ads/products가 내려주는 content_id 파싱 결과를 표/배지/detail로
+// 보여준다. Product Registry나 Cafe24 runtime 조회에 의존하지 않는 Phase 1 최소 화면이다.
+// ============================================================================
+async function renderMetaProductPerformance(since, until, renderSeq) {
+  const summaryTarget = $("#metaProductPerformanceSummary");
+  const rowsTarget = $("#metaProductPerformanceRows");
+  if (!summaryTarget || !rowsTarget) return;
+  const localSeq = ++metaProductPerformanceRenderSeq;
+  const result = await getJson(`/api/meta-ads/products?since=${since}&until=${until}`, 12000);
+  if (localSeq !== metaProductPerformanceRenderSeq) return;
+  if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
+  if (result.error || !Array.isArray(result.rows)) {
+    metaProductPerformanceRows = [];
+    metaProductPerformanceOpenContentId = null;
+    metaProductPerformanceBrandFilter = null;
+    metaProductPerformanceSalesByProductNo = new Map();
+    metaProductPerformanceBrandsByCode = new Map();
+    summaryTarget.innerHTML = `<article class="action-item"><strong>Meta Product Performance 확인 불가</strong><p>${esc(result.error || "데이터 없음")}</p></article>`;
+    rowsTarget.innerHTML = `<tr><td colspan="4">${esc(result.error || "데이터 없음")}</td></tr>`;
+    renderMetaProductPerformanceBrandContribution();
+    return;
+  }
+  metaProductPerformanceRows = result.rows;
+  metaProductPerformanceOpenContentId = null;
+  metaProductPerformanceBrandFilter = null;
+  renderMetaProductPerformanceSummary(result.summary || {});
+  // eslint / 회귀 방지 주석: renderMetaProductPerformanceSummary 내부에서
+  // metaProductPerformanceRows를 기준으로 "구매 수"를 다시 계산하므로(matched 행만
+  // 합산), 여기서는 result.summary를 그대로 전달해도 실제 표시값은 항상 아래 표와
+  // 일치한다. (QA Sprint 2026-07-23 Bug #1 수정)
+  renderMetaProductPerformanceTable();
+  renderMetaProductPerformanceBrandContribution();
+  // Phase 2: Cafe24 실제 판매/주문 데이터(GET /api/diagnostics/brand-sales, 기존 API)를
+  // 별도로 조인한다. Meta Product Performance 표 자체는 이미 위에서 렌더된 상태이므로,
+  // 이 조회가 늦어져도 Phase 1 표시는 지연되지 않는다. 완료되면 Detail(실매출 등)과
+  // Brand Contribution만 다시 그린다.
+  await loadMetaProductPerformanceBrandSales(since, until);
+  if (localSeq !== metaProductPerformanceRenderSeq) return;
+  if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
+  renderMetaProductPerformanceTable();
+  renderMetaProductPerformanceBrandContribution();
+}
+
+// GET /api/diagnostics/brand-sales는 이미 Marketing 화면의 다른 카드(Commerce/Sales
+// Health 등)가 같은 기간으로 호출 중인 기존 API다. getSharedJson()을 그대로 재사용하므로
+// 동일 since/until이면 새 네트워크 요청 없이 진행 중이거나 완료된 응답을 공유한다 — 새
+// endpoint를 만들지 않고, 이 화면이 별도로 추가 호출을 만들지도 않는다(요청 재사용).
+async function loadMetaProductPerformanceBrandSales(since, until) {
+  const result = await getSharedJson(`/api/diagnostics/brand-sales?since=${since}&until=${until}`, 12000);
+  const productByProductNo = new Map();
+  const brandsByCode = new Map();
+  if (!result.error) {
+    for (const product of Array.isArray(result.products) ? result.products : []) {
+      if (product?.productNo !== undefined && product?.productNo !== null && product.productNo !== "") {
+        productByProductNo.set(String(product.productNo), product);
+      }
+    }
+    for (const brand of Array.isArray(result.brands) ? result.brands : []) {
+      if (brand?.brand_code) brandsByCode.set(brand.brand_code, brand);
+    }
+  }
+  metaProductPerformanceSalesByProductNo = productByProductNo;
+  metaProductPerformanceBrandsByCode = brandsByCode;
+  metaProductPerformanceSalesFetchFailed = Boolean(result.error);
+}
+
+// STEP1 Product Detail 확장 + STEP3 Order Drill-down이 공유하는 조인 헬퍼. 서버가 이미
+// 계산해둔 canonicalPaidAmount/discountRate/orderCount를 그대로 사용하고, 클라이언트에서는
+// "평균 판매가"(canonicalPaidAmount ÷ quantitySold) 하나만 두 실측값의 단순 비율로
+// 계산한다 — 기존 화면의 ROAS/광고비 비중 계산과 동일한 방식이다.
+function metaProductPerformanceSalesForRow(row = {}) {
+  const cafe24ProductNo = row.product?.cafe24ProductNo;
+  if (cafe24ProductNo === null || cafe24ProductNo === undefined) return null;
+  return metaProductPerformanceSalesByProductNo.get(String(cafe24ProductNo)) || null;
+}
+
+function metaProductPerformanceOrdersForRow(row = {}) {
+  const salesProduct = metaProductPerformanceSalesForRow(row);
+  if (!salesProduct) return [];
+  const brand = metaProductPerformanceBrandsByCode.get(salesProduct.brand_code);
+  const orderHistory = Array.isArray(brand?.orderHistory) ? brand.orderHistory : [];
+  const productNo = String(salesProduct.productNo);
+  const orders = [];
+  for (const order of orderHistory) {
+    for (const item of Array.isArray(order.products) ? order.products : []) {
+      if (String(item.productNo) === productNo) {
+        orders.push({ orderId: order.orderId, orderDate: order.orderDate, ...item });
+      }
+    }
+  }
+  // 주문 정렬 기준은 최신순(내림차순) 하나로 통일한다.
+  orders.sort((left, right) => String(right.orderDate || "").localeCompare(String(left.orderDate || "")));
+  return orders;
+}
+
+// QA Sprint (2026-07-23) Bug #1 수정: 서버가 내려주는 summary.attributedPurchases는
+// Unresolved 행의 구매 수까지 합산한 값이라, 실제로 화면에 보이는 상품 표(matched 행만
+// 표시)의 구매 수 합계와 달랐다("전체 합계 ≠ 화면에 보이는 합계" 신뢰도 문제). 여기서는
+// 이미 로드된 metaProductPerformanceRows에서 matched 행만 다시 더해 "구매 수" 카드가
+// 항상 아래 표(그리고 Brand Contribution의 총 구매수)와 정확히 일치하도록 한다. 서버
+// 응답 자체나 summary 객체의 다른 필드(matchedRows/runtimeEnrichedCount/unresolvedRows)는
+// 그대로 사용한다 — 이 값들은 원래도 표와 일치하는 "행 개수" 기준이라 문제가 없었다.
+function renderMetaProductPerformanceSummary(summary = {}) {
+  const target = $("#metaProductPerformanceSummary");
+  if (!target) return;
+  const visiblePurchaseTotal = metaProductPerformanceRows
+    .filter((row) => row.matched)
+    .reduce((sum, row) => sum + Number(row.purchaseCount || 0), 0);
+  target.innerHTML = [
+    metaAdsSummaryCard("귀속 상품", apiNum(summary.matchedRows), "Meta 구매 상품 중 Cafe24 상품으로 연결된 content_id 수", true),
+    metaAdsSummaryCard("구매 수", apiNum(visiblePurchaseTotal), "아래 상품 표(귀속된 상품)의 구매 수 합계"),
+    metaAdsSummaryCard("Parsed", apiNum(summary.matchedRows), "content_id에서 상품번호와 옵션 코드를 파싱한 행 수"),
+    metaAdsSummaryCard("Unresolved", apiNum(summary.unresolvedRows), "아직 Cafe24 상품으로 특정하지 못한 content_id 수")
+  ].join("");
+}
+
+function metaProductPerformanceRegistrySourceLabel(row = {}) {
+  if (row.product?.source === "runtime") return "Runtime";
+  if (row.matchType === "content_id_parsed_no_registry" || row.product?.registryStatus === "no_registry_lookup") return "Parsed";
+  if (row.matched && row.product?.verified) return "Verified";
+  return "Unresolved";
+}
+
+function metaProductPerformanceRegistryBadge(row = {}) {
+  const label = metaProductPerformanceRegistrySourceLabel(row);
+  if (label === "Runtime") return `<span class="badge warn">Runtime</span>`;
+  if (label === "Verified") return `<span class="badge good">Verified</span>`;
+  if (label === "Parsed") return `<span class="badge">Parsed</span>`;
+  return `<span class="badge">Unresolved</span>`;
+}
+
+// Hover: Registry Source / Match Type / Cafe24 Product No / Product Code를 네이티브
+// title 속성(줄바꿈 지원)으로 보여준다. 별도 tooltip 컴포넌트를 새로 만들지 않는
+// Phase 1 최소 구현이다.
+function metaProductPerformanceHoverTitle(row = {}) {
+  const product = row.product || {};
+  return [
+    `Registry Source: ${metaProductPerformanceRegistrySourceLabel(row)}`,
+    `Match Type: ${row.matchType || "-"}`,
+    `Cafe24 Product No: ${product.cafe24ProductNo ?? "-"}`,
+    `Product Code: ${product.productCode ?? "-"}`
+  ].join("\n");
+}
+
+// STEP1 Product Detail 확장: 실매출/주문수/평균 판매가/할인율 평균은 GET
+// /api/diagnostics/brand-sales의 products[] 항목(canonicalPaidAmount/orderCount/
+// sales.discountRate)을 그대로 쓴다. "평균 판매가"만 canonicalPaidAmount ÷ quantitySold의
+// 단순 나눗셈이다(다른 값을 새로 만들지 않음). "판매된 옵션 수"는 이 API 응답에 옵션 단위
+// 필드가 없어(Registry 구조 변경 없이는 확보 불가) 있는 그대로 "데이터 없음"으로 표시한다.
+function metaProductPerformanceOrderRowHtml(order = {}) {
+  const discountRate = order.canonicalDiscountRate ?? order.discountRate;
+  return `<tr>
+    <td>${esc(order.orderDate || "-")}</td>
+    <td>${esc(order.orderId || "-")}</td>
+    <td>${esc(order.productName || "-")}</td>
+    <td>-</td>
+    <td>${apiNum(order.quantity)}</td>
+    <td>${discountRate === null || discountRate === undefined ? "-" : pct(discountRate)}</td>
+    <td>${apiWon(order.canonicalPaidAmount ?? order.paidAmount)}</td>
+    <td>결제 완료</td>
+  </tr>`;
+}
+
+function metaProductPerformanceOrderListHtml(row = {}, salesProduct) {
+  if (metaProductPerformanceSalesFetchFailed) {
+    return `<p class="hint-text">Cafe24 판매 데이터를 불러오지 못해 주문 내역을 표시할 수 없습니다.</p>`;
+  }
+  if (!salesProduct) {
+    return `<p class="hint-text">이 기간 Cafe24 판매 데이터가 없어 주문 내역을 표시할 수 없습니다(Meta 구매 이벤트만 존재).</p>`;
+  }
+  const orders = metaProductPerformanceOrdersForRow(row);
+  if (!orders.length) {
+    return `<p class="hint-text">이 기간에 조회된 주문이 없습니다.</p>`;
+  }
+  return `<div class="table-wrap"><table class="meta-product-performance-order-table">
+    <thead><tr><th>날짜</th><th>주문번호</th><th>상품</th><th>옵션</th><th>수량</th><th>할인율</th><th>실결제금액</th><th>상태</th></tr></thead>
+    <tbody>${orders.map(metaProductPerformanceOrderRowHtml).join("")}</tbody>
+  </table></div>`;
+}
+
+function metaProductPerformanceDetailHtml(row = {}) {
+  const product = row.product || {};
+    const salesProduct = metaProductPerformanceSalesForRow(row);
+  const discountRate = salesProduct?.sales?.discountRate;
+  const avgPrice = salesProduct && Number(salesProduct.quantitySold) > 0
+    ? Math.round(Number(salesProduct.canonicalPaidAmount || 0) / Number(salesProduct.quantitySold))
+    : null;
+  const salesUnavailableNote = metaProductPerformanceSalesFetchFailed
+    ? "Cafe24 판매 데이터 확인 불가"
+    : "데이터 없음(이 기간 Cafe24 판매 없음)";
+  return `<dl class="meta-product-performance-detail">
+    <div><dt>브랜드</dt><dd>${esc(product.brand || "-")}</dd></div>
+    <div><dt>상품명</dt><dd>${esc(product.productName || "-")}</dd></div>
+    <div><dt>Cafe24 Product No</dt><dd>${esc(product.cafe24ProductNo ?? "-")}</dd></div>
+    <div><dt>Product Code</dt><dd>${esc(product.productCode || "-")}</dd></div>
+    <div><dt>구매 수</dt><dd>${apiNum(row.purchaseCount)}</dd></div>
+    <div><dt>Registry Status</dt><dd>${esc(product.registryStatus || "-")}</dd></div>
+    <div><dt>확인 방식</dt><dd>${metaProductPerformanceRegistrySourceLabel(row)}</dd></div>
+    <div><dt>content_id</dt><dd>${esc(row.contentId || "-")}</dd></div>
+    <div><dt>matchType</dt><dd>${esc(row.matchType || "-")}</dd></div>
+    <div><dt>실매출(Cafe24)</dt><dd>${salesProduct ? apiWon(salesProduct.canonicalPaidAmount) : salesUnavailableNote}</dd></div>
+    <div><dt>주문수</dt><dd>${salesProduct ? apiNum(salesProduct.orderCount) : "-"}</dd></div>
+    <div><dt>평균 판매가</dt><dd>${avgPrice === null ? "-" : apiWon(avgPrice)}</dd></div>
+    <div><dt>할인율 평균</dt><dd>${discountRate === null || discountRate === undefined ? "-" : pct(discountRate)}</dd></div>
+    <div><dt>판매된 옵션 수</dt><dd>데이터 없음(옵션 단위 필드 미제공)</dd></div>
+  </dl>  <div class="meta-product-performance-orders">
+    <h5>Order List <span>· 최신순</span></h5>
+    ${metaProductPerformanceOrderListHtml(row, salesProduct)}
+  </div>`;
+}
+
+// 기본 정렬: 구매 수 내림차순. 아직 상품을 특정하지 못한(Unresolved) 행은 이 표에는
+// 표시하지 않는다(브랜드/상품명이 없어 표 자체가 의미가 없음) — summary의 Unresolved
+// 카운트로만 노출한다. STEP2에서 Brand Contribution 행을 클릭하면
+// metaProductPerformanceBrandFilter가 설정되어 여기서도 해당 브랜드만 남긴다.
+function renderMetaProductPerformanceTable() {
+  const rowsTarget = $("#metaProductPerformanceRows");
+  if (!rowsTarget) return;
+  renderMetaProductPerformanceFilterBanner();
+  let rows = metaProductPerformanceRows.filter((row) => row.matched);
+  if (metaProductPerformanceBrandFilter) {
+    rows = rows.filter((row) => (row.product?.brand || "미분류") === metaProductPerformanceBrandFilter);
+  }
+  rows = rows.sort((left, right) => Number(right.purchaseCount || 0) - Number(left.purchaseCount || 0));
+  if (!rows.length) {
+    rowsTarget.innerHTML = `<tr><td colspan="4">${metaProductPerformanceBrandFilter ? "이 브랜드에 귀속된 상품이 없습니다." : "귀속된 상품이 없습니다."}</td></tr>`;
+    return;
+  }
+  rowsTarget.innerHTML = rows.map((row) => {
+    const product = row.product || {};
+    const isOpen = metaProductPerformanceOpenContentId === row.contentId;
+    return `<tr class="meta-product-performance-row" data-meta-product-toggle="${esc(row.contentId)}" title="${esc(metaProductPerformanceHoverTitle(row))}">
+      <td><strong>${esc(product.brand || "-")}</strong></td>
+      <td>${esc(product.productName || "-")}</td>
+      <td>구매 ${apiNum(row.purchaseCount)}건</td>
+      <td>${metaProductPerformanceRegistryBadge(row)}</td>
+    </tr><tr class="meta-product-performance-detail-row"${isOpen ? "" : " hidden"}><td colspan="4">${metaProductPerformanceDetailHtml(row)}</td></tr>`;
+  }).join("");
+}
+
+function toggleMetaProductPerformanceRow(contentId) {
+  metaProductPerformanceOpenContentId = metaProductPerformanceOpenContentId === contentId ? null : contentId;
+  renderMetaProductPerformanceTable();
+}
+
+function renderMetaProductPerformanceFilterBanner() {
+  const target = $("#metaProductPerformanceFilterBanner");
+  if (!target) return;
+  if (!metaProductPerformanceBrandFilter) {
+    target.hidden = true;
+    target.innerHTML = "";
+    return;
+  }
+  target.hidden = false;
+  target.innerHTML = `<span>브랜드 필터: <strong>${esc(metaProductPerformanceBrandFilter)}</strong></span><button type="button" class="button secondary" data-meta-brand-filter-clear>필터 해제</button>`;
+}
+
+// ============================================================================
+// STEP2/STEP5 Brand Contribution — Meta Product Performance rows를 product.brand로
+// 그룹핑하고, cafe24ProductNo당 1회만 Cafe24 실매출(canonicalPaidAmount)을 더한다(같은
+// 상품이 여러 content_id/광고 소재로 나와도 매출이 중복 합산되지 않도록 productNo로
+// dedupe). ROAS는 이 API들에 상품별 광고비가 없어 계산하지 않고 "-"로 표시한다.
+// ============================================================================
+function metaProductPerformanceBrandGroups() {
+  const groups = new Map();
+  for (const row of metaProductPerformanceRows) {
+    if (!row.matched) continue;
+    const brandName = row.product?.brand || "미분류";
+    const cafe24ProductNo = row.product?.cafe24ProductNo;
+    const isRuntime = row.product?.source === "runtime";
+    const group = groups.get(brandName) || {
+      brand: brandName,
+      purchaseCount: 0,
+      productNos: new Set(),
+      runtimeProductNos: new Set(),
+      salesAmount: 0
+    };
+    group.purchaseCount += Number(row.purchaseCount || 0);
+    if (cafe24ProductNo !== null && cafe24ProductNo !== undefined) {
+      if (!group.productNos.has(cafe24ProductNo)) {
+        group.productNos.add(cafe24ProductNo);
+        const salesProduct = metaProductPerformanceSalesByProductNo.get(String(cafe24ProductNo));
+        if (salesProduct) group.salesAmount += Number(salesProduct.canonicalPaidAmount || 0);
+      }
+      if (isRuntime) group.runtimeProductNos.add(cafe24ProductNo);
+    }
+    groups.set(brandName, group);
+  }
+  return [...groups.values()].map((group) => ({
+    brand: group.brand,
+    purchaseCount: group.purchaseCount,
+    productCount: group.productNos.size,
+    runtimeCount: group.runtimeProductNos.size,
+    salesAmount: group.salesAmount
+  })).sort((left, right) => right.salesAmount - left.salesAmount);
+}
+
+// QA Sprint (2026-07-23) Bug #2 수정: Cafe24 판매 데이터(brand-sales) 조회 자체가
+// 실패했을 때(metaProductPerformanceSalesFetchFailed) 이전에는 이 함수가 그대로 진행되어
+// 모든 브랜드의 실매출이 "0원"으로 표시됐다 — 실제로는 "매출이 0원"이 아니라 "매출 데이터를
+// 가져오지 못함"인데 화면에서는 구분이 안 되는 오표시였다. 이제 이 경우 숫자 대신 명확한
+// 오류 상태를 보여준다(브랜드 수/구매수 등 Meta 쪽 데이터는 정상이므로 상품 표는 계속
+// 정상 표시되고, 이 섹션만 "확인 불가"로 표시한다).
+function renderMetaProductPerformanceBrandContribution() {
+  const summaryTarget = $("#metaBrandContributionSummary");
+  const rowsTarget = $("#metaBrandContributionRows");
+  if (!summaryTarget || !rowsTarget) return;
+  if (metaProductPerformanceSalesFetchFailed) {
+    summaryTarget.innerHTML = `<article class="action-item"><strong>Brand Contribution 확인 불가</strong><p>Cafe24 판매 데이터(brand-sales)를 불러오지 못해 실매출을 계산할 수 없습니다. 아래 "0원"이 아니라 데이터 확인 불가 상태입니다. 잠시 후 다시 시도해주세요.</p></article>`;
+    rowsTarget.innerHTML = `<tr><td colspan="6">Cafe24 판매 데이터를 불러오지 못했습니다.</td></tr>`;
+    return;
+  }
+  const groups = metaProductPerformanceBrandGroups();
+  const totalPurchases = groups.reduce((sum, group) => sum + group.purchaseCount, 0);
+  const totalSales = groups.reduce((sum, group) => sum + group.salesAmount, 0);
+  const totalProducts = groups.reduce((sum, group) => sum + group.productCount, 0);
+  const runtimeBrandCount = groups.filter((group) => group.runtimeCount > 0).length;
+  summaryTarget.innerHTML = [
+    metaAdsSummaryCard("브랜드 수", apiNum(groups.length), "귀속 상품이 있는 브랜드 수", true),
+    metaAdsSummaryCard("광고 상품 수", apiNum(totalProducts), "브랜드별 귀속 상품 수 합계(productNo 중복 제거)"),
+    metaAdsSummaryCard("Parsed 브랜드 수", apiNum(runtimeBrandCount), "content_id 파싱으로 확인된 상품이 1개 이상 있는 브랜드 수"),
+    metaAdsSummaryCard("총 구매수", apiNum(totalPurchases), "전체 브랜드 귀속 구매 이벤트 합계"),
+    metaAdsSummaryCard("총 실매출", apiWon(totalSales), "Meta 귀속 상품만의 실매출 합계 — 브랜드 전체 매출 아님, Commerce 화면과 다를 수 있음")
+  ].join("");
+  if (!groups.length) {
+    rowsTarget.innerHTML = `<tr><td colspan="6">귀속된 브랜드가 없습니다.</td></tr>`;
+    return;
+  }
+  rowsTarget.innerHTML = groups.map((group) => {
+    const isActive = metaProductPerformanceBrandFilter === group.brand;
+    return `<tr class="meta-brand-contribution-row${isActive ? " active" : ""}" data-meta-brand-toggle="${esc(group.brand)}">
+      <td><strong>${esc(group.brand)}</strong>${group.runtimeCount > 0 ? `<span class="meta-brand-runtime-dot" title="Parsed 상품 포함"></span>` : ""}</td>
+      <td>${apiWon(group.salesAmount)}</td>
+      <td>${apiNum(group.purchaseCount)}</td>
+      <td>${apiNum(group.productCount)}</td>
+      <td>${apiNum(group.runtimeCount)}</td>
+      <td>-</td>
+    </tr>`;
+  }).join("");
+}
+
+function toggleMetaProductPerformanceBrandFilter(brand) {
+  metaProductPerformanceBrandFilter = metaProductPerformanceBrandFilter === brand ? null : brand;
+  renderMetaProductPerformanceTable();
+  renderMetaProductPerformanceBrandContribution();
+  if (metaProductPerformanceBrandFilter) {
+    $("#metaProductPerformanceFilterBanner")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+function clearMetaProductPerformanceBrandFilter() {
+  metaProductPerformanceBrandFilter = null;
+  renderMetaProductPerformanceTable();
+  renderMetaProductPerformanceBrandContribution();
 }
 
 // Meta 계정 전체 합계(level=account)와 표에 실제로 보이는 캠페인 합계를 대조합니다.
@@ -7964,6 +8348,23 @@ function bind() {
       const current = rows.find((item) => item.month === $("#monthSelect")?.value) || rows[0];
       if (current) renderAdvertising(current);
     });
+  });
+  // Meta Product Performance · Phase 1: 상품 행 클릭 → accordion으로 상세 펼치기/접기.
+  document.addEventListener("click", (event) => {
+    const row = event.target.closest("[data-meta-product-toggle]");
+    if (!row) return;
+    toggleMetaProductPerformanceRow(row.dataset.metaProductToggle || "");
+  });
+  // Brand Contribution 행 클릭 → Meta Product Performance 표를 해당 브랜드로 필터링.
+  document.addEventListener("click", (event) => {
+    const clearBtn = event.target.closest("[data-meta-brand-filter-clear]");
+    if (clearBtn) {
+      clearMetaProductPerformanceBrandFilter();
+      return;
+    }
+    const brandRow = event.target.closest("[data-meta-brand-toggle]");
+    if (!brandRow) return;
+    toggleMetaProductPerformanceBrandFilter(brandRow.dataset.metaBrandToggle || "");
   });
   document.addEventListener("click", (event) => {
     const tab = event.target.closest("[data-product-registry-tab]");

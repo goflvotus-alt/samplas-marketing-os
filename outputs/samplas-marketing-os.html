@@ -389,6 +389,47 @@
         </div>
 
         <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Meta Product Performance · Phase 1</p><h3>광고에서 구매까지 이어진 상품</h3></div></div>
+          <p class="hint-text">Meta Purchase 이벤트의 content_id를 상품번호와 옵션 코드로 파싱한 결과입니다(GET /api/meta-ads/products). Product Registry 없이 파싱 가능한 상품만 표시하며, 행을 클릭하면 상세 정보와 해당 상품의 실제 주문 내역이 펼쳐집니다.</p>
+          <div id="metaProductPerformanceSummary" class="cards"></div>
+          <div id="metaProductPerformanceFilterBanner" class="meta-product-performance-filter-banner" hidden></div>
+          <div class="table-wrap ad-table-wrap">
+            <table class="meta-product-performance-table">
+              <thead>
+                <tr>
+                  <th>브랜드</th>
+                  <th>상품명</th>
+                  <th>구매 수</th>
+                  <th>상태</th>
+                </tr>
+              </thead>
+              <tbody id="metaProductPerformanceRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Brand Contribution · Phase 2</p><h3>브랜드별 광고 기여</h3></div></div>
+          <p class="hint-text">주의: 이 표의 광고매출은 "브랜드 전체 매출"이 아니라, 이 브랜드 상품 중 Meta 광고로 구매까지 연결된(위 Meta Product Performance에 나타난) 상품만의 실제 Cafe24 매출 합계입니다. 그래서 Commerce 화면의 브랜드별 매출보다 항상 같거나 작습니다(GET /api/diagnostics/brand-sales 재사용, 새 API 없음). 광고 효과를 증명하는 인과 지표가 아니라 참고 자료입니다. 이 API에는 상품별 광고비가 없어 ROAS는 계산하지 않습니다. 브랜드 행을 클릭하면 위 Meta Product Performance 표가 해당 브랜드로 필터링됩니다.</p>
+          <div id="metaBrandContributionSummary" class="cards"></div>
+          <div class="table-wrap ad-table-wrap">
+            <table class="meta-brand-contribution-table">
+              <thead>
+                <tr>
+                  <th>브랜드</th>
+                  <th>광고매출</th>
+                  <th>광고구매</th>
+                  <th>상품수</th>
+                  <th>Parsed 상품수</th>
+                  <th>ROAS</th>
+                </tr>
+              </thead>
+              <tbody id="metaBrandContributionRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-block">
           <div class="section-title compact">
             <div><p class="eyebrow">All Campaigns</p><h3>집행 캠페인</h3></div>
             <button id="adDetailToggleBtn" class="button secondary" type="button">상세 보기</button>

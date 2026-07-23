@@ -2018,6 +2018,117 @@ select,
   font-size: 12px;
   font-weight: 800;
 }
+/* 2026-07-23 Meta Product Performance Phase 1: 표는 기존 .table-wrap/.ad-table-wrap을
+   그대로 재사용합니다. 아래는 행 클릭(accordion), Registry Source 배지(.badge/.badge.good/
+   .badge.warn 재사용), 상세 펼침 영역(.meta-product-performance-detail)에만 쓰는 최소
+   CSS입니다. */
+.meta-product-performance-table tbody tr.meta-product-performance-row {
+  cursor: pointer;
+}
+
+.meta-product-performance-table tbody tr.meta-product-performance-row:hover {
+  background: var(--paper);
+}
+
+.meta-product-performance-detail-row td {
+  background: var(--paper);
+  padding: 14px;
+}
+
+.meta-product-performance-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.meta-product-performance-detail > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-product-performance-detail dt {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.meta-product-performance-detail dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.meta-product-performance-detail-badge {
+  display: inline-flex;
+  margin-top: 10px;
+}
+
+/* 2026-07-23 Marketing Analytics Phase 2 (Product → Brand → Order drill-down): 필터
+   배너, Order List 표(기존 .table-wrap 재사용), Brand Contribution 표(기존
+   .ad-table-wrap 재사용) 행 hover/active, Parsed brand dot 표시에만 쓰는 최소 CSS. */
+.meta-product-performance-filter-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.meta-product-performance-orders {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+}
+
+.meta-product-performance-orders h5 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.meta-product-performance-orders h5 span {
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.meta-product-performance-order-table th,
+.meta-product-performance-order-table td {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.meta-brand-contribution-table tbody tr.meta-brand-contribution-row {
+  cursor: pointer;
+}
+
+.meta-brand-contribution-table tbody tr.meta-brand-contribution-row:hover {
+  background: var(--paper);
+}
+
+.meta-brand-contribution-table tbody tr.meta-brand-contribution-row.active {
+  background: #f3faf6;
+}
+
+.meta-brand-runtime-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--yellow);
+  vertical-align: middle;
+}
 
 .score-weights-preset {
   display: flex;

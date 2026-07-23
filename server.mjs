@@ -89,6 +89,14 @@ const server = createServer(async (req, res) => {
       );
       return json(res, data);
     }
+    if (url.pathname === "/api/meta-ads/products") {
+      const data = await buildMetaAdsProducts(
+        url.searchParams.get("since") || `${currentMonth()}-01`,
+        url.searchParams.get("until") || todayKey(),
+        { level: url.searchParams.get("level") || "ad" }
+      );
+      return json(res, data);
+    }
     if (url.pathname === "/api/meta-ads/full-report") {
       const data = await buildMetaAdsFullReportWithCache(
         url.searchParams.get("since") || `${currentMonth()}-01`,
@@ -5093,6 +5101,114 @@ async function fetchMetaAccountTotals(adAccountId, since, until) {
   const purchaseValue = actionValue(row.action_values, "purchase");
   const purchases = actionValue(row.actions, "purchase");
   return { spend, purchaseValue, purchases, roas: spend ? purchaseValue / spend : null };
+}
+
+async function fetchMetaProductBreakdownRows(adAccountId, since, until, level) {
+  return graphGetAllPages(
+    adAccountId + "/insights",
+    {
+      fields: metaAdsFieldsForLevel(level).join(","),
+      level,
+      breakdowns: "product_id",
+      time_range: JSON.stringify({ since, until }),
+      limit: 200
+    }
+  );
+}
+
+function cleanMetaProductContentId(value) {
+  return value === null || value === undefined ? "" : String(value).trim().split(",")[0].trim();
+}
+
+function parseMetaProductContentId(value) {
+  const rawContentId = cleanMetaProductContentId(value);
+  if (!rawContentId) return { rawContentId, cafe24ProductNo: null, variantCode: null, format: "empty", valid: false };
+  const parts = rawContentId.split(".");
+  if (parts.length === 2 && /^d+$/.test(parts[0]) && parts[1].trim()) {
+    return { rawContentId, cafe24ProductNo: Number(parts[0]), variantCode: parts[1].trim(), format: "cafe24_product_variant", valid: true };
+  }
+  return { rawContentId, cafe24ProductNo: null, variantCode: null, format: /^d+$/.test(rawContentId) ? "manual_numeric_id" : "manual_or_unknown_id", valid: false };
+}
+
+function metaProductContentIdFromRow(row = {}) {
+  return row.product_id || row.content_id || row.retailer_id || row.retailerId || row.breakdownValue || null;
+}
+
+function buildParsedMetaProductRow(row = {}, contentId, purchaseCount) {
+  const parsed = parseMetaProductContentId(contentId);
+  const product = parsed.valid ? {
+    source: null,
+    registry: false,
+    canonicalProductId: null,
+    cafe24ProductNo: parsed.cafe24ProductNo,
+    variantCode: parsed.variantCode,
+    productCode: null,
+    brand: null,
+    productName: null,
+    optionName: null,
+    color: null,
+    size: null,
+    registryStatus: "no_registry_lookup",
+    verified: false,
+    confidence: null,
+    ecountMatchedCount: 0
+  } : null;
+  return {
+    campaignId: row.campaign_id || row.campaignId || "",
+    campaignName: row.campaign_name || row.campaignName || "",
+    adsetId: row.adset_id || row.adsetId || "",
+    adsetName: row.adset_name || row.adsetName || "",
+    adId: row.ad_id || row.adId || "",
+    adName: row.ad_name || row.adName || "",
+    contentId: parsed.rawContentId || String(contentId || ""),
+    purchaseCount,
+    matched: parsed.valid,
+    matchType: parsed.valid ? "content_id_parsed_no_registry" : "content_id_unresolved",
+    parsed,
+    product
+  };
+}
+
+function summarizeMetaProductRows(rows = []) {
+  const unresolved = rows.filter((row) => !row.matched);
+  return {
+    rowCount: rows.length,
+    attributedPurchases: rows.reduce((sum, row) => sum + Number(row.purchaseCount || 0), 0),
+    matchedRows: rows.filter((row) => row.matched).length,
+    unresolvedRows: unresolved.length,
+    runtimeEnrichedCount: 0
+  };
+}
+
+async function buildMetaAdsProducts(since, until, options = {}) {
+  const adAccountId = cleanAdAccountId();
+  if (!adAccountId) throw new Error(".env에 META_AD_ACCOUNT_ID가 없습니다.");
+  const level = metaAdsLevel(options.level || "ad");
+  const metaRows = await fetchMetaProductBreakdownRows(adAccountId, since, until, level);
+  const grouped = new Map();
+  for (const row of metaRows) {
+    const contentId = metaProductContentIdFromRow(row);
+    const purchaseCount = actionValue(row.actions, "purchase");
+    if (!contentId || purchaseCount <= 0) continue;
+    const key = cleanMetaProductContentId(contentId) || String(contentId);
+    const current = grouped.get(key) || { row, purchaseCount: 0 };
+    current.purchaseCount += purchaseCount;
+    current.row = { ...current.row, ...row };
+    grouped.set(key, current);
+  }
+  const rows = [...grouped.entries()].map(([contentId, group]) => buildParsedMetaProductRow(group.row, contentId, group.purchaseCount));
+  const summary = summarizeMetaProductRows(rows);
+  const unresolved = rows.filter((row) => !row.matched);
+  return {
+    ok: true,
+    since,
+    until,
+    level,
+    source: { metaAvailable: true, registryAvailable: false, metaRows: metaRows.length },
+    summary,
+    rows,
+    unresolved
+  };
 }
 
 function metaBidStrategyLabel(raw) {
