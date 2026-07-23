@@ -2,8 +2,14 @@ import { createServer } from "node:http";
 import { createHash, createHmac } from "node:crypto";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { URL } from "node:url";
+import {
+  buildInventoryOverview,
+  filterAndSortItems,
+  buildOfflineSalesIndex,
+  DEFAULTS as INVENTORY_OVERVIEW_DEFAULTS
+} from "./scripts/inventory-overview-lib.mjs";
 
 const root = resolve(".");
 const env = await loadEnv();
@@ -21,6 +27,13 @@ const learningDbFile = join(intelligenceWorkDir, "learning-db.json");
 const missionCacheFile = join(intelligenceWorkDir, "mission-cache.json");
 const productRegistryFile = join(workRoot, "product-registry.json");
 const productRegistryReviewQueueFile = join(workRoot, "product-registry-review-queue.json");
+const inventoryIntelligenceCandidatesFile = join(workRoot, "inventory-intelligence-candidates.json");
+// Phase 3A — Inventory Overview: ECOUNT stockQuantity를 유일한 재고 기준(Source of Truth)으로 사용한다.
+// Cafe24 inventoryQuantity는 이 라우트의 어떤 계산에도 사용하지 않는다.
+const ecountInventoryDir = join(workRoot, "ecount-inventory");
+const ecountInventoryLatestFile = join(ecountInventoryDir, "latest.json");
+const ecountInventoryDiagnosticFile = join(ecountInventoryDir, "diagnostic.json");
+const ecountSalesDir = join(workRoot, "ecount-sales");
 const naverAdsBaseUrl = env.NAVER_ADS_BASE_URL || "https://api.searchad.naver.com";
 const naverAdsTimeoutMs = 10000;
 const marketingOsBaseUrl = env.INTELLIGENCE_MARKETING_OS_BASE_URL || env.MARKETING_OS_BASE_URL || `http://127.0.0.1:${env.PORT || 8787}`;
@@ -122,6 +135,14 @@ const server = createServer(async (req, res) => {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return handleProductRegistryReviewQueueGet(res);
     }
+    if (url.pathname === "/api/inventory/intelligence/health") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleInventoryIntelligenceHealthGet(res);
+    }
+    if (url.pathname === "/api/inventory/overview") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleInventoryOverviewGet(url, res);
+    }
     if (url.pathname === "/api/intelligence/naver/search") {
       return handleNaverSearchRoute(url, res);
     }
@@ -188,6 +209,215 @@ async function handleProductRegistryGet(res) {
 async function handleProductRegistryReviewQueueGet(res) {
   const reviewQueue = await readProductRegistryJson(productRegistryReviewQueueFile);
   return json(res, { ok: true, reviewQueue });
+}
+
+// Phase 2A(scripts/diagnose-inventory-reconciliation.mjs)가 생성한
+// work/inventory-intelligence-candidates.json을 읽기 전용으로 노출한다.
+// 이 라우트는 GET만 지원하며, 진단 파일을 재실행/재생성하지 않는다.
+function sanitizeInventoryIntelligenceMeta(meta) {
+  if (!meta || typeof meta !== "object") return meta;
+  const clone = { ...meta };
+  if (typeof clone.registryPath === "string") clone.registryPath = basename(clone.registryPath);
+  if (typeof clone.ecountPath === "string") clone.ecountPath = basename(clone.ecountPath);
+  if (clone.cafe24Source && typeof clone.cafe24Source === "object") {
+    const cafe24Source = { ...clone.cafe24Source };
+    if (cafe24Source.primary && typeof cafe24Source.primary === "object") {
+      cafe24Source.primary = {
+        ...cafe24Source.primary,
+        file: cafe24Source.primary.file ? basename(cafe24Source.primary.file) : cafe24Source.primary.file
+      };
+    }
+    if (Array.isArray(cafe24Source.excludedSyntheticFiles)) {
+      cafe24Source.excludedSyntheticFiles = cafe24Source.excludedSyntheticFiles.map((entry) => ({
+        ...entry,
+        file: entry.file ? basename(entry.file) : entry.file
+      }));
+    }
+    clone.cafe24Source = cafe24Source;
+  }
+  return clone;
+}
+
+async function handleInventoryIntelligenceHealthGet(res) {
+  if (!existsSync(inventoryIntelligenceCandidatesFile)) {
+    return json(res, {
+      ok: true,
+      available: false,
+      reason: "not_found",
+      source: basename(inventoryIntelligenceCandidatesFile)
+    });
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(inventoryIntelligenceCandidatesFile, "utf8"));
+  } catch (error) {
+    return json(res, {
+      ok: false,
+      available: false,
+      error: "invalid_json",
+      message: safeErrorMessage(error)
+    }, 500);
+  }
+  return json(res, {
+    ok: true,
+    available: true,
+    source: basename(inventoryIntelligenceCandidatesFile),
+    schemaVersion: parsed.schemaVersion ?? null,
+    generatedAt: parsed.generatedAt ?? null,
+    mode: parsed.mode ?? null,
+    meta: sanitizeInventoryIntelligenceMeta(parsed.meta),
+    summary: parsed.summary ?? null,
+    conflicts: parsed.conflicts ?? null,
+    items: Array.isArray(parsed.items) ? parsed.items : []
+  });
+}
+
+// Phase 3A — Inventory Overview (실제 매장 운영 화면).
+// 운영 정책: ECOUNT stockQuantity가 유일한 재고 기준이다. Cafe24는 참고용 판매 분석에만 쓰이며
+// (이 라우트에서는 아예 읽지도 않는다), 재고 계산에는 절대 사용하지 않는다.
+// 기존 /api/inventory/intelligence/health (ECOUNT↔Cafe24 데이터 정합성/품질 진단, Phase 2A/2B)와는
+// 역할이 다르며, 이 라우트를 추가하면서 그 라우트/로직은 전혀 수정하지 않았다.
+async function handleInventoryOverviewGet(url, res) {
+  if (!existsSync(ecountInventoryLatestFile)) {
+    return json(res, {
+      ok: true,
+      available: false,
+      reason: "not_found",
+      source: basename(ecountInventoryLatestFile)
+    });
+  }
+
+  let ecountRows;
+  try {
+    ecountRows = JSON.parse(await readFile(ecountInventoryLatestFile, "utf8"));
+  } catch (error) {
+    return json(res, {
+      ok: false,
+      available: false,
+      error: "invalid_json",
+      message: safeErrorMessage(error)
+    }, 500);
+  }
+  if (!Array.isArray(ecountRows)) {
+    return json(res, {
+      ok: false,
+      available: false,
+      error: "invalid_shape",
+      message: "ecount-inventory/latest.json must be an array"
+    }, 500);
+  }
+
+  const lowStockThresholdRaw = url.searchParams.get("lowStockThreshold");
+  const lowStockThreshold = lowStockThresholdRaw !== null && Number.isFinite(Number(lowStockThresholdRaw)) && Number(lowStockThresholdRaw) >= 0
+    ? Math.floor(Number(lowStockThresholdRaw))
+    : INVENTORY_OVERVIEW_DEFAULTS.DEFAULT_LOW_STOCK_THRESHOLD;
+
+  const [brandRegistry, salesIndex, registryProdCds, diagnostic] = await Promise.all([
+    readBrandRegistry().catch(() => ({ brands: [], aliases: [] })),
+    buildEcountOfflineSalesIndexFromDisk(),
+    loadProductRegistryProdCds(),
+    readEcountInventoryDiagnostic()
+  ]);
+
+  const { items, summary, brandRollup } = buildInventoryOverview({
+    ecountRows,
+    brandRegistry,
+    salesIndex,
+    registryProdCds,
+    lowStockThreshold
+  });
+
+  const filtered = filterAndSortItems(items, {
+    brand: url.searchParams.get("brand"),
+    status: url.searchParams.get("status"),
+    search: url.searchParams.get("search"),
+    sort: url.searchParams.get("sort")
+  });
+
+  const limitRaw = Number(url.searchParams.get("limit"));
+  const offsetRaw = Number(url.searchParams.get("offset"));
+  const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? Math.floor(offsetRaw) : 0;
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : filtered.length;
+  const page = filtered.slice(offset, offset + limit);
+
+  // Phase 3A-2: 운영 정책과 데이터 커버리지를 명시적으로 노출한다(하위 호환 — 기존 필드는
+  // 그대로 두고 이 두 필드만 추가함). locationMode는 현재 ECOUNT 응답에 위치(창고) 정보가
+  // 전혀 없어("조사 결과" 참고, scripts/inventory-overview-lib.mjs 상단 주석) 항상 "unavailable".
+  const inventoryPolicy = {
+    sourceOfTruth: "ECOUNT",
+    cafe24InventoryUsed: false,
+    qqqNegativeMeansEstimatedSales: true,
+    zeroStockMeaning: "depleted_candidate",
+    locationMode: summary.locationKnownItems > 0 ? "available" : "unavailable"
+  };
+  const coverage = {
+    totalItems: summary.totalSkuCount,
+    stockKnownItems: summary.totalSkuCount - summary.unknownStockSkuCount - summary.qqqUnknownSkuCount,
+    stockUnknownItems: summary.unknownStockSkuCount + summary.qqqUnknownSkuCount,
+    locationKnownItems: summary.locationKnownItems,
+    locationUnknownItems: summary.locationUnknownItems
+  };
+
+  return json(res, {
+    ok: true,
+    available: true,
+    source: basename(ecountInventoryLatestFile),
+    generatedAt: diagnostic?.finishedAt ?? null,
+    lowStockThreshold,
+    inventoryPolicy,
+    coverage,
+    summary,
+    brandRollup,
+    itemsTotal: filtered.length,
+    offset,
+    limit,
+    items: page
+  });
+}
+
+async function readEcountInventoryDiagnostic() {
+  try {
+    return JSON.parse(await readFile(ecountInventoryDiagnosticFile, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+// Product Registry(work/product-registry.json)의 ecount.matchedProducts[].prodCd 전체를 모은다.
+// 확정(verified) 여부와 무관하게, Registry가 해당 ECOUNT 코드를 "인지"하고 있는지만 본다.
+// 읽기 전용 참조이며, Product Registry 파일이나 구조는 절대 수정하지 않는다.
+async function loadProductRegistryProdCds() {
+  const prodCds = new Set();
+  try {
+    const data = JSON.parse(await readFile(productRegistryFile, "utf8"));
+    const entries = Array.isArray(data?.entries) ? data.entries : [];
+    for (const entry of entries) {
+      const matched = Array.isArray(entry?.ecount?.matchedProducts) ? entry.ecount.matchedProducts : [];
+      for (const product of matched) {
+        const prodCd = String(product?.prodCd || "").trim();
+        if (prodCd) prodCds.add(prodCd);
+      }
+    }
+  } catch {
+    return prodCds;
+  }
+  return prodCds;
+}
+
+// work/ecount-sales/*.json(월별 오프라인 매출)을 전부 읽어 순수 계산 함수(buildOfflineSalesIndex)에 넘긴다.
+async function buildEcountOfflineSalesIndexFromDisk() {
+  const names = (await safeReaddir(ecountSalesDir)).filter((name) => /^\d{4}-\d{2}\.json$/.test(name));
+  const monthlyFiles = [];
+  for (const name of names) {
+    try {
+      const snapshot = JSON.parse(await readFile(join(ecountSalesDir, name), "utf8"));
+      const rows = Array.isArray(snapshot?.rows) ? snapshot.rows : [];
+      monthlyFiles.push({ month: snapshot?.month ?? name, rows });
+    } catch {
+      continue;
+    }
+  }
+  return buildOfflineSalesIndex(monthlyFiles);
 }
 
 async function handleBrandIntelligenceInputRoute(rawBrandId, url, res) {
