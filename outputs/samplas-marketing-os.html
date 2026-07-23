@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SAMPLAS Instagram Marketing OS</title>
-  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260708g-report-thumbnails" />
+  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260722-inventory-overview-phase3a2" />
 </head>
 <body>
   <div class="app-shell">
@@ -711,6 +711,130 @@
               <div id="productRegistryEmpty" class="sales-empty-card" hidden>조건에 맞는 상품 후보가 없습니다.</div>
             </div>
             <aside id="productRegistryDetail" class="product-registry-detail" aria-live="polite"></aside>
+          </div>
+        </div>
+      </section>
+
+      <section id="InventoryOverview" class="view">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Daily Inventory Check</p>
+            <h3>재고 점검</h3>
+          </div>
+        </div>
+        <div class="inventory-workspace-tabs" role="tablist" aria-label="재고 점검 탭">
+          <button type="button" class="active" data-inventory-workspace-tab="today" role="tab" aria-selected="true">오늘 확인</button>
+          <button type="button" data-inventory-workspace-tab="store" role="tab" aria-selected="false">매장 재고</button>
+          <button type="button" data-inventory-workspace-tab="completed" role="tab" aria-selected="false">확인 완료</button>
+        </div>
+
+        <div class="inventory-workspace-panel" data-inventory-workspace-panel="today">
+          <div class="sales-empty-card inventory-workspace-empty">
+            <p class="eyebrow">오늘 확인</p>
+            <h3>아직 전일 비교 데이터가 준비되지 않았습니다.</h3>
+            <p>매일 재고 상태를 저장한 뒤, 어제와 달라진 상품만 이곳에 표시됩니다.</p>
+          </div>
+        </div>
+
+        <div class="inventory-workspace-panel" data-inventory-workspace-panel="store" hidden>
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">실제 매장 운영</p>
+              <h3>매장 재고</h3>
+            </div>
+            <div class="inventory-intel-header-actions">
+              <label class="inventory-overview-threshold-label" for="inventoryOverviewThresholdInput">Low Stock 참고 기준(이하, 보조 필터용)</label>
+              <input id="inventoryOverviewThresholdInput" type="number" min="0" step="1" value="3" class="inventory-overview-threshold-input">
+              <button id="inventoryOverviewReloadBtn" type="button" class="today-jump-button">데이터 다시 불러오기</button>
+            </div>
+          </div>
+          <p class="hint-text">ECOUNT 재고(stockQuantity)만을 유일한 재고 기준으로 사용합니다. Cafe24 재고는 이 화면의 어떤 계산에도 사용되지 않으며, Cafe24 판매 데이터는 "최근 판매량" 참고 정보로만 표시됩니다. SAMPLAS는 시즌 상품 위주 매장이라 재고 0은 품절 오류가 아니라 재고 소진/완판 후보이며, 재고 1~3개는 자동 발주가 필요하다는 뜻이 아닙니다. QQQ 상품은 미등록 외부 판매/임시 상품 성격이라 음수 재고가 추정 판매수량 신호이며, 일반 상품과 절대 같은 KPI로 섞지 않습니다. 매장/3PL 위치별 재고는 현재 ECOUNT 응답에 데이터가 없어 항상 "확인 불가"로 표시됩니다. Inventory Intelligence(데이터 품질 진단)와는 역할이 다른 화면입니다.</p>
+
+          <div class="section-block">
+            <div id="inventoryOverviewStatus" class="ad-status-banner loading">매장 재고 로딩 중...</div>
+            <div id="inventoryOverviewMeta" class="inventory-intel-meta"></div>
+          </div>
+
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">ECOUNT 기준</p><h3>핵심 지표</h3></div></div>
+            <div id="inventoryOverviewSummaryCards" class="cards"></div>
+          </div>
+
+          <div class="section-block">
+            <div class="section-title compact"><div><p class="eyebrow">브랜드별 재고</p><h3>Brand Rollup</h3></div></div>
+            <p class="hint-text">브랜드명 클릭 시 아래 재고 상세 목록이 해당 브랜드로 필터링됩니다. 캐노니컬 브랜드 레지스트리에 없는 ECOUNT 브랜드명은 원문 그대로 표시됩니다(정보 손실 방지).</p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>브랜드</th>
+                    <th>총 SKU</th>
+                    <th>확인 가능 재고</th>
+                    <th>재고 소진 SKU</th>
+                    <th>음수 확인 필요</th>
+                    <th>QQQ 판매 추정 수량</th>
+                    <th>최근 판매량</th>
+                  </tr>
+                </thead>
+                <tbody id="inventoryOverviewBrandRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-block product-registry-workbench">
+            <div class="section-title compact"><div><p class="eyebrow">전체 SKU</p><h3>재고 상세</h3></div></div>
+            <div class="product-action-filters inventory-intel-filters">
+              <input id="inventoryOverviewSearch" type="search" placeholder="브랜드명 / 상품명 / PROD_CD / barcode 검색">
+              <select id="inventoryOverviewBrandFilter" aria-label="Inventory Overview 브랜드 필터"></select>
+              <select id="inventoryOverviewStatusFilter" aria-label="Inventory Overview 상태 필터">
+                <option value="all">전체</option>
+                <option value="in_stock">재고 있음</option>
+                <option value="depleted_candidate">재고 소진</option>
+                <option value="negative_review">일반 음수 확인 필요</option>
+                <option value="unknown">재고 미수신</option>
+                <option value="qqq_estimated_sale">QQQ 판매 추정</option>
+                <option value="location_unknown">위치 확인 불가</option>
+              </select>
+              <select id="inventoryOverviewSortSelect" aria-label="Inventory Overview 정렬">
+                <option value="priority">기본 정렬(문제 우선)</option>
+                <option value="stock-asc">재고 적은 순</option>
+                <option value="stock-desc">재고 많은 순</option>
+                <option value="recent-sales-desc">최근 판매량 많은 순</option>
+              </select>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>브랜드</th>
+                    <th>상품명</th>
+                    <th>PROD_CD</th>
+                    <th>유형</th>
+                    <th>ECOUNT 총재고</th>
+                    <th>현 매장</th>
+                    <th>현 매장 외</th>
+                    <th>위치 정보</th>
+                    <th>재고 상태</th>
+                    <th>QQQ 추정 판매</th>
+                    <th>입고단가</th>
+                    <th>판매가</th>
+                    <th>Registry 연결</th>
+                  </tr>
+                </thead>
+                <tbody id="inventoryOverviewItemRows"></tbody>
+              </table>
+            </div>
+            <div id="inventoryOverviewEmpty" class="sales-empty-card" hidden>조건에 맞는 SKU가 없습니다.</div>
+            <div id="inventoryOverviewPagination" class="inventory-overview-pagination"></div>
+          </div>
+        </div>
+
+
+        <div class="inventory-workspace-panel" data-inventory-workspace-panel="completed" hidden>
+          <div class="sales-empty-card inventory-workspace-empty">
+            <p class="eyebrow">확인 완료</p>
+            <h3>확인 처리한 재고 변화가 이곳에 기록될 예정입니다.</h3>
+            <p>확인 이력 저장 기능은 다음 단계에서 연결됩니다.</p>
           </div>
         </div>
       </section>

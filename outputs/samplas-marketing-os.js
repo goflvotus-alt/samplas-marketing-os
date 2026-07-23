@@ -6,6 +6,7 @@ const navItems = [
   { view: "Reports", label: "Monthly Report", hidden: false },
   { view: "Intelligence", label: "Intelligence", hidden: false },
   { view: "ProductRegistry", label: "Product Registry", hidden: false },
+  { view: "InventoryOverview", label: "재고 점검", hidden: false },
   { view: "Settings", label: "Settings", hidden: false },
   { view: "Product", label: "Product", hidden: true },
   { view: "Editorial AI", label: "Editorial AI", hidden: true }
@@ -100,6 +101,13 @@ let brandMasterCatalogOnly = true;
 let productRegistryRenderSeq = 0;
 let productRegistryState = { registry: null, reviewQueue: null, items: [], activeTab: "all", selectedId: null };
 let productRegistryFilters = { search: "", brand: "all", confidence: "all", status: "all", diagnostic: "all", candidateCount: "all" };
+let inventoryOverviewRenderSeq = 0;
+let inventoryOverviewState = { raw: null };
+let inventoryOverviewFilters = { search: "", brand: "all", status: "all", sort: "priority", lowStockThreshold: 3 };
+let inventoryOverviewPage = { offset: 0, limit: 50 };
+let inventoryOverviewSearchDebounceTimer = null;
+let inventoryWorkspaceTab = "today";
+const inventoryWorkspaceTabs = new Set(["today", "store", "completed"]);
 const nf = new Intl.NumberFormat("ko-KR");
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -465,6 +473,7 @@ const viewHashMap = {
   Content: "content",
   Reports: "monthly-report",
   ProductRegistry: "product-registry",
+  InventoryOverview: "inventory-overview",
   Intelligence: "intelligence",
   Settings: "settings"
 };
@@ -492,6 +501,7 @@ function setActiveView(view, options = {}) {
   updateTopbarControls(targetView);
   if (targetView === "Intelligence") refreshActiveIntelligencePanel();
   if (targetView === "ProductRegistry") renderProductRegistryView();
+  if (targetView === "InventoryOverview") renderInventoryWorkspaceView({ reset: true });
   if (options.updateHash !== false) updateViewHash(targetView);
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: options.smooth === false ? "auto" : "smooth" });
 }
@@ -8854,6 +8864,67 @@ function bind() {
       if (current) renderAdvertising(current);
     });
   });
+  document.addEventListener("click", (event) => {
+    const tabButton = event.target.closest("[data-inventory-workspace-tab]");
+    if (!tabButton) return;
+    event.preventDefault();
+    setInventoryWorkspaceTab(tabButton.dataset.inventoryWorkspaceTab);
+  });
+  $("#inventoryOverviewReloadBtn")?.addEventListener("click", () => {
+    if (inventoryWorkspaceTab !== "store") setInventoryWorkspaceTab("store");
+    else renderInventoryOverviewView();
+  });
+  $("#inventoryOverviewThresholdInput")?.addEventListener("change", (event) => {
+    const value = Number(event.target.value);
+    inventoryOverviewFilters.lowStockThreshold = Number.isFinite(value) && value >= 0 ? Math.floor(value) : 3;
+    inventoryOverviewPage.offset = 0;
+    renderInventoryOverviewView();
+  });
+  $("#inventoryOverviewSearch")?.addEventListener("input", (event) => {
+    const value = event.target.value || "";
+    clearTimeout(inventoryOverviewSearchDebounceTimer);
+    inventoryOverviewSearchDebounceTimer = setTimeout(() => {
+      inventoryOverviewFilters.search = value;
+      inventoryOverviewPage.offset = 0;
+      renderInventoryOverviewView();
+    }, 300);
+  });
+  $("#inventoryOverviewBrandFilter")?.addEventListener("change", (event) => {
+    inventoryOverviewFilters.brand = event.target.value || "all";
+    inventoryOverviewPage.offset = 0;
+    renderInventoryOverviewView();
+  });
+  $("#inventoryOverviewStatusFilter")?.addEventListener("change", (event) => {
+    inventoryOverviewFilters.status = event.target.value || "all";
+    inventoryOverviewPage.offset = 0;
+    renderInventoryOverviewView();
+  });
+  $("#inventoryOverviewSortSelect")?.addEventListener("change", (event) => {
+    inventoryOverviewFilters.sort = event.target.value || "priority";
+    inventoryOverviewPage.offset = 0;
+    renderInventoryOverviewView();
+  });
+  document.addEventListener("click", (event) => {
+    const brandRow = event.target.closest("[data-inventory-overview-brand-jump]");
+    if (!brandRow) return;
+    event.preventDefault();
+    inventoryOverviewFilters.brand = brandRow.dataset.inventoryOverviewBrandJump || "all";
+    inventoryOverviewPage.offset = 0;
+    const brandSelect = $("#inventoryOverviewBrandFilter");
+    if (brandSelect) brandSelect.value = inventoryOverviewFilters.brand;
+    if (inventoryWorkspaceTab !== "store") setInventoryWorkspaceTab("store");
+    else renderInventoryOverviewView();
+    $("#inventoryOverviewItemRows")?.closest(".section-block")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  document.addEventListener("click", (event) => {
+    const pageBtn = event.target.closest("[data-inventory-overview-page]");
+    if (!pageBtn) return;
+    event.preventDefault();
+    const direction = pageBtn.dataset.inventoryOverviewPage;
+    if (direction === "prev") inventoryOverviewPage.offset = Math.max(0, inventoryOverviewPage.offset - inventoryOverviewPage.limit);
+    if (direction === "next") inventoryOverviewPage.offset += inventoryOverviewPage.limit;
+    renderInventoryOverviewView();
+  });
   // Meta Product Performance · Phase 1: 상품 행 클릭 → accordion으로 상세 펼치기/접기.
   document.addEventListener("click", (event) => {
     const row = event.target.closest("[data-meta-product-toggle]");
@@ -9262,6 +9333,230 @@ async function renderProductRegistryView() {
     }
     $("#productRegistryList") && ($("#productRegistryList").innerHTML = "");
     $("#productRegistryDetail") && ($("#productRegistryDetail").innerHTML = `<div class="sales-empty-card"><strong>오류</strong><p>${esc(error.message || "데이터 로딩 실패")}</p></div>`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Inventory Overview (Phase 3A) — 실제 매장 운영 재고 화면.
+// intelligence-service.mjs의 GET /api/inventory/overview만 읽는다(Read Only).
+// ECOUNT stockQuantity만을 유일한 재고 기준으로 사용하며, Cafe24 재고는 이 화면의 어떤
+// 계산에도 쓰지 않는다("최근 판매량"은 ECOUNT 오프라인 매출 기준으로 서버에서 이미 계산되어 온다).
+// Inventory Intelligence(데이터 품질 진단, Phase 2A/2B)와는 역할이 다른 별개 화면이다.
+// ---------------------------------------------------------------------------
+
+// Phase 3A-2: SAMPLAS는 시즌 상품 위주 매장이라 재고 0을 "품절 오류"로 취급하지 않는다.
+// 일반 상품과 QQQ(미등록 외부 판매/임시 상품)의 상태값은 서로 다른 의미이므로 라벨/톤도 분리한다.
+// 재사용: .inventory-intel-status-pill의 기존 tone 클래스(good/informational/urgent/neutral)만 사용한다.
+const INVENTORY_OVERVIEW_STATUS_META = {
+  in_stock: { label: "재고 있음", tone: "good" },
+  depleted_candidate: { label: "재고 소진(완판 후보)", tone: "neutral" },
+  negative_review: { label: "음수 확인 필요", tone: "urgent" },
+  unknown: { label: "재고 미수신", tone: "neutral" },
+  qqq_remaining: { label: "QQQ 잔여", tone: "informational" },
+  qqq_depleted_record: { label: "QQQ 소진 기록", tone: "neutral" },
+  qqq_estimated_sale: { label: "QQQ 판매 추정", tone: "informational" },
+  qqq_unknown: { label: "QQQ 데이터 미수신", tone: "neutral" }
+};
+const INVENTORY_OVERVIEW_PRODUCT_TYPE_LABELS = { general: "일반", qqq: "QQQ", admin_code: "관리코드" };
+const INVENTORY_OVERVIEW_LOCATION_DISPLAY_NAMES = { STORE_1: "현 매장", OFFSITE: "3PL", UNKNOWN: "확인 불가" };
+
+function renderInventoryWorkspaceTabs() {
+  $$('[data-inventory-workspace-tab]').forEach((button) => {
+    const active = button.dataset.inventoryWorkspaceTab === inventoryWorkspaceTab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+}
+
+function renderInventoryWorkspacePanels() {
+  $$('[data-inventory-workspace-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.inventoryWorkspacePanel !== inventoryWorkspaceTab;
+  });
+  if (inventoryWorkspaceTab === "store") renderInventoryOverviewView();
+}
+
+function setInventoryWorkspaceTab(tab) {
+  inventoryWorkspaceTab = inventoryWorkspaceTabs.has(tab) ? tab : "today";
+  renderInventoryWorkspaceTabs();
+  renderInventoryWorkspacePanels();
+}
+
+function renderInventoryWorkspaceView(options = {}) {
+  if (options.reset) inventoryWorkspaceTab = "today";
+  setInventoryWorkspaceTab(inventoryWorkspaceTab);
+}
+
+function inventoryOverviewStatusMeta(status) {
+  return INVENTORY_OVERVIEW_STATUS_META[status] || { label: status || "-", tone: "neutral" };
+}
+
+function inventoryOverviewLocationValueLabel(value) {
+  // null(확인 불가)과 0(재고 없음 확인됨)을 절대 같은 표기로 섞지 않는다.
+  if (value === null || value === undefined) return "확인 불가";
+  return apiNum(value);
+}
+
+function inventoryOverviewQueryUrl() {
+  const params = new URLSearchParams();
+  params.set("lowStockThreshold", String(inventoryOverviewFilters.lowStockThreshold ?? 3));
+  if (inventoryOverviewFilters.brand && inventoryOverviewFilters.brand !== "all") params.set("brand", inventoryOverviewFilters.brand);
+  if (inventoryOverviewFilters.status && inventoryOverviewFilters.status !== "all") params.set("status", inventoryOverviewFilters.status);
+  if (inventoryOverviewFilters.search) params.set("search", inventoryOverviewFilters.search);
+  if (inventoryOverviewFilters.sort) params.set("sort", inventoryOverviewFilters.sort);
+  params.set("limit", String(inventoryOverviewPage.limit));
+  params.set("offset", String(inventoryOverviewPage.offset));
+  return intelligenceUrl(`/api/inventory/overview?${params.toString()}`);
+}
+
+function renderInventoryOverviewSummaryCards(resp) {
+  const target = $("#inventoryOverviewSummaryCards");
+  if (!target) return;
+  const summary = resp.summary || {};
+  // Section 5 권장 KPI 7종. Low Stock은 핵심 KPI에서 제거하고 카드 2번 아래 보조 문구로만 노출한다.
+  const cards = [
+    { label: "확인 가능한 총 잔여 재고", value: apiNum(summary.totalKnownStock), sub: "재고 있음(in_stock) 상품 합계", tone: "" },
+    { label: "재고 보유 SKU", value: apiNum(summary.inStockSkuCount), sub: `참고: Low Stock 후보 ${apiNum(summary.lowStockCandidateCount)}건(발주 신호 아님)`, tone: "good" },
+    { label: "재고 소진 SKU", value: apiNum(summary.depletedSkuCount), sub: "품절 오류 아님 · 완판 후보", tone: "neutral" },
+    { label: "일반 상품 음수 재고 확인 필요", value: apiNum(summary.negativeReviewSkuCount), sub: "QQQ 음수와 별도 집계", tone: (summary.negativeReviewSkuCount || 0) > 0 ? "urgent" : "good" },
+    { label: "재고 미수신 SKU", value: apiNum(summary.unknownStockSkuCount), sub: "stockQuantity가 null인 상품", tone: "neutral" },
+    { label: "QQQ 판매 추정 수량", value: apiNum(summary.qqqEstimatedSoldQuantity), sub: `QQQ 판매 기록 SKU ${apiNum(summary.qqqEstimatedSoldSkuCount)}건`, tone: "informational" },
+    { label: "QQQ 판매 기록 SKU", value: apiNum(summary.qqqEstimatedSoldSkuCount), sub: `QQQ 전체 ${apiNum(summary.qqqSkuCount)}건 중`, tone: "informational" }
+  ];
+  target.innerHTML = cards.map((card) => (
+    `<div class="action-item sales-kpi-card ${esc(card.tone)}"><span>${esc(card.label)}</span><strong>${card.value}</strong><small>${esc(card.sub)}</small></div>`
+  )).join("");
+}
+
+function renderInventoryOverviewBrandRows(resp) {
+  const target = $("#inventoryOverviewBrandRows");
+  if (!target) return;
+  const rows = resp.brandRollup || [];
+  if (!rows.length) {
+    target.innerHTML = `<tr><td colspan="7">브랜드 데이터가 없습니다.</td></tr>`;
+    return;
+  }
+  target.innerHTML = rows.map((row) => `
+    <tr>
+      <td><a href="#" data-inventory-overview-brand-jump="${esc(row.brandKey)}">${esc(row.brandName)}</a>${row.brandCanonical ? "" : ` <span class="hint-text">(미등록 브랜드명)</span>`}</td>
+      <td>${apiNum(row.totalSku)}</td>
+      <td>${apiNum(row.knownStock)}</td>
+      <td>${apiNum(row.depletedCount)}</td>
+      <td>${apiNum(row.negativeReviewCount)}</td>
+      <td>${row.qqqSkuCount ? apiNum(row.qqqEstimatedSoldQuantity) : "-"}</td>
+      <td>${apiNum(row.recentSalesQty)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderInventoryOverviewFilterOptions(resp) {
+  const brandSelect = $("#inventoryOverviewBrandFilter");
+  if (!brandSelect) return;
+  const rows = resp.brandRollup || [];
+  const current = inventoryOverviewFilters.brand || "all";
+  brandSelect.innerHTML = `<option value="all">브랜드 전체</option>${rows.map((row) => `<option value="${esc(row.brandKey)}">${esc(row.brandName)}</option>`).join("")}`;
+  brandSelect.value = rows.some((row) => row.brandKey === current) ? current : "all";
+}
+
+function renderInventoryOverviewItemRows(resp) {
+  const target = $("#inventoryOverviewItemRows");
+  const emptyTarget = $("#inventoryOverviewEmpty");
+  if (!target) return;
+  const items = resp.items || [];
+  if (emptyTarget) emptyTarget.hidden = items.length > 0;
+  target.innerHTML = items.map((item) => {
+    const meta = inventoryOverviewStatusMeta(item.status);
+    const typeLabel = INVENTORY_OVERVIEW_PRODUCT_TYPE_LABELS[item.productType] || item.productType || "-";
+    const locations = item.locations || {};
+    const locationStatusLabel = item.locationCoverageStatus === "unavailable" ? "확인 불가" : "확인됨";
+    return `
+      <tr>
+        <td>${esc(item.brandName)}</td>
+        <td>${esc(item.productName)}${item.specification ? ` <span class="hint-text">${esc(item.specification)}</span>` : ""}</td>
+        <td>${esc(item.prodCd)}</td>
+        <td>${esc(typeLabel)}</td>
+        <td>${apiNum(item.stockQuantity)}</td>
+        <td>${inventoryOverviewLocationValueLabel(locations.STORE_1)}</td>
+        <td>${inventoryOverviewLocationValueLabel(locations.OFFSITE)}</td>
+        <td>${esc(locationStatusLabel)}</td>
+        <td><span class="inventory-intel-status-pill ${esc(meta.tone)}">${esc(meta.label)}</span></td>
+        <td>${item.productType === "qqq" ? apiNum(item.estimatedSoldQuantity) : "-"}</td>
+        <td>${apiWon(item.purchasePrice)}</td>
+        <td>${apiWon(item.salesPrice)}</td>
+        <td>${item.registryLinked ? "연결됨" : "-"}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderInventoryOverviewPagination(resp) {
+  const target = $("#inventoryOverviewPagination");
+  if (!target) return;
+  const total = resp.itemsTotal || 0;
+  const limit = resp.limit || inventoryOverviewPage.limit;
+  const offset = resp.offset || 0;
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + limit, total);
+  target.innerHTML = `
+    <button type="button" class="today-jump-button" data-inventory-overview-page="prev" ${offset <= 0 ? "disabled" : ""}>이전</button>
+    <span>${apiNum(from)}-${apiNum(to)} / ${apiNum(total)}</span>
+    <button type="button" class="today-jump-button" data-inventory-overview-page="next" ${offset + limit >= total ? "disabled" : ""}>다음</button>
+  `;
+}
+
+function inventoryOverviewClearPanels() {
+  ["#inventoryOverviewMeta", "#inventoryOverviewSummaryCards", "#inventoryOverviewBrandRows", "#inventoryOverviewItemRows", "#inventoryOverviewPagination"].forEach((selector) => {
+    const node = $(selector);
+    if (node) node.innerHTML = "";
+  });
+}
+
+async function renderInventoryOverviewView() {
+  const seq = ++inventoryOverviewRenderSeq;
+  const status = $("#inventoryOverviewStatus");
+  if (status) {
+    status.className = "ad-status-banner loading";
+    status.textContent = "Inventory Overview 로딩 중...";
+  }
+  try {
+    const resp = await getJson(inventoryOverviewQueryUrl(), 15000);
+    if (seq !== inventoryOverviewRenderSeq) return;
+    if (resp.error) throw new Error(resp.message || resp.error);
+    if (resp.ok === false) throw new Error(resp.message || "Inventory Overview 데이터를 불러오지 못했습니다.");
+    if (resp.available === false) {
+      if (status) {
+        status.className = "ad-status-banner warn";
+        status.textContent = "ECOUNT 재고 데이터(work/ecount-inventory/latest.json)가 아직 없습니다.";
+      }
+      inventoryOverviewClearPanels();
+      return;
+    }
+    inventoryOverviewState.raw = resp;
+    if (status) {
+      status.className = "ad-status-banner good";
+      status.textContent = `Read-only · ECOUNT 기준 SKU ${apiNum(resp.summary?.totalSkuCount ?? 0)}개 (일반 ${apiNum(resp.summary?.generalSkuCount ?? 0)} · QQQ ${apiNum(resp.summary?.qqqSkuCount ?? 0)} · 관리코드 ${apiNum(resp.summary?.adminCodeSkuCount ?? 0)})`;
+    }
+    const metaTarget = $("#inventoryOverviewMeta");
+    if (metaTarget) {
+      const policy = resp.inventoryPolicy || {};
+      metaTarget.innerHTML = `
+        <span>ECOUNT 동기화 ${resp.generatedAt ? new Date(resp.generatedAt).toLocaleString("ko-KR") : "-"}</span>
+        <span>ECOUNT source: ${esc(resp.source || "-")}</span>
+        <span>재고 기준: ${esc(policy.sourceOfTruth || "ECOUNT")} (Cafe24 재고 미사용)</span>
+        <span>위치 데이터: ${policy.locationMode === "available" ? "확인 가능" : "확인 불가(현재 ECOUNT 응답에 창고 구분 없음)"}</span>
+      `;
+    }
+    renderInventoryOverviewSummaryCards(resp);
+    renderInventoryOverviewBrandRows(resp);
+    renderInventoryOverviewFilterOptions(resp);
+    renderInventoryOverviewItemRows(resp);
+    renderInventoryOverviewPagination(resp);
+  } catch (error) {
+    if (seq !== inventoryOverviewRenderSeq) return;
+    if (status) {
+      status.className = "ad-status-banner urgent";
+      status.textContent = `Inventory Overview를 불러오지 못했습니다. ${error.message || ""}`;
+    }
+    $("#inventoryOverviewItemRows") && ($("#inventoryOverviewItemRows").innerHTML = "");
   }
 }
 
