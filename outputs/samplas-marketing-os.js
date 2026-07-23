@@ -3436,12 +3436,13 @@ async function renderAdvertising(data, renderSeq) {
   const contentTarget = $("#adOrganicContent");
   const tableTarget = $("#adPerformanceRows");
   const reconTarget = $("#adReconciliationSummary");
+  const decisionCenterTarget = $("#adDecisionCenter");
   const fullReportTargets = {
     active: $("#adFullReportActiveRows"),
     other: $("#adFullReportOtherRows")
   };
   bindAdFullReportToggles();
-  if (!briefingTarget || !statusTarget || !coreKpiTarget || !summaryTarget || !campaignTarget || !contentTarget || !tableTarget || !reconTarget || !fullReportTargets.active || !fullReportTargets.other) return;
+  if (!briefingTarget || !statusTarget || !coreKpiTarget || !summaryTarget || !campaignTarget || !contentTarget || !tableTarget || !reconTarget || !decisionCenterTarget || !fullReportTargets.active || !fullReportTargets.other) return;
   hideAdOrganicSection();
 
   const range = operationsDateRange(data);
@@ -3468,6 +3469,7 @@ async function renderAdvertising(data, renderSeq) {
     statusTarget.className = "ad-status-banner error";
     statusTarget.innerHTML = `<span class="status-dot"></span><strong>${esc(badge.icon)} ${esc(badge.label)} · ${esc(status)}</strong><span class="note">${esc(startDate)} ~ ${esc(endDate)} · ${esc(meta.error)}</span>`;
     coreKpiTarget.innerHTML = `<article class="action-item"><strong>핵심 지표 확인 불가</strong><p>Meta API 오류가 해결되면 광고비 · ROAS · 실매출이 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
+    decisionCenterTarget.innerHTML = `<article class="action-item"><strong>Decision Center 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     summaryTarget.innerHTML = [
       `<article class="action-item"><strong>Meta API 상태</strong><span>${esc(status)}</span><p>${esc(meta.error)}</p></article>`,
       `<article class="action-item"><strong>권한 오류 안내</strong><p>Meta API 권한 또는 토큰 권한이 막히면 광고 성과를 불러올 수 없습니다. Settings의 Meta Ads 연결 상태를 확인하세요. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`
@@ -3491,6 +3493,7 @@ async function renderAdvertising(data, renderSeq) {
   }
 
   const briefingCount = renderAdAiBriefing(fullReport, scoreWeights, briefingTarget);
+  renderAdDecisionCenter(decisionCenterTarget, fullReport, scoreWeights, startDate, endDate);
 
   const totals = meta.totals || {};
   const tableSpend = Number(fullReport?.reconciliation?.tableSpend);
@@ -4427,6 +4430,455 @@ function renderAdAiBriefing(fullReport = {}, weights = {}, target) {
   `).join("");
   return managementCount;
 }
+// ===== Advertising Decision Center · Phase M1 =====
+// 목표: "지금 이 광고를 어떻게 운영해야 하는가"를 이번 기간 실제 집행 캠페인끼리의
+// 상대 비교(중앙값/분위수)로만 판단합니다. 업계 고정 기준값을 쓰지 않고, 이미
+// renderAdvertising()이 받아온 fullReport를 그대로 재사용합니다(새 API 호출 없음).
+// 캠페인 모집단 정의는 metaAdsIsExecuted()를 그대로 재사용합니다.
+//
+// Phase M1-3: Objective(sales/traffic/awareness)별로 비교 모집단과 핵심 지표를
+// 분리합니다. "광고 중단"은 각 Objective 판단 체인의 가장 마지막에만 등장하는
+// 보수적 결론이고, Traffic/Awareness는 Purchase·ROAS를 판단 근거로 쓰지 않습니다.
+
+const AD_DECISION_CENTER_MIN_PEERS = 3;
+const AD_DECISION_CENTER_MAX_CARDS = 5;
+
+// 카드 정렬/요약 카운트에 쓰는 우선순위(급한 것부터).
+const AD_DECISION_CENTER_PRIORITY = ["광고 중단", "광고 소재 교체", "광고 개선", "관찰", "유지", "확대"];
+const AD_DECISION_CENTER_TONE = {
+  "확대": "good",
+  "유지": "good",
+  "관찰": "warn",
+  "광고 소재 교체": "warn",
+  "광고 개선": "warn",
+  "광고 중단": "urgent"
+};
+
+// Objective별로 비교에 쓰는 핵심 지표 목록. 여기 없는 objective(engagement/video/
+// unknown 등)는 지원 대상이 아니라고 보고 보수적으로 "관찰" 처리합니다.
+const AD_DECISION_CENTER_OBJECTIVE_METRICS = {
+  sales: ["roas", "ctr", "frequency", "conversionRate", "spend"],
+  traffic: ["ctr", "frequency", "cpc", "lpvRate", "spend"],
+  awareness: ["reach", "cpm", "frequency", "ctr", "spend"]
+};
+
+function adDecisionCenterValues(rows, selector) {
+  return rows.map(selector).filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+}
+
+function adDecisionCenterQuantile(sortedValues, q) {
+  if (!sortedValues.length) return null;
+  if (sortedValues.length === 1) return sortedValues[0];
+  const pos = (sortedValues.length - 1) * q;
+  const base = Math.floor(pos);
+  const rest = pos - base;
+  const next = sortedValues[base + 1];
+  return next !== undefined ? sortedValues[base] + rest * (next - sortedValues[base]) : sortedValues[base];
+}
+
+function adDecisionCenterMedian(sortedValues) {
+  return adDecisionCenterQuantile(sortedValues, 0.5);
+}
+
+// row에서 지표 하나를 안전하게 읽습니다. roas/lpvRate는 계산이 필요하거나 null이 될
+// 수 있어 별도 분기로 처리합니다.
+function adDecisionCenterMetricValue(row, metric) {
+  if (metric === "roas") return row.roas === null || row.roas === undefined ? NaN : Number(row.roas);
+  if (metric === "lpvRate") {
+    const clicks = Number(row.clicks || 0);
+    return clicks > 0 ? Number(row.landingPageViews || 0) / clicks : NaN;
+  }
+  return Number(row[metric] || 0);
+}
+
+// 값이 그 지표의 중앙값/분위수 대비 어디에 있는지 판정합니다. 비교할 중앙값 자체가
+// 없거나(모집단 부족) 값이 계산 불가(NaN)면 전부 false로 안전하게 처리합니다.
+function adDecisionCenterCompare(value, stat) {
+  if (!stat || stat.median === null || !Number.isFinite(value)) {
+    return { belowMedian: false, aboveMedian: false, topTier: false, bottomTier: false };
+  }
+  return {
+    belowMedian: value < stat.median,
+    aboveMedian: value > stat.median,
+    topTier: stat.p75 !== null && value >= stat.p75,
+    bottomTier: stat.p25 !== null && value <= stat.p25
+  };
+}
+
+// 캠페인 집합 하나(같은 objective끼리)의 지표별 중앙값/P25/P75 — 고정 업계 기준값이
+// 아니라 그때그때 실제 데이터로 다시 계산됩니다.
+function adDecisionCenterBuildStats(rows, metrics) {
+  const stats = { count: rows.length };
+  metrics.forEach((metric) => {
+    const values = adDecisionCenterValues(rows, (row) => adDecisionCenterMetricValue(row, metric));
+    stats[metric] = {
+      median: adDecisionCenterMedian(values),
+      p25: adDecisionCenterQuantile(values, 0.25),
+      p75: adDecisionCenterQuantile(values, 0.75)
+    };
+  });
+  return stats;
+}
+
+// 전체 캠페인을 한 모집단으로 섞지 않고, sales/traffic/awareness별로 나눠 각자의
+// Peer Stats를 계산합니다. 같은 objective끼리만 상대 비교하기 위함입니다.
+function adDecisionCenterPeerStatsByObjective(executedRows) {
+  const groups = { sales: [], traffic: [], awareness: [] };
+  executedRows.forEach((row) => {
+    if (groups[row.objective]) groups[row.objective].push(row);
+  });
+  const result = {};
+  Object.keys(groups).forEach((objective) => {
+    result[objective] = adDecisionCenterBuildStats(groups[objective], AD_DECISION_CENTER_OBJECTIVE_METRICS[objective]);
+  });
+  return result;
+}
+
+// 데이터 부족(=관찰) 우선 판정. 여기 해당하면 아래 objective별 성과 비교 로직은
+// 아예 적용하지 않습니다 — spend가 적다는 이유만으로, 또는 동일 objective 표본이
+// 부족한 상태로 "중단"이 나오는 것을 구조적으로 막습니다.
+function adDecisionCenterInsufficiency(row, statsByObjective, periodDays) {
+  const reasons = [];
+  const objective = row.objective;
+  const objectiveLabel = metaAdsObjectiveLabel(row);
+  if (!AD_DECISION_CENTER_OBJECTIVE_METRICS[objective]) {
+    reasons.push(`지원 대상 Objective(Sales/Traffic/Awareness)가 아니어서(${objectiveLabel}) 보수적으로 판단을 보류합니다.`);
+    return reasons;
+  }
+  const objStats = statsByObjective[objective];
+  if (!objStats || objStats.count < AD_DECISION_CENTER_MIN_PEERS) {
+    reasons.push(`동일 Objective(${objectiveLabel}) 집행 캠페인이 3개 미만이라 상대 비교 신뢰도가 낮습니다.`);
+    return reasons;
+  }
+  const validExecution = campaignComparisonIsValidDateKey(row.executionStart) && campaignComparisonIsValidDateKey(row.executionEnd);
+  const execDays = validExecution ? campaignComparisonInclusiveDays(row.executionStart, row.executionEnd) : null;
+  if (execDays !== null && periodDays > 0 && execDays / periodDays < 0.3) {
+    reasons.push(`집행 기간이 ${execDays}일로 짧습니다(선택 기간 ${periodDays}일 중).`);
+  }
+  const spend = Number(row.spend || 0);
+  if (objStats.spend.p25 !== null && spend <= objStats.spend.p25) {
+    reasons.push(`광고비가 동일 Objective(${objectiveLabel}) 집행 캠페인 중 하위권입니다.`);
+  }
+  return reasons;
+}
+
+// Sales: ROAS/Purchase/전환율을 판단 근거로 씁니다. "광고 중단"은 CTR·전환율·ROAS·
+// 구매가 동시에 부진할 때만 최후에 등장합니다.
+function adDecisionCenterClassifySales(row, stats) {
+  const ctr = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "ctr"), stats.ctr);
+  const freq = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "frequency"), stats.frequency);
+  const roasVal = adDecisionCenterMetricValue(row, "roas");
+  const roas = adDecisionCenterCompare(roasVal, stats.roas);
+  const cvr = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "conversionRate"), stats.conversionRate);
+  const spend = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "spend"), stats.spend);
+  const purchasesPositive = Number(row.purchases || 0) > 0;
+  const roasKnown = Number.isFinite(roasVal);
+
+  if (ctr.belowMedian && freq.aboveMedian) {
+    return {
+      label: "광고 소재 교체",
+      reasons: [
+        "CTR이 동일 목적(Sales) 캠페인 중앙값보다 낮습니다.",
+        "Frequency가 동일 목적 캠페인 중앙값보다 높습니다.",
+        "반복 노출로 소재 피로 가능성이 있습니다."
+      ],
+      action: "첫 이미지 또는 영상 오프닝을 교체하거나 후킹 카피를 바꿔보세요."
+    };
+  }
+  if (!ctr.belowMedian && (cvr.belowMedian || !purchasesPositive)) {
+    const reasons = ["클릭 반응(CTR)은 나쁘지 않습니다."];
+    if (cvr.belowMedian) reasons.push("전환율(Conversion Rate)이 동일 목적 캠페인 중앙값보다 낮습니다.");
+    if (!purchasesPositive) reasons.push("클릭 이후 구매로 이어지지 않고 있습니다.");
+    reasons.push("소재보다 랜딩페이지·구매 퍼널 점검이 우선입니다.");
+    return { label: "광고 개선", reasons: reasons.slice(0, 3), action: "랜딩페이지 또는 구매 퍼널을 점검하세요." };
+  }
+  if (roas.topTier && purchasesPositive && !ctr.belowMedian && !freq.aboveMedian) {
+    return {
+      label: "확대",
+      reasons: [
+        "ROAS가 동일 목적(Sales) 캠페인 중 상위권입니다.",
+        "구매가 꾸준히 발생하고 있습니다.",
+        "CTR과 Frequency가 모두 안정적인 범위입니다."
+      ],
+      action: "예산 확대를 검토하세요."
+    };
+  }
+  if (!ctr.belowMedian && !freq.aboveMedian && (purchasesPositive || roasKnown)) {
+    return {
+      label: "유지",
+      reasons: [
+        "CTR·Frequency가 동일 목적(Sales) 캠페인 범위 안에서 안정적입니다.",
+        purchasesPositive ? "구매가 발생하고 있습니다." : "ROAS 기준으로 특별한 이상 신호가 없습니다."
+      ],
+      action: "현재 운영을 유지하세요."
+    };
+  }
+  const roasBad = !roasKnown || roas.belowMedian;
+  if (spend.topTier && !purchasesPositive && roasBad && ctr.belowMedian && cvr.belowMedian) {
+    return {
+      label: "광고 중단",
+      reasons: [
+        "충분한 기간과 예산이 사용되었습니다.",
+        "동일 목적(Sales) 캠페인 대비 CTR·전환율·ROAS가 전반적으로 낮고 구매가 없습니다.",
+        "소재 교체 또는 랜딩 개선만으로 회복될 신호도 부족합니다."
+      ],
+      action: "현재 집행 중단을 검토하고 남은 예산을 성과 우수 캠페인으로 이동하세요."
+    };
+  }
+  return {
+    label: "관찰",
+    reasons: ["성과 신호가 애매해 단정하기 이릅니다.", "중단을 확정할 만큼 근거가 충분하지 않습니다."],
+    action: "조금 더 데이터를 확보하세요."
+  };
+}
+
+// Traffic: Purchase/ROAS를 전혀 쓰지 않습니다. CTR/CPC/랜딩페이지 도달 비율/
+// Frequency로만 판단합니다.
+function adDecisionCenterClassifyTraffic(row, stats) {
+  const ctr = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "ctr"), stats.ctr);
+  const freq = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "frequency"), stats.frequency);
+  const cpc = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "cpc"), stats.cpc);
+  const lpv = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "lpvRate"), stats.lpvRate);
+  const spend = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "spend"), stats.spend);
+
+  if (ctr.belowMedian && freq.aboveMedian) {
+    return {
+      label: "광고 소재 교체",
+      reasons: [
+        "CTR이 동일 목적(Traffic) 캠페인 중앙값보다 낮습니다.",
+        "Frequency가 동일 목적 캠페인 중앙값보다 높습니다.",
+        "반복 노출로 소재 피로 가능성이 있습니다."
+      ],
+      action: "첫 이미지 또는 영상 오프닝을 교체하거나 새 비주얼 소재를 테스트하세요."
+    };
+  }
+  if (!ctr.belowMedian && (lpv.belowMedian || cpc.topTier)) {
+    const reasons = ["클릭 반응(CTR)은 나쁘지 않습니다."];
+    if (lpv.belowMedian) reasons.push("클릭 대비 랜딩페이지 도달 비율이 동일 목적 캠페인 중앙값보다 낮습니다.");
+    if (cpc.topTier) reasons.push("CPC가 동일 목적 캠페인 중 상위권(비쌈)입니다.");
+    reasons.push("소재보다 링크·랜딩·타겟 점검이 우선입니다.");
+    return { label: "광고 개선", reasons: reasons.slice(0, 3), action: "링크·랜딩페이지·타겟 설정을 점검하세요." };
+  }
+  if (ctr.topTier && cpc.bottomTier && !lpv.belowMedian && !freq.aboveMedian) {
+    return {
+      label: "확대",
+      reasons: [
+        "CTR이 동일 목적(Traffic) 캠페인 중 상위권입니다.",
+        "CPC가 동일 목적 캠페인 중 하위권(저렴)입니다.",
+        "랜딩페이지 도달 비율과 Frequency도 안정적입니다."
+      ],
+      action: "예산 확대를 검토하세요."
+    };
+  }
+  if (!ctr.belowMedian && !cpc.topTier && !lpv.belowMedian && !freq.aboveMedian) {
+    return {
+      label: "유지",
+      reasons: [
+        "CTR·CPC·랜딩페이지 도달 비율이 동일 목적(Traffic) 캠페인 범위 안에서 안정적입니다.",
+        "Frequency도 특별히 높지 않습니다."
+      ],
+      action: "현재 운영을 유지하세요."
+    };
+  }
+  if (spend.topTier && ctr.belowMedian && cpc.topTier && lpv.belowMedian) {
+    return {
+      label: "광고 중단",
+      reasons: [
+        "충분한 기간과 예산이 사용되었습니다.",
+        "동일 목적(Traffic) 캠페인 대비 CTR·CPC·랜딩페이지 도달 비율이 전반적으로 낮습니다.",
+        "소재 교체 또는 랜딩 개선만으로 설명되지 않는 전반적 부진입니다."
+      ],
+      action: "현재 집행 중단을 검토하고 남은 예산을 성과 우수 캠페인으로 이동하세요."
+    };
+  }
+  return {
+    label: "관찰",
+    reasons: ["성과 신호가 애매해 단정하기 이릅니다.", "중단을 확정할 만큼 근거가 충분하지 않습니다."],
+    action: "조금 더 데이터를 확보하세요."
+  };
+}
+
+// Awareness: Purchase/ROAS를 전혀 쓰지 않습니다. Reach/CPM/Frequency/CTR로만
+// 판단합니다.
+function adDecisionCenterClassifyAwareness(row, stats) {
+  const ctr = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "ctr"), stats.ctr);
+  const freq = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "frequency"), stats.frequency);
+  const cpm = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "cpm"), stats.cpm);
+  const reach = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "reach"), stats.reach);
+  const spend = adDecisionCenterCompare(adDecisionCenterMetricValue(row, "spend"), stats.spend);
+
+  if (freq.aboveMedian && ctr.belowMedian) {
+    return {
+      label: "광고 소재 교체",
+      reasons: [
+        "Frequency가 동일 목적(Awareness) 캠페인 중앙값보다 높습니다.",
+        "CTR이 동일 목적 캠페인 중앙값보다 낮습니다.",
+        "반복 노출로 소재 피로 가능성이 있습니다."
+      ],
+      action: "새 비주얼 소재로 교체하거나 노출 빈도를 조정하세요."
+    };
+  }
+  if (reach.topTier && !cpm.topTier && !freq.aboveMedian) {
+    return {
+      label: "확대",
+      reasons: [
+        "Reach가 동일 목적(Awareness) 캠페인 중 상위권입니다.",
+        "CPM이 상대적으로 효율적입니다.",
+        "Frequency도 과도하지 않습니다."
+      ],
+      action: "예산 확대를 검토하세요."
+    };
+  }
+  if (!reach.bottomTier && !cpm.topTier && !freq.aboveMedian) {
+    return {
+      label: "유지",
+      reasons: [
+        "Reach와 CPM이 동일 목적(Awareness) 캠페인 범위 안에서 안정적입니다.",
+        "Frequency도 특별히 높지 않습니다."
+      ],
+      action: "현재 운영을 유지하세요."
+    };
+  }
+  if (spend.topTier && reach.bottomTier && cpm.topTier && ctr.belowMedian) {
+    return {
+      label: "광고 중단",
+      reasons: [
+        "충분한 기간과 예산이 사용되었습니다.",
+        "동일 목적(Awareness) 캠페인 대비 Reach 효율·CPM·CTR이 전반적으로 낮습니다.",
+        "단순 소재 피로만으로 설명되지 않는 전반적 부진입니다."
+      ],
+      action: "현재 집행 중단을 검토하고 남은 예산을 성과 우수 캠페인으로 이동하세요."
+    };
+  }
+  return {
+    label: "관찰",
+    reasons: ["성과 신호가 애매해 단정하기 이릅니다.", "중단을 확정할 만큼 근거가 충분하지 않습니다."],
+    action: "조금 더 데이터를 확보하세요."
+  };
+}
+
+// Objective별 판단 함수로 분기합니다(우선순위: 소재 교체 → 개선 → 확대 → 유지 →
+// 관찰 → 중단[최후]는 각 objective 함수 내부에 이 순서로 구현돼 있습니다).
+function adDecisionCenterClassify(row, stats) {
+  if (row.objective === "sales") return adDecisionCenterClassifySales(row, stats);
+  if (row.objective === "traffic") return adDecisionCenterClassifyTraffic(row, stats);
+  if (row.objective === "awareness") return adDecisionCenterClassifyAwareness(row, stats);
+  return {
+    label: "관찰",
+    reasons: ["지원 대상 Objective가 아니어서 판단을 보류합니다."],
+    action: "Objective를 확인한 뒤 다시 검토하세요."
+  };
+}
+
+function adDecisionCenterConfidence(row, periodDays, insufficiencyReasons) {
+  if (insufficiencyReasons.length) return { label: "낮음", note: insufficiencyReasons[0] };
+  const validExecution = campaignComparisonIsValidDateKey(row.executionStart) && campaignComparisonIsValidDateKey(row.executionEnd);
+  const execDays = validExecution ? campaignComparisonInclusiveDays(row.executionStart, row.executionEnd) : null;
+  const coverage = execDays !== null && periodDays > 0 ? execDays / periodDays : null;
+  if (coverage !== null && coverage >= 0.6) return { label: "높음", note: `선택 기간 중 ${execDays}일 집행` };
+  return { label: "보통", note: coverage !== null ? `선택 기간 중 ${execDays}일 집행` : "집행 기간 확인 필요" };
+}
+
+// 캠페인 단위 판단 1건 계산. metaAdsIsExecuted()로 이미 걸러진 executed 캠페인만
+// 넘겨받는다고 가정합니다.
+function adDecisionCenterEvaluate(row, statsByObjective, periodDays) {
+  const insufficiencyReasons = adDecisionCenterInsufficiency(row, statsByObjective, periodDays);
+  const dataInsufficient = insufficiencyReasons.length > 0;
+  const decision = dataInsufficient
+    ? { label: "관찰", reasons: insufficiencyReasons.slice(0, 3), action: "조금 더 데이터를 확보하세요." }
+    : adDecisionCenterClassify(row, statsByObjective[row.objective]);
+
+  const reasons = decision.reasons.slice(0, 3);
+  if (reasons.length < 3) {
+    // metaAdsNarrative()를 그대로 재사용해 근거가 부족한 경우(주로 "유지")만 보충합니다.
+    const narrative = metaAdsNarrative(row);
+    if (narrative && !reasons.includes(narrative)) reasons.push(narrative);
+  }
+
+  return {
+    row,
+    label: decision.label,
+    tone: AD_DECISION_CENTER_TONE[decision.label] || "warn",
+    reasons: reasons.slice(0, 3),
+    action: decision.action,
+    confidence: adDecisionCenterConfidence(row, periodDays, insufficiencyReasons),
+    dataInsufficient
+  };
+}
+
+// fullReport(이미 renderAdvertising()이 받아온 데이터)만으로 Decision Center 카드
+// 목록을 계산합니다. 새 API 호출이 없습니다.
+function adDecisionCenterCompute(fullReport = {}, scoreWeights = {}, periodStart = "", periodEnd = "") {
+  if (fullReport.error) return { error: fullReport.error, empty: false, cards: [], counts: {} };
+  const executed = (fullReport.rows || []).filter((row) => metaAdsIsExecuted(row));
+  if (!executed.length) return { error: null, empty: true, cards: [], counts: {} };
+
+  const periodDays = campaignComparisonIsValidDateKey(periodStart) && campaignComparisonIsValidDateKey(periodEnd)
+    ? campaignComparisonInclusiveDays(periodStart, periodEnd)
+    : 0;
+  const statsByObjective = adDecisionCenterPeerStatsByObjective(executed);
+
+  const cards = executed
+    .map((row) => adDecisionCenterEvaluate(row, statsByObjective, periodDays))
+    .map((card) => ({ ...card, score: metaAdsPerformanceScore(card.row, scoreWeights) }));
+
+  cards.sort((left, right) => {
+    const priorityDiff = AD_DECISION_CENTER_PRIORITY.indexOf(left.label) - AD_DECISION_CENTER_PRIORITY.indexOf(right.label);
+    if (priorityDiff !== 0) return priorityDiff;
+    return Number(right.row.spend || 0) - Number(left.row.spend || 0);
+  });
+
+  const counts = AD_DECISION_CENTER_PRIORITY.reduce((acc, label) => {
+    acc[label] = cards.filter((card) => card.label === label).length;
+    return acc;
+  }, {});
+
+  return { error: null, empty: false, cards, counts };
+}
+
+function adDecisionCenterCardHtml(card) {
+  const reasonItems = card.reasons.map((reason) => `<li>${esc(reason)}</li>`).join("");
+  return `<article class="ad-ai-briefing-card ad-decision-card ${esc(card.tone)}">
+    <div class="ad-ai-briefing-head">
+      <span class="ad-judgment-pill ${esc(card.tone)}">${esc(card.label)}</span>
+      <strong class="ad-decision-card-name" title="${esc(card.row.campaignName || "-")}">${esc(card.row.campaignName || "-")}</strong>
+    </div>
+    <ul class="ad-decision-reasons">${reasonItems}</ul>
+    <p class="ad-decision-action"><span>권장 행동</span>${esc(card.action)}</p>
+    <p class="ad-decision-meta">
+      <span>신뢰도 ${esc(card.confidence.label)}${card.confidence.note ? ` · ${esc(card.confidence.note)}` : ""}</span>
+      <span>데이터 부족 ${card.dataInsufficient ? "예" : "아니오"}</span>
+      ${card.score === null || card.score === undefined ? "" : `<span title="Meta 자체 귀속 지표 기준, Commerce 매출 미반영">참고 성과 점수 ${card.score}점</span>`}
+    </p>
+  </article>`;
+}
+
+function adDecisionCenterSummaryHtml(counts = {}) {
+  return AD_DECISION_CENTER_PRIORITY
+    .filter((label) => counts[label] > 0)
+    .map((label) => `<span class="badge ${esc(AD_DECISION_CENTER_TONE[label] || "warn")}">${esc(label)} ${counts[label]}건</span>`)
+    .join("");
+}
+
+function renderAdDecisionCenter(target, fullReport, scoreWeights, periodStart, periodEnd) {
+  if (!target) return;
+  const result = adDecisionCenterCompute(fullReport, scoreWeights, periodStart, periodEnd);
+  if (result.error) {
+    target.innerHTML = `<article class="action-item"><strong>Decision Center 확인 불가</strong><p>${esc(result.error)}</p></article>`;
+    return;
+  }
+  if (result.empty) {
+    target.innerHTML = `<p class="hint-text">이번 기간에 집행된 캠페인이 없습니다.</p>`;
+    return;
+  }
+  const shown = result.cards.slice(0, AD_DECISION_CENTER_MAX_CARDS);
+  target.innerHTML = `
+    <div class="ad-decision-summary">${adDecisionCenterSummaryHtml(result.counts)}</div>
+    <div class="ad-ai-briefing">${shown.map((card) => adDecisionCenterCardHtml(card)).join("")}</div>
+    ${result.cards.length > shown.length ? `<p class="hint-text">우선순위 상위 ${shown.length}개만 표시합니다. 전체 캠페인은 아래 Campaign Full Report에서 확인하세요.</p>` : ""}
+  `;
+}
+
 // ============================================================================
 // Meta Product Performance · Phase 1 (2026-07-23) — Marketing 화면(#Advertising view)
 // 전용 신규 카드. GET /api/meta-ads/products가 내려주는 content_id 파싱 결과를 표/배지/detail로

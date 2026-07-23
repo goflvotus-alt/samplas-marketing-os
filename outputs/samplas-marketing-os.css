@@ -2018,6 +2018,59 @@ select,
   font-size: 12px;
   font-weight: 800;
 }
+
+/* 2026-07-18 Advertising Decision Center Phase M1: 카드 자체는 .ad-ai-briefing-card,
+   그리드는 .ad-ai-briefing, 판단 배지는 .ad-judgment-pill, 상단 요약은 .badge를 그대로
+   재사용합니다. 아래는 카드 내부 전용 요소(근거 목록/권장 행동/신뢰도·데이터부족 메타)에만
+   쓰는 최소 CSS입니다. */
+.ad-decision-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.ad-decision-card .ad-ai-briefing-head {
+  justify-content: space-between;
+}
+
+.ad-decision-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ad-decision-reasons {
+  margin: 4px 0 8px;
+  padding-left: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.ad-decision-action {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ad-decision-action span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.ad-decision-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 /* 2026-07-23 Meta Product Performance Phase 1: 표는 기존 .table-wrap/.ad-table-wrap을
    그대로 재사용합니다. 아래는 행 클릭(accordion), Registry Source 배지(.badge/.badge.good/
    .badge.warn 재사용), 상세 펼침 영역(.meta-product-performance-detail)에만 쓰는 최소
