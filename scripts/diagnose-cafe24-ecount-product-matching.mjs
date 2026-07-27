@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { fetchAllCafe24ProductsFullCatalog } from "./cafe24-script-client.mjs";
 
 const rootDir = resolve(fileURLToPath(import.meta.url), "..", "..");
 const workDir = join(rootDir, "work");
@@ -36,18 +37,30 @@ function extractList(payload) {
   return [];
 }
 
-async function latestProductDashboardSource() {
-  const files = (await readdir(workDir)).filter((name) => /^product-dashboard-proxy-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.json$/.test(name));
-  const candidates = [];
-  for (const name of files) {
-    const filePath = join(workDir, name);
-    const fileStat = await stat(filePath);
-    const data = await readJson(filePath).catch(() => null);
-    const products = extractList(data);
-    if (products.length) candidates.push({ relativePath: `work/${name}`, filePath, modifiedAt: fileStat.mtime.toISOString(), mtimeMs: fileStat.mtimeMs, products });
+// (Registry 생성 정책 리팩터링) 이전에는 latestProductDashboardSource()가
+// work/product-dashboard-proxy-*.json(특정 기간 동안 Product Dashboard가 캐시해 둔 부분
+// 집합)에서만 Cafe24 상품을 읽었다. 이 소스는 Dashboard가 실제로 조회했던 상품만 포함하므로
+// Cafe24 전체 카탈로그를 대표하지 못한다(예: display=T/selling=T인데 Dashboard 캐시 기간
+// 밖이라 한 번도 조회되지 않은 상품은 여기 없다). 이 함수는 그 소스를 완전히 대체한다 —
+// Cafe24 admin/products를 Pagination 끝까지 순회해 display/selling 여부와 무관하게 전체
+// 상품을 가져온다(scripts/cafe24-script-client.mjs). 중간에 임의 개수에서 멈추지 않는다.
+async function fullCafe24ProductCatalogSource(options = {}) {
+  if (Array.isArray(options.cafe24ProductsOverride)) {
+    // 테스트/오프라인 재현용 — 실 네트워크 호출 없이 준비된 상품 목록을 그대로 사용한다.
+    return {
+      relativePath: "test_override",
+      modifiedAt: options.now || new Date().toISOString(),
+      products: options.cafe24ProductsOverride
+    };
   }
-  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs || a.relativePath.localeCompare(b.relativePath));
-  return candidates[0];
+  const result = await fetchAllCafe24ProductsFullCatalog(options.fullCatalogFetchOptions || {});
+  return {
+    relativePath: "cafe24_admin_products_api_full_catalog",
+    modifiedAt: new Date().toISOString(),
+    products: result.products,
+    pagesFetched: result.pagesFetched,
+    stoppedReason: result.stoppedReason
+  };
 }
 
 async function loadBrandSources() {
@@ -449,7 +462,7 @@ function conImpact(ecountProducts, cafe24Products) {
 
 export async function buildCafe24EcountProductMatchingDiagnostic(options = {}) {
   const [dashboard, brandSources, ecountRaw] = await Promise.all([
-    latestProductDashboardSource(),
+    fullCafe24ProductCatalogSource(options),
     loadBrandSources(),
     readJson(join(workDir, "ecount-inventory", "latest.json"))
   ]);
@@ -492,7 +505,14 @@ export async function buildCafe24EcountProductMatchingDiagnostic(options = {}) {
     generatedAt: new Date().toISOString(),
     mode: "cafe24_ecount_product_matching_diagnostic_read_only",
     sources: {
-      cafe24: { path: dashboard.relativePath, productCount: cafe24Products.length, modifiedAt: dashboard.modifiedAt },
+      cafe24: {
+        path: dashboard.relativePath,
+        productCount: cafe24Products.length,
+        modifiedAt: dashboard.modifiedAt,
+        mode: "full_catalog_pagination",
+        pagesFetched: dashboard.pagesFetched ?? null,
+        stoppedReason: dashboard.stoppedReason ?? null
+      },
       ecount: { path: "work/ecount-inventory/latest.json", productCount: ecountProducts.length },
       brandMaster: ["work/brand-master.json", "work/intelligence/brand-master-list.json", "work/intelligence/brand-aliases.json"]
     },
