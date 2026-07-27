@@ -1288,11 +1288,12 @@ function isLocalRequest(req) {
 }
 
 async function fetchCafe24Orders(startDate, endDate, options = {}) {
+  const pastMonth = !isCurrentMonth(monthFromDate(endDate));
   await logCafe24OrdersDebug("flow_start", {
     startDate,
     endDate,
     requestedLimit: options.limit || null,
-    isCurrentMonth: isCurrentMonth(monthFromDate(endDate)),
+    isCurrentMonth: !pastMonth,
     mode: env.CAFE24_PROXY_BASE_URL ? "proxy" : "direct",
     mallId: env.CAFE24_MALL_ID || null,
     configuredScopes: env.CAFE24_SCOPES || null,
@@ -1303,24 +1304,30 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
     hasProxySecret: Boolean(env.CAFE24_PROXY_SECRET),
     hasProxyBasicAuth: Boolean(env.CAFE24_PROXY_BASIC_AUTH)
   });
-  if (!isCurrentMonth(monthFromDate(endDate))) {
+  if (pastMonth) {
     const cached = await readCachedCafe24Orders(startDate, endDate);
     if (cached) return decorateCachedSource(cached, "cafe24_orders", "past_month_cache_only");
-    return pastMonthCsvRequired("cafe24_orders", monthFromDate(startDate), {
-      startDate,
-      endDate,
-      orders: [],
-      totals: { orderCount: 0, orderAmount: 0 }
-    });
   }
 
   if (env.CAFE24_PROXY_BASE_URL) {
-    return await fetchCafe24OrdersFromProxy(startDate, endDate, options);
+    try {
+      const result = await fetchCafe24OrdersFromProxy(startDate, endDate, options);
+      if (!pastMonth || result.orders.length) return result;
+    } catch (error) {
+      if (!pastMonth) throw error;
+    }
+    return pastMonthCafe24OrdersRequired(startDate, endDate);
   }
   if (!env.CAFE24_MALL_ID) {
+    if (pastMonth) return pastMonthCafe24OrdersRequired(startDate, endDate);
     throw new Error("Cafe24 API 호출에 CAFE24_MALL_ID가 필요합니다.");
   }
-  await ensureCafe24AccessToken();
+  try {
+    await ensureCafe24AccessToken();
+  } catch (error) {
+    if (!pastMonth) throw error;
+    return pastMonthCafe24OrdersRequired(startDate, endDate);
+  }
   let body;
   try {
     body = await cafe24GetOrders(startDate, endDate, options);
@@ -1361,6 +1368,7 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
     }
   }
   const orders = body.orders || [];
+  if (pastMonth && !orders.length) return pastMonthCafe24OrdersRequired(startDate, endDate);
   const summary = summarizeCafe24Orders(orders);
   const result = {
     source: "cafe24_admin_api",
@@ -1383,7 +1391,19 @@ async function fallbackCafe24OrdersAfterError(startDate, endDate, error) {
       cacheWarning: error.message
     };
   }
+  if (!isCurrentMonth(monthFromDate(endDate))) {
+    return pastMonthCafe24OrdersRequired(startDate, endDate);
+  }
   throw error;
+}
+
+function pastMonthCafe24OrdersRequired(startDate, endDate) {
+  return pastMonthCsvRequired("cafe24_orders", monthFromDate(startDate), {
+    startDate,
+    endDate,
+    orders: [],
+    totals: { orderCount: 0, orderAmount: 0 }
+  });
 }
 
 async function fetchCafe24OrdersFromProxy(startDate, endDate, options = {}) {
