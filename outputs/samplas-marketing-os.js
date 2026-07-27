@@ -267,12 +267,65 @@ async function getJson(url, timeoutMs = 8000) {
       body = { error: `응답을 읽지 못했습니다: ${text.slice(0, 100)}` };
     }
     if (!response.ok && !body.error) body.error = `API 오류 ${response.status}`;
+    // 2026-07-18 Brand Display Name 통일: 이 API 응답(주로 /api/diagnostics/brand-sales)에
+    // products[]가 있으면, 상품명의 "[영문 : 한글]" 대괄호 표기에서 영문 Canonical Name을
+    // 추출해 전역 캐시에 채웁니다. 새 API를 추가하지 않고 이미 호출 중인 응답만 재사용합니다.
+    registerBrandCanonicalNames(body?.products);
+    registerBrandCanonicalNames(body?.commerce?.productSales);
+    registerBrandCanonicalNames(body?.archive?.commerce?.productSales);
+    registerBrandMasterResponse(body);
     return body;
   } catch (error) {
     return { error: error.name === "AbortError" ? "응답 지연" : error.message };
   } finally {
     clearTimeout(timer);
   }
+}
+
+// 브랜드 코드 → 영문 Canonical Name 전역 캐시. 세션 동안 여러 화면이 /api/diagnostics/
+// brand-sales를 호출할 때마다 getJson()이 자동으로 채웁니다(위 참고).
+const brandCanonicalNameCache = new Map();
+const brandRegistryEnglishNameCache = new Map();
+
+function registerBrandCanonicalNames(products) {
+  if (!Array.isArray(products)) return;
+  products.forEach((product) => {
+    const code = String(product?.brand_code || "").trim();
+    if (!code) return;
+    const english = intelligenceBrandNameFromProductName(product?.productName);
+    if (english) brandCanonicalNameCache.set(code, english);
+  });
+}
+
+function registerBrandRegistryNames(brands) {
+  if (!Array.isArray(brands)) return;
+  brands.forEach((brand) => {
+    const code = String(brand?.brand_code || brand?.brandCode || brand?.code || "").trim();
+    const english = String(brand?.brand_name || brand?.brandName || brand?.name || "").trim();
+    if (code && english && english !== code && /[A-Za-z]/.test(english) && !/[가-힣]/.test(english)) {
+      brandRegistryEnglishNameCache.set(code, english);
+    }
+  });
+}
+
+function registerBrandMasterResponse(body) {
+  registerBrandRegistryNames(body?.brands);
+}
+
+function brandCanonicalDisplayName(brandLike = {}) {
+  if (brandLike == null) return "미분류";
+  if (typeof brandLike === "string") {
+    const trimmed = brandLike.trim();
+    if (trimmed === "B0000000") return "개인결제창";
+    return trimmed || "미분류";
+  }
+  const code = String(brandLike.brand_code || brandLike.brandCode || brandLike.code || brandLike.id || "").trim();
+  if (code === "B0000000") return "개인결제창";
+  const rawName = String(brandLike.brand_name || brandLike.brandName || brandLike.name || "").trim();
+  if (code && brandRegistryEnglishNameCache.has(code)) return brandRegistryEnglishNameCache.get(code);
+  if (code && brandCanonicalNameCache.has(code)) return brandCanonicalNameCache.get(code);
+  if (rawName && rawName !== code) return rawName;
+  return "미분류";
 }
 
 let sharedJsonRequests = new Map();
