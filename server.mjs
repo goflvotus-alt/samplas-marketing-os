@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir, readdir as fsReaddir, rename } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir as fsReaddir, rename, link, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { URL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
@@ -248,6 +248,12 @@ const server = createServer(async (req, res) => {
       const payload = await readJsonBody(req);
       const data = await importCafe24Csv(payload.csvText || "", payload.csvFile || "cafe24-upload.csv");
       return json(res, data);
+    }
+    if (url.pathname === "/api/work-data/upload") {
+      if (req.method !== "POST") return json(res, { error: "POST만 지원합니다." }, 405);
+      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      const payload = await readJsonBody(req);
+      return json(res, await uploadWorkDataFiles(payload));
     }
     if (url.pathname === "/api/cafe24/refresh-token") {
       const data = await refreshCafe24Token();
@@ -1984,6 +1990,83 @@ const cafe24ProductCatalogFile = () => join(workDir, "cafe24-product-catalog.jso
 const productSalesHistoryFile = () => join(workDir, "product-sales-history.json");
 const brandMasterFile = () => join(workDir, "brand-master.json");
 const productBrandMapFile = () => join(workDir, "product-brand-map.json");
+const workDataUploadPaths = new Set([
+  ...Array.from({ length: 7 }, (_, index) => `ecount-sales/2026-${String(index + 1).padStart(2, "0")}.json`),
+  "ecount-inventory/latest.json",
+  "ecount-inventory/diagnostic.json"
+]);
+
+async function uploadWorkDataFiles(payload) {
+  const files = Array.isArray(payload?.files) ? payload.files : [];
+  if (!files.length) throw Object.assign(new Error("files가 필요합니다."), { status: 400 });
+  const overwrite = payload?.overwrite === true;
+  const seen = new Set();
+  const prepared = files.map((file) => {
+    const relativePath = String(file?.relativePath || "").trim();
+    if (!workDataUploadPaths.has(relativePath)) {
+      throw Object.assign(new Error(`허용되지 않은 work 데이터 경로입니다: ${relativePath}`), { status: 400 });
+    }
+    if (seen.has(relativePath)) {
+      throw Object.assign(new Error(`중복된 work 데이터 경로입니다: ${relativePath}`), { status: 400 });
+    }
+    seen.add(relativePath);
+    const jsonText = String(file?.jsonText || "");
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      throw Object.assign(new Error(`JSON 파싱 실패: ${relativePath}`), { status: 400 });
+    }
+    if (relativePath.startsWith("ecount-sales/")) {
+      const month = relativePath.slice("ecount-sales/".length, -".json".length);
+      if (parsed?.month !== month) throw Object.assign(new Error(`ECOUNT sales month 불일치: ${relativePath}`), { status: 400 });
+    } else if (relativePath.endsWith("/latest.json") && !Array.isArray(parsed)) {
+      throw Object.assign(new Error(`ECOUNT inventory latest 형식 오류: ${relativePath}`), { status: 400 });
+    } else if (relativePath.endsWith("/diagnostic.json") && (!parsed || typeof parsed !== "object" || Array.isArray(parsed))) {
+      throw Object.assign(new Error(`ECOUNT inventory diagnostic 형식 오류: ${relativePath}`), { status: 400 });
+    }
+    return {
+      relativePath,
+      jsonText,
+      target: join(workDir, ...relativePath.split("/"))
+    };
+  });
+
+  const conflicts = prepared.filter((file) => existsSync(file.target)).map((file) => file.relativePath);
+  if (conflicts.length && !overwrite) {
+    throw Object.assign(new Error(`기존 work 데이터가 있어 업로드를 중단합니다: ${conflicts.join(", ")}`), { status: 409 });
+  }
+
+  const staged = [];
+  const created = [];
+  try {
+    for (const file of prepared) {
+      await mkdir(dirname(file.target), { recursive: true });
+      file.temp = `${file.target}.tmp-${process.pid}-${randomUUID()}`;
+      await writeFile(file.temp, file.jsonText);
+      staged.push(file);
+    }
+    for (const file of staged) {
+      if (overwrite) {
+        await rename(file.temp, file.target);
+      } else {
+        await link(file.temp, file.target);
+        await unlink(file.temp);
+        created.push(file.target);
+      }
+    }
+  } catch (error) {
+    await Promise.all(staged.map((file) => unlink(file.temp).catch(() => {})));
+    if (!overwrite) await Promise.all(created.map((file) => unlink(file).catch(() => {})));
+    throw error;
+  }
+
+  return {
+    ok: true,
+    overwrite,
+    uploaded: prepared.map((file) => file.relativePath)
+  };
+}
 
 async function writeJsonAtomic(file, data) {
   await mkdir(workDir, { recursive: true });
