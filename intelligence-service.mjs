@@ -845,24 +845,24 @@ function buildBrandSignals(input) {
   const commerce = input.commerce;
   const search = input.search;
   if (commerce.status === "matched") {
-    const salesAmount = finiteOrNull(commerce.data?.salesAmount);
+    const paidAmount = finiteOrNull(commerce.data?.paidAmount ?? commerce.data?.salesAmount);
     const orderCount = finiteOrNull(commerce.data?.orderCount);
     const quantitySold = finiteOrNull(commerce.data?.quantitySold);
-    if (salesAmount !== null && salesAmount > 0) {
+    if (paidAmount !== null && paidAmount > 0) {
       signals.push({
         id: "commerce_sales_present",
         type: "commerce",
         priority: "medium",
-        title: "선택 기간 판매가 확인됨",
-        evidence: { salesAmount, source: commerce.data?.source || null }
+        title: "선택 기간 실제 결제 매출 확인됨",
+        evidence: { paidAmount, source: commerce.data?.source || null }
       });
-    } else if (salesAmount === 0) {
+    } else if (paidAmount === 0) {
       signals.push({
         id: "commerce_sales_zero",
         type: "commerce",
         priority: "medium",
-        title: "선택 기간 판매가 0으로 확인됨",
-        evidence: { salesAmount, source: commerce.data?.source || null }
+        title: "선택 기간 실제 결제 매출 0으로 확인됨",
+        evidence: { paidAmount, source: commerce.data?.source || null }
       });
     }
     if (orderCount !== null && orderCount > 0) {
@@ -1018,7 +1018,7 @@ function buildBrandActions(input, signals) {
 
 function buildBrandSummary(input, signals, actions) {
   const parts = [];
-  if (hasSignal(signals, "commerce_sales_present")) parts.push("선택 기간 판매가 확인됐습니다");
+  if (hasSignal(signals, "commerce_sales_present")) parts.push("선택 기간 실제 결제 매출이 확인됐습니다");
   else if (hasSignal(signals, "commerce_sales_zero")) parts.push("선택 기간 판매는 0으로 확인됐습니다");
   else if (input.commerce.status === "unmatched") parts.push("선택 기간 Cafe24 브랜드 매출 매칭은 없습니다");
   else if (input.commerce.status === "unavailable") parts.push("Cafe24 데이터 확인이 제한됩니다");
@@ -1382,7 +1382,7 @@ async function buildCommerceBrandInput({ brand, registry, period, sourceData }) 
     data: {
       source: response.data?.source || null,
       salesAmount: finiteOrNull(matchedBrand?.salesAmount),
-      paidAmount: finiteOrNull(matchedBrand?.salesAmount),
+      paidAmount: finiteOrNull(matchedBrand?.sales?.paidAmount ?? matchedBrand?.canonicalPaidAmount ?? matchedBrand?.salesAmount),
       orderCount: finiteOrNull(matchedBrand?.orderCount),
       quantitySold: finiteOrNull(matchedBrand?.quantitySold),
       productCount: finiteOrNull(matchedBrand?.soldProductCount ?? matchedProducts.length),
@@ -1391,6 +1391,7 @@ async function buildCommerceBrandInput({ brand, registry, period, sourceData }) 
         productCode: product.productCode || null,
         productName: product.productName || null,
         salesAmount: finiteOrNull(product.salesAmount),
+        paidAmount: finiteOrNull(product?.sales?.paidAmount ?? product?.canonicalPaidAmount ?? product?.salesAmount),
         orderCount: finiteOrNull(product.orderCount),
         quantitySold: finiteOrNull(product.quantitySold)
       }))

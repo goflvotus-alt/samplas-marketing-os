@@ -175,6 +175,10 @@ function isExcludedCommerceBrandPerformanceCode(code) {
   return normalized === "B0000000" || normalized === "UNASSIGNED";
 }
 
+function brandPerformancePaidAmount(record = {}) {
+  return canonicalPaidAmount(record);
+}
+
 function cafe24MoneyValue(value) {
   if (value === null || value === undefined || value === "") return 0;
   if (typeof value === "object") return 0;
@@ -2018,8 +2022,8 @@ function monthlyReportBrandSignals(currentRows = [], previousRows = []) {
   return currentRows.filter((row) => monthlyReportBrandCode(row) !== "B0000000").map((row) => {
     const code = monthlyReportBrandCode(row);
     if (!code || !previousByCode.has(code)) return null;
-    const currentSales = Number(row.salesAmount);
-    const previousSales = Number(previousByCode.get(code)?.salesAmount);
+    const currentSales = brandPerformancePaidAmount(row);
+    const previousSales = brandPerformancePaidAmount(previousByCode.get(code));
     if (!Number.isFinite(currentSales) || !Number.isFinite(previousSales) || previousSales <= 0) return null;
     const diffRate = (currentSales - previousSales) / previousSales * 100;
     if (!Number.isFinite(diffRate)) return null;
@@ -2319,7 +2323,7 @@ function annualArchiveAggregateBrandSales(rows) {
     (row.archive?.commerce?.brandSales || []).forEach((brand) => {
       const code = monthlyReportBrandCode(brand);
       if (!code || code === "B0000000") return;
-      const salesAmount = Number(brand.salesAmount);
+      const salesAmount = brandPerformancePaidAmount(brand);
       if (!Number.isFinite(salesAmount)) return;
       const previous = totals.get(code) || {
         brand_code: code,
@@ -7446,7 +7450,7 @@ function intelligenceEvidenceMetrics(detail = {}) {
   const metrics = [];
   for (const signal of signals) {
     const evidence = signal?.evidence || {};
-    if (metrics.length < 3 && Number.isFinite(Number(evidence.salesAmount))) metrics.push({ label: "온라인 매출", value: apiWon(evidence.salesAmount) });
+    if (metrics.length < 3 && Number.isFinite(Number(evidence.paidAmount ?? evidence.salesAmount))) metrics.push({ label: "온라인 매출", value: apiWon(evidence.paidAmount ?? evidence.salesAmount) });
     if (metrics.length < 3 && Number.isFinite(Number(evidence.orderCount))) metrics.push({ label: "주문", value: `${apiNum(evidence.orderCount)}건` });
     if (metrics.length < 3 && Number.isFinite(Number(evidence.quantitySold))) metrics.push({ label: "판매수량", value: `${apiNum(evidence.quantitySold)}개` });
     if (metrics.length < 3 && Number.isFinite(Number(evidence.pcSearchVolume))) metrics.push({ label: "PC 검색", value: apiNum(evidence.pcSearchVolume) });
@@ -7655,12 +7659,12 @@ function buildBrandTimeline(brand = {}) {
     });
   };
   const commerce = input?.commerce?.data || {};
-  if (Number.isFinite(Number(commerce.salesAmount ?? commerce.paidAmount))) {
+  if (Number.isFinite(Number(commerce.paidAmount ?? commerce.salesAmount))) {
     addEvent({
       category: "commerce",
       type: "sales",
       title: "온라인 매출 확인",
-      description: `최근 온라인 매출 ${apiWon(commerce.salesAmount ?? commerce.paidAmount)} · 주문 ${apiNum(commerce.orderCount)}건 · 판매수량 ${apiNum(commerce.quantitySold)}개`
+      description: `최근 온라인 매출 ${apiWon(commerce.paidAmount ?? commerce.salesAmount)} · 주문 ${apiNum(commerce.orderCount)}건 · 판매수량 ${apiNum(commerce.quantitySold)}개`
     });
   }
   if (Array.isArray(commerce.products)) {
@@ -7668,7 +7672,7 @@ function buildBrandTimeline(brand = {}) {
       category: "commerce",
       type: "product",
       title: product.productName || "판매 상품",
-      description: `온라인 매출 ${apiWon(product.salesAmount)} · 주문 ${apiNum(product.orderCount)}건 · 수량 ${apiNum(product.quantitySold)}개`
+      description: `온라인 매출 ${apiWon(product.paidAmount ?? product.salesAmount)} · 주문 ${apiNum(product.orderCount)}건 · 수량 ${apiNum(product.quantitySold)}개`
     }));
   }
   const marketing = input?.marketing || {};
@@ -7737,7 +7741,7 @@ function buildBrandTimeline(brand = {}) {
 function intelligenceSignalDescription(signal = {}) {
   const evidence = signal.evidence || {};
   const parts = [];
-  if (Number.isFinite(Number(evidence.salesAmount))) parts.push(`온라인 매출 ${apiWon(evidence.salesAmount)}`);
+  if (Number.isFinite(Number(evidence.paidAmount ?? evidence.salesAmount))) parts.push(`온라인 매출 ${apiWon(evidence.paidAmount ?? evidence.salesAmount)}`);
   if (Number.isFinite(Number(evidence.orderCount))) parts.push(`주문 ${apiNum(evidence.orderCount)}건`);
   if (Number.isFinite(Number(evidence.quantitySold))) parts.push(`판매수량 ${apiNum(evidence.quantitySold)}개`);
   if (evidence.reason) parts.push(evidence.reason);
@@ -7830,7 +7834,7 @@ function intelligenceEvidenceCards(data = {}, inputData = {}) {
   const content = inputData?.content || {};
   const search = inputData?.search || {};
   const evidence = [
-    { label: "브랜드 온라인 매출", value: Number.isFinite(Number(commerce.salesAmount ?? commerce.paidAmount)) ? apiWon(commerce.salesAmount ?? commerce.paidAmount) : "데이터 없음", note: "Cafe24 온라인" },
+    { label: "브랜드 온라인 매출", value: Number.isFinite(Number(commerce.paidAmount ?? commerce.salesAmount)) ? apiWon(commerce.paidAmount ?? commerce.salesAmount) : "데이터 없음", note: "Cafe24 실제 결제 기준" },
     { label: "주문", value: Number.isFinite(Number(commerce.orderCount)) ? `${apiNum(commerce.orderCount)}건` : "데이터 없음", note: "정상 주문 기준" },
     { label: "판매수량", value: Number.isFinite(Number(commerce.quantitySold)) ? `${apiNum(commerce.quantitySold)}개` : "데이터 없음", note: "주문 item 기준" },
     { label: "검색 snapshot", value: intelligenceSourceHumanStatus("search", data?.sources?.search || search), note: "Naver Search Ads" },
@@ -8141,7 +8145,7 @@ function intelligenceTimelineRowsFromBrand(brandId = "", detailRecord = {}, miss
       brandName: displayName,
       occurredAt,
       type: "commerce_sales_present",
-      summary: "선택 기간 판매가 확인되었습니다.",
+      summary: "선택 기간 실제 결제 매출이 확인되었습니다.",
       metrics,
       action: intelligenceTimelineAction(mission || {}, detail),
       sourceText: intelligenceTimelineSourceText(detail?.sources || {}),
@@ -8239,7 +8243,7 @@ function intelligenceTimelineSummary(event = {}, detail = {}, input = {}) {
   const ids = new Set([...(Array.isArray(detail.signals) ? detail.signals.map((signal) => signal.id) : [])]);
   if (ids.has("sales_without_search_snapshot")) return "판매는 확인됐지만 Naver 검색 Snapshot이 없습니다.";
   if (ids.has("search_snapshot_missing")) return "Naver 검색 Snapshot이 없습니다.";
-  if (Number.isFinite(Number(input?.commerce?.data?.salesAmount ?? input?.commerce?.data?.paidAmount))) return "선택 기간 판매가 확인되었습니다.";
+  if (Number.isFinite(Number(input?.commerce?.data?.paidAmount ?? input?.commerce?.data?.salesAmount))) return "선택 기간 실제 결제 매출이 확인되었습니다.";
   return event.description || event.title || "Intelligence 이벤트가 기록되었습니다.";
 }
 
@@ -8250,18 +8254,18 @@ function intelligenceTimelineSalesBrandName(row = null) {
 function intelligenceTimelineMetrics(detail = {}, input = {}, salesRecord = null) {
   const commerce = input?.commerce?.data || {};
   const metrics = [];
-  if (Number.isFinite(Number(commerce.salesAmount ?? commerce.paidAmount))) metrics.push({ label: "최근 판매", value: apiWon(commerce.salesAmount ?? commerce.paidAmount) });
+  if (Number.isFinite(Number(commerce.paidAmount ?? commerce.salesAmount))) metrics.push({ label: "최근 판매", value: apiWon(commerce.paidAmount ?? commerce.salesAmount) });
   if (Number.isFinite(Number(commerce.orderCount))) metrics.push({ label: "주문", value: `${apiNum(commerce.orderCount)}건` });
   if (Number.isFinite(Number(commerce.quantitySold))) metrics.push({ label: "판매수량", value: `${apiNum(commerce.quantitySold)}개` });
   if (!metrics.length && salesRecord) {
-    if (Number.isFinite(Number(salesRecord.salesAmount))) metrics.push({ label: "최근 판매", value: apiWon(salesRecord.salesAmount) });
+    if (Number.isFinite(Number(salesRecord?.sales?.paidAmount ?? salesRecord.canonicalPaidAmount ?? salesRecord.salesAmount))) metrics.push({ label: "최근 판매", value: apiWon(salesRecord?.sales?.paidAmount ?? salesRecord.canonicalPaidAmount ?? salesRecord.salesAmount) });
     if (Number.isFinite(Number(salesRecord.orderCount))) metrics.push({ label: "주문", value: `${apiNum(salesRecord.orderCount)}건` });
     if (Number.isFinite(Number(salesRecord.quantitySold))) metrics.push({ label: "판매수량", value: `${apiNum(salesRecord.quantitySold)}개` });
   }
   if (!metrics.length && Array.isArray(detail.signals)) {
     for (const signal of detail.signals) {
       const evidence = signal.evidence || {};
-      if (metrics.length < 3 && Number.isFinite(Number(evidence.salesAmount))) metrics.push({ label: "최근 판매", value: apiWon(evidence.salesAmount) });
+      if (metrics.length < 3 && Number.isFinite(Number(evidence.paidAmount ?? evidence.salesAmount))) metrics.push({ label: "최근 판매", value: apiWon(evidence.paidAmount ?? evidence.salesAmount) });
       if (metrics.length < 3 && Number.isFinite(Number(evidence.orderCount))) metrics.push({ label: "주문", value: `${apiNum(evidence.orderCount)}건` });
       if (metrics.length < 3 && Number.isFinite(Number(evidence.quantitySold))) metrics.push({ label: "판매수량", value: `${apiNum(evidence.quantitySold)}개` });
     }
