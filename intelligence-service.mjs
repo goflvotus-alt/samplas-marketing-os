@@ -10,6 +10,7 @@ import {
   buildOfflineSalesIndex,
   DEFAULTS as INVENTORY_OVERVIEW_DEFAULTS
 } from "./scripts/inventory-overview-lib.mjs";
+import { bootstrapProductRegistryFiles } from "./scripts/bootstrap-product-registry.mjs";
 
 const root = resolve(".");
 const env = await loadEnv();
@@ -42,6 +43,7 @@ const missionCacheTtlMs = 30000;
 const missionResultCache = new Map();
 const missionRefreshPromises = new Map();
 
+await bootstrapProductRegistryFiles({ projectRoot: root, workDir: workRoot });
 await mkdir(intelligenceWorkDir, { recursive: true });
 await ensureBrandRegistryFiles();
 await ensureNaverSnapshotsFile();
