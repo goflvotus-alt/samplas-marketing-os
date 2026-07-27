@@ -204,7 +204,12 @@ const server = createServer(async (req, res) => {
         return json(res, { ...archive, archiveStatus: "live", archiveReference });
       }
       const cached = await readMonthlyArchive(month);
-      if (cached) return json(res, { ...cached, archiveStatus: "saved" });
+      const staleEmptyCache = cached
+        && Number(cached?.sales?.totalSales?.amount || 0) === 0
+        && Number(cached?.sales?.onlineSales?.paidAmount || 0) === 0
+        && Number(cached?.sales?.offlineSales?.offlineSalesAmount || 0) === 0
+        && cached?.sales?.coverage?.missingMonths?.includes(month);
+      if (cached && !staleEmptyCache) return json(res, { ...cached, archiveStatus: "saved" });
       const archive = await buildMonthlyArchive(month);
       return json(res, { ...archive, archiveStatus: "draft" });
     }
