@@ -3563,7 +3563,7 @@ async function renderAdvertising(data, renderSeq) {
 
   const briefingCount = renderAdAiBriefing(fullReport, scoreWeights, briefingTarget);
   renderAdDecisionCenter(decisionCenterTarget, fullReport, scoreWeights, startDate, endDate);
-  renderCampaignSalesAnalysis(salesAnalysisTarget, fullReport, scoreWeights);
+  renderCampaignSalesAnalysis(salesAnalysisTarget, fullReport, renderSeq);
 
   const totals = meta.totals || {};
   const tableSpend = Number(fullReport?.reconciliation?.tableSpend);
@@ -4949,53 +4949,272 @@ function renderAdDecisionCenter(target, fullReport, scoreWeights, periodStart, p
   `;
 }
 
-// ===== Campaign Sales Analysis · MVP =====
-// 신규 API 없이 기존 renderAdvertising()이 받아온 fullReport.rows만 재사용합니다.
-// 제품별 판매 상세/기여분석은 이번 범위에 포함하지 않으며, 성과 판단은 기존
-// metaAdsPerformanceScore/metaAdsStarDecision을 그대로 재사용합니다.
-function campaignSalesAnalysisRows(fullReport = {}) {
-  return (fullReport.rows || [])
+// ===== Campaign Sales Analysis · Phase A =====
+// 광고 효과를 증명(Attribution)하지 않습니다. 이미 renderAdvertising()이 받아온 fullReport의
+// 캠페인별 실제 집행 기간(executionStart~executionEnd)과 겹치는 Cafe24 실제 판매를 함께
+// 관찰하는 참고 자료입니다. 새 API는 추가하지 않고, Commerce 기간 비교(renderCampaignPeriodComparison)
+// 에서 이미 쓰고 있는 /api/diagnostics/brand-sales?since=&until=를 캠페인별 날짜로 재호출합니다
+// (campaignComparison* 헬퍼도 그대로 재사용). 문장은 항상 관찰 기반으로만 씁니다 — "때문에",
+// "효과", "만들었습니다" 같은 인과 단정 표현은 쓰지 않습니다.
+const AD_SALES_ANALYSIS_MAX_CAMPAIGNS = 5;
+const AD_SALES_ANALYSIS_TOP_PRODUCTS = 10;
+const AD_SALES_ANALYSIS_CONCENTRATION_THRESHOLD = 0.2;
+const AD_SALES_ANALYSIS_BRAND_THRESHOLD = 0.35;
+
+// 광고비 상위 N개 집행 캠페인만 분석합니다(Decision Center의 AD_DECISION_CENTER_MAX_CARDS와
+// 같은 원칙 — 캠페인 하나마다 Cafe24 조회가 추가로 발생하므로 무제한으로 늘리지 않습니다).
+// 실제 집행 기간(executionStart/executionEnd)이 유효한 캠페인만 대상으로 합니다.
+function adSalesAnalysisSelectCampaigns(fullReport = {}) {
+  const rows = Array.isArray(fullReport.rows) ? fullReport.rows : [];
+  return rows
     .filter((row) => metaAdsIsExecuted(row))
-    .sort((a, b) => Number(b.spend || 0) - Number(a.spend || 0));
+    .filter((row) => campaignComparisonIsValidDateKey(row.executionStart) && campaignComparisonIsValidDateKey(row.executionEnd))
+    .sort((left, right) => Number(right.spend || 0) - Number(left.spend || 0))
+    .slice(0, AD_SALES_ANALYSIS_MAX_CAMPAIGNS);
 }
 
-function campaignSalesAnalysisRowHtml(row, weights) {
-  const decision = metaAdsStarDecision(metaAdsPerformanceScore(row, weights));
-  const roas = row.roas === null || row.roas === undefined ? null : Number(row.roas);
-  const purchases = row.purchases === null || row.purchases === undefined ? null : Number(row.purchases);
-  const ctr = row.ctr === null || row.ctr === undefined ? null : Number(row.ctr);
+function adSalesAnalysisAvgLabel(value) {
+  return value === null || value === undefined || !Number.isFinite(Number(value)) ? "-" : `${Number(value).toFixed(1)}개`;
+}
+
+// Cafe24 brand-sales의 products[] 한 행을 카드/표에 쓸 형태로 정리합니다. 브랜드명은 새 로직을
+// 만들지 않고 이미 있는 brandCanonicalDisplayName() 공통 함수를 그대로 재사용합니다.
+function adSalesAnalysisProductRow(product = {}) {
+  const quantitySold = Number(product.quantitySold || 0);
+  const salesAmount = canonicalPaidAmount(product);
+  const orderCount = Number(product.orderCount || 0);
+  return {
+    key: String(product.productNo || product.productCode || product.productName || ""),
+    productName: product.productName || "상품명 확인 불가",
+    brandName: brandCanonicalDisplayName(product),
+    quantitySold,
+    salesAmount,
+    orderCount,
+    avgPrice: quantitySold > 0 ? salesAmount / quantitySold : null
+  };
+}
+
+// 판매금액 기준 TOP N. "많이 팔렸다"를 판매수량이 아니라 판매금액 기준으로 줄 세우는 이유는,
+// 이 프로젝트 전반(Commerce/Monthly Report TOP 브랜드 등)이 이미 salesAmount를 canonical
+// 랭킹 기준으로 쓰고 있어 화면마다 기준이 갈리지 않도록 통일한 것입니다.
+function adSalesAnalysisTopProducts(products = [], limit = AD_SALES_ANALYSIS_TOP_PRODUCTS) {
+  return products
+    .filter((p) => Number(p.quantitySold || 0) > 0 || canonicalPaidAmount(p) > 0)
+    .map((p) => adSalesAnalysisProductRow(p))
+    .sort((a, b) => b.salesAmount - a.salesAmount)
+    .slice(0, limit);
+}
+
+// 판매가 특정 상품/브랜드에 집중되었는지, 여러 상품에 분산되었는지 판단하기 위한 집중도 계산.
+// 고정 업계 기준이 아니라 이번 집행 기간 실제 판매 데이터 안에서의 비중(%)만 봅니다.
+function adSalesAnalysisConcentration(products = []) {
+  const totalSales = products.reduce((sum, p) => sum + canonicalPaidAmount(p), 0);
+  if (!totalSales || !products.length) {
+    return { totalSales: 0, top1: null, top1Share: null, topBrandName: null, topBrandShare: null };
+  }
+  const sorted = [...products].sort((a, b) => canonicalPaidAmount(b) - canonicalPaidAmount(a));
+  const top1 = adSalesAnalysisProductRow(sorted[0]);
+  const top1Share = canonicalPaidAmount(sorted[0]) / totalSales;
+  const brandTotals = new Map();
+  products.forEach((p) => {
+    const name = brandCanonicalDisplayName(p);
+    brandTotals.set(name, (brandTotals.get(name) || 0) + canonicalPaidAmount(p));
+  });
+  let topBrandName = null;
+  let topBrandShare = null;
+  brandTotals.forEach((amount, name) => {
+    const share = amount / totalSales;
+    if (topBrandShare === null || share > topBrandShare) {
+      topBrandShare = share;
+      topBrandName = name;
+    }
+  });
+  return { totalSales, top1, top1Share, topBrandName, topBrandShare };
+}
+
+// 광고 시작 이전(같은 길이의 직전 기간, campaignComparisonRangeFromExecution 재사용) 대비
+// 일평균 판매량 변화. 비교 데이터를 불러오지 못했거나(csv_required 등) 기간이 없으면 null을
+// 반환해 "비교 가능한 데이터가 충분할 때만 표시" 규칙을 지킵니다.
+function adSalesAnalysisComparisonStats(executionTotals = {}, comparisonTotals = {}, executionDays, comparisonDays, topProduct = null, comparisonProducts = []) {
+  if (!Number(executionDays) || !Number(comparisonDays)) return null;
+  const afterQty = Number(executionTotals.quantitySold || 0);
+  const beforeQty = Number(comparisonTotals.quantitySold || 0);
+  const afterAvg = afterQty / executionDays;
+  const beforeAvg = beforeQty / comparisonDays;
+  const direction = afterAvg > beforeAvg ? "증가" : afterAvg < beforeAvg ? "감소" : "변화 없음";
+  let topProductBeforeQty = null;
+  if (topProduct && Array.isArray(comparisonProducts)) {
+    const match = comparisonProducts.find((p) => String(p.productNo || p.productCode || p.productName || "") === topProduct.key);
+    if (match) topProductBeforeQty = Number(match.quantitySold || 0);
+  }
+  return {
+    beforeAvg,
+    afterAvg,
+    beforeQty,
+    afterQty,
+    direction,
+    rateLabel: campaignComparisonRate(afterQty - beforeQty, beforeQty),
+    topProductBeforeQty
+  };
+}
+
+// AI 분석 문단. 지시받은 금지 표현("~때문에 판매되었습니다", "광고 효과입니다", "광고가 매출을
+// 만들었습니다")을 쓰지 않고, 항상 관찰 사실만 서술합니다("판매가 집중되었습니다", "동기간
+// 판매량이 증가했습니다", "같은 기간 가장 많이 판매되었습니다", "함께 관찰되었습니다").
+function adSalesAnalysisNarrative({ topProducts = [], concentration = {}, comparison = null } = {}) {
+  if (!topProducts.length) {
+    return "광고 집행 기간 동안 Cafe24에서 확인되는 판매 데이터가 없습니다.";
+  }
+  const sentences = [];
+  const top = topProducts[0];
+  // productName이 이미 Cafe24 "[영문 : 한글]" 표기로 브랜드를 포함하는 경우(대부분) 브랜드명을
+  // 중복해서 앞에 붙이지 않습니다.
+  const topLabel = /^\s*\[/.test(top.productName) ? top.productName : `${top.brandName} ${top.productName}`.trim();
+  if (concentration.top1Share !== null && concentration.top1Share >= AD_SALES_ANALYSIS_CONCENTRATION_THRESHOLD) {
+    sentences.push(`광고 집행 기간 동안 ${topLabel} 판매가 가장 높았습니다(같은 기간 판매금액의 ${pct(concentration.top1Share * 100)}).`);
+    sentences.push("직접적인 광고 귀속은 확인되지 않지만, 동기간 판매가 집중된 상품으로 확인됩니다.");
+  } else {
+    sentences.push("광고 집행 기간 동안 특정 상품으로 판매 집중은 확인되지 않았습니다. 판매가 여러 상품에 분산되었습니다.");
+  }
+  if (concentration.topBrandName && concentration.topBrandShare !== null && concentration.topBrandShare >= AD_SALES_ANALYSIS_BRAND_THRESHOLD && concentration.topBrandName !== top.brandName) {
+    sentences.push(`브랜드 기준으로는 ${concentration.topBrandName} 판매 비중이 가장 높게 관찰되었습니다(${pct(concentration.topBrandShare * 100)}).`);
+  }
+  if (comparison) {
+    if (comparison.direction === "증가") {
+      sentences.push(`광고 집행 기간 이전(일평균 ${adSalesAnalysisAvgLabel(comparison.beforeAvg)})과 비교하면 광고 집행 기간(일평균 ${adSalesAnalysisAvgLabel(comparison.afterAvg)}) 동안 판매량이 증가한 것으로 관찰되었습니다. 광고 집행 기간과 판매 증가가 함께 관찰되었을 뿐, 인과관계를 단정하지 않습니다.`);
+    } else if (comparison.direction === "감소") {
+      sentences.push(`광고 집행 기간 이전(일평균 ${adSalesAnalysisAvgLabel(comparison.beforeAvg)})과 비교하면 광고 집행 기간(일평균 ${adSalesAnalysisAvgLabel(comparison.afterAvg)}) 동안 판매량은 감소한 것으로 관찰되었습니다.`);
+    } else {
+      sentences.push("광고 집행 기간 전후 일평균 판매량에 뚜렷한 차이는 관찰되지 않았습니다.");
+    }
+    if (comparison.topProductBeforeQty !== null && top.quantitySold > comparison.topProductBeforeQty) {
+      sentences.push(`${topLabel}은(는) 광고 집행 기간 이전(${apiNum(comparison.topProductBeforeQty)}개) 대비 이번 기간(${apiNum(top.quantitySold)}개) 판매수량이 늘어난 것으로 관찰되었습니다.`);
+    }
+  }
+  return sentences.join(" ");
+}
+
+function adSalesAnalysisProductRowHtml(product, rank) {
   return `<tr>
-    <td>${esc(row.campaignName || "-")}</td>
-    <td>${esc(metaAdsObjectiveLabel(row))}</td>
-    <td>${apiWon(row.spend)}</td>
-    <td>${purchases === null ? "-" : apiNum(purchases)}</td>
-    <td>${apiWon(row.purchaseValue)}</td>
-    <td>${roas === null ? "-" : multiple(roas)}</td>
-    <td>${ctr === null ? "-" : pct(ctr * 100)}</td>
-    <td><span class="badge ${esc(decision.tone)}">${esc(decision.label)}</span></td>
+    <td>${rank}</td>
+    <td>${esc(product.productName)}</td>
+    <td>${esc(product.brandName)}</td>
+    <td>${apiNum(product.quantitySold)}개</td>
+    <td>${apiWon(product.salesAmount)}</td>
+    <td>${apiNum(product.orderCount)}건</td>
+    <td>${product.avgPrice === null ? "-" : apiWon(product.avgPrice)}</td>
   </tr>`;
 }
 
-function renderCampaignSalesAnalysis(target, fullReport, scoreWeights) {
+function adSalesAnalysisCardHtml(result) {
+  const { row, executionStart, executionEnd, executionDays } = result;
+  const campaignName = row.campaignName || row.campaignId || "캠페인";
+  const objectiveLabel = metaAdsObjectiveLabel(row);
+  const headHtml = `<div class="ad-ai-briefing-head">
+    <strong class="ad-decision-card-name" title="${esc(campaignName)}">${esc(campaignName)}</strong>
+    <span class="badge warn">${esc(objectiveLabel)}</span>
+  </div>
+  <p class="ad-decision-meta">
+    <span>집행기간 ${esc(executionStart)} ~ ${esc(executionEnd)} (${apiNum(executionDays)}일)</span>
+    <span>광고비 ${apiWon(row.spend)}</span>
+    <span>Meta 구매값 ${apiWon(row.purchaseValue)}</span>
+  </p>`;
+
+  if (result.error) {
+    return `<article class="ad-ai-briefing-card ad-sales-analysis-card">
+      ${headHtml}
+      <p class="hint-text">${esc(result.error)}</p>
+    </article>`;
+  }
+
+  const { topProducts, comparison } = result;
+  const tableHtml = topProducts.length ? `<div class="table-wrap ad-table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>상품명</th><th>브랜드</th><th>판매수량</th><th>실제 결제금액</th><th>주문수</th><th>평균 실결제</th></tr></thead>
+      <tbody>${topProducts.map((product, index) => adSalesAnalysisProductRowHtml(product, index + 1)).join("")}</tbody>
+    </table>
+  </div>` : `<p class="hint-text">이 캠페인 집행 기간 동안 확인되는 Cafe24 판매 데이터가 없습니다.</p>`;
+
+  const compareHtml = comparison
+    ? `<div class="campaign-period-meta">
+        <span>광고 전 일평균 판매</span><strong>${adSalesAnalysisAvgLabel(comparison.beforeAvg)}</strong>
+        <span>광고 기간 일평균 판매</span><strong>${adSalesAnalysisAvgLabel(comparison.afterAvg)} · ${esc(comparison.direction)} ${esc(comparison.rateLabel)}</strong>
+      </div>`
+    : `<p class="hint-text">비교 가능한 이전 기간 데이터가 충분하지 않아 전후 비교는 생략합니다.</p>`;
+
+  return `<article class="ad-ai-briefing-card ad-sales-analysis-card">
+    ${headHtml}
+    ${tableHtml}
+    <p class="ad-ai-briefing-narrative">${esc(result.narrative)}</p>
+    ${topProducts.length ? compareHtml : ""}
+  </article>`;
+}
+
+// 캠페인 하나의 집행 기간·직전 비교 기간 Cafe24 판매를 함께 불러와 카드 하나 분량의 결과로
+// 정리합니다. renderCampaignPeriodComparison()과 동일하게 getSharedJson()으로 같은
+// /api/diagnostics/brand-sales 엔드포인트를 캠페인별 날짜로 재호출합니다(새 API 아님).
+async function adSalesAnalysisBuildCampaign(row) {
+  const executionStart = row.executionStart;
+  const executionEnd = row.executionEnd;
+  const executionDays = campaignComparisonInclusiveDays(executionStart, executionEnd);
+  const cmpRange = campaignComparisonRangeFromExecution(executionStart, executionEnd);
+  const base = { row, executionStart, executionEnd, executionDays };
+
+  const [executionResult, comparisonResult] = await Promise.allSettled([
+    getSharedJson(`/api/diagnostics/brand-sales?since=${executionStart}&until=${executionEnd}`, 15000),
+    getSharedJson(`/api/diagnostics/brand-sales?since=${cmpRange.comparisonStart}&until=${cmpRange.comparisonEnd}`, 15000)
+  ]);
+
+  const execution = executionResult.status === "fulfilled" ? executionResult.value : { error: executionResult.reason?.message || "판매 데이터 오류" };
+  if (execution.error) {
+    return { ...base, error: "이 캠페인 집행 기간의 Cafe24 판매 데이터를 확인할 수 없습니다.", topProducts: [], comparison: null, narrative: "" };
+  }
+  if (execution.source === "csv_required") {
+    return { ...base, error: "이 캠페인 집행 기간의 Cafe24 데이터가 아직 준비되지 않았습니다(과거 데이터 CSV 업로드 필요).", topProducts: [], comparison: null, narrative: "" };
+  }
+  if (!Array.isArray(execution.products)) {
+    return { ...base, error: "이 캠페인 집행 기간의 Cafe24 상품 판매 데이터가 없습니다.", topProducts: [], comparison: null, narrative: "" };
+  }
+
+  const topProducts = adSalesAnalysisTopProducts(execution.products);
+  const concentration = adSalesAnalysisConcentration(execution.products);
+
+  const comparison = comparisonResult.status === "fulfilled" ? comparisonResult.value : null;
+  let comparisonStats = null;
+  if (comparison && !comparison.error && comparison.source !== "csv_required" && cmpRange.days >= 1) {
+    comparisonStats = adSalesAnalysisComparisonStats(
+      execution.totals || {},
+      comparison.totals || {},
+      executionDays,
+      cmpRange.days,
+      topProducts[0] || null,
+      Array.isArray(comparison.products) ? comparison.products : []
+    );
+  }
+
+  const narrative = adSalesAnalysisNarrative({ topProducts, concentration, comparison: comparisonStats });
+
+  return { ...base, error: null, topProducts, concentration, comparison: comparisonStats, narrative };
+}
+
+async function renderCampaignSalesAnalysis(target, fullReport, renderSeq) {
   if (!target) return;
   if (fullReport.error) {
     target.innerHTML = `<article class="action-item"><strong>Campaign Sales Analysis 확인 불가</strong><p>${esc(fullReport.error)}</p></article>`;
     return;
   }
-  const rows = campaignSalesAnalysisRows(fullReport);
-  if (!rows.length) {
-    target.innerHTML = `<p class="hint-text">이번 기간에 집행된 캠페인이 없습니다.</p>`;
+  const executedCount = (fullReport.rows || []).filter((row) => metaAdsIsExecuted(row)).length;
+  const campaigns = adSalesAnalysisSelectCampaigns(fullReport);
+  if (!campaigns.length) {
+    target.innerHTML = `<p class="hint-text">이번 기간에 집행 기간이 확인되는 캠페인이 없습니다.</p>`;
     return;
   }
+  target.innerHTML = `<article class="action-item"><strong>Campaign Sales Analysis 계산 중</strong><p>캠페인 집행 기간과 겹치는 Cafe24 판매 데이터를 불러오고 있습니다.</p></article>`;
+  const results = await Promise.all(campaigns.map((row) => adSalesAnalysisBuildCampaign(row)));
+  if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
   target.innerHTML = `
-    <div class="table-wrap">
-      <table class="campaign-sales-analysis-table">
-        <thead>
-          <tr><th>캠페인명</th><th>상태</th><th>광고비</th><th>구매 수</th><th>Meta 구매 전환값</th><th>ROAS</th><th>CTR</th><th>성과 판단</th></tr>
-        </thead>
-        <tbody>${rows.map((row) => campaignSalesAnalysisRowHtml(row, scoreWeights)).join("")}</tbody>
-      </table>
-    </div>
+    <div class="ad-sales-analysis-list">${results.map((result) => adSalesAnalysisCardHtml(result)).join("")}</div>
+    ${executedCount > campaigns.length ? `<p class="hint-text">광고비 상위 ${campaigns.length}개 집행 캠페인만 분석합니다. 전체 캠페인은 아래 Campaign Full Report에서 확인하세요.</p>` : ""}
   `;
 }
 
