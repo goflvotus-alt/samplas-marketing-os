@@ -7,6 +7,25 @@ import { randomUUID } from "node:crypto";
 import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 import { enrichMetaProductBreakdown, applyRuntimeAutoEnrichment } from "./scripts/meta-product-registry-link.mjs";
 import { handleIntelligenceRequest } from "./intelligence-service.mjs";
+import {
+  parseCafe24Money,
+  firstCafe24Money,
+  firstCafe24MoneyOrNull,
+  firstPositiveCafe24Money,
+  normalizeCafe24PaymentMethod,
+  isCafe24StoredValuePayment,
+  isCafe24CanceledItem,
+  isCafe24CanceledOrRefunded,
+  hasCafe24ActiveOrderItems,
+  cafe24OrderItems,
+  cafe24ItemQuantity,
+  cafe24ItemAmount,
+  cafe24ShippingFee,
+  cafe24GrossOrderAmount,
+  cafe24InitialOrderAmount,
+  cafe24OrderAmount,
+  trustedCafe24OrderDate
+} from "./scripts/cafe24-order-amount.mjs";
 
 const root = resolve(".");
 const outputDir = join(root, "outputs");
@@ -1681,161 +1700,12 @@ function cafe24CanonicalDailySales(orders = []) {
   };
 }
 
-function cafe24OrderAmount(order = {}) {
-  if (isCafe24CanceledOrRefunded(order)) return 0;
-  const primary = firstCafe24MoneyOrNull([
-    order.actual_order_amount?.payment_amount,
-    order.actual_payment_amount,
-    order.payment_amount
-  ]);
-  if (primary > 0) return primary;
-  if (primary === 0 && isCafe24StoredValuePayment(order)) {
-    const restored = firstPositiveCafe24Money([
-      order.actual_order_amount?.order_price_amount,
-      order.order_price_amount,
-      order.initial_order_amount?.order_price_amount,
-      order.initial_order_amount?.payment_amount,
-      order.order_amount,
-      order.total_price
-    ]);
-    if (restored > 0 && hasCafe24ActiveOrderItems(order)) return restored;
-  }
-  if (primary === 0) return 0;
-  return firstCafe24Money([
-    order.actual_order_amount?.order_price_amount,
-    order.order_price_amount,
-    order.initial_order_amount?.payment_amount,
-    order.initial_order_amount?.order_price_amount,
-    order.order_amount,
-    order.total_price
-  ]);
-}
-
-function firstCafe24MoneyOrNull(values = []) {
-  for (const value of values) {
-    const parsed = parseCafe24Money(value);
-    if (parsed !== null) return parsed;
-  }
-  return null;
-}
-
-function firstPositiveCafe24Money(values = []) {
-  for (const value of values) {
-    const parsed = parseCafe24Money(value);
-    if (parsed !== null && parsed > 0) return parsed;
-  }
-  return 0;
-}
-
-function isCafe24StoredValuePayment(order = {}) {
-  const paymentText = normalizeCafe24PaymentMethod(order).replace(/\s+/g, "").toLowerCase();
-  return paymentText.includes("선불금") || paymentText.includes("적립금") || paymentText.includes("prepaid") || paymentText.includes("point");
-}
-
-function isCafe24CanceledItem(item = {}) {
-  const status = String(item.status_code || item.status || "").toUpperCase();
-  const text = String(item.status_text || item.statusText || item.order_status || "").toLowerCase();
-  return status === "C2" || status === "CANCEL" || text.includes("취소완료") || text.includes("cancel");
-}
-
-function hasCafe24ActiveOrderItems(order = {}) {
-  return cafe24OrderItems(order).some((item) => !isCafe24CanceledItem(item) && cafe24ItemQuantity(item) > 0);
-}
-
-function cafe24ShippingFee(order = {}) {
-  if (isCafe24CanceledOrRefunded(order)) return 0;
-  return Math.max(0, firstCafe24Money([
-    order.actual_order_amount?.shipping_fee,
-    order.actual_order_amount?.shipping_fee_amount,
-    order.actual_order_amount?.ship_fee,
-    order.shipping_fee,
-    order.shipping_fee_amount,
-    order.total_shipping_fee,
-    order.actual_shipping_fee,
-    order.delivery_fee
-  ]));
-}
-
-function cafe24GrossOrderAmount(order = {}) {
-  if (isCafe24CanceledOrRefunded(order)) return 0;
-  return firstCafe24Money([
-    order.actual_order_amount?.order_price_amount,
-    order.order_price_amount,
-    order.initial_order_amount?.order_price_amount,
-    order.initial_order_amount?.payment_amount,
-    order.payment_amount
-  ]);
-}
-
-function cafe24InitialOrderAmount(order = {}) {
-  if (isCafe24CanceledOrRefunded(order)) return 0;
-  return firstCafe24Money([
-    order.initial_order_amount?.order_price_amount,
-    order.initial_order_amount?.payment_amount,
-    order.order_price_amount,
-    order.payment_amount
-  ]);
-}
-
-function firstCafe24Money(values = []) {
-  for (const value of values) {
-    const parsed = parseCafe24Money(value);
-    if (parsed !== null) return parsed;
-  }
-  return 0;
-}
-
-function parseCafe24Money(value) {
-  if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "object") return null;
-  const parsed = Number(String(value).replace(/,/g, ""));
-  return Number.isFinite(parsed) ? Math.round(parsed) : null;
-}
-
-function isCafe24CanceledOrRefunded(order = {}) {
-  const flags = [
-    order.canceled,
-    order.cancelled,
-    order.refunded,
-    order.returned,
-    order.cancel_status,
-    order.return_status,
-    order.refund_status
-  ].map((value) => String(value || "").toLowerCase());
-  if (flags.some((value) => ["t", "true", "y", "yes", "cancel", "canceled", "cancelled", "refund", "refunded", "return", "returned"].includes(value))) return true;
-  return Boolean(order.cancel_date || order.return_confirmed_date || order.refund_date);
-}
-
-function normalizeCafe24PaymentMethod(order = {}) {
-  const raw = order.payment_method_name || order.payment_method || order.payment_methods?.[0]?.payment_method || "미확인";
-  const list = Array.isArray(raw) ? raw : [raw];
-  return list.map((value) => String(value || "").trim()).filter(Boolean).join(" + ") || "미확인";
-}
-
-function cafe24OrderItems(order = {}) {
-  const candidates = [order.items, order.order_items, order.products, order.order_item];
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) return candidate;
-  }
-  return [];
-}
-
-function cafe24ItemQuantity(item = {}) {
-  const quantity = Number(item.quantity || item.qty || item.product_quantity || item.order_quantity || 1);
-  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
-}
-
-function cafe24ItemAmount(item = {}, quantity = 1) {
-  const amount = firstCafe24Money([
-    item.actual_payment_amount,
-    item.order_price_amount,
-    item.product_price,
-    item.price,
-    item.sale_price,
-    item.supply_price
-  ]);
-  return amount * quantity;
-}
+// STEP19-C(2026-07-27): cafe24OrderAmount/firstCafe24Money*/isCafe24StoredValuePayment/
+// isCafe24CanceledItem/hasCafe24ActiveOrderItems/cafe24ShippingFee/cafe24GrossOrderAmount/
+// cafe24InitialOrderAmount/parseCafe24Money/isCafe24CanceledOrRefunded/
+// normalizeCafe24PaymentMethod/cafe24OrderItems/cafe24ItemQuantity/cafe24ItemAmount는
+// scripts/cafe24-order-amount.mjs로 이동(로직 변경 없음, intelligence-service.mjs와
+// 공유하기 위함). 파일 상단 import 참고.
 
 // ============================================================================
 // Product Dashboard v1 (Sales 탭 확장) — Cafe24 Orders + Products 기반.
@@ -3701,22 +3571,7 @@ const PRODUCT_ACTION_LABELS = {
   stop_promotion: "재고 소진"
 };
 
-function trustedCafe24OrderDate(order = {}) {
-  const candidates = [
-    order.order_date,
-    order.orderDate,
-    order.ordered_date,
-    order.order_timestamp,
-    order.payment_date,
-    order.paid_date,
-    order.created_date
-  ];
-  for (const value of candidates) {
-    const text = String(value || "").trim();
-    if (/^\d{4}-\d{2}-\d{2}/.test(text) && Number.isFinite(new Date(text).getTime())) return text.slice(0, 10);
-  }
-  return null;
-}
+// trustedCafe24OrderDate는 scripts/cafe24-order-amount.mjs로 이동(STEP19-C, 로직 변경 없음).
 
 function daysSinceDate(dateText, now = new Date()) {
   if (!dateText) return null;

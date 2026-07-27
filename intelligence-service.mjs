@@ -11,6 +11,15 @@ import {
   DEFAULTS as INVENTORY_OVERVIEW_DEFAULTS
 } from "./scripts/inventory-overview-lib.mjs";
 import { bootstrapProductRegistryFiles } from "./scripts/bootstrap-product-registry.mjs";
+import {
+  cafe24OrderAmount,
+  cafe24OrderItems,
+  cafe24ItemQuantity,
+  isCafe24CanceledOrRefunded,
+  cafe24ShippingFee,
+  cafe24PointsUsedAmount,
+  trustedCafe24OrderDate
+} from "./scripts/cafe24-order-amount.mjs";
 
 const root = resolve(".");
 const env = await loadEnv();
@@ -2487,6 +2496,11 @@ export async function buildClientsOverview(options = {}) {
   // "최재은 실장님"/"최재은실장님"/"개인결제창 (최재은 실장님)" 등 여러 rawName으로 흩어지는 문제를
   // 여기서도 동일하게 해소해야 요약·TOP10·목록 수치가 buildClientSummaries와 어긋나지 않는다.
   const mergedClients = new Map();
+  // STEP19-C(2026-07-27): 어떤 Cafe24 온라인 주문이 아래 루프에서 기존 ECOUNT 고객 그룹에
+  // 실제로 매칭됐는지 추적한다 — 매칭되지 않은 주문(개인결제창이 아닌 일반 주문 전부 +
+  // ECOUNT 쪽에 대응하는 이름이 없는 개인결제창 주문)을 뒤에서 "온라인 고객(일반)" 가상
+  // 그룹으로 묶어 누락 없이 집계에 포함시키기 위함이다.
+  const consumedOnlineOrderKeys = new Set();
   for (const [rawName, lines] of ecountClients) {
     const entity = classifyClientEntity(rawName);
     if (entity.entityType !== "client") continue;
@@ -2513,8 +2527,34 @@ export async function buildClientsOverview(options = {}) {
     const orderMatchKey = clientOrderMatchKey(classification, matchKey);
     const matchedOrders = orderMatchKey ? cafe24PersonalPaymentOrders.filter((order) => order.matchKey === orderMatchKey) : [];
     for (const order of matchedOrders) {
-      group.orders.set(clientOrderDedupeKey(order), order);
+      const dedupeKey = clientOrderDedupeKey(order);
+      group.orders.set(dedupeKey, order);
+      consumedOnlineOrderKeys.add(dedupeKey);
     }
+  }
+
+  // STEP19-C 정책(어떤 온라인 주문도 Clients 집계에서 제외되지 않는다): 위 루프에서 기존
+  // ECOUNT 고객 그룹에 매칭되지 않은 Cafe24 온라인 주문 전부(일반 주문 + 매칭 실패한
+  // 개인결제창 주문)를 "existing customer 유형"(신규 유형 발명 금지, 정책10)으로 한 개의
+  // 가상 그룹에 모아 total/typeBreakdown에 반드시 포함시킨다. 개별 고객 신원을 알 수
+  // 없는 거래이므로 개인별로 쪼개지 않고 "온라인 고객(일반)" 한 행으로 표시한다 — 이미
+  // 존재하는 "foreign:generic_foreign"(외국인 대표 엔티티 통합) 패턴과 동일한 방식이다.
+  const unmatchedOnlineOrders = cafe24PersonalPaymentOrders.filter((order) => !consumedOnlineOrderKeys.has(clientOrderDedupeKey(order)));
+  if (unmatchedOnlineOrders.length) {
+    const syntheticMergeKey = "customer:online_general_unmatched";
+    const syntheticGroup = {
+      mergeKey: syntheticMergeKey,
+      classification: { type: "customer", salesStaff: null },
+      matchKey: "",
+      aliases: ["온라인 고객(일반)"],
+      aliasSet: new Set(["온라인 고객(일반)"]),
+      lines: [],
+      orders: new Map()
+    };
+    for (const order of unmatchedOnlineOrders) {
+      syntheticGroup.orders.set(clientOrderDedupeKey(order), order);
+    }
+    mergedClients.set(syntheticMergeKey, syntheticGroup);
   }
 
   let excludedGiftCount = 0;
@@ -2628,6 +2668,57 @@ export async function buildClientsOverview(options = {}) {
   const totalPurchaseCount = clients.reduce((sum, client) => sum + client.purchaseCount, 0);
   const totalSalesAmount = clients.reduce((sum, client) => sum + client.totalSales, 0);
   const avgOrderValue = totalPurchaseCount > 0 ? totalSalesAmount / totalPurchaseCount : null;
+  const totalOnlineSalesAmount = clients.reduce((sum, client) => sum + client.onlineSales, 0);
+  const totalOfflineSalesAmount = clients.reduce((sum, client) => sum + client.offlineSales, 0);
+
+  // STEP19-C(2026-07-27): Today와 동일한 정의로 온라인 주문수/판매수량을 계산한다 —
+  // "매칭된 고객" 여부와 무관하게 기간 내 전체 Cafe24 온라인 주문(취소/환불 제외, 이미
+  // normalizeCafe24CsvOrder/normalizeCafe24ProxyOrder에서 제외됨) 기준. 정책7: 온라인
+  // 주문수 = Cafe24 order_id 고유 개수. 정책8: 온라인 판매수량 = 품목별 수량 합.
+  const onlineOrdersInWindow = cafe24PersonalPaymentOrders.filter((order) => order.orderDate >= since && order.orderDate <= until);
+  const onlineOrderIdSet = new Set(onlineOrdersInWindow.map((order) => String(order.orderId ?? clientOrderDedupeKey(order))));
+  const onlineOrderCount = onlineOrderIdSet.size;
+  const onlineQuantity = onlineOrdersInWindow.reduce((sum, order) => sum + (Number.isFinite(order.quantity) ? order.quantity : 0), 0);
+
+  // 정책1/2: 적립금 사용액은 매출에서 차감하지 않고 별도 부가 지표로만 제공한다. 정책4: 배송비도
+  // 매출과 분리해 별도 집계한다. 두 값 모두 "실제 원본 필드가 있는 주문에서만" 합산하고, 필드
+  // 자체가 없는 주문(과거월 CSV — 실측으로 확인된 데이터 공백)은 unavailable 건수로만 카운트해
+  // 추측/기본값 처리를 하지 않는다.
+  let pointsUsedAmount = 0;
+  let pointsUsedOrderCount = 0;
+  let pointsUsedFieldUnavailableOrderCount = 0;
+  let shippingAmount = 0;
+  let shippingFieldUnavailableOrderCount = 0;
+  for (const order of onlineOrdersInWindow) {
+    if (order.pointsUsedAmount === null || order.pointsUsedAmount === undefined) {
+      pointsUsedFieldUnavailableOrderCount += 1;
+    } else if (order.pointsUsedAmount > 0) {
+      pointsUsedAmount += order.pointsUsedAmount;
+      pointsUsedOrderCount += 1;
+    }
+    if (order.shippingAmount === null || order.shippingAmount === undefined) {
+      shippingFieldUnavailableOrderCount += 1;
+    } else if (order.shippingAmount > 0) {
+      shippingAmount += order.shippingAmount;
+    }
+  }
+
+  // 정책5/6: 오프라인 주문수 = ECOUNT 고유(날짜+전표번호) 조합 개수, 오프라인 판매수량 = 라인별
+  // 수량 합. Clients의 고객별 집계(위 for-loop)는 기프트 판매행을 표시 목적상 제외하지만, 이
+  // 전체 합계는 Today의 offlineSales 계산 기준(isOfflineRevenue 플래그만)과 동일하게 맞춰
+  // Today와 정확히 대조 가능하도록 별도로 계산한다.
+  const offlineOrderKeySet = new Set();
+  let offlineQuantity = 0;
+  for (const [, lines] of ecountClients) {
+    for (const line of lines) {
+      if (line?.isOfflineRevenue !== true) continue;
+      const date = String(line?.date || "");
+      if (!(date >= since && date <= until)) continue;
+      offlineOrderKeySet.add(`${date}::${line?.slipNo || line?.documentNo || ""}`);
+      if (Number.isFinite(line.quantity)) offlineQuantity += line.quantity;
+    }
+  }
+  const offlineOrderCount = offlineOrderKeySet.size;
 
   const typeBreakdown = CLIENT_TYPE_ORDER.map((type) => {
     const rows = clients.filter((client) => client.clientType === type);
@@ -2667,7 +2758,19 @@ export async function buildClientsOverview(options = {}) {
       totalClients,
       totalPurchaseCount,
       totalSalesAmount,
-      avgOrderValue
+      avgOrderValue,
+      // STEP19-C(2026-07-27) 추가 필드: Today와 동일 기간에 대해 대조 가능한 온라인/오프라인
+      // 분리 매출, 주문수, 판매수량, 그리고 매출과 분리된 적립금/배송비 부가 지표.
+      onlineSalesAmount: totalOnlineSalesAmount,
+      offlineSalesAmount: totalOfflineSalesAmount,
+      orderCount: onlineOrderCount + offlineOrderCount,
+      onlineOrderCount,
+      offlineOrderCount,
+      quantity: onlineQuantity + offlineQuantity,
+      onlineQuantity,
+      offlineQuantity,
+      pointsUsedAmount,
+      shippingAmount
     },
     typeBreakdown,
     stylistTop10,
@@ -2676,9 +2779,14 @@ export async function buildClientsOverview(options = {}) {
     clients,
     // TASK3(2026-07-17 최종 정정): 내부 검증용 — 기프트로 판정되어 이번 기간 집계(구매 건수/매출)에서
     // 제외된 판매행 수와 금액. Clients 화면/이 API 전용 필드이며 다른 화면 매출에는 전혀 영향 없다.
+    // STEP19-C 추가: 적립금/배송비 원본 필드가 없는(과거월 CSV) 주문 건수 — 정책상 추측하지 않고
+    // 있는 그대로 노출해 어떤 기간의 어떤 부가지표가 불완전한지 투명하게 드러낸다.
     meta: {
       excludedGiftCount,
-      excludedGiftSalesAmount
+      excludedGiftSalesAmount,
+      pointsUsedOrderCount,
+      pointsUsedFieldUnavailableOrderCount,
+      shippingFieldUnavailableOrderCount
     }
   };
 }
@@ -3029,7 +3137,12 @@ async function loadEcountClientLines() {
   return clients;
 }
 
-// Cafe24 개인결제창 주문만 추출한다.
+// STEP19-C(2026-07-27) 이전에는 "개인결제창" 상품명이 포함된 주문만 추출했다(함수명 그대로).
+// STEP19-C 정책("Clients는 Cafe24 온라인 주문 전체를 커버해야 하고 어떤 온라인 주문도 제외될 수
+// 없다")에 따라 이제는 취소/환불이 아닌 모든 Cafe24 온라인 주문을 추출하도록 역할을 최소 확장했다
+// (함수명은 기존 호출부를 깨지 않기 위해 그대로 유지). 개인결제창 여부(isPersonalPayment)는 여전히
+// 판별해 반환하므로, 기존 "개인결제창 주문 -> 기존 ECOUNT 고객 매칭" 로직(clientOrderMatchKey 등)은
+// 전혀 변경하지 않고 그대로 재사용할 수 있다.
 // - 과거월: work/cafe24-csv-orders-*.json 전체(월별 canonical 캐시)를 읽는다.
 // - 현재월: work/cafe24-proxy-orders-{currentMonth}-01_*.json 중 주문 수가 가장 많은(가장 최신 동기화된) 파일 1개만 쓴다.
 // 이 함수는 디스크 캐시만 읽고 실시간 Cafe24 API 호출은 하지 않는다(진단 세션 네트워크 정책상 프록시가
@@ -3076,51 +3189,69 @@ async function loadCafe24PersonalPaymentOrders({ currentMonth }) {
     }
   }
 
-  return orders
-    .map((order) => ({ ...order, matchKey: extractClientMatchKey(order.personalPaymentProductName) }))
-    .filter((order) => order.matchKey);
+  // matchKey: 개인결제창 주문에만 의미가 있다(기존 로직 그대로). 일반 주문은 matchKey가
+  // 빈 문자열이며, 더 이상 여기서 걸러내지 않는다(과거에는 matchKey가 없으면 통째로
+  // 버렸다 — 이것이 바로 "일반 온라인 주문이 Clients에서 전부 누락되는" 근본 원인이었다).
+  return orders.map((order) => ({
+    ...order,
+    matchKey: order.isPersonalPayment ? extractClientMatchKey(order.personalPaymentProductName) : ""
+  }));
 }
 
 function safeReaddir(dir) {
   return readdir(dir).catch(() => []);
 }
 
-// cafe24-csv-orders-*.json 스키마: {order_id, order_date(YYYY-MM-DD), actual_payment_amount, items:[{productName}]}
+// cafe24-csv-orders-*.json 스키마: {order_id, order_date(YYYY-MM-DD), actual_payment_amount, items:[{productName, quantity}]}.
+// 과거월 CSV 원본은 정확히 8개 컬럼만 담고 있어(실측 확인) member_id/email/points_spent_amount/
+// credits_spent_amount/shipping_fee 등의 필드가 전혀 없다 — 없는 값을 추측하지 않고 null로 둔다.
 function normalizeCafe24CsvOrder(order) {
-  const items = Array.isArray(order?.items) ? order.items : [];
-  const ppItem = items.find((item) => String(item?.productName || "").includes("개인결제"));
-  if (!ppItem) return null;
-  const orderDate = String(order?.order_date || "").slice(0, 10);
+  if (isCafe24CanceledOrRefunded(order)) return null;
+  const orderDate = trustedCafe24OrderDate(order) || String(order?.order_date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return null;
-  const paidAmount = Number(order?.actual_payment_amount);
-  const quantity = Number(ppItem.quantity);
+  const items = cafe24OrderItems(order);
+  const ppItem = items.find((item) => String(item?.productName || item?.product_name || "").includes("개인결제"));
+  const paidAmount = cafe24OrderAmount(order);
+  const quantity = items.reduce((sum, item) => sum + cafe24ItemQuantity(item), 0);
   return {
     orderId: order?.order_id || null,
     orderDate,
     monthKey: orderDate.slice(0, 7),
     paidAmount: Number.isFinite(paidAmount) ? paidAmount : 0,
-    personalPaymentProductName: ppItem.productName || "",
-    quantity: Number.isFinite(quantity) ? quantity : null
+    quantity: Number.isFinite(quantity) ? quantity : 0,
+    isPersonalPayment: Boolean(ppItem),
+    personalPaymentProductName: ppItem ? (ppItem.productName || ppItem.product_name || "") : "",
+    // CSV 원본에는 이 필드들이 없다(실측 확인) — 추측/기본값 대신 명시적으로 unavailable 처리.
+    pointsUsedAmount: null,
+    shippingAmount: null,
+    rawCustomerText: null
   };
 }
 
-// cafe24-proxy-orders-*.json 스키마: {order_id, order_date(ISO+TZ), payment_amount, items:[{product_name}]}
+// cafe24-proxy-orders-*.json 스키마: {order_id, order_date(ISO+TZ), payment_amount, member_id, member_email,
+// billing_name, actual_order_amount:{points_spent_amount, credits_spent_amount, shipping_fee, ...}, items:[{product_name, quantity}]}
 function normalizeCafe24ProxyOrder(order) {
-  const items = Array.isArray(order?.items) ? order.items : [];
-  const ppItem = items.find((item) => String(item?.product_name || "").includes("개인결제"));
-  if (!ppItem) return null;
-  const orderDate = String(order?.order_date || "").slice(0, 10);
+  if (isCafe24CanceledOrRefunded(order)) return null;
+  const orderDate = trustedCafe24OrderDate(order) || String(order?.order_date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return null;
-  const rawAmount = order?.payment_amount ?? order?.actual_order_amount?.payment_amount;
-  const paidAmount = Number(rawAmount);
-  const quantity = Number(ppItem.quantity);
+  const items = cafe24OrderItems(order);
+  const ppItem = items.find((item) => String(item?.product_name || item?.productName || "").includes("개인결제"));
+  const paidAmount = cafe24OrderAmount(order);
+  const quantity = items.reduce((sum, item) => sum + cafe24ItemQuantity(item), 0);
   return {
     orderId: order?.order_id || null,
     orderDate,
     monthKey: orderDate.slice(0, 7),
     paidAmount: Number.isFinite(paidAmount) ? paidAmount : 0,
-    personalPaymentProductName: ppItem.product_name || "",
-    quantity: Number.isFinite(quantity) ? quantity : null
+    quantity: Number.isFinite(quantity) ? quantity : 0,
+    isPersonalPayment: Boolean(ppItem),
+    personalPaymentProductName: ppItem ? (ppItem.product_name || ppItem.productName || "") : "",
+    pointsUsedAmount: cafe24PointsUsedAmount(order),
+    shippingAmount: cafe24ShippingFee(order),
+    // 일반 온라인 주문(개인결제창이 아닌 주문)의 실제 주문자 식별용 — 실측으로 확인된 필드만 사용,
+    // 추측하지 않는다. 현재는 표시/향후 분류 참고용으로만 보존하고, 기존 분류 로직(classifyClientType)에는
+    // 아직 연결하지 않는다(정책10: 기존 분류 정책을 임의로 바꾸지 않는다).
+    rawCustomerText: order?.billing_name || order?.member_id || order?.member_email || null
   };
 }
 
