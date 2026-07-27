@@ -5,6 +5,51 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SAMPLAS Instagram Marketing OS</title>
   <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260722-inventory-overview-phase3a2" />
+  <style id="clients-detail-critical-style">
+    .clients-detail-modal { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .clients-detail-modal[hidden] { display: none; }
+    .clients-detail-backdrop { position: absolute; inset: 0; background: rgba(20, 19, 15, 0.5); opacity: 0; transition: opacity 0.16s ease; }
+    .clients-detail-modal.is-visible .clients-detail-backdrop { opacity: 1; }
+    .clients-detail-panel { position: relative; z-index: 1; box-sizing: border-box; width: 480px; max-width: min(480px, 100%); max-height: min(720px, calc(100vh - 48px)); overflow-y: auto; padding: 24px 24px 20px; border-radius: 16px; background: #fff; box-shadow: 0 30px 70px rgba(20, 19, 15, 0.28); opacity: 0; transform: translateY(10px) scale(0.98); transition: opacity 0.16s ease, transform 0.16s ease; }
+    .clients-detail-modal.is-visible .clients-detail-panel { opacity: 1; transform: translateY(0) scale(1); }
+    .clients-detail-panel:focus { outline: none; }
+    .clients-detail-close-btn { position: absolute; top: 14px; right: 14px; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer; }
+    .clients-detail-close-btn:hover, .clients-detail-close-btn:focus-visible { background: #171717; border-color: #171717; color: #fff; }
+    .clients-detail-body { padding-right: 28px; }
+    body.clients-detail-modal-open { overflow: hidden; }
+    .clients-tooltip-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 0 0 14px; }
+    .clients-tooltip-title { display: block; color: var(--ink); font-size: 18px; line-height: 1.25; font-weight: 800; word-break: keep-all; }
+    .clients-tooltip-badge { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; background: rgba(39, 127, 90, 0.1); color: #277f5a; font-size: 11px; font-weight: 800; }
+    .clients-tooltip-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+    .clients-detail-stats-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+    .clients-tooltip-stat { padding: 10px 11px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255, 255, 255, 0.72); }
+    .clients-tooltip-stat span { display: block; margin: 0 0 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .clients-tooltip-stat strong { color: var(--ink); font-size: 14px; font-weight: 850; }
+    .clients-tooltip-subhead { margin: 14px 0 8px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; }
+    .clients-detail-period-block { display: grid; gap: 4px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(248, 247, 242, 0.72); }
+    .clients-detail-period-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; line-height: 1.4; }
+    .clients-detail-period-row span { color: var(--muted); font-weight: 700; }
+    .clients-detail-period-row strong { color: var(--ink); font-weight: 800; text-align: right; }
+    .clients-detail-alias-stats-list, .clients-detail-date-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    .clients-detail-alias-stats-row, .clients-detail-date-row { display: grid; gap: 4px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(248, 247, 242, 0.52); }
+    .clients-detail-date-row { grid-template-columns: 1fr auto auto; align-items: center; cursor: default; }
+    .clients-detail-date-row:hover, .clients-detail-date-row:focus-visible { border-color: rgba(39, 127, 90, 0.32); background: rgba(39, 127, 90, 0.08); outline: none; }
+    .clients-detail-alias-stats-name { color: var(--ink); font-size: 12px; font-weight: 800; }
+    .clients-detail-alias-stats-meta, .clients-detail-date-row em { color: var(--muted); font-size: 11px; font-style: normal; font-weight: 700; }
+    .clients-tooltip-products { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    .clients-tooltip-product-row { display: grid; gap: 4px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(248, 247, 242, 0.52); }
+    .clients-tooltip-product-name { color: var(--ink); font-size: 12px; line-height: 1.35; font-weight: 800; word-break: keep-all; }
+    .clients-tooltip-product-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .clients-tooltip-source-badge { padding: 2px 5px; border-radius: 999px; background: rgba(55, 112, 227, 0.1); color: #376fe3; font-size: 10px; font-weight: 800; }
+    .clients-tooltip-source-badge.is-offline { background: rgba(224, 123, 57, 0.12); color: #b5602d; }
+    .clients-tooltip-more, .clients-tooltip-empty { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+    .clients-detail-more-dates-btn { width: 100%; margin: 8px 0 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); font-size: 12px; font-weight: 800; cursor: pointer; }
+    .clients-detail-more-dates-btn:hover { background: #171717; border-color: #171717; color: #fff; }
+    @media (max-width: 640px) {
+      .clients-detail-modal { padding: 0; }
+      .clients-detail-panel { width: 100%; max-width: 100%; max-height: 100%; height: 100%; border-radius: 0; }
+    }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -120,6 +165,19 @@
             <div id="insightList" class="home-activity-list"></div>
           </div>
         </details>
+      </section>
+
+      <section id="Calendar" class="view">
+        <div class="section-title home-hero">
+          <div>
+            <p class="eyebrow">Marketing Calendar</p>
+            <h3>날짜별 마케팅 현황</h3>
+          </div>
+        </div>
+        <div class="calendar-layout">
+          <div id="calendarGridContainer"></div>
+          <div id="calendarDayOverview"></div>
+        </div>
       </section>
 
       <section id="Product" class="view">
@@ -402,7 +460,7 @@
 
         <div class="section-block">
           <div class="section-title compact"><div><p class="eyebrow">Meta Product Performance · Phase 1</p><h3>광고에서 구매까지 이어진 상품</h3></div></div>
-          <p class="hint-text">Meta Purchase 이벤트의 content_id를 상품번호와 옵션 코드로 파싱한 결과입니다(GET /api/meta-ads/products). Product Registry 없이 파싱 가능한 상품만 표시하며, 행을 클릭하면 상세 정보와 해당 상품의 실제 주문 내역이 펼쳐집니다.</p>
+          <p class="hint-text">Meta Purchase 이벤트의 content_id를 Cafe24 상품과 연결한 결과입니다(GET /api/meta-ads/products 재사용). Registry에 없는 상품은 Cafe24 상품 상세 조회로 그 자리에서 보강되며(Runtime), Registry 파일은 수정하지 않습니다. 행을 클릭하면 상세 정보와 해당 상품의 실제 주문 내역이 펼쳐집니다.</p>
           <div id="metaProductPerformanceSummary" class="cards"></div>
           <div id="metaProductPerformanceFilterBanner" class="meta-product-performance-filter-banner" hidden></div>
           <div class="table-wrap ad-table-wrap">
@@ -412,7 +470,7 @@
                   <th>브랜드</th>
                   <th>상품명</th>
                   <th>구매 수</th>
-                  <th>상태</th>
+                  <th>Registry 상태</th>
                 </tr>
               </thead>
               <tbody id="metaProductPerformanceRows"></tbody>
@@ -432,7 +490,7 @@
                   <th>광고매출</th>
                   <th>광고구매</th>
                   <th>상품수</th>
-                  <th>Parsed 상품수</th>
+                  <th>Runtime 상품수</th>
                   <th>ROAS</th>
                 </tr>
               </thead>
@@ -612,6 +670,16 @@
         <div class="section-block" data-intelligence-panel="overview">
           <div class="section-title compact">
             <div>
+              <p class="eyebrow">Cross Intelligence · Phase A</p>
+              <h3>Business Intelligence</h3>
+            </div>
+          </div>
+          <p class="hint-text">Commerce·Marketing·Content·Clients에 이미 있는 데이터를 브랜드별로 함께 모아 보여줍니다. 같은 기간 함께 관찰된 변화이며, 인과관계를 의미하지 않습니다.</p>
+          <div id="businessIntelligenceCards" class="cards"></div>
+        </div>
+        <div class="section-block" data-intelligence-panel="overview">
+          <div class="section-title compact">
+            <div>
               <p class="eyebrow">INTELLIGENCE</p>
               <h3>지금 확인할 브랜드</h3>
             </div>
@@ -667,6 +735,83 @@
         </div>
       </section>
 
+      <section id="Clients" class="view">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Clients</p>
+            <h3>고객 현황</h3>
+          </div>
+        </div>
+        <p class="hint-text">ECOUNT 오프라인 판매와 Cafe24 개인결제창 온라인 매출을 통합한 고객 현황입니다. 상단의 기간 선택을 그대로 사용합니다.</p>
+
+        <div class="section-block">
+          <div id="clientsStatus" class="ad-status-banner loading"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact">
+            <div><p class="eyebrow">Clients Summary</p><h3>전체 요약</h3></div>
+          </div>
+          <div id="clientsSummaryCards" class="cards"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact">
+            <div><p class="eyebrow">Client Type</p><h3>고객 유형별 실제 매출 비율</h3></div>
+          </div>
+          <div id="clientsTypeBreakdown"></div>
+        </div>
+
+        <div id="clientsTop10" class="section-block"></div>
+
+        <div class="section-block">
+          <div class="section-title compact">
+            <div><p class="eyebrow">Client List</p><h3>고객 목록</h3></div>
+          </div>
+          <div class="product-action-filters">
+            <input id="clientsListSearch" type="search" placeholder="고객명 / 연락처 검색">
+            <select id="clientsListTypeFilter" aria-label="고객 유형 필터">
+              <option value="all">유형 전체</option>
+              <option value="stylist">스타일리스트</option>
+              <option value="samplas_press">프레스</option>
+              <option value="customer">일반 손님</option>
+              <option value="foreign">외국인</option>
+              <option value="online_first_signup">온라인 첫가입</option>
+              <option value="ff">직원 구매</option>
+            </select>
+            <select id="clientsListSort" aria-label="고객 목록 정렬">
+              <option value="recent_desc">최근구매일순</option>
+              <option value="sales_desc">통합매출 높은순</option>
+              <option value="sales_asc">통합매출 낮은순</option>
+              <option value="count_desc">구매횟수 높은순</option>
+              <option value="name_asc">고객명 오름차순</option>
+            </select>
+          </div>
+          <div class="table-wrap ad-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>고객명(대분류)</th>
+                  <th>유형</th>
+                  <th>연락처</th>
+                  <th>최근구매일</th>
+                  <th>구매횟수</th>
+                  <th>온라인매출</th>
+                  <th>오프라인매출</th>
+                  <th>통합매출</th>
+                  <th>평균구매금액</th>
+                </tr>
+              </thead>
+              <tbody id="clientsListRows"></tbody>
+            </table>
+          </div>
+          <div id="clientsListEmpty" class="hint-text" hidden>조건에 맞는 고객이 없습니다.</div>
+          <div class="ops-summary-drill">
+            <button id="clientsListMoreBtn" class="today-jump-button" type="button" hidden>더보기</button>
+            <p id="clientsListCountNote" class="ops-summary-fnote"></p>
+          </div>
+        </div>
+      </section>
 
       <section id="ProductRegistry" class="view">
         <div class="section-title">
@@ -840,6 +985,68 @@
         </div>
       </section>
 
+      <section id="InventoryIntelligence" class="view">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Diagnostic Only</p>
+            <h3>Inventory Intelligence</h3>
+          </div>
+          <div class="inventory-intel-header-actions">
+            <button id="inventoryIntelReloadBtn" type="button" class="today-jump-button">데이터 다시 불러오기</button>
+            <button id="inventoryIntelRerunBtn" type="button" class="today-jump-button">진단 새로고침</button>
+          </div>
+        </div>
+        <p class="hint-text">Cafe24와 ECOUNT의 재고 정합성 및 데이터 품질을 확인합니다. 이 화면은 재고를 직접 수정하지 않는 완전한 Read Only 화면입니다.</p>
+
+        <div class="section-block">
+          <div id="inventoryIntelStatus" class="ad-status-banner loading">Inventory Intelligence 로딩 중...</div>
+          <div id="inventoryIntelMeta" class="inventory-intel-meta"></div>
+          <div id="inventoryIntelStaleBanner" class="ad-status-banner warn" hidden>진단 데이터가 오래되었습니다.</div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Health Summary</p><h3>핵심 지표</h3></div></div>
+          <div id="inventoryIntelSummaryCards" class="cards"></div>
+          <div id="inventoryIntelStatusBreakdown" class="inventory-intel-status-breakdown"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Coverage &amp; Data Quality</p><h3>비교 가능 범위</h3></div></div>
+          <div id="inventoryIntelCoverageBars" class="inventory-intel-coverage-bars"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">오늘 확인할 데이터</p><h3>Priority Issues</h3></div></div>
+          <div id="inventoryIntelPriorityList" class="inventory-intel-priority-list"></div>
+        </div>
+
+        <div class="section-block product-registry-workbench">
+          <div class="section-title compact"><div><p class="eyebrow">전체 상품</p><h3>Reconciliation List</h3></div></div>
+          <div id="inventoryIntelTabs" class="product-action-filters"></div>
+          <div class="product-action-filters inventory-intel-filters">
+            <input id="inventoryIntelSearch" type="search" placeholder="브랜드명 / 상품명 / productNo / productCode / PROD_CD / barcode 검색">
+            <select id="inventoryIntelBrandFilter" aria-label="Inventory Intelligence 브랜드 필터"></select>
+            <select id="inventoryIntelSortSelect" aria-label="Inventory Intelligence 정렬">
+              <option value="priority">기본 정렬(문제 우선)</option>
+              <option value="diff-desc">차이 큰 순</option>
+              <option value="status">상태 순</option>
+            </select>
+          </div>
+          <div class="product-registry-layout inventory-intel-layout">
+            <div>
+              <div id="inventoryIntelList" class="product-registry-list"></div>
+              <div id="inventoryIntelEmpty" class="sales-empty-card" hidden>조건에 맞는 상품이 없습니다.</div>
+            </div>
+            <aside id="inventoryIntelDetail" class="product-registry-detail" aria-live="polite"></aside>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Diagnostic Metadata</p><h3>진단 산출물 정보</h3></div></div>
+          <div id="inventoryIntelDiagnosticMeta" class="inventory-intel-diagnostic-meta"></div>
+        </div>
+      </section>
+
       <section id="Settings" class="view">
         <div class="section-title">
           <div>
@@ -917,6 +1124,6 @@
   </div>
   <div id="productBrandOrderPopover" class="brand-order-popover" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260708g-report-thumbnails"></script>
+  <script src="./samplas-marketing-os.js?v=20260718-annual-brand-performance"></script>
 </body>
 </html>

@@ -1,12 +1,15 @@
 const navItems = [
   { view: "Overview", label: "Today", hidden: false },
-  { view: "Sales", label: "Commerce", hidden: false },
-  { view: "Advertising", label: "Marketing", hidden: false },
-  { view: "Content", label: "Content", hidden: false },
+  { view: "Calendar", label: "Calendar", hidden: false },
   { view: "Reports", label: "Monthly Report", hidden: false },
-  { view: "Intelligence", label: "Intelligence", hidden: false },
+  { view: "Content", label: "Content", hidden: false },
+  { view: "Advertising", label: "Marketing", hidden: false },
+  { view: "Sales", label: "Commerce", hidden: false },
+  { view: "Clients", label: "Clients", hidden: false },
   { view: "ProductRegistry", label: "Product Registry", hidden: false },
   { view: "InventoryOverview", label: "재고 점검", hidden: false },
+  { view: "InventoryIntelligence", label: "Inventory Intelligence", hidden: true },
+  { view: "Intelligence", label: "Intelligence", hidden: false },
   { view: "Settings", label: "Settings", hidden: false },
   { view: "Product", label: "Product", hidden: true },
   { view: "Editorial AI", label: "Editorial AI", hidden: true }
@@ -57,9 +60,26 @@ const todaySalesCalendarInitialDate = new Date();
 let todaySalesCalendarMonth = `${todaySalesCalendarInitialDate.getFullYear()}-${String(todaySalesCalendarInitialDate.getMonth() + 1).padStart(2, "0")}`;
 let todaySalesCalendarRenderSeq = 0;
 let todayOverviewState = null;
+// Calendar x Sales Heatmap Phase 1(2026-07-17): 신규 Calendar 화면 상태. Today의
+// todaySalesCalendar*와 완전히 별개 화면(별도 nav)이라 렌더 시퀀스/선택 월을 독립적으로 갖되,
+// 데이터 로딩 로직(월별 온라인/오프라인/Instagram)은 최대한 재사용한다(아래 함수 주석 참고).
+let calendarViewMonth = `${todaySalesCalendarInitialDate.getFullYear()}-${String(todaySalesCalendarInitialDate.getMonth() + 1).padStart(2, "0")}`;
+let calendarRenderSeq = 0;
+// 월 단위 데이터 캐시: 월 이동 시 이미 받아온 데이터를 재사용하고 불필요한 재호출을 막기 위함
+// (요구사항 "월 이동 시 불필요한 재호출 금지"). key = monthKey, value = { onlineData, offlineData, instagramByDate }.
+let calendarMonthDataCache = new Map();
+// 날짜 단위 상세 캐시(광고비/ROAS/TOP 브랜드/TOP 상품/TOP 고객): hover/클릭으로 실제 조회된 날짜만
+// on-demand로 채워지고, 이후 같은 날짜를 다시 hover/클릭해도 재요청하지 않는다. key = date(YYYY-MM-DD).
+let calendarDayDetailCache = new Map();
+let calendarSelectedDate = null;
+let calendarDayOverviewRenderSeq = 0;
+let calendarHoverTimer = null;
+let calendarHoverDate = null;
 let campaignPeriodComparisonState = { comparisonMode: "month", manualRange: null, manualComparisonRange: null, monthBase: "", monthTarget: "", settingsOpen: false, loading: false };
 let reportsMonth = "";
 let reportsRenderSeq = 0;
+let annualBrandPerformanceRows = [];
+let brandTrendDetailStore = new Map();
 let intelligenceRenderSeq = 0;
 let intelligenceBrandRenderSeq = 0;
 // Meta Product Performance · Phase 1 (2026-07-23): Marketing 화면(#Advertising view)에 새로
@@ -97,10 +117,23 @@ let cafe24OAuthErrorReason = null;
 // (2026-07-10 Brand Master 승인 UX 최소 구현)
 let brandMasterSuspectOnly = false;
 let brandMasterCatalogOnly = true;
-
+// Clients v1 (2026-07-17 Clients 화면 구현). 기존 renderSeq stale-guard 패턴을 그대로 따라
+// Clients 탭에서만 독립적으로 갱신한다 — Overview/Sales/Advertising/Content의 공용
+// renderOperationsSections() 파이프라인에는 얹지 않는다(기존 화면 동작 변경 금지).
+let clientsRenderSeq = 0;
+let clientsOverviewState = null;
+let clientsListSearch = "";
+let clientsListTypeFilter = "all";
+let clientsListSort = "recent_desc";
+let clientsListVisibleCount = 20;
+let clientsListSearchTimer = null;
+let selectedClientId = null;
 let productRegistryRenderSeq = 0;
 let productRegistryState = { registry: null, reviewQueue: null, items: [], activeTab: "all", selectedId: null };
 let productRegistryFilters = { search: "", brand: "all", confidence: "all", status: "all", diagnostic: "all", candidateCount: "all" };
+let inventoryIntelRenderSeq = 0;
+let inventoryIntelState = { raw: null, items: [], activeTab: "all", selectedId: null };
+let inventoryIntelFilters = { search: "", brand: "all", sort: "priority" };
 let inventoryOverviewRenderSeq = 0;
 let inventoryOverviewState = { raw: null };
 let inventoryOverviewFilters = { search: "", brand: "all", status: "all", sort: "priority", lowStockThreshold: 3 };
@@ -108,10 +141,11 @@ let inventoryOverviewPage = { offset: 0, limit: 50 };
 let inventoryOverviewSearchDebounceTimer = null;
 let inventoryWorkspaceTab = "today";
 const inventoryWorkspaceTabs = new Set(["today", "store", "completed"]);
+
 const nf = new Intl.NumberFormat("ko-KR");
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const intelligenceBaseUrl = window.samplasIntelligenceBaseUrl || "http://127.0.0.1:8797";
+const intelligenceBaseUrl = window.samplasIntelligenceBaseUrl || "";
 const defaultProjectLinks = {
   cafe24: "",
   advertising: "",
@@ -177,6 +211,16 @@ function isExcludedCommerceBrandPerformanceCode(code) {
 
 function brandPerformancePaidAmount(record = {}) {
   return canonicalPaidAmount(record);
+}
+
+function brandPerformanceCode(record = {}) {
+  return String(record?.brand_code || record?.brandCode || "").trim();
+}
+
+function isExcludedBrandPerformance(record = {}) {
+  const code = brandPerformanceCode(record).toUpperCase();
+  const name = String(record?.brand_name || record?.brandName || record?.manufacturer_name || "").trim().toUpperCase();
+  return code === "B0000000" || code === "UNASSIGNED" || name.includes("개인결제창".toUpperCase()) || name.includes("UNASSIGNED");
 }
 
 function cafe24MoneyValue(value) {
@@ -312,10 +356,17 @@ function registerBrandMasterResponse(body) {
   registerBrandRegistryNames(body?.brands);
 }
 
+// 프로젝트 전체에서 브랜드명을 출력하는 단일 공통 함수입니다. 화면마다 displayName/
+// localizedName/한글 alias를 직접 쓰지 않고, 이 함수 하나만 거칩니다.
+// 순서: ① brandCanonicalNameCache에 있는 영문 Canonical Name(Cafe24 상품명의
+// "[영문 : 한글]" 표기에서 추출) → ② 없으면 기존 이름(brand_name/brandName/name, 한글일
+// 수 있음) → ③ 그마저 없으면(코드와 동일하거나 빈 값) "미분류".
 function brandCanonicalDisplayName(brandLike = {}) {
   if (brandLike == null) return "미분류";
   if (typeof brandLike === "string") {
     const trimmed = brandLike.trim();
+    // B0000000은 미분류 브랜드가 아니라 Cafe24 "개인결제창" 코드입니다. 영문 Canonical
+    // Name fallback보다 먼저 판정합니다.
     if (trimmed === "B0000000") return "개인결제창";
     return trimmed || "미분류";
   }
@@ -525,13 +576,16 @@ function toast(message) {
 
 const viewHashMap = {
   Overview: "today",
+  Calendar: "calendar",
   Sales: "commerce",
   Advertising: "marketing",
   Content: "content",
   Reports: "monthly-report",
+  Intelligence: "intelligence",
+  Clients: "clients",
   ProductRegistry: "product-registry",
   InventoryOverview: "inventory-overview",
-  Intelligence: "intelligence",
+  InventoryIntelligence: "inventory-intelligence",
   Settings: "settings"
 };
 
@@ -557,8 +611,11 @@ function setActiveView(view, options = {}) {
   setTopbarTitle(targetView);
   updateTopbarControls(targetView);
   if (targetView === "Intelligence") refreshActiveIntelligencePanel();
+  if (targetView === "Clients") refreshClientsView();
   if (targetView === "ProductRegistry") renderProductRegistryView();
   if (targetView === "InventoryOverview") renderInventoryWorkspaceView({ reset: true });
+  if (targetView === "InventoryIntelligence") renderInventoryIntelligenceView();
+  if (targetView === "Calendar") renderCalendarView();
   if (options.updateHash !== false) updateViewHash(targetView);
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: options.smooth === false ? "auto" : "smooth" });
 }
@@ -591,7 +648,7 @@ function updateTopbarControls(view) {
   const monthSelect = $("#monthSelect");
   const operationsSelect = $("#operationsRange");
   const customRange = $("#operationsCustomRange");
-  const showOperations = ["Overview", "Sales", "Advertising", "Content"].includes(view);
+  const showOperations = ["Overview", "Sales", "Advertising", "Content", "Clients"].includes(view);
   if (monthSelect) monthSelect.hidden = !showOperations;
   if (operationsSelect) operationsSelect.hidden = !showOperations;
   if (customRange) customRange.hidden = !showOperations || operationsRange !== "custom";
@@ -1591,7 +1648,7 @@ function renderContentBrandSalesTop3() {
     .sort((left, right) => Number(right.salesAmount || 0) - Number(left.salesAmount || 0))
     .slice(0, 3);
   const html = `<article id="contentBrandSalesCard" class="content-ai-card"><span>브랜드 실매출</span>${rows.length ? `<ol>${rows.map((row, index) => {
-    const brandName = row.brand_name && row.brand_name !== row.brand_code ? row.brand_name : "미분류";
+    const brandName = brandCanonicalDisplayName(row);
     return `<li><mark>${index + 1}</mark><strong>${esc(brandName)}</strong><em>${apiWon(row.salesAmount)}</em></li>`;
   }).join("")}</ol>` : `<strong>데이터 없음</strong>`}<p>선택 월 · 매출 기준</p></article>`;
   const target = $("#contentBrandSalesCard");
@@ -1998,15 +2055,19 @@ function monthlyReportRankRows(items, options = {}) {
   const valueFn = options.valueFn || (() => 0);
   const labelFn = options.labelFn || (() => "-");
   const subFn = options.subFn || (() => "");
+  const attrsFn = options.attrsFn || (() => "");
+  const extraFn = options.extraFn || (() => "");
   const base = Math.max(...rows.map((item) => Number(valueFn(item) || 0)), 1);
   return rows.map((item, index) => {
     const value = valueFn(item);
-    return `<div class="monthly-report-rank-row">
+    const attrs = attrsFn(item, index);
+    return `<div class="monthly-report-rank-row"${attrs ? ` ${attrs}` : ""}>
       <span class="monthly-report-rank-no">${String(index + 1).padStart(2, "0")}</span>
       <div class="monthly-report-rank-main">
         <strong>${esc(labelFn(item))}</strong>
         <span>${esc(subFn(item))}</span>
         ${options.withBar ? `<div class="monthly-report-rank-bar"><i style="width:${monthlyReportRatio(value, base)}%"></i></div>` : ""}
+        ${extraFn(item, index)}
       </div>
       <em>${esc(options.formatValue ? options.formatValue(value, item) : apiNum(value))}</em>
     </div>`;
@@ -2020,6 +2081,14 @@ function previousMonthKey(month) {
   const monthIndex = Number(match[2]) - 1;
   const previous = new Date(year, monthIndex - 1, 1);
   return `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthlyReportTrendMonths(month) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(month || ""));
+  if (!match) return [];
+  const year = match[1];
+  const lastMonth = Number(match[2]);
+  return Array.from({ length: lastMonth }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
 }
 
 function monthlyReportMonthRange(month) {
@@ -2063,16 +2132,35 @@ function monthlyReportBrandCode(row = {}) {
 }
 
 function monthlyReportBrandName(row = {}) {
-  return row.brand_name || row.brandName || row.name || monthlyReportBrandCode(row) || "-";
+  return brandCanonicalDisplayName(row);
+}
+
+function brandPerformanceDisplayName(row = {}) {
+  const code = monthlyReportBrandCode(row);
+  const direct = [
+    row?.canonicalEnglishName,
+    row?.canonicalNameEn,
+    row?.englishName,
+    row?.nameEn,
+    row?.brandEnglishName,
+    row?.brand_name_en,
+    row?.manufacturer_name_en,
+    row?.manufacturerNameEn,
+    row?.canonicalName
+  ].map((value) => String(value || "").trim()).find(Boolean);
+  if (code && brandRegistryEnglishNameCache.has(code)) return brandRegistryEnglishNameCache.get(code);
+  if (code && brandCanonicalNameCache.has(code)) return brandCanonicalNameCache.get(code);
+  if (direct && direct !== code) return direct;
+  return monthlyReportBrandName(row);
 }
 
 function monthlyReportBrandSignals(currentRows = [], previousRows = []) {
   const previousByCode = new Map();
-  previousRows.filter((row) => monthlyReportBrandCode(row) !== "B0000000").forEach((row) => {
+  previousRows.filter((row) => !isExcludedBrandPerformance(row)).forEach((row) => {
     const code = monthlyReportBrandCode(row);
     if (code) previousByCode.set(code, row);
   });
-  return currentRows.filter((row) => monthlyReportBrandCode(row) !== "B0000000").map((row) => {
+  return currentRows.filter((row) => !isExcludedBrandPerformance(row)).map((row) => {
     const code = monthlyReportBrandCode(row);
     if (!code || !previousByCode.has(code)) return null;
     const currentSales = brandPerformancePaidAmount(row);
@@ -2089,9 +2177,187 @@ function monthlyReportBrandSignals(currentRows = [], previousRows = []) {
   }).filter(Boolean);
 }
 
-function monthlyReportBrandSignalsBlock(currentRows, previousRows, reconciliationLabel) {
+function monthlyReportBrandTrendFromRows(rows = [], brandCode = "") {
+  const code = String(brandCode || "").trim();
+  return rows.map((row) => {
+    const brandRows = row.archive?.commerce?.brandSales;
+    const hasArchiveData = !row.failed && Array.isArray(brandRows);
+    const brand = (brandRows || []).find((item) => monthlyReportBrandCode(item) === code);
+    return {
+      month: row.month || "",
+      value: brand ? brandPerformancePaidAmount(brand) : 0,
+      available: hasArchiveData,
+      hasBrand: !!brand,
+      archiveStatus: row.archiveStatus || row.archive?.archiveStatus || "",
+      orderCount: brand ? Number(brand.orderCount || 0) : null,
+      quantitySold: brand ? Number(brand.quantitySold || 0) : null
+    };
+  }).filter((item) => item.month);
+}
+
+function monthlyReportBrandTrendFromPair(currentMonth, currentBrand, previousMonth, previousBrand) {
+  return [
+    { month: previousMonth || "이전", value: previousBrand ? brandPerformancePaidAmount(previousBrand) : 0, available: !!previousBrand, orderCount: previousBrand ? Number(previousBrand.orderCount || 0) : null, quantitySold: previousBrand ? Number(previousBrand.quantitySold || 0) : null },
+    { month: currentMonth || "현재", value: currentBrand ? brandPerformancePaidAmount(currentBrand) : 0, available: !!currentBrand, orderCount: currentBrand ? Number(currentBrand.orderCount || 0) : null, quantitySold: currentBrand ? Number(currentBrand.quantitySold || 0) : null }
+  ];
+}
+
+function monthlyReportBrandTrendSummary(series = []) {
+  const points = series.filter((item) => item.available);
+  if (!points.length) return "표시할 월별 실결제 매출 데이터가 없습니다.";
+  return points.map((item) => {
+    const monthNumber = /^\d{4}-\d{2}$/.test(item.month) ? `${Number(item.month.slice(5, 7))}월` : item.month;
+    return `${monthNumber} ${apiWon(item.value)}`;
+  }).join(" → ");
+}
+
+function monthlyReportBrandSparkline(series = []) {
+  const points = series.filter((item) => item.month);
+  if (!points.length) return "";
+  const width = 150;
+  const height = 34;
+  const values = points.map((item) => Number(item.value || 0));
+  const max = Math.max(...values, 1);
+  const step = points.length > 1 ? width / (points.length - 1) : width;
+  const coordinates = points.map((item, index) => {
+    const x = points.length > 1 ? index * step : width / 2;
+    const y = height - (Number(item.value || 0) / max * (height - 6)) - 3;
+    return { ...item, x, y };
+  });
+  const path = coordinates.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+  return `<div class="monthly-report-brand-trend" aria-label="${esc(monthlyReportBrandTrendSummary(points))}">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-hidden="false">
+      <polyline points="${esc(path)}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></polyline>
+      ${coordinates.map((point) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.available ? 3 : 2}" class="${point.available ? "" : "is-missing"}"><title>${esc(point.month)} · ${point.available ? apiWon(point.value) : "데이터 없음"}</title></circle>`).join("")}
+    </svg>
+    <small>${esc(monthlyReportBrandTrendSummary(points))}</small>
+  </div>`;
+}
+
+function monthlyReportBrandTrendKey(prefix, brandCode) {
+  return `${prefix}:${String(brandCode || "").trim()}`;
+}
+
+function monthlyReportBrandTrendCallout(series = []) {
+  const points = series.filter((item) => item.available);
+  if (points.length < 2) return "확보된 월별 데이터 기준으로 확인";
+  const first = points[0];
+  const last = points[points.length - 1];
+  const diff = Number(last.value || 0) - Number(first.value || 0);
+  if (!diff) return "최근 구간 실결제 매출 보합";
+  return `최근 구간 ${diff > 0 ? "증가" : "감소"} 흐름`;
+}
+
+function monthlyReportBrandTrendInlineSummary(series = []) {
+  const rows = series.filter((item) => item.month);
+  if (!rows.length) return "";
+  const label = (month) => /^\d{4}-\d{2}$/.test(month) ? `${Number(month.slice(5, 7))}월` : String(month || "-");
+  return rows.map((item) => `${label(item.month)} ${item.available ? apiWon(item.value || 0) : "데이터 없음"}`).join(" · ");
+}
+
+function brandTrendDetailRows(series = []) {
+  const rows = series.slice(-7);
+  return rows.map((item, index) => {
+    const previous = index > 0 ? rows[index - 1] : null;
+    const value = Number(item.value || 0);
+    const previousValue = previous && previous.available ? Number(previous.value || 0) : null;
+    const diff = item.available && previousValue !== null ? value - previousValue : null;
+    const diffPct = diff !== null && previousValue ? diff / previousValue * 100 : null;
+    return { ...item, value, diff, diffPct };
+  });
+}
+
+function brandTrendDetailPanelHtml(data = {}) {
+  const rows = brandTrendDetailRows(data.series || []);
+  const values = rows.map((item) => item.available ? Number(item.value || 0) : 0);
+  const max = Math.max(1, ...values);
+  const width = 520;
+  const height = 150;
+  const step = rows.length > 1 ? width / (rows.length - 1) : width;
+  const coordinates = rows.map((item, index) => {
+    const x = rows.length > 1 ? index * step : width / 2;
+    const y = height - (Number(item.value || 0) / max * (height - 22)) - 12;
+    return { ...item, x, y };
+  });
+  const path = coordinates.filter((item) => item.available).map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+  const monthLabel = (month) => /^\d{4}-\d{2}$/.test(month) ? month : String(month || "-");
+  const diffText = (item) => item.diff === null
+    ? "전월 대비 비교 불가"
+    : `${item.diff > 0 ? "+" : item.diff < 0 ? "-" : ""}${apiWon(Math.abs(item.diff))}${item.diffPct === null ? "" : ` · ${item.diffPct > 0 ? "+" : item.diffPct < 0 ? "-" : ""}${Math.abs(item.diffPct).toFixed(1)}%`}`;
+  const body = `<section class="brand-order-popover-order">
+    <h4>${esc(data.title || "월별 실결제 추세")}</h4>
+    <p class="hint-text">${esc(data.note || "canonical paid 기준 · 최근 확보 월 최대 7개월")}</p>
+    <div class="brand-trend-detail-chart">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(`${data.name || "브랜드"} 월별 실결제 추세`)}">
+        <polyline points="${esc(path)}" fill="none" stroke="currentColor" stroke-width="2.4" vector-effect="non-scaling-stroke"></polyline>
+        ${coordinates.map((point) => `<circle tabindex="0" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.available ? 4 : 3}" class="${point.available ? "" : "is-missing"}">
+          <title>${esc(`${monthLabel(point.month)} · ${point.available ? apiWon(point.value) : "데이터 미확보"} · ${diffText(point)} · 주문 ${point.orderCount ?? "-"}건 · 수량 ${point.quantitySold ?? "-"}개 · ${point.archiveStatus || "상태 없음"}`)}</title>
+        </circle>`).join("")}
+      </svg>
+    </div>
+    <div class="brand-trend-detail-table">
+      ${rows.map((item) => `<div class="brand-trend-detail-row ${item.available ? "" : "is-missing"}">
+        <span>${esc(monthLabel(item.month))}</span>
+        <strong>${item.available ? apiWon(item.value) : "데이터 미확보"}</strong>
+        <em>${esc(diffText(item))}</em>
+        <small>주문 ${item.orderCount ?? "-"}건 · 수량 ${item.quantitySold ?? "-"}개 · ${esc(item.archiveStatus || "상태 없음")}</small>
+      </div>`).join("")}
+    </div>
+  </section>`;
+  if (data.embedded) return body;
+  return `<div class="brand-order-popover-head">
+    <strong>${esc(data.name || "브랜드 추세")}</strong>
+    <button type="button" class="brand-panel-close" data-brand-panel-close aria-label="닫기">×</button>
+  </div>
+  ${body}`;
+}
+
+function showBrandFixedPanel(trigger, html, code, options = {}) {
+  const popover = $("#productBrandOrderPopover");
+  if (!trigger || !popover) return;
+  popover.innerHTML = html;
+  popover.hidden = false;
+  activeBrandOrderPopoverCode = code;
+  const rect = trigger.getBoundingClientRect();
+  const width = Math.min(options.width || 560, window.innerWidth - 24);
+  popover.style.width = `${width}px`;
+  const height = Math.min(popover.offsetHeight || 0, window.innerHeight - 24);
+  let left = rect.right + 12;
+  if (left + width + 12 > window.innerWidth) left = rect.left - width - 12;
+  if (left < 12) left = 12;
+  let top = rect.top;
+  if (top + height + 12 > window.innerHeight) top = window.innerHeight - height - 12;
+  if (top < 12) top = 12;
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+  popover.querySelector("[data-brand-panel-close]")?.addEventListener("click", closeProductBrandOrderPopover, { once: true });
+}
+
+function showBrandTrendDetailPanel(trigger) {
+  const key = trigger?.dataset.brandTrendDetail || "";
+  const data = brandTrendDetailStore.get(key);
+  if (!data) return;
+  showBrandFixedPanel(trigger, brandTrendDetailPanelHtml(data), `trend:${key}`, { width: 580 });
+}
+
+function brandTrendDetailTriggerHtml(item, series, prefix, title) {
+  const code = monthlyReportBrandCode(item);
+  if (!code) return "";
+  const key = monthlyReportBrandTrendKey(prefix, code);
+  brandTrendDetailStore.set(key, {
+    name: brandPerformanceDisplayName(item),
+    title,
+    note: monthlyReportBrandTrendCallout(series),
+    series
+  });
+  return `<button type="button" class="monthly-report-brand-trend-trigger" data-brand-trend-detail="${esc(key)}" aria-label="${esc(`${brandPerformanceDisplayName(item)} 월별 추세 상세 보기`)}">${esc(monthlyReportBrandTrendCallout(series))}</button>
+    <small class="monthly-report-brand-trend-months">${esc(monthlyReportBrandTrendInlineSummary(series))}</small>`;
+}
+
+function monthlyReportBrandSignalsBlock(currentRows, previousRows, reconciliationLabel, trendRows = []) {
   const signals = monthlyReportBrandSignals(currentRows, previousRows);
   if (!signals.length) return "";
+  const previousByCode = new Map(previousRows.map((row) => [monthlyReportBrandCode(row), row]));
   const rising = signals
     .filter((item) => item.diffRate > 0)
     .sort((left, right) => right.diffRate - left.diffRate)
@@ -2109,8 +2375,13 @@ function monthlyReportBrandSignalsBlock(currentRows, previousRows, reconciliatio
           ${monthlyReportRankRows(rising, {
             withBar: true,
             valueFn: (item) => item.currentSales,
-            labelFn: monthlyReportBrandName,
+            labelFn: brandPerformanceDisplayName,
             subFn: (item) => monthlyReportDelta(item.currentSales, item.previousSales, apiWon),
+            extraFn: (item) => {
+              const code = monthlyReportBrandCode(item);
+              const series = trendRows.length ? monthlyReportBrandTrendFromRows(trendRows, code) : monthlyReportBrandTrendFromPair("이번", item, "전월", previousByCode.get(code));
+              return brandTrendDetailTriggerHtml(item, series, "monthly-rising", "상승 브랜드 월별 실결제 추세");
+            },
             formatValue: (value) => apiWon(value)
           })}
         </div>
@@ -2121,8 +2392,13 @@ function monthlyReportBrandSignalsBlock(currentRows, previousRows, reconciliatio
           ${monthlyReportRankRows(falling, {
             withBar: true,
             valueFn: (item) => item.currentSales,
-            labelFn: monthlyReportBrandName,
+            labelFn: brandPerformanceDisplayName,
             subFn: (item) => monthlyReportDelta(item.currentSales, item.previousSales, apiWon),
+            extraFn: (item) => {
+              const code = monthlyReportBrandCode(item);
+              const series = trendRows.length ? monthlyReportBrandTrendFromRows(trendRows, code) : monthlyReportBrandTrendFromPair("이번", item, "전월", previousByCode.get(code));
+              return brandTrendDetailTriggerHtml(item, series, "monthly-falling", "하락 브랜드 월별 실결제 추세");
+            },
             formatValue: (value) => apiWon(value)
           })}
         </div>
@@ -2375,19 +2651,235 @@ function annualArchiveAggregateBrandSales(rows) {
     if (row.failed) return;
     (row.archive?.commerce?.brandSales || []).forEach((brand) => {
       const code = monthlyReportBrandCode(brand);
-      if (!code || code === "B0000000") return;
+      if (!code || isExcludedBrandPerformance(brand)) return;
       const salesAmount = brandPerformancePaidAmount(brand);
       if (!Number.isFinite(salesAmount)) return;
       const previous = totals.get(code) || {
         brand_code: code,
-        brand_name: monthlyReportBrandName(brand),
-        salesAmount: 0
+        brand_name: brandPerformanceDisplayName(brand),
+        salesAmount: 0,
+        sales: { paidAmount: 0 }
       };
       previous.salesAmount += salesAmount;
+      previous.sales.paidAmount += salesAmount;
       totals.set(code, previous);
     });
   });
   return [...totals.values()];
+}
+
+function annualArchiveBrandDetailRows(rows = [], brandCode = "") {
+  const code = String(brandCode || "").trim();
+  const details = [];
+  rows.forEach((row) => {
+    if (row.failed) return;
+    const brand = (row.archive?.commerce?.brandSales || []).find((item) => monthlyReportBrandCode(item) === code);
+    const usesSavedSalesFallback = brand && firstFiniteValue(brand?.sales?.paidAmount, brand?.canonicalPaidAmount, brand?.paidAmount) === null;
+    (brand?.orderHistory || []).forEach((order) => {
+      (order.products || []).forEach((product) => {
+        const grossAmount = canonicalGrossAmount(product);
+        const discountAmount = canonicalDiscountAmount(product);
+        const quantity = Number(product.quantity || 0);
+        const productPaidAmount = firstFiniteValue(product?.sales?.paidAmount, product?.canonicalPaidAmount, product?.paidAmount);
+        const amountAvailable = !(usesSavedSalesFallback && productPaidAmount === 0 && quantity > 0);
+        const paidAmount = amountAvailable ? canonicalPaidAmount(product) : null;
+        const discountRate = grossAmount > 0 ? discountAmount / grossAmount * 100 : 0;
+        details.push({
+          month: row.month,
+          orderId: order.orderId || product.orderId || "",
+          orderDate: product.orderDate || order.orderDate || "",
+          productName: product.productName || product.product_name || "상품명 없음",
+          optionName: product.optionName || product.option_name || product.optionText || product.option || "",
+          size: product.size || product.optionSize || product.variantSize || "",
+          quantity,
+          grossAmount,
+          discountAmount,
+          discountRate,
+          paidAmount,
+          amountAvailable,
+          paymentMethod: product.paymentMethod || ""
+        });
+      });
+    });
+  });
+  return details
+    .filter((item) => item.amountAvailable || item.quantity > 0 || item.orderId)
+    .sort((left, right) => {
+      const dateDiff = new Date(right.orderDate || 0).getTime() - new Date(left.orderDate || 0).getTime();
+      return dateDiff || Number(right.paidAmount || 0) - Number(left.paidAmount || 0);
+    });
+}
+
+function productOptionLabel(product = {}) {
+  const direct = [
+    product.optionName,
+    product.option_name,
+    product.optionText,
+    product.option,
+    Array.isArray(product.options) ? product.options.map((item) => item?.value || item?.name || item).filter(Boolean).join(" / ") : ""
+  ].map((value) => String(value || "").trim()).find(Boolean);
+  return direct || "옵션 정보 없음";
+}
+
+function productSizeLabel(product = {}) {
+  const direct = [
+    product.size,
+    product.optionSize,
+    product.variantSize,
+    product.sizeName
+  ].map((value) => String(value || "").trim()).find(Boolean);
+  return direct || "사이즈 정보 없음";
+}
+
+function annualArchiveBrandMonthlySummaries(rows = [], brandCode = "") {
+  return rows.map((row) => {
+    const details = annualArchiveBrandDetailRows([row], brandCode);
+    const brand = (row.archive?.commerce?.brandSales || []).find((item) => monthlyReportBrandCode(item) === brandCode);
+    const canonicalAmount = brand ? firstFiniteValue(brand?.sales?.paidAmount, brand?.canonicalPaidAmount, brand?.paidAmount) : null;
+    const grossAmount = details.reduce((sum, item) => sum + Number(item.grossAmount || 0), 0);
+    const discountAmount = details.reduce((sum, item) => sum + Number(item.discountAmount || 0), 0);
+    const paidAmount = brand ? brandPerformancePaidAmount(brand) : 0;
+    const quantity = brand ? Number(brand.quantitySold || 0) : details.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const orderCount = brand ? Number(brand.orderCount || 0) : new Set(details.map((item) => item.orderId).filter(Boolean)).size;
+    return {
+      month: row.month,
+      archiveStatus: row.archiveStatus || row.archive?.archiveStatus || "",
+      hasData: !row.failed && Array.isArray(row.archive?.commerce?.brandSales),
+      hasBrand: !!brand,
+      details,
+      orderCount,
+      quantity,
+      grossAmount,
+      discountAmount,
+      paidAmount,
+      amountBasis: canonicalAmount === null ? "saved-sales" : "canonical-paid",
+      avgDiscountRate: grossAmount > 0 ? discountAmount / grossAmount * 100 : 0
+    };
+  });
+}
+
+function annualBrandMonthlyTrendSeries(rows = []) {
+  return rows.map((row) => ({
+    month: row.month,
+    value: row.paidAmount,
+    available: row.hasData,
+    hasBrand: row.hasBrand,
+    archiveStatus: row.archiveStatus,
+    orderCount: row.orderCount,
+    quantitySold: row.quantity
+  }));
+}
+
+function annualArchiveBrandDetailPopoverHtml(rows = [], brandCode = "") {
+  const brand = annualArchiveAggregateBrandSales(rows).find((item) => monthlyReportBrandCode(item) === brandCode) || { brand_code: brandCode };
+  const monthlyRows = annualArchiveBrandMonthlySummaries(rows, brandCode);
+  const totals = monthlyRows.reduce((summary, item) => {
+    summary.orderCount += Number(item.orderCount || 0);
+    summary.quantity += Number(item.quantity || 0);
+    summary.paidAmount += Number(item.paidAmount || 0);
+    return summary;
+  }, { orderCount: 0, quantity: 0, paidAmount: 0 });
+  return `<div class="brand-order-popover-head"><strong>${esc(brandPerformanceDisplayName(brand))}</strong><span>월별 요약 ${apiNum(monthlyRows.length)}개월</span><button type="button" class="brand-panel-close" data-brand-panel-close aria-label="닫기">×</button></div>
+    <section class="brand-order-popover-order">
+      <h4>선택 연간 범위</h4>
+      <div class="brand-performance-detail-summary">
+        <span>누적 브랜드 매출 ${apiWon(totals.paidAmount)}</span>
+        <span>확보 데이터 기준</span>
+        <span>주문 ${apiNum(totals.orderCount)}건</span>
+        <span>수량 ${apiNum(totals.quantity)}개</span>
+      </div>
+    </section>
+    ${brandTrendDetailPanelHtml({
+      name: brandPerformanceDisplayName(brand),
+      title: "연간 월별 매출 추세",
+      note: "월별 실제 결제 또는 저장본 매출 기준",
+      series: annualBrandMonthlyTrendSeries(monthlyRows),
+      embedded: true
+    })}
+    <section class="brand-order-popover-order">
+      <h4>월별 Drill-down</h4>
+      <div class="annual-brand-month-list">
+        ${monthlyRows.map((row) => `<button type="button" class="annual-brand-month-row ${row.hasData ? "" : "is-missing"}" data-annual-brand-month-detail="${esc(`${brandCode}|${row.month}`)}">
+          <strong>${esc(row.month || "-")}</strong>
+          <span>주문 ${apiNum(row.orderCount)}건 · 수량 ${apiNum(row.quantity)}개</span>
+          <span>정상가 ${apiWon(row.grossAmount)} · 할인 ${apiWon(row.discountAmount)} · 평균 ${Number(row.avgDiscountRate || 0).toFixed(1)}%</span>
+          <em>${row.hasData ? `${row.amountBasis === "canonical-paid" ? "실제 결제 기준" : "저장본 매출 기준"} ${apiWon(row.paidAmount)}${row.amountBasis === "saved-sales" ? " · 실제 결제 상세 미확보" : ""} · ${esc(row.archiveStatus || "archive")}` : "데이터 없음"}</em>
+        </button>`).join("")}
+      </div>
+    </section>`;
+}
+
+function annualArchiveBrandMonthDetailPopoverHtml(rows = [], brandCode = "", month = "") {
+  const brand = annualArchiveAggregateBrandSales(rows).find((item) => monthlyReportBrandCode(item) === brandCode) || { brand_code: brandCode };
+  const monthlyRows = annualArchiveBrandMonthlySummaries(rows, brandCode);
+  const summary = monthlyRows.find((item) => item.month === month) || { month, details: [], orderCount: 0, quantity: 0, grossAmount: 0, discountAmount: 0, paidAmount: 0 };
+  const details = summary.details || [];
+  return `<div class="brand-order-popover-head"><strong>${esc(brandPerformanceDisplayName(brand))}</strong><span>${esc(month || "-")} 상세</span><button type="button" class="brand-panel-close" data-brand-panel-close aria-label="닫기">×</button></div>
+    <button type="button" class="monthly-report-brand-trend-trigger" data-annual-brand-summary-back="${esc(brandCode)}">월별 요약으로 돌아가기</button>
+    <section class="brand-order-popover-order">
+      <h4>${esc(month || "-")} 합계</h4>
+      <div class="brand-performance-detail-summary">
+        <span>주문 ${apiNum(summary.orderCount)}건</span>
+        <span>수량 ${apiNum(summary.quantity)}개</span>
+        <span>정상가 ${apiWon(summary.grossAmount)}</span>
+        <span>할인 ${apiWon(summary.discountAmount)}</span>
+        <span>${summary.amountBasis === "canonical-paid" ? "실제 결제 기준" : "저장본 매출 기준"} ${apiWon(summary.paidAmount)}${summary.amountBasis === "saved-sales" ? " · 실제 결제 상세 미확보" : ""}</span>
+      </div>
+    </section>
+    ${details.length ? details.map((item) => `<section class="brand-order-popover-order">
+      <h4>${esc(item.orderDate || "날짜 없음")} · ${esc(item.orderId || "주문 식별값 없음")}</h4>
+      <div class="brand-order-popover-product">
+        <strong>${esc(item.productName)}</strong>
+        <span>옵션 ${esc(productOptionLabel(item))}</span>
+        <span>사이즈 ${esc(productSizeLabel(item))}</span>
+        <span>수량 ${apiNum(item.quantity)}개 · ${esc(item.paymentMethod || "결제수단 없음")}</span>
+        <p>정상 판매금액 ${item.grossAmount === null ? "-" : apiWon(item.grossAmount)}</p>
+        <p>할인액 ${item.discountAmount === null ? "-" : apiWon(item.discountAmount)} · ${Number.isFinite(item.discountRate) ? `${item.discountRate.toFixed(1)}%` : "0%"}</p>
+        <p>상품 금액 ${item.amountAvailable ? apiWon(item.paidAmount) : "상세 금액 미확보"}</p>
+      </div>
+    </section>`).join("") : `<p class="hint-text">이 월에는 상세 주문 데이터가 없습니다.</p>`}`;
+}
+
+function replaceBrandPanelContent(html) {
+  const popover = $("#productBrandOrderPopover");
+  if (!popover) return;
+  popover.innerHTML = html;
+  popover.querySelector("[data-brand-panel-close]")?.addEventListener("click", closeProductBrandOrderPopover, { once: true });
+}
+
+function showAnnualBrandMonthDetail(token = "") {
+  const [brandCode, month] = String(token || "").split("|");
+  if (!brandCode || !month) return;
+  activeBrandOrderPopoverCode = `annual:${brandCode}`;
+  replaceBrandPanelContent(annualArchiveBrandMonthDetailPopoverHtml(annualBrandPerformanceRows, brandCode, month));
+}
+
+function hideAnnualBrandDetailPopover() {
+  if (activeBrandOrderPopoverCode && !String(activeBrandOrderPopoverCode).startsWith("annual:")) return;
+  closeProductBrandOrderPopover();
+}
+
+function showAnnualBrandDetailPopover(trigger) {
+  const brandCode = trigger?.dataset.annualBrandDetail || "";
+  if (!brandCode) return;
+  showBrandFixedPanel(trigger, annualArchiveBrandDetailPopoverHtml(annualBrandPerformanceRows, brandCode), `annual:${brandCode}`, { width: 560 });
+}
+
+function bindAnnualBrandDetailTriggers(scope = document) {
+  scope.querySelectorAll?.("[data-annual-brand-detail]").forEach((trigger) => {
+    if (trigger.dataset.annualBrandBound === "1") return;
+    trigger.dataset.annualBrandBound = "1";
+    trigger.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showAnnualBrandDetailPopover(trigger);
+    });
+    trigger.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      showAnnualBrandDetailPopover(trigger);
+    });
+  });
 }
 
 function annualArchiveSavedComparisonRows(rows) {
@@ -2409,6 +2901,7 @@ function annualArchiveComparisonDelta(current, previous) {
 }
 
 function annualArchiveBrandPerformanceBlock(rows) {
+  annualBrandPerformanceRows = rows;
   const annualBrands = annualArchiveAggregateBrandSales(rows)
     .sort((left, right) => Number(right.salesAmount || 0) - Number(left.salesAmount || 0));
   if (!annualBrands.length) return "";
@@ -2437,8 +2930,12 @@ function annualArchiveBrandPerformanceBlock(rows) {
         ${monthlyReportRankRows(rising, {
           withBar: true,
           valueFn: (item) => item.currentSales,
-          labelFn: monthlyReportBrandName,
+          labelFn: brandPerformanceDisplayName,
           subFn: (item) => annualArchiveComparisonDelta(item.currentSales, item.previousSales),
+          extraFn: (item) => {
+            const series = monthlyReportBrandTrendFromRows(rows, monthlyReportBrandCode(item));
+            return brandTrendDetailTriggerHtml(item, series, "annual-rising", "Annual 상승 브랜드 월별 실결제 추세");
+          },
           formatValue: (value) => apiWon(value)
         })}
       </div>
@@ -2449,8 +2946,12 @@ function annualArchiveBrandPerformanceBlock(rows) {
         ${monthlyReportRankRows(falling, {
           withBar: true,
           valueFn: (item) => item.currentSales,
-          labelFn: monthlyReportBrandName,
+          labelFn: brandPerformanceDisplayName,
           subFn: (item) => annualArchiveComparisonDelta(item.currentSales, item.previousSales),
+          extraFn: (item) => {
+            const series = monthlyReportBrandTrendFromRows(rows, monthlyReportBrandCode(item));
+            return brandTrendDetailTriggerHtml(item, series, "annual-falling", "Annual 하락 브랜드 월별 실결제 추세");
+          },
           formatValue: (value) => apiWon(value)
         })}
       </div>
@@ -2459,13 +2960,14 @@ function annualArchiveBrandPerformanceBlock(rows) {
   ` : "";
   return `<section class="monthly-report-block" data-annual-category="commerce">
     <div class="monthly-report-block-head"><h4>Brand Performance</h4><span>brand_code 기준</span></div>
-    <div class="monthly-report-block-head"><h4>연간 누적 브랜드 매출 TOP5</h4><span>이번 연도 누적</span></div>
+    <div class="monthly-report-block-head"><h4>연간 브랜드 매출 TOP5</h4><span>확보 데이터 기준</span></div>
     <div class="monthly-report-rank">
       ${monthlyReportRankRows(annualBrands.slice(0, 5), {
         withBar: true,
         valueFn: (item) => item.salesAmount,
-        labelFn: monthlyReportBrandName,
+        labelFn: brandPerformanceDisplayName,
         subFn: (item) => monthlyReportBrandCode(item),
+        attrsFn: (item) => `tabindex="0" role="button" data-annual-brand-detail="${esc(monthlyReportBrandCode(item))}" aria-label="${esc(`${brandPerformanceDisplayName(item)} 판매 상세 보기`)}"`,
         formatValue: (value) => apiWon(value)
       })}
     </div>
@@ -2484,8 +2986,12 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
     return;
   }
   target.innerHTML = `<article class="action-item"><strong>연간 흐름 확인 중</strong><p>${esc(year)}년 월별 아카이브를 불러오고 있습니다.</p></article>`;
-  const settled = await Promise.allSettled(months.map((item) => getJson(`/api/reports/monthly?month=${item}`, 8000)));
+  const [settled, brandMasterResult] = await Promise.all([
+    Promise.allSettled(months.map((item) => getJson(`/api/reports/monthly?month=${item}`, 8000))),
+    getSharedJson("/api/brand-master", 12000)
+  ]);
   if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
+  registerBrandMasterResponse(brandMasterResult);
   const rows = months.map((item, index) => {
     const result = settled[index];
     const archive = result.status === "fulfilled" ? result.value : {};
@@ -2523,6 +3029,7 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
     </div>
     <div class="annual-flow-tooltip" role="tooltip" hidden></div>
   </section>`;
+  bindAnnualBrandDetailTriggers(target);
 }
 
 async function renderMonthlyArchiveReport(month, renderSeq) {
@@ -2532,14 +3039,19 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   target.innerHTML = `<article class="action-item"><strong>Monthly Report 확인 중</strong><p>저장된 월간 리포트를 불러오고 있습니다.</p></article>`;
 
   const previousMonth = previousMonthKey(month);
+  const trendMonths = monthlyReportTrendMonths(month);
   const { monthStart, monthEnd } = monthlyReportMonthRange(month);
   const missionParams = new URLSearchParams({ since: monthStart, until: monthEnd, limit: "3" });
-  const [archive, previousArchive, missionResult] = await Promise.all([
+  const [archive, previousArchive, missionResult, trendArchiveResults, brandMasterResult, offlineSnapshot] = await Promise.all([
     getJson(`/api/reports/monthly?month=${month}`, 8000),
     previousMonth ? getJson(`/api/reports/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" }),
-    monthStart && monthEnd ? getJson(intelligenceUrl(`/api/intelligence/missions?${missionParams.toString()}`), 12000) : Promise.resolve({ error: "월 범위 없음" })
+    monthStart && monthEnd ? getJson(intelligenceUrl(`/api/intelligence/missions?${missionParams.toString()}`), 12000) : Promise.resolve({ error: "월 범위 없음" }),
+    Promise.allSettled(trendMonths.map((item) => getJson(`/api/reports/monthly?month=${item}`, 8000))),
+    getSharedJson("/api/brand-master", 12000),
+    getJson(`/api/ecount-sales/monthly?month=${month}`, 8000)
   ]);
   if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
+  registerBrandMasterResponse(brandMasterResult);
 
   if (archive.error) {
     target.innerHTML = `<article class="action-item"><strong>Monthly Report 생성 실패</strong><p>${esc(archive.error)}</p></article>`;
@@ -2553,9 +3065,18 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const previousMarketing = previousArchive.error ? {} : previousArchive.marketing || {};
   const previousContent = previousArchive.error ? {} : previousArchive.content || {};
   const previousBrandSales = previousArchive.error ? [] : previousCommerce.brandSales || [];
+  const monthlyBrandTrendRows = trendMonths.map((item, index) => {
+    const result = trendArchiveResults[index];
+    const trendArchive = result?.status === "fulfilled" ? result.value : {};
+    return { month: item, archive: trendArchive, archiveStatus: trendArchive.archiveStatus || "", failed: result?.status !== "fulfilled" || Boolean(trendArchive.error) };
+  });
   const paymentMethods = commerce.paymentMethods || [];
   const brandSales = commerce.brandSales || [];
   const productSales = commerce.productSales || [];
+  const performanceBrandSales = brandSales
+    .filter((item) => !isExcludedBrandPerformance(item))
+    .sort((left, right) => brandPerformancePaidAmount(right) - brandPerformancePaidAmount(left));
+  const canonicalProductSales = [...productSales].sort((left, right) => canonicalPaidAmount(right) - canonicalPaidAmount(left));
   const formatMix = content.formatMix || [];
   const topContent = content.topContent || [];
   const aboveAverageSaveRatePosts = content.aboveAverageSaveRatePosts || [];
@@ -2598,7 +3119,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const summaryPreviousMarketing = hasMonthlySummaryPrevious ? previousMarketing : {};
   const summaryPreviousContent = hasMonthlySummaryPrevious ? previousContent : {};
   const monthlySummary = [
-    monthlyReportDirectionText("실제 매출은", commerce.paidAmount, summaryPreviousCommerce.paidAmount, { formatter: apiWon }),
+    monthlyReportDirectionText("온라인 실제 매출은", commerce.paidAmount, summaryPreviousCommerce.paidAmount, { formatter: apiWon }),
     monthlyReportDirectionText("광고비는", marketing.spend, summaryPreviousMarketing.spend, { formatter: apiWon }),
     monthlyReportDirectionText("콘텐츠 조회는", content.totalViews, summaryPreviousContent.totalViews),
     monthlyReportFollowerDirectionText(content.followerDelta, summaryPreviousContent.followerDelta)
@@ -2617,6 +3138,9 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const hasCanonicalTotalSales = hasApiValue(salesTotalAmount);
   const hasOnlineSales = hasApiValue(salesOnlineAmount);
   const hasOfflineSales = hasApiValue(salesOfflineAmount);
+  const offlinePeriodEnd = !offlineSnapshot?.error && /^\d{4}-\d{2}-\d{2}$/.test(String(offlineSnapshot?.periodEnd || ""))
+    ? String(offlineSnapshot.periodEnd)
+    : "";
   const hasSalesSummary = hasCanonicalTotalSales || hasOnlineSales || hasOfflineSales;
   const salesCoverageComplete = salesCoverage.complete === true;
   const salesCoverageLabel = salesCoverageComplete ? "통합 매출 기준 완료" : "확보 데이터 기준";
@@ -2642,11 +3166,12 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
           ${hasCanonicalTotalSales ? `<div class="monthly-report-side-row ${salesCoverageComplete ? "" : "monthly-report-muted"}"><span>Coverage</span><strong>${esc(salesCoverageLabel)}</strong></div>` : ""}
         </div>
       </div>
+      ${offlinePeriodEnd ? `<p class="monthly-report-fnote">오프라인 데이터 · ${esc(offlinePeriodEnd)} 기준</p>` : ""}
       <p class="monthly-report-fnote ${hasCanonicalTotalSales && salesCoverageComplete ? "" : "monthly-report-muted"}">${esc(salesCoverageNote)}</p>
     </section>
   ` : "";
   const brandSignalsBlock = brandSales.length && previousBrandSales.length
-    ? monthlyReportBrandSignalsBlock(brandSales, previousBrandSales, reconciliationLabel)
+    ? monthlyReportBrandSignalsBlock(performanceBrandSales, previousBrandSales, reconciliationLabel, monthlyBrandTrendRows)
     : "";
   const missionRows = !missionResult?.error && missionResult?.ok && Array.isArray(missionResult.missions)
     ? missionResult.missions.slice(0, 3)
@@ -2691,7 +3216,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       </div>
       <div class="monthly-report-hero">
         <div class="monthly-report-hero-main">
-          <span>월 실제 판매</span>
+          <span>온라인 실제 매출 · Cafe24 실제 결제 기준</span>
           <strong>${apiWon(commerce.paidAmount)}</strong>
           <em>${esc(monthlyReportDelta(commerce.paidAmount, previousCommerce.paidAmount, apiWon))}</em>
         </div>
@@ -2716,12 +3241,12 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
           </div>
         </section>
         <section class="monthly-report-block">
-          <div class="monthly-report-block-head"><h4>브랜드 매출 TOP 5</h4><span>salesAmount</span></div>
+          <div class="monthly-report-block-head"><h4>브랜드 매출 TOP 5</h4><span>온라인 실결제 기준</span></div>
           <div class="monthly-report-rank">
-            ${monthlyReportRankRows(brandSales.slice(0, 5), {
+            ${monthlyReportRankRows(performanceBrandSales.slice(0, 5), {
               withBar: true,
-              valueFn: (item) => item.salesAmount,
-              labelFn: (item) => item.brand_name || item.brand_code || "-",
+              valueFn: brandPerformancePaidAmount,
+              labelFn: brandPerformanceDisplayName,
               subFn: (item) => item.brand_code || "",
               formatValue: (value) => apiWon(value)
             })}
@@ -2729,13 +3254,13 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
         </section>
       </div>
       <section class="monthly-report-block">
-        <div class="monthly-report-block-head"><h4>상품 매출 TOP 5</h4><span>salesAmount</span></div>
+        <div class="monthly-report-block-head"><h4>상품 매출 TOP 5</h4><span>온라인 실결제 기준</span></div>
         <div class="monthly-report-rank">
-          ${monthlyReportRankRows(productSales.slice(0, 5), {
+          ${monthlyReportRankRows(canonicalProductSales.slice(0, 5), {
             withBar: false,
-            valueFn: (item) => item.salesAmount,
+            valueFn: canonicalPaidAmount,
             labelFn: (item) => item.productName || item.product_name || "-",
-            subFn: (item) => item.brand_name || item.brand_code || "",
+            subFn: (item) => brandCanonicalDisplayName(item),
             formatValue: (value) => apiWon(value)
           })}
         </div>
@@ -2938,7 +3463,7 @@ function renderOtherSections(data) {
   $("#campaignPerformance").innerHTML = `<article class="action-item"><strong>캠페인 성과 확인 중</strong><p>Meta 캠페인 기준으로 불러옵니다.</p></article>`;
   $("#adReconciliationSummary").innerHTML = `<article class="action-item"><strong>데이터 일치 검증 확인 중</strong><p>Meta 계정 전체 합계와 비교하고 있습니다.</p></article>`;
   $("#adFullReportActiveRows").innerHTML = `<tr><td colspan="18">전체 캠페인 데이터를 확인하고 있습니다.</td></tr>`;
-  $("#metaProductPerformanceSummary").innerHTML = `<article class="action-item"><strong>Meta Product Performance 확인 중</strong><p>Meta 구매 상품을 content_id 기준으로 확인하고 있습니다.</p></article>`;
+  $("#metaProductPerformanceSummary").innerHTML = `<article class="action-item"><strong>Meta Product Performance 확인 중</strong><p>Meta 구매 상품을 Cafe24와 연결하고 있습니다.</p></article>`;
   $("#metaProductPerformanceRows").innerHTML = `<tr><td colspan="4">데이터를 불러오고 있습니다.</td></tr>`;
   $("#metaBrandContributionSummary").innerHTML = `<article class="action-item"><strong>Brand Contribution 확인 중</strong><p>브랜드별 광고 기여를 집계하고 있습니다.</p></article>`;
   $("#metaBrandContributionRows").innerHTML = `<tr><td colspan="6">데이터를 불러오고 있습니다.</td></tr>`;
@@ -3539,6 +4064,14 @@ async function renderAdvertising(data, renderSeq) {
     coreKpiTarget.innerHTML = `<article class="action-item"><strong>핵심 지표 확인 불가</strong><p>Meta API 오류가 해결되면 광고비 · ROAS · 실매출이 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     decisionCenterTarget.innerHTML = `<article class="action-item"><strong>Decision Center 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     salesAnalysisTarget.innerHTML = `<article class="action-item"><strong>Campaign Sales Analysis 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
+    const metaProductPerformanceSummaryTarget = $("#metaProductPerformanceSummary");
+    const metaProductPerformanceRowsTarget = $("#metaProductPerformanceRows");
+    if (metaProductPerformanceSummaryTarget) metaProductPerformanceSummaryTarget.innerHTML = `<article class="action-item"><strong>Meta Product Performance 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
+    if (metaProductPerformanceRowsTarget) metaProductPerformanceRowsTarget.innerHTML = `<tr><td colspan="4">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
+    const metaBrandContributionSummaryTarget = $("#metaBrandContributionSummary");
+    const metaBrandContributionRowsTarget = $("#metaBrandContributionRows");
+    if (metaBrandContributionSummaryTarget) metaBrandContributionSummaryTarget.innerHTML = `<article class="action-item"><strong>Brand Contribution 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
+    if (metaBrandContributionRowsTarget) metaBrandContributionRowsTarget.innerHTML = `<tr><td colspan="6">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
     summaryTarget.innerHTML = [
       `<article class="action-item"><strong>Meta API 상태</strong><span>${esc(status)}</span><p>${esc(meta.error)}</p></article>`,
       `<article class="action-item"><strong>권한 오류 안내</strong><p>Meta API 권한 또는 토큰 권한이 막히면 광고 성과를 불러올 수 없습니다. Settings의 Meta Ads 연결 상태를 확인하세요. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`
@@ -3548,14 +4081,6 @@ async function renderAdvertising(data, renderSeq) {
     reconTarget.innerHTML = `<article class="action-item"><strong>검증 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
     fullReportTargets.active.innerHTML = `<tr><td colspan="18">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
     fullReportTargets.other.innerHTML = "";
-    const metaProductPerformanceSummaryTarget = $("#metaProductPerformanceSummary");
-    const metaProductPerformanceRowsTarget = $("#metaProductPerformanceRows");
-    if (metaProductPerformanceSummaryTarget) metaProductPerformanceSummaryTarget.innerHTML = `<article class="action-item"><strong>Meta Product Performance 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
-    if (metaProductPerformanceRowsTarget) metaProductPerformanceRowsTarget.innerHTML = `<tr><td colspan="4">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
-    const metaBrandContributionSummaryTarget = $("#metaBrandContributionSummary");
-    const metaBrandContributionRowsTarget = $("#metaBrandContributionRows");
-    if (metaBrandContributionSummaryTarget) metaBrandContributionSummaryTarget.innerHTML = `<article class="action-item"><strong>Brand Contribution 확인 불가</strong><p>Meta API 오류가 해결되면 표시됩니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
-    if (metaBrandContributionRowsTarget) metaBrandContributionRowsTarget.innerHTML = `<tr><td colspan="6">Meta 광고 데이터를 불러오지 못했습니다.</td></tr>`;
     contentTarget.innerHTML = "";
     renderMarketingSummary({ meta, fullReport, commerce, adSpendShare: null, briefingTarget, reconTarget, periodLabel: `${startDate} ~ ${endDate}` });
     return;
@@ -3564,6 +4089,7 @@ async function renderAdvertising(data, renderSeq) {
   const briefingCount = renderAdAiBriefing(fullReport, scoreWeights, briefingTarget);
   renderAdDecisionCenter(decisionCenterTarget, fullReport, scoreWeights, startDate, endDate);
   renderCampaignSalesAnalysis(salesAnalysisTarget, fullReport, renderSeq);
+  renderMetaProductPerformance(startDate, endDate, renderSeq);
 
   const totals = meta.totals || {};
   const tableSpend = Number(fullReport?.reconciliation?.tableSpend);
@@ -3606,7 +4132,6 @@ async function renderAdvertising(data, renderSeq) {
   tableTarget.innerHTML = renderMetaAdsRows(metaAdsRowsForLevel(meta));
   renderMetaAdsReconciliation(fullReport, reconTarget);
   renderMetaAdsFullReportGroups(fullReport, scoreWeights, fullReportTargets);
-  renderMetaProductPerformance(startDate, endDate, renderSeq);
   renderMarketingSummary({ meta, fullReport, commerce, adSpendShare, briefingTarget, reconTarget, briefingCount, reportingSpend, reportingPurchaseValue, periodLabel: `${startDate} ~ ${endDate}` });
   contentTarget.innerHTML = "";
 }
@@ -3952,7 +4477,7 @@ async function renderCampaignPeriodComparison(target, renderSeq) {
     const previousSales = Number(previous.salesAmount || 0);
     return {
       brandCode: code,
-      brandName: current.brand_name || previous.brand_name || code,
+      brandName: brandCanonicalDisplayName({ brand_code: code, brand_name: current.brand_name || previous.brand_name }),
       salesDelta: currentSales - previousSales,
       orderDelta: Number(current.orderCount || 0) - Number(previous.orderCount || 0),
       quantityDelta: Number(current.quantitySold || 0) - Number(previous.quantitySold || 0)
@@ -3962,18 +4487,22 @@ async function renderCampaignPeriodComparison(target, renderSeq) {
   const decreaseTop = brandRows.filter((row) => row.salesDelta < 0).sort((left, right) => left.salesDelta - right.salesDelta).slice(0, 5);
   const executionTotals = execution.totals || {};
   const comparisonTotals = comparison.totals || {};
-  const salesDelta = Number(executionTotals.salesAmount || 0) - Number(comparisonTotals.salesAmount || 0);
+  const basePaidAmount = hasApiValue(comparisonTotals.paidAmount) ? Number(comparisonTotals.paidAmount) : null;
+  const targetPaidAmount = hasApiValue(executionTotals.paidAmount) ? Number(executionTotals.paidAmount) : null;
+  if (!Number.isFinite(basePaidAmount) || !Number.isFinite(targetPaidAmount)) {
+    target.innerHTML = `<article class="action-item"><strong>기간 비교 확인 불가</strong><p>실제 결제액 데이터를 불러오지 못해 기간 비교를 표시할 수 없습니다. 기간을 바꾸거나 잠시 후 다시 시도해주세요.</p></article>`;
+    return;
+  }
+  const salesDelta = targetPaidAmount - basePaidAmount;
   const orderDelta = Number(executionTotals.orderCount || 0) - Number(comparisonTotals.orderCount || 0);
   const quantityDelta = Number(executionTotals.quantitySold || 0) - Number(comparisonTotals.quantitySold || 0);
   const salesTone = salesDelta > 0 ? "good" : salesDelta < 0 ? "urgent" : "neutral";
   const salesDirection = salesDelta > 0 ? "증가" : salesDelta < 0 ? "감소" : "변화 없음";
-  const comparisonSales = Number(comparisonTotals.salesAmount || 0);
-  const executionSales = Number(executionTotals.salesAmount || 0);
+  const comparisonSales = basePaidAmount;
+  const executionSales = targetPaidAmount;
   const salesNarrative = `${baseLabel}에 비해 ${targetLabel} 매출이 ${campaignComparisonRate(salesDelta, comparisonSales)} ${salesDirection}했습니다.`;
   const executionMetaTotals = executionMeta?.totals || {};
   const comparisonMetaTotals = comparisonMeta?.totals || {};
-  const basePaidAmount = hasApiValue(comparisonTotals.paidAmount) ? Number(comparisonTotals.paidAmount) : null;
-  const targetPaidAmount = hasApiValue(executionTotals.paidAmount) ? Number(executionTotals.paidAmount) : null;
   const baseSpend = hasApiValue(comparisonMetaTotals.spend) ? Number(comparisonMetaTotals.spend) : null;
   const targetSpend = hasApiValue(executionMetaTotals.spend) ? Number(executionMetaTotals.spend) : null;
   const basePurchaseValue = hasApiValue(comparisonMetaTotals.purchaseValue) ? Number(comparisonMetaTotals.purchaseValue) : null;
@@ -4500,6 +5029,7 @@ function renderAdAiBriefing(fullReport = {}, weights = {}, target) {
   `).join("");
   return managementCount;
 }
+
 // ===== Advertising Decision Center · Phase M1 =====
 // 목표: "지금 이 광고를 어떻게 운영해야 하는가"를 이번 기간 실제 집행 캠페인끼리의
 // 상대 비교(중앙값/분위수)로만 판단합니다. 업계 고정 기준값을 쓰지 않고, 이미
@@ -4607,7 +5137,19 @@ function adDecisionCenterPeerStatsByObjective(executedRows) {
 // 데이터 부족(=관찰) 우선 판정. 여기 해당하면 아래 objective별 성과 비교 로직은
 // 아예 적용하지 않습니다 — spend가 적다는 이유만으로, 또는 동일 objective 표본이
 // 부족한 상태로 "중단"이 나오는 것을 구조적으로 막습니다.
-function adDecisionCenterInsufficiency(row, statsByObjective, periodDays) {
+function adDecisionCenterExecutionDays(row, periodStart, periodEnd) {
+  if (
+    !campaignComparisonIsValidDateKey(row.executionStart)
+    || !campaignComparisonIsValidDateKey(row.executionEnd)
+    || !campaignComparisonIsValidDateKey(periodStart)
+    || !campaignComparisonIsValidDateKey(periodEnd)
+  ) return null;
+  const overlapStart = row.executionStart > periodStart ? row.executionStart : periodStart;
+  const overlapEnd = row.executionEnd < periodEnd ? row.executionEnd : periodEnd;
+  return overlapStart > overlapEnd ? 0 : campaignComparisonInclusiveDays(overlapStart, overlapEnd);
+}
+
+function adDecisionCenterInsufficiency(row, statsByObjective, periodDays, execDays) {
   const reasons = [];
   const objective = row.objective;
   const objectiveLabel = metaAdsObjectiveLabel(row);
@@ -4620,8 +5162,6 @@ function adDecisionCenterInsufficiency(row, statsByObjective, periodDays) {
     reasons.push(`동일 Objective(${objectiveLabel}) 집행 캠페인이 3개 미만이라 상대 비교 신뢰도가 낮습니다.`);
     return reasons;
   }
-  const validExecution = campaignComparisonIsValidDateKey(row.executionStart) && campaignComparisonIsValidDateKey(row.executionEnd);
-  const execDays = validExecution ? campaignComparisonInclusiveDays(row.executionStart, row.executionEnd) : null;
   if (execDays !== null && periodDays > 0 && execDays / periodDays < 0.3) {
     reasons.push(`집행 기간이 ${execDays}일로 짧습니다(선택 기간 ${periodDays}일 중).`);
   }
@@ -4840,10 +5380,8 @@ function adDecisionCenterClassify(row, stats) {
   };
 }
 
-function adDecisionCenterConfidence(row, periodDays, insufficiencyReasons) {
+function adDecisionCenterConfidence(periodDays, execDays, insufficiencyReasons) {
   if (insufficiencyReasons.length) return { label: "낮음", note: insufficiencyReasons[0] };
-  const validExecution = campaignComparisonIsValidDateKey(row.executionStart) && campaignComparisonIsValidDateKey(row.executionEnd);
-  const execDays = validExecution ? campaignComparisonInclusiveDays(row.executionStart, row.executionEnd) : null;
   const coverage = execDays !== null && periodDays > 0 ? execDays / periodDays : null;
   if (coverage !== null && coverage >= 0.6) return { label: "높음", note: `선택 기간 중 ${execDays}일 집행` };
   return { label: "보통", note: coverage !== null ? `선택 기간 중 ${execDays}일 집행` : "집행 기간 확인 필요" };
@@ -4851,8 +5389,9 @@ function adDecisionCenterConfidence(row, periodDays, insufficiencyReasons) {
 
 // 캠페인 단위 판단 1건 계산. metaAdsIsExecuted()로 이미 걸러진 executed 캠페인만
 // 넘겨받는다고 가정합니다.
-function adDecisionCenterEvaluate(row, statsByObjective, periodDays) {
-  const insufficiencyReasons = adDecisionCenterInsufficiency(row, statsByObjective, periodDays);
+function adDecisionCenterEvaluate(row, statsByObjective, periodDays, periodStart, periodEnd) {
+  const execDays = adDecisionCenterExecutionDays(row, periodStart, periodEnd);
+  const insufficiencyReasons = adDecisionCenterInsufficiency(row, statsByObjective, periodDays, execDays);
   const dataInsufficient = insufficiencyReasons.length > 0;
   const decision = dataInsufficient
     ? { label: "관찰", reasons: insufficiencyReasons.slice(0, 3), action: "조금 더 데이터를 확보하세요." }
@@ -4871,7 +5410,7 @@ function adDecisionCenterEvaluate(row, statsByObjective, periodDays) {
     tone: AD_DECISION_CENTER_TONE[decision.label] || "warn",
     reasons: reasons.slice(0, 3),
     action: decision.action,
-    confidence: adDecisionCenterConfidence(row, periodDays, insufficiencyReasons),
+    confidence: adDecisionCenterConfidence(periodDays, execDays, insufficiencyReasons),
     dataInsufficient
   };
 }
@@ -4889,7 +5428,7 @@ function adDecisionCenterCompute(fullReport = {}, scoreWeights = {}, periodStart
   const statsByObjective = adDecisionCenterPeerStatsByObjective(executed);
 
   const cards = executed
-    .map((row) => adDecisionCenterEvaluate(row, statsByObjective, periodDays))
+    .map((row) => adDecisionCenterEvaluate(row, statsByObjective, periodDays, periodStart, periodEnd))
     .map((card) => ({ ...card, score: metaAdsPerformanceScore(card.row, scoreWeights) }));
 
   cards.sort((left, right) => {
@@ -5220,8 +5759,12 @@ async function renderCampaignSalesAnalysis(target, fullReport, renderSeq) {
 
 // ============================================================================
 // Meta Product Performance · Phase 1 (2026-07-23) — Marketing 화면(#Advertising view)
-// 전용 신규 카드. GET /api/meta-ads/products가 내려주는 content_id 파싱 결과를 표/배지/detail로
-// 보여준다. Product Registry나 Cafe24 runtime 조회에 의존하지 않는 Phase 1 최소 화면이다.
+// 전용 신규 카드. 새 API를 만들지 않고 기존 GET /api/meta-ads/products만 재사용한다.
+// 이 endpoint는 이미 content_id parser → Product Registry resolver → Registry miss일 때
+// Runtime Auto Enrichment(Cafe24 Detail API로 그 자리에서 조회, Registry 파일은 쓰지 않음)
+// 까지 서버에서 전부 처리해 rows[].product/matchType으로 내려준다. 이 화면은 그 결과를
+// 그대로 표/배지/detail로 보여주기만 한다 — Meta API, Registry, Cafe24 API 어느 것도
+// 수정하지 않는다.
 // ============================================================================
 async function renderMetaProductPerformance(since, until, renderSeq) {
   const summaryTarget = $("#metaProductPerformanceSummary");
@@ -5331,15 +5874,17 @@ function renderMetaProductPerformanceSummary(summary = {}) {
   target.innerHTML = [
     metaAdsSummaryCard("귀속 상품", apiNum(summary.matchedRows), "Meta 구매 상품 중 Cafe24 상품으로 연결된 content_id 수", true),
     metaAdsSummaryCard("구매 수", apiNum(visiblePurchaseTotal), "아래 상품 표(귀속된 상품)의 구매 수 합계"),
-    metaAdsSummaryCard("Parsed", apiNum(summary.matchedRows), "content_id에서 상품번호와 옵션 코드를 파싱한 행 수"),
+    metaAdsSummaryCard("Runtime", apiNum(summary.runtimeEnrichedCount), "Registry에 없어 Cafe24 상품 상세 조회로 그 자리에서 보강된 상품 수"),
     metaAdsSummaryCard("Unresolved", apiNum(summary.unresolvedRows), "아직 Cafe24 상품으로 특정하지 못한 content_id 수")
   ].join("");
 }
 
+// Runtime 상품(product.source === "runtime")은 노란 배지, Registry에서 바로 resolve된
+// 상품은 초록 배지 — 기존 .badge/.badge.good/.badge.warn CSS를 그대로 재사용한다(신규
+// CSS 클래스 추가 없음).
 function metaProductPerformanceRegistrySourceLabel(row = {}) {
   if (row.product?.source === "runtime") return "Runtime";
-  if (row.matchType === "content_id_parsed_no_registry" || row.product?.registryStatus === "no_registry_lookup") return "Parsed";
-  if (row.matched && row.product?.verified) return "Verified";
+  if (row.matched) return "Verified";
   return "Unresolved";
 }
 
@@ -5347,7 +5892,6 @@ function metaProductPerformanceRegistryBadge(row = {}) {
   const label = metaProductPerformanceRegistrySourceLabel(row);
   if (label === "Runtime") return `<span class="badge warn">Runtime</span>`;
   if (label === "Verified") return `<span class="badge good">Verified</span>`;
-  if (label === "Parsed") return `<span class="badge">Parsed</span>`;
   return `<span class="badge">Unresolved</span>`;
 }
 
@@ -5402,7 +5946,8 @@ function metaProductPerformanceOrderListHtml(row = {}, salesProduct) {
 
 function metaProductPerformanceDetailHtml(row = {}) {
   const product = row.product || {};
-    const salesProduct = metaProductPerformanceSalesForRow(row);
+  const isRuntime = product.source === "runtime";
+  const salesProduct = metaProductPerformanceSalesForRow(row);
   const discountRate = salesProduct?.sales?.discountRate;
   const avgPrice = salesProduct && Number(salesProduct.quantitySold) > 0
     ? Math.round(Number(salesProduct.canonicalPaidAmount || 0) / Number(salesProduct.quantitySold))
@@ -5417,7 +5962,7 @@ function metaProductPerformanceDetailHtml(row = {}) {
     <div><dt>Product Code</dt><dd>${esc(product.productCode || "-")}</dd></div>
     <div><dt>구매 수</dt><dd>${apiNum(row.purchaseCount)}</dd></div>
     <div><dt>Registry Status</dt><dd>${esc(product.registryStatus || "-")}</dd></div>
-    <div><dt>확인 방식</dt><dd>${metaProductPerformanceRegistrySourceLabel(row)}</dd></div>
+    <div><dt>Runtime 여부</dt><dd>${isRuntime ? "Runtime" : "Registry"}</dd></div>
     <div><dt>content_id</dt><dd>${esc(row.contentId || "-")}</dd></div>
     <div><dt>matchType</dt><dd>${esc(row.matchType || "-")}</dd></div>
     <div><dt>실매출(Cafe24)</dt><dd>${salesProduct ? apiWon(salesProduct.canonicalPaidAmount) : salesUnavailableNote}</dd></div>
@@ -5425,7 +5970,8 @@ function metaProductPerformanceDetailHtml(row = {}) {
     <div><dt>평균 판매가</dt><dd>${avgPrice === null ? "-" : apiWon(avgPrice)}</dd></div>
     <div><dt>할인율 평균</dt><dd>${discountRate === null || discountRate === undefined ? "-" : pct(discountRate)}</dd></div>
     <div><dt>판매된 옵션 수</dt><dd>데이터 없음(옵션 단위 필드 미제공)</dd></div>
-  </dl>  <div class="meta-product-performance-orders">
+  </dl>${isRuntime ? `<span class="badge warn meta-product-performance-detail-badge">Runtime Product</span>` : ""}
+  <div class="meta-product-performance-orders">
     <h5>Order List <span>· 최신순</span></h5>
     ${metaProductPerformanceOrderListHtml(row, salesProduct)}
   </div>`;
@@ -5540,7 +6086,7 @@ function renderMetaProductPerformanceBrandContribution() {
   summaryTarget.innerHTML = [
     metaAdsSummaryCard("브랜드 수", apiNum(groups.length), "귀속 상품이 있는 브랜드 수", true),
     metaAdsSummaryCard("광고 상품 수", apiNum(totalProducts), "브랜드별 귀속 상품 수 합계(productNo 중복 제거)"),
-    metaAdsSummaryCard("Parsed 브랜드 수", apiNum(runtimeBrandCount), "content_id 파싱으로 확인된 상품이 1개 이상 있는 브랜드 수"),
+    metaAdsSummaryCard("Runtime 브랜드 수", apiNum(runtimeBrandCount), "Runtime 상품이 1개 이상 있는 브랜드 수"),
     metaAdsSummaryCard("총 구매수", apiNum(totalPurchases), "전체 브랜드 귀속 구매 이벤트 합계"),
     metaAdsSummaryCard("총 실매출", apiWon(totalSales), "Meta 귀속 상품만의 실매출 합계 — 브랜드 전체 매출 아님, Commerce 화면과 다를 수 있음")
   ].join("");
@@ -5551,7 +6097,7 @@ function renderMetaProductPerformanceBrandContribution() {
   rowsTarget.innerHTML = groups.map((group) => {
     const isActive = metaProductPerformanceBrandFilter === group.brand;
     return `<tr class="meta-brand-contribution-row${isActive ? " active" : ""}" data-meta-brand-toggle="${esc(group.brand)}">
-      <td><strong>${esc(group.brand)}</strong>${group.runtimeCount > 0 ? `<span class="meta-brand-runtime-dot" title="Parsed 상품 포함"></span>` : ""}</td>
+      <td><strong>${esc(group.brand)}</strong>${group.runtimeCount > 0 ? `<span class="meta-brand-runtime-dot" title="Runtime 상품 포함"></span>` : ""}</td>
       <td>${apiWon(group.salesAmount)}</td>
       <td>${apiNum(group.purchaseCount)}</td>
       <td>${apiNum(group.productCount)}</td>
@@ -5675,18 +6221,17 @@ function renderCommerceSummary(cafe, comparisonResult, totalSales) {
   const totals = sales.totals || {};
   const totalSalesState = commerceSummaryState.totalSales || {};
   const payments = sales.paymentMethods || [];
-  const paidAmount = Number(totals.paidAmount || 0);
-  const productPaidAmount = firstFiniteValue(totals.sales?.paidAmount, totals.paidAmount, 0);
-  const shippingAmount = firstFiniteValue(totals.sales?.shippingAmount, 0);
-  const salesInfo = todaySummarySalesInfo(totalSalesState, totals);
+  const onlineOrderPaidAmount = firstFiniteValue(totals.sales?.orderPaidAmount, sales.reconciliation?.orderPaidAmount, totals.paidAmount, 0);
+  const paidAmount = Number(onlineOrderPaidAmount || 0);
+  const productPaidAmount = firstFiniteValue(totals.sales?.paidAmount, sales.reconciliation?.allocatedProductPaidAmount, totals.paidAmount, 0);
+  const shippingAmount = firstFiniteValue(totals.sales?.shippingAmount, sales.reconciliation?.shippingAmount, 0);
   heroTarget.innerHTML = `<section class="ops-summary-hero">
     <div class="ops-summary-hero-main">
-      <span>${esc(salesInfo.label)}</span>
-      <strong class="ops-summary-hero-num">${esc(salesInfo.value)}</strong>
-      <p class="ops-summary-hero-sub">${esc(salesInfo.note)}</p>
+      <span>온라인 결제액</span>
+      <strong class="ops-summary-hero-num">${apiWon(onlineOrderPaidAmount)}</strong>
+      <p class="ops-summary-hero-sub">Cafe24 canonical 결제 기준</p>
     </div>
     <div class="ops-summary-side">
-      ${opsStatRow("온라인 결제액", apiWon(totals.paidAmount), { note: "상품 실결제 + 배송비" })}
       ${opsStatRow("상품 실결제", apiWon(productPaidAmount), { note: "브랜드·상품 성과 기준" })}
       ${shippingAmount ? opsStatRow("배송비", apiWon(shippingAmount), { note: "브랜드·상품 성과 제외" }) : ""}
       ${opsStatRow("온라인 주문", `${apiNum(totals.orderCount)}건`)}
@@ -5840,6 +6385,23 @@ function todayDateKey() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
 }
 
+// 2026-07-17 버그수정: Cafe24 온라인 매출 API(/api/diagnostics/brand-sales)에 until을 오늘보다
+// 미래인 날짜로 보내면, 그 요청 range 전체가 아니라 최근 3~4일치 주문만 돌아오는 프록시 쪽
+// 버그가 있다(실측 근거는 완료 보고서 참고). 이번 달을 조회할 때 until=월말을 그대로 보내면
+// 항상 이 버그에 걸리므로, "온라인 매출 조회에 쓸 안전한 until"을 한 곳에서 계산해 Today
+// 매출 달력과 Calendar가 동일하게 재사용한다: until = min(해당 월 말일, 오늘).
+// - 과거 달: monthEnd가 이미 오늘보다 이전이라 그대로 반환(영향 없음)
+// - 이번 달: 오늘로 고정
+// - 미래 달: 그 달 진입 자체가 기존 UI 정책(월 스위처 disabled 등)으로 막혀 있으므로 monthEnd를
+//   그대로 반환한다(호출된다 해도 실제로 존재하지 않는 미래 데이터를 요청하는 것뿐이라 안전).
+function boundedMonthUntil(monthKey) {
+  const start = `${monthKey}-01`;
+  const rawEnd = monthEnd(monthKey);
+  const today = todayDateKey();
+  if (start > today) return rawEnd;
+  return rawEnd > today ? today : rawEnd;
+}
+
 function salesCalendarMonthLabel(monthKey) {
   const [year, month] = String(monthKey || "").split("-");
   return `${year}년 ${Number(month)}월`;
@@ -5987,7 +6549,14 @@ function todaySalesCalendarCell(row, maxDailySales) {
   </div>`;
 }
 
+// 2026-07-17 버그수정(TASK3 검증 중 발견): row.onlineSales/offlineSales가 null일 때
+// todaySalesCalendarCell()의 data-* 속성은 esc(value ?? "")로 빈 문자열("")을 심는다.
+// 기존에는 Number("") === 0 이 유한(finite)해 "미확인"이 아니라 "0원"으로 잘못 표시됐다
+// (예: 오프라인 스냅샷이 없는 날 온라인만 있는 상태에서 오프라인이 실제로 0원인 것처럼
+// 보였다). 빈 문자열/undefined/null은 값이 없는 것으로 명시적으로 처리해 미확인과 실제
+// 0원을 구분한다.
 function finiteTooltipNumber(value) {
+  if (value === "" || value === undefined || value === null) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -6272,7 +6841,10 @@ async function renderTodaySalesCalendar(monthKey = todaySalesCalendarMonth) {
   todaySalesCalendarMonth = monthKey;
   const renderSeq = ++todaySalesCalendarRenderSeq;
   const start = `${monthKey}-01`;
-  const end = monthEnd(monthKey);
+  // 2026-07-17 버그수정: until을 monthEnd(월말) 그대로 보내면 이번 달일 때 미래 날짜가 되어
+  // Cafe24 프록시가 최근 며칠치만 반환한다(Calendar와 동일한 원인). boundedMonthUntil()로
+  // 이번 달은 오늘까지만 요청하도록 고정한다 — Calendar(loadCalendarMonthData)와 동일한 helper.
+  const end = boundedMonthUntil(monthKey);
   const existingCalendar = target.querySelector(".today-sales-calendar");
   hideTodaySalesCalendarTooltip();
   if (existingCalendar) {
@@ -6311,6 +6883,489 @@ async function renderTodaySalesCalendar(monthKey = todaySalesCalendarMonth) {
     <div class="today-sales-calendar-loading-overlay" aria-hidden="true"><span></span></div>
   </section>`;
   requestAnimationFrame(() => target.querySelector(".today-sales-calendar")?.classList.add("is-ready"));
+}
+
+// ============================================================
+// Calendar x Sales Heatmap Phase 1 (2026-07-17)
+// 새 nav 화면. UI + 데이터 연결만 구현하며 새 API는 만들지 않는다 — 아래 함수들은
+// todaySalesCalendar*가 이미 쓰고 있는 것과 동일한 기존 엔드포인트만 호출한다:
+//   - /api/diagnostics/brand-sales (Cafe24 온라인 매출 + TOP 브랜드/상품, 이미 Today 캘린더가 사용)
+//   - /api/ecount-sales/monthly (ECOUNT 오프라인 일별 매출, 이미 Today 캘린더가 사용)
+//   - /api/instagram/range (게시물별 조회/저장/공유 + 팔로워, Monthly helper와 동일 소스)
+//   - /api/meta-ads/summary (광고비/ROAS) — Meta Graph API의 time_range는 since=until=하루도
+//     그대로 지원하므로 서버 코드를 전혀 건드리지 않고 "하루짜리 기간 조회"로 재사용한다.
+//   - intelligenceUrl('/api/intelligence/clients') — Clients 화면과 동일한 엔드포인트를
+//     since=until=하루로 호출해 그날의 TOP 고객만 뽑는다.
+// 월별 데이터(온라인/오프라인/Instagram)는 월 이동 시 calendarMonthDataCache에서 재사용하고,
+// 날짜별 상세(광고비/ROAS/TOP 브랜드/상품/고객)는 실제로 hover/클릭된 날짜만 calendarDayDetailCache에
+// 채워 넣는다 — 둘 다 "불필요한 재호출 금지" 요구사항을 만족시키기 위함이다.
+// ============================================================
+
+// Instagram range 응답의 posts[]를 날짜별로 묶어 그날의 게시물 수/조회/저장/공유 합계를 만든다.
+// buildInstagramRangeData()가 이미 date 필터링을 마친 posts만 돌려주므로 여기서는 집계만 한다.
+function calendarInstagramByDate(posts = []) {
+  const map = new Map();
+  for (const post of posts || []) {
+    const date = String(post?.timestamp || post?.date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (!map.has(date)) map.set(date, { count: 0, views: 0, saves: 0, shares: 0 });
+    const row = map.get(date);
+    row.count += 1;
+    row.views += Number(post.views || post.reach || 0);
+    row.saves += Number(post.saves || 0);
+    row.shares += Number(post.shares || 0);
+  }
+  return map;
+}
+
+// 월별 데이터 로딩(온라인/오프라인/Instagram) — 캐시에 있으면 그대로 재사용하고, 없을 때만
+// 3개 기존 API를 병렬 호출한다. Today 캘린더의 온라인/오프라인 호출과 완전히 동일한 엔드포인트다.
+//
+// 2026-07-17 버그수정: /api/diagnostics/brand-sales를 until=월말(예: 2026-07-31)처럼 "오늘보다
+// 미래인 날짜"로 호출하면 Cafe24 프록시가 해당 월의 dailySales 전체가 아니라 최근 3~4일치만
+// 돌려주는 것을 실측으로 확인했다(같은 since로 until=오늘까지는 정상, until=오늘 이후는 항상
+// 최근 며칠로 잘림 — 실측 근거는 완료 보고서 TASK1/TASK2 참고). 이 때문에 이번 달(current month)의
+// 앞쪽 날짜들이 onlineMap에서 아예 빠져 normalizeDailySalesMap()이 기본값 0을 채워 넣었고,
+// 그 결과 Calendar 셀/Hover/Day Overview의 온라인 매출이 실제로는 존재하는데도 0원으로 보였다.
+// 서버(server.mjs)나 프록시를 고칠 수 없는 범위이므로, 프런트에서 이번 달을 불러올 때만 online
+// 조회의 until을 "오늘"로 고정해 미래 날짜가 절대 전달되지 않게 한다. Today 매출 달력
+// (renderTodaySalesCalendar)도 같은 boundedMonthUntil() 헬퍼를 재사용한다 — 각자 따로 clamp
+// 코드를 갖지 않도록 공통화했다. offline(ECOUNT)/Instagram 호출은 이 버그와 무관해 그대로 둔다.
+async function loadCalendarMonthData(monthKey) {
+  if (calendarMonthDataCache.has(monthKey)) return calendarMonthDataCache.get(monthKey);
+  const start = `${monthKey}-01`;
+  const end = monthEnd(monthKey);
+  const onlineUntil = boundedMonthUntil(monthKey);
+  const [onlineData, offlineData, instagramData] = await Promise.all([
+    getJson(`/api/diagnostics/brand-sales?since=${start}&until=${onlineUntil}`, 12000),
+    getJson(`/api/ecount-sales/monthly?month=${monthKey}`, 8000),
+    getJson(`/api/instagram/range?since=${start}&until=${end}`, 12000)
+  ]);
+  const instagramByDate = calendarInstagramByDate(instagramData?.posts || []);
+  const result = { onlineData, offlineData, instagramData, instagramByDate };
+  calendarMonthDataCache.set(monthKey, result);
+  return result;
+}
+
+// 날짜별 상세(광고비/ROAS/TOP 브랜드/TOP 상품) — hover 또는 클릭으로 실제 조회된 날짜만
+// on-demand로 채운다. TOP 고객(Clients)은 Day Overview 전용이라 이 함수에는 포함하지 않는다
+// (hover 툴팁에는 TOP 고객이 필요 없음 — 요구사항의 hover/클릭 항목이 서로 다르기 때문).
+async function loadCalendarDayDetail(date) {
+  if (calendarDayDetailCache.has(date)) return calendarDayDetailCache.get(date);
+  const promise = (async () => {
+    const [brandDay, metaDay] = await Promise.all([
+      getJson(`/api/diagnostics/brand-sales?since=${date}&until=${date}`, 10000),
+      getJson(`/api/meta-ads/summary?since=${date}&until=${date}&level=campaign`, 10000)
+    ]);
+    const topBrand = !brandDay?.error && Array.isArray(brandDay.brands)
+      ? [...brandDay.brands].sort((a, b) => canonicalBrandPaidAmount(b) - canonicalBrandPaidAmount(a))[0] || null
+      : null;
+    const topProduct = !brandDay?.error && Array.isArray(brandDay.products) ? brandDay.products[0] || null : null;
+    return { brandDay, metaDay, topBrand, topProduct };
+  })();
+  calendarDayDetailCache.set(date, promise);
+  return promise;
+}
+
+// Clients 화면과 동일한 엔드포인트를 since=until=하루로 호출해 TOP 고객만 뽑는다.
+// Day Overview에서만 쓰이므로 클릭 시 별도로 로드한다(hover에는 불필요, 위 주석 참고).
+async function loadCalendarDayTopClient(date) {
+  const cacheKey = `client:${date}`;
+  if (calendarDayDetailCache.has(cacheKey)) return calendarDayDetailCache.get(cacheKey);
+  const promise = (async () => {
+    const data = await getJson(intelligenceUrl(`/api/intelligence/clients?since=${date}&until=${date}`), 15000);
+    if (data?.error || !data?.ok || !Array.isArray(data.clients)) return { error: data?.error || "고객 데이터를 불러오지 못했습니다.", topClient: null };
+    const topClient = [...data.clients].sort((a, b) => Number(b.totalSales || 0) - Number(a.totalSales || 0))[0] || null;
+    return { topClient };
+  })();
+  calendarDayDetailCache.set(cacheKey, promise);
+  return promise;
+}
+
+function calendarMonths() {
+  return todaySalesCalendarMonths();
+}
+
+function normalizeCalendarMonth(monthKey) {
+  return normalizeTodaySalesCalendarMonth(monthKey);
+}
+
+function shiftCalendarMonth(monthKey, offset) {
+  return shiftTodaySalesCalendarMonth(monthKey, offset);
+}
+
+function calendarMonthSwitchHtml(monthKey) {
+  const options = calendarMonths();
+  const current = normalizeCalendarMonth(monthKey);
+  const currentIndex = options.indexOf(current);
+  const olderDisabled = currentIndex === -1 || currentIndex >= options.length - 1;
+  const newerDisabled = currentIndex <= 0;
+  return `<div class="today-sales-calendar-month-switch calendar-month-switch" aria-label="Calendar 월 선택">
+    <button class="month-nav-btn" type="button" data-calendar-nav="-1" ${olderDisabled ? "disabled" : ""} aria-label="이전 달">◀</button>
+    <strong class="calendar-month-label">${esc(salesCalendarMonthLabel(current))}</strong>
+    <button class="month-nav-btn" type="button" data-calendar-nav="1" ${newerDisabled ? "disabled" : ""} aria-label="다음 달">▶</button>
+  </div>`;
+}
+
+// 셀 마크업. 히트맵 레벨/색상은 todaySalesCalendarCell과 동일한 salesHeatLevel()·sales-heat-*
+// 클래스를 그대로 재사용한다(요구사항: "기존 색상 시스템 재사용, 새 CSS 최소화"). 클릭으로 Day
+// Overview를 여는 data-calendar-day 속성만 추가로 붙인다.
+// 2026-07-17 버그수정(TASK5): 이전에는 온라인/오프라인 중 "하나라도" 미확인이면 그날 전체를
+// noData(회색 "-")로 처리했다. 이 때문에 예를 들어 ECOUNT 오프라인 snapshot이 7월 15일까지만
+// 있는 경우, 온라인 매출은 실제로 존재하는 7월 16~17일까지도 "-"로 가려졌다. 아래처럼 5가지
+// 상태를 분리한다: A(둘 다 확보) / B(온라인만 확보) / C(오프라인만 확보) / D(둘 다 확보+0원) /
+// E(둘 다 미확인, 또는 미래 날짜) — noData(회색 "-")는 오직 E일 때만이다. B/C는 확인된 금액을
+// 그대로 표시하고, 이미 있던 소스 점(dot, is-muted) 표시로 어느 쪽이 비어있는지 계속 구분한다.
+function calendarCellHtml(row, maxDailySales, instagramByDate) {
+  if (!row) return `<div class="today-sales-calendar-cell is-outside" aria-hidden="true"></div>`;
+  const level = salesHeatLevel(row.totalSales, maxDailySales);
+  const bothMissing = !row.onlineAvailable && !row.offlineAvailable;
+  const noData = row.future || bothMissing; // 상태 E (또는 미래 날짜)
+  const partialOnlineOnly = !noData && row.onlineAvailable && !row.offlineAvailable; // 상태 B
+  const partialOfflineOnly = !noData && !row.onlineAvailable && row.offlineAvailable; // 상태 C
+  const partial = partialOnlineOnly || partialOfflineOnly;
+  const zero = !noData && !partial && Number(row.totalSales || 0) === 0; // 상태 D
+  const isToday = row.date === todayDateKey();
+  const isSelected = row.date === calendarSelectedDate;
+  const ig = instagramByDate?.get(row.date) || { count: 0 };
+  const classes = [
+    "today-sales-calendar-cell",
+    "calendar-day-cell",
+    `sales-heat-${level}`,
+    row.future ? "is-future" : "",
+    isToday ? "is-today" : "",
+    zero ? "is-zero" : "",
+    partial ? "is-unavailable" : "",
+    noData ? "is-nodata" : "",
+    isSelected ? "is-selected" : ""
+  ].filter(Boolean).join(" ");
+  const dataAttrs = [
+    `data-calendar-day="${esc(row.date)}"`,
+    `data-date="${esc(row.date)}"`,
+    `data-total="${esc(row.totalSales)}"`,
+    `data-online="${esc(row.onlineSales ?? "")}"`,
+    `data-offline="${esc(row.offlineSales ?? "")}"`,
+    `data-post-count="${esc(ig.count || 0)}"`,
+    `data-nodata="${noData ? "1" : ""}"`
+  ].join(" ");
+  const partialNote = partialOnlineOnly ? "오프라인 미반영" : partialOfflineOnly ? "온라인 확인 불가" : "";
+  const label = noData
+    ? `${row.date} 데이터 없음`
+    : partial
+      ? `${row.date} 확인된 매출 ${apiWon(row.totalSales)}(${partialNote})`
+      : `${row.date} 총매출 ${apiWon(row.totalSales)}`;
+  return `<div class="${classes}" tabindex="0" role="button" aria-label="${esc(label)}" ${dataAttrs}>
+    <div class="today-sales-calendar-dayline">${isToday ? `<b>TODAY</b>` : ""}<span>${apiNum(row.day)}</span></div>
+    ${noData ? `<strong class="calendar-cell-nodata">-</strong>` : `<strong>${krw(row.totalSales)}</strong>`}
+    <div class="today-sales-source-dots">
+      <i class="today-sales-source-dot is-online ${row.onlineAvailable ? "" : "is-muted"}"></i>
+      <i class="today-sales-source-dot is-offline ${row.offlineAvailable ? "" : "is-muted"}"></i>
+    </div>
+  </div>`;
+}
+
+function calendarLoadingHtml(monthKey) {
+  const cells = Array.from({ length: 35 }, () => `<div class="today-sales-calendar-cell today-sales-calendar-skeleton"></div>`).join("");
+  return `<section class="today-sales-calendar calendar-grid-block monthly-report-block is-loading">
+    <div class="monthly-report-block-head">
+      <div><h4>월별 매출 캘린더</h4></div>
+      ${calendarMonthSwitchHtml(monthKey)}
+    </div>
+    <div class="today-sales-calendar-weekdays">
+      ${["일", "월", "화", "수", "목", "금", "토"].map((day) => `<span>${day}</span>`).join("")}
+    </div>
+    <div class="today-sales-calendar-grid">${cells}</div>
+    <div class="today-sales-calendar-loading-overlay" aria-hidden="true"><span></span></div>
+  </section>`;
+}
+
+function calendarDayOverviewEmptyHtml() {
+  return `<div class="calendar-day-overview-empty">
+    <p>날짜를 클릭하면<br>그날의 마케팅 현황이 여기에 표시됩니다.</p>
+  </div>`;
+}
+
+function calendarDayOverviewLoadingHtml(date) {
+  return `<div class="calendar-day-overview-panel is-loading">
+    <div class="calendar-day-overview-head">
+      <h4>${esc(salesCalendarLongDate(date))}</h4>
+      <button type="button" class="calendar-day-overview-close" data-calendar-close aria-label="닫기">✕</button>
+    </div>
+    <p class="monthly-report-muted">불러오는 중...</p>
+  </div>`;
+}
+
+function calendarDayOverviewRow(label, value, sub = "") {
+  return `<div class="monthly-report-side-row calendar-overview-row"><span>${esc(label)}</span><strong>${esc(value)}</strong>${sub ? `<p class="monthly-report-fnote">${esc(sub)}</p>` : ""}</div>`;
+}
+
+function calendarDayOverviewHtml(date, monthCache, dayDetail, topClientResult) {
+  const rows = buildTodaySalesCalendarRows(date.slice(0, 7), monthCache.onlineData, monthCache.offlineData);
+  const dayRow = rows.find((row) => row.date === date) || null;
+  const online = dayRow?.onlineAvailable ? dayRow.onlineSales : null;
+  const offline = dayRow?.offlineAvailable ? dayRow.offlineSales : null;
+  // 2026-07-17 버그수정(TASK5): 온라인/오프라인 중 하나만 확보돼도 확인된 금액을 합산해 보여준다.
+  // total은 항상 "현재까지 확인된 금액의 합"이며, 부분 상태일 때는 아래 partialNote로 그 사실을
+  // 밝힌다(총매출을 실제보다 낮은 값처럼 조용히 보여주지 않기 위함).
+  const total = (online || 0) + (offline || 0);
+  const orderCount = dayRow?.onlineAvailable ? dayRow.onlineOrderCount : null;
+  const ig = monthCache.instagramByDate?.get(date) || { count: 0, views: 0, saves: 0, shares: 0 };
+  const followers = monthCache.instagramData?.account?.followers;
+  const metaFailed = Boolean(dayDetail && dayDetail.metaDay?.error);
+  const spend = dayDetail?.metaDay && !dayDetail.metaDay.error ? dayDetail.metaDay.totals?.spend : null;
+  const roas = dayDetail?.metaDay && !dayDetail.metaDay.error ? dayDetail.metaDay.totals?.roas : null;
+  const topBrand = dayDetail?.topBrand;
+  const topProduct = dayDetail?.topProduct;
+  const topClient = topClientResult?.topClient;
+  const bothMissing = !dayRow || (!dayRow.onlineAvailable && !dayRow.offlineAvailable);
+  const noData = bothMissing || dayRow?.future; // 상태 E, 또는 미래 날짜
+  const partialOnlineOnly = !noData && dayRow.onlineAvailable && !dayRow.offlineAvailable; // 상태 B
+  const partialOfflineOnly = !noData && !dayRow.onlineAvailable && dayRow.offlineAvailable; // 상태 C
+  const partialNote = partialOnlineOnly
+    ? "오프라인 매출이 아직 반영되지 않았습니다. 위 금액은 온라인만 반영된 확인된 금액입니다."
+    : partialOfflineOnly
+      ? "온라인 매출을 확인하지 못했습니다. 위 금액은 오프라인만 반영된 확인된 금액입니다."
+      : "";
+  const spendText = metaFailed ? "확인 불가" : (spend === null || spend === undefined ? "확인 중" : apiWon(spend));
+  const roasText = metaFailed ? "-" : (roas === null || roas === undefined ? "-" : multiple(roas));
+  return `<div class="calendar-day-overview-panel">
+    <div class="calendar-day-overview-head">
+      <h4>${esc(salesCalendarLongDate(date))}</h4>
+      <button type="button" class="calendar-day-overview-close" data-calendar-close aria-label="닫기">✕</button>
+    </div>
+    ${noData ? `<p class="monthly-report-muted">이 날짜는 확인 가능한 데이터가 없습니다(데이터 없음).</p>` : `
+    <div class="monthly-report-hero-main calendar-overview-total">
+      <span>${partialOnlineOnly || partialOfflineOnly ? "확인된 매출" : "총매출"}</span>
+      <strong>${apiWon(total)}</strong>
+      <p class="monthly-report-muted">${partialNote || "온라인 + 오프라인 합산"}</p>
+    </div>
+    <div class="calendar-overview-grid">
+      ${calendarDayOverviewRow("온라인", online === null ? "미확인" : apiWon(online))}
+      ${calendarDayOverviewRow("오프라인", offline === null ? "미확인" : apiWon(offline))}
+      ${calendarDayOverviewRow("주문수", orderCount === null ? "미확인" : `${apiNum(orderCount)}건`)}
+      ${calendarDayOverviewRow("광고비", spendText)}
+      ${calendarDayOverviewRow("ROAS", roasText)}
+      ${calendarDayOverviewRow("인스타 조회", apiNum(ig.views))}
+      ${calendarDayOverviewRow("저장", apiNum(ig.saves))}
+      ${calendarDayOverviewRow("공유", apiNum(ig.shares))}
+      ${calendarDayOverviewRow("팔로워", hasApiValue(followers) ? `${apiNum(followers)}명` : "-")}
+    </div>
+    <p class="calendar-overview-subhead">TOP 브랜드</p>
+    <p class="calendar-overview-top-line">${topBrand ? `${esc(brandCanonicalDisplayName(topBrand))} · ${apiWon(canonicalBrandPaidAmount(topBrand))}` : (dayDetail ? "데이터 없음" : "불러오는 중...")}</p>
+    <p class="calendar-overview-subhead">TOP 상품</p>
+    <p class="calendar-overview-top-line">${topProduct ? `${esc(topProduct.productName || "-")} · ${apiWon(topProduct.salesAmount)}` : (dayDetail ? "데이터 없음" : "불러오는 중...")}</p>
+    <p class="calendar-overview-subhead">TOP 고객</p>
+    <p class="calendar-overview-top-line">${topClient ? `${esc(topClient.name || "-")} · ${apiWon(topClient.totalSales)}` : (topClientResult ? "데이터 없음" : "불러오는 중...")}</p>
+    `}
+  </div>`;
+}
+
+async function openCalendarDayOverview(date) {
+  calendarSelectedDate = date;
+  hideCalendarTooltip();
+  $$(".calendar-day-cell").forEach((cell) => cell.classList.toggle("is-selected", cell.dataset.calendarDay === date));
+  const panel = $("#calendarDayOverview");
+  if (!panel) return;
+  const renderSeq = ++calendarDayOverviewRenderSeq;
+  panel.innerHTML = calendarDayOverviewLoadingHtml(date);
+  const monthKey = date.slice(0, 7);
+  const monthCache = await loadCalendarMonthData(monthKey);
+  if (renderSeq !== calendarDayOverviewRenderSeq) return;
+  panel.innerHTML = calendarDayOverviewHtml(date, monthCache, null, null);
+  const [dayDetail, topClientResult] = await Promise.all([
+    loadCalendarDayDetail(date),
+    loadCalendarDayTopClient(date)
+  ]);
+  if (renderSeq !== calendarDayOverviewRenderSeq || calendarSelectedDate !== date) return;
+  panel.innerHTML = calendarDayOverviewHtml(date, monthCache, dayDetail, topClientResult);
+}
+
+function closeCalendarDayOverview() {
+  calendarSelectedDate = null;
+  calendarDayOverviewRenderSeq += 1;
+  $$(".calendar-day-cell").forEach((cell) => cell.classList.remove("is-selected"));
+  const panel = $("#calendarDayOverview");
+  if (panel) panel.innerHTML = calendarDayOverviewEmptyHtml();
+}
+
+// Hover 툴팁 — Today 캘린더의 positionTodaySalesCalendarTooltip()을 그대로 재사용한다(범용
+// anchor/tooltip 위치 계산 함수라 새로 만들 필요가 없다). 노드/HTML만 Calendar 전용으로 따로 둔다.
+function calendarTooltipNode() {
+  let tooltip = $("#calendarTooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.id = "calendarTooltip";
+    tooltip.className = "today-sales-calendar-tooltip";
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.hidden = true;
+    document.body.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+// 2026-07-17 Hover UX 개선: "그날 무슨 일이 있었는지"를 5초 안에 읽히게 하는 Rule Base(비-AI)
+// 한 줄 인사이트. 지정된 우선순위(1 오프라인 비중≥80% → 2 온라인 비중≥80% → 3 광고비>0 →
+// 4 게시물>0 → 5 게시물==0 → 6 그 달 매출 TOP20%)를 순서대로 검사해 처음 매칭되는 규칙 하나만
+// 반환한다. 광고비(spend)가 아직 debounce 로딩 중(undefined)이면 3번 규칙만 자연히 건너뛰고,
+// loadCalendarDayDetail()이 완료돼 showCalendarTooltip()이 다시 그릴 때 반영된다 — 별도 재계산
+// 로직 없이 기존 재렌더 흐름을 그대로 재사용한다.
+function calendarTodayInsight(row, spend, postCount, monthCache) {
+  const total = Number(row?.totalSales || 0);
+  if (total > 0) {
+    const offlineRatio = row.offlineAvailable ? Number(row.offlineSales || 0) / total : 0;
+    const onlineRatio = row.onlineAvailable ? Number(row.onlineSales || 0) / total : 0;
+    if (offlineRatio >= 0.8) return "오프라인 중심 판매";
+    if (onlineRatio >= 0.8) return "온라인 중심 판매";
+  }
+  if (Number(spend) > 0) return "광고 집행일";
+  if (Number(postCount) > 0) return "게시물 발행일";
+  if (Number(postCount) === 0) return "게시물 업로드 없음";
+  if (calendarIsTopRevenueDay(row?.date, monthCache)) return "고매출일";
+  return "";
+}
+
+// 규칙6("총매출이 해당 월 TOP20%") 판정 — buildTodaySalesCalendarRows()가 이미 만든 rows를
+// 그대로 재사용해 그 달의 확인 가능한 날짜들(미래 제외) 중 매출 상위 20%에 드는지 계산한다.
+// 새 API 호출 없음(월 데이터는 이미 monthCache에 있음).
+function calendarIsTopRevenueDay(date, monthCache) {
+  if (!date || !monthCache) return false;
+  const monthKey = date.slice(0, 7);
+  const rows = buildTodaySalesCalendarRows(monthKey, monthCache.onlineData, monthCache.offlineData);
+  const known = rows.filter((item) => !item.future && (item.onlineAvailable || item.offlineAvailable));
+  if (known.length < 5) return false; // 표본이 너무 적으면 상위 20% 판정이 의미가 없다
+  const sorted = [...known].sort((a, b) => Number(b.totalSales || 0) - Number(a.totalSales || 0));
+  const topCount = Math.max(1, Math.ceil(sorted.length * 0.2));
+  return sorted.slice(0, topCount).some((item) => item.date === date);
+}
+
+// 2026-07-17 버그수정(TASK5): 온라인/오프라인 중 하나만 미확인이어도 "데이터 없음"으로 전체를
+// 가리지 않는다. 둘 다 없거나 미래 날짜일 때만 완전한 데이터 없음으로 처리하고, 한쪽만 없으면
+// 확인된 쪽 금액은 그대로 보여주고 나머지는 "미확인"으로 명시한다.
+//
+// 2026-07-17 Hover UX 개선: Today와 중복되는 KPI 나열이 아니라 "총매출(최상단, 가장 크게) →
+// 온라인/오프라인 → Today's Insight(Rule Base 한 줄) → TOP 브랜드(표시명+매출) → 광고비(ROAS
+// 제거) → 게시물 건수(상세는 Day Overview)" 순서로 재구성했다. 섹션 마크업은 기존
+// todaySalesTooltipSection()을 그대로 재사용하고, 총매출만 tone="total"로 강조(CSS 최소 추가).
+function calendarTooltipHtml(date, row, monthCache, dayDetail) {
+  const bothMissing = !row || (!row.onlineAvailable && !row.offlineAvailable);
+  const noData = bothMissing || row?.future;
+  if (noData) {
+    return `<div class="today-sales-tooltip-card">
+      <h5>${esc(salesCalendarLongDate(date))}</h5>
+      ${todaySalesTooltipSection("데이터 없음", "-")}
+    </div>`;
+  }
+  const ig = monthCache?.instagramByDate?.get(date) || { count: 0 };
+  const metaFailed = Boolean(dayDetail && dayDetail.metaDay?.error);
+  const spend = dayDetail?.metaDay && !dayDetail.metaDay.error ? dayDetail.metaDay.totals?.spend : undefined;
+  const spendText = metaFailed ? "확인 불가" : (spend === undefined ? "확인 중" : apiWon(spend));
+  const topBrand = dayDetail?.topBrand;
+  // 대표 표시명: 프로젝트 전체 공통 함수 brandCanonicalDisplayName()을 그대로 재사용한다
+  // (영문 Canonical Name 우선 → 없으면 기존 이름 → 그마저 없으면 "미분류").
+  const topBrandName = topBrand ? brandCanonicalDisplayName(topBrand) : "";
+  const insight = calendarTodayInsight(row, spend, ig.count, monthCache);
+  return `<div class="today-sales-tooltip-card">
+    <h5>${esc(salesCalendarLongDate(date))}</h5>
+    ${todaySalesTooltipSection("총매출", apiWon(row.totalSales), [], "total")}
+    ${todaySalesTooltipSection("온라인", row.onlineAvailable ? apiWon(row.onlineSales) : "미확인", [], "online")}
+    ${todaySalesTooltipSection("오프라인", row.offlineAvailable ? apiWon(row.offlineSales) : "미확인", [], "offline")}
+    ${insight ? `<hr>${todaySalesTooltipSection("💡 Today's Insight", insight)}` : ""}
+    <hr>
+    ${todaySalesTooltipSection("TOP 브랜드", topBrand ? topBrandName : (dayDetail ? "데이터 없음" : "확인 중"), topBrand ? [apiWon(canonicalBrandPaidAmount(topBrand))] : [])}
+    <hr>
+    ${todaySalesTooltipSection("광고비", spendText)}
+    <hr>
+    ${todaySalesTooltipSection("게시물", `${apiNum(ig.count)}건`)}
+  </div>`;
+}
+
+async function showCalendarTooltip(date, anchor) {
+  if (!date || !anchor) return;
+  calendarHoverDate = date;
+  const monthKey = date.slice(0, 7);
+  const monthCache = calendarMonthDataCache.get(monthKey);
+  if (!monthCache) return;
+  const rows = buildTodaySalesCalendarRows(monthKey, monthCache.onlineData, monthCache.offlineData);
+  const row = rows.find((item) => item.date === date) || null;
+  const tooltip = calendarTooltipNode();
+  tooltip.innerHTML = calendarTooltipHtml(date, row, monthCache, calendarDayDetailCache.get(date) && await calendarDayDetailCache.get(date));
+  if (calendarHoverDate !== date) return;
+  tooltip.hidden = false;
+  tooltip.classList.remove("is-visible");
+  tooltip.style.left = "0px";
+  tooltip.style.top = "0px";
+  positionTodaySalesCalendarTooltip(anchor, tooltip);
+  requestAnimationFrame(() => tooltip.classList.add("is-visible"));
+  // noData가 아닌 날짜만, 그리고 아직 상세를 불러온 적 없는 날짜만 debounce 후 day-scoped 호출을
+  // 트리거한다(요구사항: hover 시 광고비/TOP 브랜드 필요하지만 마우스가 스쳐 지나가는 셀마다
+  // 매번 호출하면 불필요한 재호출이 되므로 300ms 정지 후에만, 그리고 날짜당 한 번만 로드한다).
+  const rowHasAnyData = row && (row.onlineAvailable || row.offlineAvailable) && !row.future;
+  if (rowHasAnyData && !calendarDayDetailCache.has(date)) {
+    clearTimeout(calendarHoverTimer);
+    calendarHoverTimer = setTimeout(async () => {
+      if (calendarHoverDate !== date) return;
+      const detail = await loadCalendarDayDetail(date);
+      if (calendarHoverDate !== date) return;
+      const liveTooltip = $("#calendarTooltip");
+      if (liveTooltip && !liveTooltip.hidden) liveTooltip.innerHTML = calendarTooltipHtml(date, row, monthCache, detail);
+    }, 300);
+  }
+}
+
+function hideCalendarTooltip() {
+  calendarHoverDate = null;
+  clearTimeout(calendarHoverTimer);
+  const tooltip = $("#calendarTooltip");
+  if (!tooltip) return;
+  tooltip.classList.remove("is-visible");
+  tooltip.hidden = true;
+}
+
+async function renderCalendarMonth(monthKey = calendarViewMonth) {
+  const target = $("#calendarGridContainer");
+  if (!target) return;
+  monthKey = normalizeCalendarMonth(monthKey);
+  calendarViewMonth = monthKey;
+  const renderSeq = ++calendarRenderSeq;
+  const existing = target.querySelector(".calendar-grid-block");
+  hideCalendarTooltip();
+  const alreadyCached = calendarMonthDataCache.has(monthKey);
+  if (existing) {
+    if (!alreadyCached) existing.classList.add("is-loading");
+    const switchTarget = existing.querySelector(".calendar-month-switch");
+    if (switchTarget) switchTarget.outerHTML = calendarMonthSwitchHtml(monthKey);
+  } else if (!alreadyCached) {
+    target.innerHTML = calendarLoadingHtml(monthKey);
+  }
+  const { onlineData, offlineData, instagramByDate } = await loadCalendarMonthData(monthKey);
+  if (renderSeq !== calendarRenderSeq) return;
+  const rows = buildTodaySalesCalendarRows(monthKey, onlineData, offlineData);
+  const maxDailySales = rows.reduce((max, row) => Math.max(max, Number(row.totalSales || 0)), 0);
+  const [year, month] = monthKey.split("-").map(Number);
+  const firstDay = new Date(year, month - 1, 1).getDay();
+  const leading = Array.from({ length: firstDay }, () => null);
+  const cells = [...leading, ...rows];
+  target.innerHTML = `<section class="today-sales-calendar calendar-grid-block monthly-report-block">
+    <div class="monthly-report-block-head">
+      <div><h4>월별 매출 캘린더</h4><p class="monthly-report-muted">금액은 온라인+오프라인 총매출, 색이 진할수록 그 달 안에서 매출이 높은 날입니다.</p></div>
+      ${calendarMonthSwitchHtml(monthKey)}
+    </div>
+    ${todaySalesCalendarCoverageNote(monthKey, onlineData, offlineData)}
+    <div class="today-sales-calendar-weekdays">
+      ${["일", "월", "화", "수", "목", "금", "토"].map((day) => `<span>${day}</span>`).join("")}
+    </div>
+    <div class="today-sales-calendar-grid">
+      ${cells.map((row) => calendarCellHtml(row, maxDailySales, instagramByDate)).join("")}
+    </div>
+    <div class="today-sales-calendar-loading-overlay" aria-hidden="true"><span></span></div>
+  </section>`;
+  requestAnimationFrame(() => target.querySelector(".calendar-grid-block")?.classList.add("is-ready"));
+}
+
+function renderCalendarView() {
+  if (!$("#calendarDayOverview").innerHTML.trim()) $("#calendarDayOverview").innerHTML = calendarDayOverviewEmptyHtml();
+  if (calendarSelectedDate) $$(".calendar-day-cell").forEach((cell) => cell.classList.toggle("is-selected", cell.dataset.calendarDay === calendarSelectedDate));
+  renderCalendarMonth(calendarViewMonth);
 }
 
 function salesConnectionState(error) {
@@ -6621,21 +7676,21 @@ function renderProductBrandSalesTable() {
   const query = productBrandSalesSearch.trim().toLowerCase();
   const rows = productBrandSalesRows.filter((row) => {
     if (!query) return true;
-    return `${row.brand_name || ""} ${row.brand_code || ""}`.toLowerCase().includes(query);
+    return `${row.brand_name || ""} ${row.brand_code || ""} ${brandCanonicalDisplayName(row)}`.toLowerCase().includes(query);
   }).sort((left, right) => {
-    if (productBrandSalesSort === "brand_desc") return (right.manufacturer_name || right.brand_name || right.brand_code || "").localeCompare(left.manufacturer_name || left.brand_name || left.brand_code || "");
+    if (productBrandSalesSort === "brand_desc") return (right.manufacturer_name || brandCanonicalDisplayName(right)).localeCompare(left.manufacturer_name || brandCanonicalDisplayName(left));
     if (productBrandSalesSort === "salesAmount_desc") return canonicalBrandPaidAmount(right) - canonicalBrandPaidAmount(left);
     if (productBrandSalesSort === "salesAmount_asc") return canonicalBrandPaidAmount(left) - canonicalBrandPaidAmount(right);
     if (productBrandSalesSort === "quantity_desc") return Number(right.quantitySold || 0) - Number(left.quantitySold || 0);
     if (productBrandSalesSort === "quantity_asc") return Number(left.quantitySold || 0) - Number(right.quantitySold || 0);
     if (productBrandSalesSort === "orders_desc") return Number(right.orderCount || 0) - Number(left.orderCount || 0);
     if (productBrandSalesSort === "orders_asc") return Number(left.orderCount || 0) - Number(right.orderCount || 0);
-    return (left.manufacturer_name || left.brand_name || left.brand_code || "").localeCompare(right.manufacturer_name || right.brand_name || right.brand_code || "");
+    return (left.manufacturer_name || brandCanonicalDisplayName(left)).localeCompare(right.manufacturer_name || brandCanonicalDisplayName(right));
   });
   const range = productBrandSalesDateRange(selectedMonth());
   metaTarget.textContent = `${range.label} · ${range.since} ~ ${range.until} · ${apiNum(rows.length)}개 브랜드 표시`;
   rowsTarget.innerHTML = rows.length ? rows.map((row) => {
-    const brandName = row.brand_name && row.brand_name !== row.brand_code ? row.brand_name : "미분류";
+    const brandName = brandCanonicalDisplayName(row);
     const paidAmount = canonicalBrandPaidAmount(row);
     return `<tr>
       <td><strong>${esc(brandName)}</strong><br><span class="muted">${esc(row.brand_code || "-")}</span></td>
@@ -6656,7 +7711,7 @@ function closeProductBrandOrderPopover() {
 }
 
 function productBrandOrderHistoryHtml(brand = {}) {
-  const brandName = brand.brand_name && brand.brand_name !== brand.brand_code ? brand.brand_name : "미분류";
+  const brandName = brandCanonicalDisplayName(brand);
   const orders = Array.isArray(brand.orderHistory) ? brand.orderHistory : [];
   return `<div class="brand-order-popover-head"><strong>${esc(brandName)}</strong><span>주문 ${apiNum(orders.length)}건</span></div>${orders.length ? orders.map((order) => `<section class="brand-order-popover-order">
     <h4>${esc(order.orderDate || "날짜 없음")}</h4>
@@ -6704,7 +7759,7 @@ function filterAndSortSoldProducts(products) {
   return products.filter((product) => {
     const quantity = Number(product.quantitySold || 0);
     const amount = canonicalPaidAmount(product);
-    const brandName = product.brand_name && product.brand_name !== product.brand_code ? product.brand_name : "미분류";
+    const brandName = brandCanonicalDisplayName(product);
     if (quantity <= 0) return false;
     if (productSoldFilterBrand !== "all" && brandName !== productSoldFilterBrand) return false;
     if (productSoldFilterQty === "1" && quantity !== 1) return false;
@@ -6718,7 +7773,7 @@ function filterAndSortSoldProducts(products) {
   }).sort((left, right) => {
     if (productSoldSort === "quantity_desc") return Number(right.quantitySold || 0) - Number(left.quantitySold || 0);
     if (productSoldSort === "orders_desc") return Number(right.orderCount || 0) - Number(left.orderCount || 0);
-    if (productSoldSort === "brand_asc") return (left.brand_name || left.brand_code || "").localeCompare(right.brand_name || right.brand_code || "");
+    if (productSoldSort === "brand_asc") return brandCanonicalDisplayName(left).localeCompare(brandCanonicalDisplayName(right));
     if (productSoldSort === "amount_asc") return canonicalPaidAmount(left) - canonicalPaidAmount(right);
     return canonicalPaidAmount(right) - canonicalPaidAmount(left);
   });
@@ -6730,7 +7785,7 @@ function renderProductSoldProductsTable() {
   const filterTarget = $("#productSoldFilters");
   if (!rowsTarget) return;
   const allRows = productBrandSalesProducts.filter((product) => Number(product.quantitySold || 0) > 0);
-  const brandOptions = [...new Set(allRows.map((product) => product.brand_name && product.brand_name !== product.brand_code ? product.brand_name : "미분류"))].sort((left, right) => left.localeCompare(right));
+  const brandOptions = [...new Set(allRows.map((product) => brandCanonicalDisplayName(product)))].sort((left, right) => left.localeCompare(right));
   if (filterTarget) {
     filterTarget.querySelector("#productSoldFilterBrand").innerHTML = `<option value="all">브랜드 전체</option>${brandOptions.map((brand) => `<option value="${esc(brand)}" ${productSoldFilterBrand === brand ? "selected" : ""}>${esc(brand)}</option>`).join("")}`;
   }
@@ -6741,7 +7796,7 @@ function renderProductSoldProductsTable() {
     bannerTarget.innerHTML = `<span class="status-dot"></span><strong>판매 현황</strong><span class="note">${range.label} · ${range.since} ~ ${range.until} · ${apiNum(rows.length)}개 상품</span>`;
   }
   rowsTarget.innerHTML = rows.length ? rows.map((product) => {
-    const brandName = product.brand_name && product.brand_name !== product.brand_code ? product.brand_name : "미분류";
+    const brandName = brandCanonicalDisplayName(product);
     const velocity = Number(product.salesVelocityPerDay || 0);
     const velocityLabel = Number.isFinite(velocity) ? Number(velocity.toFixed(2)).toString() : "0";
     const paidAmount = canonicalPaidAmount(product);
@@ -7409,6 +8464,13 @@ function renderAll() {
   renderEditorialAi(data);
   renderOtherSections(data);
   updateSync(data);
+  // 2026-07-17 버그 수정: 상단 #monthSelect(연/월 드롭다운)의 onchange가 이 renderAll()
+  // 하나로만 연결되어 있는데, 지금까지 여기에 Clients 갱신이 빠져 있었다 — operationsRange가
+  // 기본값 "month"일 때 operationsDateRange()는 selectedMonth()의 month를 그대로 쓰므로
+  // 월을 바꾸면 since/until도 당연히 바뀌어야 하지만, refreshClientsView()가 호출되지 않아
+  // Clients 탭이 계속 이전 월 데이터를 보여주고 있었다. 다른 3곳(#operationsRange/Since/Until)과
+  // 동일한 가드를 그대로 재사용해, Clients 탭이 활성 상태일 때만 다시 불러온다.
+  if ($("#Clients")?.classList.contains("active")) refreshClientsView();
 }
 
 function renderOperationsSections() {
@@ -7487,12 +8549,283 @@ function refreshActiveIntelligencePanel() {
   return renderIntelligenceDashboard();
 }
 
+// ===== Business Intelligence · Cross Intelligence Phase A =====
+// 새 데이터를 만들지 않습니다. 이미 존재하는 4개 기존 엔드포인트(모두 다른 화면이 이미
+// 쓰고 있는 것과 동일)를 선택 기간·직전 비교 기간으로 각각 호출해, 브랜드 하나에 대해
+// Commerce/Marketing/Content/Clients 값을 나란히 모아 보여줄 뿐입니다. 새 API도, 새
+// AI 모델도 추가하지 않았습니다 — 브랜드 매칭은 문자열 정규화/포함 비교만 사용합니다.
+const BUSINESS_INTELLIGENCE_WINDOW_DAYS = 14;
+const BUSINESS_INTELLIGENCE_MAX_CARDS = 5;
+// 광고비 매칭에 쓰는 campaignComparisonNormalize 문자열이 너무 짧으면(2~3자) 아무 캠페인
+// 이름에나 우연히 포함될 위험이 커서, 이 길이 미만이면 광고비는 "매칭 안 됨" 처리합니다.
+const BUSINESS_INTELLIGENCE_MARKETING_MIN_TOKEN_LEN = 4;
+
+function businessIntelligenceNormalize(value = "") {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+// brandFromProduct()와 같은 방식(첫 단어만)으로 Content 게시물 쪽 브랜드 토큰을 추립니다.
+// 새 파싱 규칙을 만들지 않고, Content 화면이 이미 쓰는 brandFromProduct()와 동일한
+// "첫 단어" 기준을 브랜드 canonical name에도 똑같이 적용해 양쪽을 비교합니다.
+function businessIntelligenceFirstToken(value = "") {
+  const trimmed = String(value || "").trim();
+  return trimmed.split(/\s+/)[0] || "";
+}
+
+// 선택 기간(최근 14일)과, 그 직전 같은 길이의 비교 기간. Campaign Sales Analysis에서
+// 쓴 campaignComparisonRangeFromExecution()을 그대로 재사용합니다(새 기간 계산 로직 아님).
+function businessIntelligenceRange() {
+  const currentEnd = campaignComparisonTodayKey();
+  const currentStart = campaignComparisonAddDays(currentEnd, -(BUSINESS_INTELLIGENCE_WINDOW_DAYS - 1));
+  const cmp = campaignComparisonRangeFromExecution(currentStart, currentEnd);
+  return { currentStart, currentEnd, comparisonStart: cmp.comparisonStart, comparisonEnd: cmp.comparisonEnd };
+}
+
+// Commerce: /api/diagnostics/brand-sales의 brands[]를 brand_code -> canonical paidAmount로 정리.
+// B0000000(개인결제창)과 UNASSIGNED는 실제 브랜드가 아니라 "아직 브랜드로 분류되지 않은
+// 상품들을 모아놓은 묶음 코드"라 제외합니다. 실측으로 확인한 근거: brand_code가
+// "UNASSIGNED"인 행 하나의 주문 내역에 REMAGINE·PACOSPLY처럼 서로 다른 실제 브랜드
+// 상품이 함께 섞여 있었습니다 — 이 코드를 브랜드 하나로 표시하면 두 브랜드의 판매가
+// 엉뚱한 브랜드 이름 아래 합쳐져 표시되는 오류가 생깁니다.
+function businessIntelligenceCommerceTotals(brandSalesResult) {
+  const map = new Map();
+  const rows = Array.isArray(brandSalesResult?.brands) ? brandSalesResult.brands : [];
+  rows.forEach((row) => {
+    const code = String(row.brand_code || "").trim();
+    if (!code || code === "B0000000" || code.toUpperCase() === "UNASSIGNED") return;
+    map.set(code, (map.get(code) || 0) + canonicalBrandPaidAmount(row));
+  });
+  return map;
+}
+
+// Marketing: /api/meta-ads/full-report의 캠페인명에 브랜드 canonical name이 포함되는
+// 캠페인만 골라 광고비를 합산합니다(실제 데이터로 확인: BONNAE POP UP AD 캠페인, CARNET
+// ARCHIVE POP-UP처럼 브랜드명이 캠페인명에 그대로 들어간 사례가 다수 있습니다). 매칭되는
+// 캠페인이 하나도 없으면(=이 브랜드 광고를 특정할 수 없으면) null을 반환해 카드에 "-"로
+// 표시하고, 사실과 다른 0%를 보여주지 않습니다.
+function businessIntelligenceMarketingSpend(fullReportResult, normalizedBrand) {
+  if (!normalizedBrand || normalizedBrand.length < BUSINESS_INTELLIGENCE_MARKETING_MIN_TOKEN_LEN) return null;
+  const rows = Array.isArray(fullReportResult?.rows) ? fullReportResult.rows : [];
+  let spend = 0;
+  let matched = false;
+  rows.forEach((row) => {
+    const name = businessIntelligenceNormalize(row.campaignName || "");
+    if (name.includes(normalizedBrand)) {
+      matched = true;
+      spend += Number(row.spend || 0);
+    }
+  });
+  return matched ? spend : null;
+}
+
+// Content: /api/instagram/range의 posts[]를 대상으로, Content 화면의 기존 브랜드 식별
+// 순서(post.brand || post.tag || brandFromProduct(post.title))를 그대로 재사용해 브랜드
+// 토큰을 뽑고, saves(저장) 합계를 냅니다. 매칭되는 게시물이 없으면 null(카드에 "-").
+function businessIntelligenceContentSaves(postsResult, brandFirstTokenNormalized) {
+  if (!brandFirstTokenNormalized) return null;
+  const posts = Array.isArray(postsResult?.posts) ? postsResult.posts : [];
+  let saves = 0;
+  let matched = false;
+  posts.forEach((post) => {
+    const key = post.brand || post.tag || brandFromProduct(post.title || "");
+    const token = businessIntelligenceNormalize(businessIntelligenceFirstToken(key || ""));
+    if (token && token === brandFirstTokenNormalized) {
+      matched = true;
+      saves += Number(post.saves || 0);
+    }
+  });
+  return matched ? saves : null;
+}
+
+// Clients: intelligenceUrl('/api/intelligence/clients')의 clients[].purchaseDetails[]는
+// productName이 "브랜드 / 상품 설명" 형태(Cafe24 온라인 상품명과는 다른 오프라인 표기
+// 규칙)라, " / " 앞부분을 브랜드 토큰으로 봅니다. clientType이 stylist/foreign인 구매만
+// 각각 따로 합산합니다(Clients Intelligence가 이미 분류해 둔 clientType을 그대로 재사용).
+function businessIntelligenceClientsTotals(clientsResult) {
+  const stylistMap = new Map();
+  const foreignMap = new Map();
+  const clients = Array.isArray(clientsResult?.clients) ? clientsResult.clients : [];
+  clients.forEach((client) => {
+    const type = client.clientType;
+    if (type !== "stylist" && type !== "foreign") return;
+    const map = type === "stylist" ? stylistMap : foreignMap;
+    (Array.isArray(client.purchaseDetails) ? client.purchaseDetails : []).forEach((item) => {
+      const name = String(item.productName || "");
+      const sepIndex = name.indexOf(" / ");
+      if (sepIndex === -1) return;
+      const brandToken = businessIntelligenceNormalize(name.slice(0, sepIndex));
+      if (!brandToken) return;
+      map.set(brandToken, (map.get(brandToken) || 0) + Number(item.salesAmount || 0));
+    });
+  });
+  return { stylistMap, foreignMap };
+}
+
+// "▲38%"/"▼12%"/"신규"/"-" 형태의 표시 라벨. campaignComparisonRate()와 같은 계산에
+// 방향 화살표만 얹었습니다.
+function businessIntelligenceRateLabel(current, comparison, matched) {
+  if (!matched || current === null || current === undefined) return "-";
+  const delta = Number(current || 0) - Number(comparison || 0);
+  if (Number(comparison || 0) > 0) {
+    const rate = pct(Math.abs(delta) / Number(comparison) * 100);
+    if (delta > 0) return `▲${rate}`;
+    if (delta < 0) return `▼${rate}`;
+    return "변화 없음";
+  }
+  if (Number(current || 0) > 0) return "신규";
+  return "-";
+}
+
+function businessIntelligenceDirection(current, comparison, matched) {
+  if (!matched || current === null || current === undefined) return null;
+  const delta = Number(current || 0) - Number(comparison || 0);
+  if (delta > 0) return "up";
+  if (delta < 0) return "down";
+  return "flat";
+}
+
+// AI Summary. metrics[0]은 항상 매출(기준 지표)입니다. 절대 "광고 때문에"/"콘텐츠
+// 때문에"/"매출이 발생했다" 같은 인과 표현을 쓰지 않고, 지시받은 "함께 증가했습니다",
+// "같은 기간 관찰되었습니다", "동시에 변화했습니다" 표현만 사용합니다. 최대 5줄(매출 1줄
+// + 나머지 지표 최대 3줄 + 마지막 인과관계 아님 고지 1줄)로 구성합니다.
+function businessIntelligenceNarrative(brandName, metrics) {
+  const sales = metrics[0];
+  const salesDirection = businessIntelligenceDirection(sales.current, sales.comparison, sales.matched);
+  const salesRate = businessIntelligenceRateLabel(sales.current, sales.comparison, sales.matched);
+  const salesVerb = salesDirection === "up" ? "증가" : salesDirection === "down" ? "감소" : "변화 없음";
+  const lines = [`${brandName} 매출은 이번 기간 ${salesRate === "-" ? "" : salesRate + " "}${salesVerb}한 것으로 관찰되었습니다.`];
+
+  for (const metric of metrics.slice(1)) {
+    if (lines.length >= 4) break;
+    if (!metric.matched) {
+      lines.push(`${metric.label} 데이터는 이 브랜드와 매칭되지 않아 이번 분석에서 제외했습니다.`);
+      continue;
+    }
+    const direction = businessIntelligenceDirection(metric.current, metric.comparison, metric.matched);
+    if (direction === "flat") {
+      lines.push(`${metric.label}은(는) 같은 기간 뚜렷한 변화 없이 관찰되었습니다.`);
+    } else if (direction === salesDirection) {
+      lines.push(`${metric.label}도 매출과 함께 ${direction === "up" ? "증가" : "감소"}했습니다.`);
+    } else {
+      lines.push(`${metric.label}은(는) 매출과 다른 방향으로 동시에 변화했습니다(${direction === "up" ? "증가" : "감소"}).`);
+    }
+  }
+  lines.push("위 지표는 같은 기간 함께 관찰된 변화이며, 인과관계를 의미하지 않습니다.");
+  return lines.join(" ");
+}
+
+function businessIntelligenceCardHtml(card, index) {
+  const metricsHtml = card.metrics.map((metric) => {
+    const rate = businessIntelligenceRateLabel(metric.current, metric.comparison, metric.matched);
+    return `<div class="intelligence-issue-metric"><em>${esc(metric.label)}</em><b>${esc(rate)}</b></div>`;
+  }).join("");
+  return `<article class="intelligence-issue-card">
+    <div class="intelligence-issue-card-header">
+      <span class="intelligence-issue-rank">${String(index + 1).padStart(2, "0")}</span>
+      <div class="intelligence-issue-badges"><small class="intelligence-source-badge">Cross Intelligence</small></div>
+    </div>
+    <div class="intelligence-issue-title"><strong class="intelligence-issue-brand">${esc(card.brandName)}</strong></div>
+    <div class="intelligence-issue-body"><p class="intelligence-issue-copy">${esc(card.narrative)}</p></div>
+    <div class="intelligence-issue-metrics">${metricsHtml}</div>
+  </article>`;
+}
+
+// 4개 기존 엔드포인트를 선택 기간·비교 기간으로 각각 호출(getSharedJson이라 다른 화면이
+// 같은 기간을 이미 불러왔다면 재사용됩니다). Commerce 데이터를 브랜드 후보 목록의
+// 기준으로 삼고(가장 신뢰도 높은 브랜드 식별자 = brand_code), 나머지 3개 도메인은 이
+// 브랜드 목록에 매칭을 "시도"만 합니다 — 매칭 안 되면 해당 지표만 "-"로 빠집니다.
+async function businessIntelligenceCompute() {
+  const range = businessIntelligenceRange();
+  const { currentStart, currentEnd, comparisonStart, comparisonEnd } = range;
+  const [
+    currentCommerce, comparisonCommerce,
+    currentMarketing, comparisonMarketing,
+    currentContent, comparisonContent,
+    currentClients, comparisonClients
+  ] = await Promise.all([
+    getSharedJson(`/api/diagnostics/brand-sales?since=${currentStart}&until=${currentEnd}`, 15000),
+    getSharedJson(`/api/diagnostics/brand-sales?since=${comparisonStart}&until=${comparisonEnd}`, 15000),
+    getSharedJson(`/api/meta-ads/full-report?since=${currentStart}&until=${currentEnd}`, 15000),
+    getSharedJson(`/api/meta-ads/full-report?since=${comparisonStart}&until=${comparisonEnd}`, 15000),
+    getSharedJson(`/api/instagram/range?since=${currentStart}&until=${currentEnd}`, 15000),
+    getSharedJson(`/api/instagram/range?since=${comparisonStart}&until=${comparisonEnd}`, 15000),
+    getSharedJson(intelligenceUrl(`/api/intelligence/clients?since=${currentStart}&until=${currentEnd}`), 20000),
+    getSharedJson(intelligenceUrl(`/api/intelligence/clients?since=${comparisonStart}&until=${comparisonEnd}`), 20000)
+  ]);
+
+  if (currentCommerce.error || !Array.isArray(currentCommerce.brands)) {
+    return { error: currentCommerce.error || "Commerce 데이터를 확인할 수 없습니다.", cards: [] };
+  }
+
+  const currentCommerceMap = businessIntelligenceCommerceTotals(currentCommerce);
+  const comparisonCommerceMap = businessIntelligenceCommerceTotals(comparisonCommerce.error ? {} : comparisonCommerce);
+
+  const candidates = [...currentCommerceMap.keys()]
+    .map((code) => {
+      const current = currentCommerceMap.get(code) || 0;
+      const comparison = comparisonCommerceMap.get(code) || 0;
+      return { code, current, comparison, delta: current - comparison };
+    })
+    .filter((row) => row.current > 0 || row.comparison > 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, BUSINESS_INTELLIGENCE_MAX_CARDS);
+
+  const currentClientsMaps = currentClients.error ? null : businessIntelligenceClientsTotals(currentClients);
+  const comparisonClientsMaps = comparisonClients.error ? null : businessIntelligenceClientsTotals(comparisonClients);
+
+  const cards = candidates.map((row) => {
+    const brandName = brandCanonicalDisplayName({ brand_code: row.code });
+    const normalizedBrand = businessIntelligenceNormalize(brandName);
+    const brandFirstTokenNormalized = businessIntelligenceNormalize(businessIntelligenceFirstToken(brandName));
+
+    const salesMetric = { label: "매출", current: row.current, comparison: row.comparison, matched: true };
+
+    const spendCurrent = businessIntelligenceMarketingSpend(currentMarketing, normalizedBrand);
+    const spendComparison = businessIntelligenceMarketingSpend(comparisonMarketing, normalizedBrand);
+    const spendMetric = { label: "광고비", current: spendCurrent || 0, comparison: spendComparison || 0, matched: spendCurrent !== null || spendComparison !== null };
+
+    const savesCurrent = businessIntelligenceContentSaves(currentContent, brandFirstTokenNormalized);
+    const savesComparison = businessIntelligenceContentSaves(comparisonContent, brandFirstTokenNormalized);
+    const contentMetric = { label: "콘텐츠 저장", current: savesCurrent || 0, comparison: savesComparison || 0, matched: savesCurrent !== null || savesComparison !== null };
+
+    const stylistCurrent = currentClientsMaps ? currentClientsMaps.stylistMap.get(normalizedBrand) : undefined;
+    const stylistComparison = comparisonClientsMaps ? comparisonClientsMaps.stylistMap.get(normalizedBrand) : undefined;
+    const stylistMetric = { label: "스타일리스트 구매", current: stylistCurrent || 0, comparison: stylistComparison || 0, matched: stylistCurrent !== undefined || stylistComparison !== undefined };
+
+    const foreignCurrent = currentClientsMaps ? currentClientsMaps.foreignMap.get(normalizedBrand) : undefined;
+    const foreignComparison = comparisonClientsMaps ? comparisonClientsMaps.foreignMap.get(normalizedBrand) : undefined;
+    const foreignMetric = { label: "외국인 구매", current: foreignCurrent || 0, comparison: foreignComparison || 0, matched: foreignCurrent !== undefined || foreignComparison !== undefined };
+
+    const metrics = [salesMetric, spendMetric, contentMetric, stylistMetric, foreignMetric];
+    return { brandCode: row.code, brandName, metrics, narrative: businessIntelligenceNarrative(brandName, metrics) };
+  });
+
+  return { error: null, cards, range };
+}
+
+async function renderBusinessIntelligence(target, renderSeq) {
+  if (!target) return;
+  target.innerHTML = `<article class="action-item"><strong>Business Intelligence 계산 중</strong><p>Commerce·Marketing·Content·Clients 데이터를 함께 불러오고 있습니다.</p></article>`;
+  const result = await businessIntelligenceCompute();
+  if (renderSeq !== undefined && renderSeq !== intelligenceRenderSeq) return;
+  if (result.error) {
+    target.innerHTML = `<article class="action-item"><strong>Business Intelligence 확인 불가</strong><p>${esc(result.error)}</p></article>`;
+    return;
+  }
+  if (!result.cards.length) {
+    target.innerHTML = `<p class="hint-text">이번 기간에 비교할 수 있는 브랜드 매출 데이터가 없습니다.</p>`;
+    return;
+  }
+  target.innerHTML = result.cards.map((card, index) => businessIntelligenceCardHtml(card, index)).join("");
+}
+
 async function renderIntelligenceDashboard() {
   const statusTarget = $("#intelligenceStatus");
   const briefTarget = $("#intelligenceBrief");
   const missionTarget = $("#intelligenceMissions");
   if (!statusTarget || !briefTarget || !missionTarget) return;
   const renderSeq = ++intelligenceRenderSeq;
+  renderBusinessIntelligence($("#businessIntelligenceCards"), renderSeq);
   const searchInput = $("#intelligenceBrandSearch");
   const searchState = $("#intelligenceSearchState");
   if (searchInput) searchInput.value = "";
@@ -7666,10 +8999,14 @@ function intelligenceBrandDisplayName(brand = {}, record = {}) {
   const detail = intelligenceOverviewDetail(record);
   const input = intelligenceOverviewInput(record);
   const canonicalName = intelligenceBrandName(detail?.brand || input?.brand || brand);
+  // 2026-07-18 Brand Display Name 통일: 이 브랜드 상세 화면 자체가 방금 받아온 product
+  // 데이터에서 못 찾으면, 프로젝트 전역 공통 캐시(brandCanonicalNameCache, 다른 화면들이
+  // /api/diagnostics/brand-sales를 부를 때마다 채워짐)를 마지막으로 한 번 더 확인합니다.
   return intelligenceCafe24BrandDisplayName(input)
     || intelligenceCafe24BrandDisplayName(detail)
     || intelligenceRepresentativeEnglishAlias(input)
     || intelligenceRepresentativeEnglishAlias(detail)
+    || (brand?.id && brandCanonicalNameCache.has(brand.id) ? brandCanonicalNameCache.get(brand.id) : "")
     || canonicalName;
 }
 
@@ -7808,7 +9145,7 @@ async function renderIntelligenceBrandSearch() {
 function intelligenceBriefCard(item = {}) {
   return `<article class="action-item sales-compare-card">
     ${intelligencePriorityBadge(item.priority)}
-    <span>${esc(intelligenceBrandName(item.brand))}</span>
+    <span>${esc(brandCanonicalDisplayName(item.brand))}</span>
     <strong>${esc(item.title || "Mission")}</strong>
     <p>${esc(item.reason || "Mission 근거 없음")}</p>
   </article>`;
@@ -7819,12 +9156,12 @@ function intelligenceMissionCard(mission = {}) {
   return `<article class="action-item sales-list-card"
     data-mission-id="${esc(mission.id || "")}"
     data-brand-id="${esc(mission.brand?.id || "")}"
-    data-brand-name="${esc(intelligenceBrandName(mission.brand))}"
+    data-brand-name="${esc(brandCanonicalDisplayName(mission.brand))}"
     data-priority="${esc(mission.priority || "")}"
     data-source-action-id="${esc(mission.sourceActionId || "")}"
     data-signal-ids="${esc(signalIds)}">
     ${intelligencePriorityBadge(mission.priority)}
-    <span>${esc(intelligenceBrandName(mission.brand))}</span>
+    <span>${esc(brandCanonicalDisplayName(mission.brand))}</span>
     <strong>${esc(mission.title || "Mission")}</strong>
     <p>${esc(mission.reason || "Mission 근거 없음")}</p>
     <small>${esc(mission.sourceActionId || "source action 없음")}</small>
@@ -8203,7 +9540,7 @@ async function renderIntelligenceDecisions() {
 function intelligenceDecisionRow(decision = {}, brands = []) {
   const resultText = decision.result ? JSON.stringify(decision.result) : "결과 없음";
   return `<article class="action-item sales-list-card" data-decision-id="${esc(decision.id || "")}">
-    <span>${esc(intelligenceBrandLabel(decision.brandId, brands))}</span>
+    <span>${esc(brandCanonicalDisplayName({ brand_code: decision.brandId, brand_name: intelligenceBrandLabel(decision.brandId, brands) }))}</span>
     <strong>${esc(decision.decision || "Decision")}</strong>
     <p>${esc(decision.reason || "")}</p>
     <small>${esc(decision.status || "-")} · ${esc(intelligenceTimeLabel(decision.updatedAt))}</small>
@@ -8520,7 +9857,9 @@ function intelligenceTimelineSummary(event = {}, detail = {}, input = {}) {
 }
 
 function intelligenceTimelineSalesBrandName(row = null) {
-  return String(row?.brand_name || "").trim();
+  if (!row) return "";
+  const name = brandCanonicalDisplayName(row);
+  return name === "미분류" ? "" : name;
 }
 
 function intelligenceTimelineMetrics(detail = {}, input = {}, salesRecord = null) {
@@ -8596,7 +9935,7 @@ function intelligenceLearningRow(item = {}, brands = []) {
     data-learning-brand-id="${esc(item.brandId || "")}"
     data-learning-source-action-id="${esc(item.sourceActionId || "")}"
     data-learning-signal-ids="${esc((item.signalIds || []).join(","))}">
-    <span>${esc(intelligenceBrandLabel(item.brandId, brands))}</span>
+    <span>${esc(brandCanonicalDisplayName({ brand_code: item.brandId, brand_name: intelligenceBrandLabel(item.brandId, brands) }))}</span>
     <strong>${esc(item.decision || "Learning Case")}</strong>
     <p>${esc(item.reason || "")}</p>
     <p class="hint-text">${esc(item.result ? JSON.stringify(item.result) : "result 없음")}</p>
@@ -8641,11 +9980,784 @@ async function renderSimilarLearningFromCase(node) {
 
 function intelligenceSimilarRow(item = {}, brands = []) {
   return `<article class="action-item sales-list-card">
-    <span>${esc(intelligenceBrandLabel(item.brandId, brands))}</span>
+    <span>${esc(brandCanonicalDisplayName({ brand_code: item.brandId, brand_name: intelligenceBrandLabel(item.brandId, brands) }))}</span>
     <strong>${esc(item.decision || "Learning Case")}</strong>
     <p>${esc((item.matchedBy || []).join(", ") || "matchedBy 없음")}</p>
     <small>${esc(item.sourceActionId || "-")}</small>
   </article>`;
+}
+
+// ---------------------------------------------------------------------------
+// Clients v1 (2026-07-17). intelligence-service.mjs의 /api/intelligence/clients
+// (buildClientsOverview)를 호출해 상단 공용 기간 선택(operationsRange 등)에
+// 맞춰 고객 현황을 표시한다. 기존 renderOperationsSections() 파이프라인에는
+// 얹지 않고, Clients 탭이 활성 상태일 때만 자체 renderSeq로 갱신한다.
+// ---------------------------------------------------------------------------
+
+const CLIENTS_TYPE_LABELS = {
+  stylist: "스타일리스트",
+  samplas_press: "프레스",
+  customer: "일반 손님",
+  foreign: "외국인",
+  online_first_signup: "온라인 첫가입",
+  ff: "직원 구매"
+};
+const CLIENTS_LIST_PAGE_SIZE = 20;
+// TOP10/목록/도넛 호버에 쓰는 데이터 저장소. key -> {kind, ...}. kind는 "top10"/"list"/"donut".
+// 렌더될 때마다 채워지고, DOM에 없는 키는 그냥 참조되지 않아 문제되지 않는다(탭 전환/재조회 시 자연 교체).
+let clientsTooltipData = new Map();
+// 도넛 조각 hover용 상태 (2026-07-17 UI 개선). 도넛은 단일 conic-gradient div라 개별 조각이
+// DOM으로 쪼개져 있지 않다 — 새 SVG나 차트 라이브러리를 추가하지 않고 기존 구현을 유지하기 위해,
+// pointermove 시 중심 기준 각도를 계산해 어느 유형 구간인지 판정하는 방식으로 최소 구현한다.
+let clientsDonutRanges = [];
+let clientsDonutActiveType = null;
+let clientsTooltipHideTimer = null;
+// 2026-07-17 최종 정정(TASK4/5): TOP10/고객 목록의 "고객 상세"는 hover tooltip을 완전히 그만두고
+// 클릭 시 여는 모달로 전환한다. 도넛/범례는 사용자가 명시한 대로 "가벼운 비율 안내"만 남기고
+// 계속 hover(clientsTooltipData/showClientsTooltipForKey)를 쓰므로, 고객 상세용 데이터는 별도
+// Map(clientsDetailStore)에 저장해 두 상호작용 모델이 서로 섞이지 않게 한다.
+let clientsDetailStore = new Map();
+let clientsDetailActiveKey = null;
+let clientsDetailShowAllDates = false;
+let clientsDetailShowAllAliasStats = false;
+let clientsDetailPreviousFocus = null;
+let clientsDetailDateHideTimer = null;
+
+async function refreshClientsView() {
+  const statusTarget = $("#clientsStatus");
+  const summaryTarget = $("#clientsSummaryCards");
+  const breakdownTarget = $("#clientsTypeBreakdown");
+  const top10Target = $("#clientsTop10");
+  if (!statusTarget || !summaryTarget || !breakdownTarget || !top10Target) return;
+  const renderSeq = ++clientsRenderSeq;
+  clientsListVisibleCount = CLIENTS_LIST_PAGE_SIZE;
+  statusTarget.className = "ad-status-banner loading";
+  statusTarget.innerHTML = `<span class="status-dot"></span><strong>고객 데이터를 불러오고 있습니다.</strong><span class="note">ECOUNT/Cafe24 데이터를 집계하는 중입니다.</span>`;
+  summaryTarget.innerHTML = `<article class="action-item sales-kpi-card is-disabled"><span>불러오는 중</span><strong>-</strong><p>-</p></article>`.repeat(5);
+  breakdownTarget.innerHTML = "";
+  top10Target.innerHTML = "";
+  const range = operationsDateRange();
+  const query = `?since=${encodeURIComponent(range.since)}&until=${encodeURIComponent(range.until)}`;
+  const data = await getJson(intelligenceUrl(`/api/intelligence/clients${query}`), 20000);
+  if (renderSeq !== clientsRenderSeq) return;
+  if (data.error || !data.ok) {
+    statusTarget.className = "ad-status-banner error";
+    statusTarget.innerHTML = `<span class="status-dot"></span><strong>고객 데이터를 불러오지 못했습니다.</strong><span class="note">${esc(data.error || data.message || "Intelligence Service 연결을 확인해주세요.")}</span>`;
+    summaryTarget.innerHTML = `<article class="action-item sales-empty-card"><strong>Clients 데이터를 불러오지 못했습니다.</strong><p>Intelligence Service 상태를 확인한 뒤 다시 시도해주세요.</p></article>`;
+    breakdownTarget.innerHTML = "";
+    top10Target.innerHTML = "";
+    clientsOverviewState = null;
+    renderClientsList();
+    return;
+  }
+  statusTarget.className = "ad-status-banner good";
+  statusTarget.innerHTML = `<span class="status-dot"></span><strong>고객 데이터 연결됨</strong><span class="note">${esc(range.label)} · ${esc(data.periodStart || range.since)} ~ ${esc(data.periodEnd || range.until)}</span>`;
+  clientsOverviewState = data;
+  renderClientsSummaryCards(data.summary || {}, (data.typeBreakdown || []).find((row) => row.type === "ff") || {});
+  renderClientsTypeBreakdown(data.typeBreakdown || [], data.summary || {});
+  renderClientsTop10(data.stylistTop10 || [], data.pressTop10 || [], data.ffTop10 || []);
+  renderClientsList();
+}
+
+function renderClientsSummaryCards(summary = {}, ff = {}) {
+  const target = $("#clientsSummaryCards");
+  if (!target) return;
+  target.innerHTML = [
+    salesKpiCard("전체 고객 수", `${apiNum(summary.totalClients)}명`, "기간 내 구매가 발생한 고객 기준"),
+    salesKpiCard("전체 구매 건수", `${apiNum(summary.totalPurchaseCount)}건`, "온라인(개인결제창) + 오프라인 합산"),
+    salesKpiCard("전체 매출", apiWon(summary.totalSalesAmount), "온라인(개인결제창) + 오프라인 합산"),
+    salesKpiCard("평균 구매금액", apiWon(summary.avgOrderValue), "전체 매출 / 전체 구매 건수"),
+    salesKpiCard("FF · 직원 구매", `${apiNum(ff.purchaseCount)}건`, `${apiNum(ff.clientCount)}명 · ${apiWon(ff.salesAmount)}`)
+  ].join("");
+}
+
+// hex(#rrggbb) 색을 흰색 쪽으로 amount(0~1)만큼 섞는다. 새 색상을 추가하는 게 아니라
+// 기존 모노크롬 팔레트 안에서 "비활성 조각을 옅게" 만드는 용도로만 쓴다.
+function lightenHex(hex, amount) {
+  const match = /^#([0-9a-f]{6})$/i.exec(String(hex || ""));
+  if (!match) return hex;
+  const num = parseInt(match[1], 16);
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  const mix = (channel) => Math.round(channel + (255 - channel) * amount);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+
+// 도넛 conic-gradient 문자열을 만든다. activeType이 있으면 그 유형만 원래 색을 유지하고
+// 나머지는 옅게 처리해 hover 강조를 표현한다(새 색상 추가 없이 기존 팔레트만 사용).
+function clientsDonutGradient(ranges, activeType) {
+  if (!ranges.length) return "#dedbd2 0% 100%";
+  return ranges.map((row) => {
+    const color = activeType && row.type !== activeType ? lightenHex(row.color, 0.55) : row.color;
+    return `${color} ${row.start}% ${row.end}%`;
+  }).join(", ");
+}
+
+// pointermove 좌표를 도넛 중심 기준 각도(0~360, 12시 방향이 0, 시계방향)로 바꾼 뒤
+// conic-gradient와 동일한 퍼센트 기준으로 어느 유형 구간에 속하는지 찾는다.
+function clientsDonutAngleToType(ranges, event, donutEl) {
+  if (!ranges.length) return null;
+  const rect = donutEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const dx = event.clientX - cx;
+  const dy = event.clientY - cy;
+  const radius = Math.min(rect.width, rect.height) / 2;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  // 도넛 중앙 구멍(.clients-donut-center, inset 18px ≈ 반지름의 27%) 위에서는 조각으로 치지 않는다.
+  if (dist > radius || dist < radius * 0.3) return null;
+  let deg = Math.atan2(dx, -dy) * (180 / Math.PI);
+  if (deg < 0) deg += 360;
+  const pctPos = (deg / 360) * 100;
+  const found = ranges.find((row) => pctPos >= row.start && pctPos < row.end);
+  return found ? found.type : (ranges[ranges.length - 1]?.type || null);
+}
+
+// 도넛 조각 hover와 범례 행 hover가 같은 강조 상태를 공유하도록 하는 단일 진입점.
+// (Task 3/4: "동일한 hover 상태를 공유" — 렌더 함수도, 강조 갱신 함수도 하나만 둔다.)
+function setActiveDonutType(type) {
+  clientsDonutActiveType = type || null;
+  const donut = $("#Clients .clients-donut");
+  if (donut) {
+    donut.style.background = `conic-gradient(${clientsDonutGradient(clientsDonutRanges, clientsDonutActiveType)})`;
+    donut.classList.toggle("is-hovering", Boolean(clientsDonutActiveType));
+  }
+  $$("#Clients .clients-donut-legend li").forEach((li) => {
+    li.classList.toggle("is-active", Boolean(clientsDonutActiveType) && li.dataset.clientsType === clientsDonutActiveType);
+  });
+}
+
+// 도넛/범례 hover 툴팁 내용 계산. typeBreakdown에 이미 있는 값(비율/건수/고객수/매출)은
+// 그대로 쓰고, 유형별 TOP3(구매건수/매출)는 API 응답에 없으므로 스펙에서 명시적으로 허용한 대로
+// clientsOverviewState.clients를 유형별로 필터링해 프론트에서 계산한다(새 서버 필드 추가 없음).
+function clientsTypeDetail(row, summary) {
+  const type = row.type;
+  const totalSalesAmount = Number(summary?.totalSalesAmount || 0);
+  const salesAmount = Number(row.salesAmount || 0);
+  const purchaseCount = Number(row.purchaseCount || 0);
+  const salesRatioPct = totalSalesAmount > 0 ? (salesAmount / totalSalesAmount) * 100 : 0;
+  const avgOrderValue = purchaseCount > 0 ? salesAmount / purchaseCount : null;
+  const clientsOfType = (Array.isArray(clientsOverviewState?.clients) ? clientsOverviewState.clients : [])
+    .filter((client) => client.clientType === type);
+  const byCount = (a, b) => (Number(b.purchaseCount || 0) - Number(a.purchaseCount || 0))
+    || (Number(b.totalSales || 0) - Number(a.totalSales || 0))
+    || String(a.name || "").localeCompare(String(b.name || ""), "ko");
+  const bySales = (a, b) => (Number(b.totalSales || 0) - Number(a.totalSales || 0))
+    || (Number(b.purchaseCount || 0) - Number(a.purchaseCount || 0))
+    || String(a.name || "").localeCompare(String(b.name || ""), "ko");
+  return {
+    kind: "donut",
+    type,
+    label: row.label || CLIENTS_TYPE_LABELS[type] || type,
+    ratioPct: Number(row.ratioPct || 0),
+    purchaseCount,
+    clientCount: Number(row.clientCount || 0),
+    salesAmount,
+    avgOrderValue,
+    salesRatioPct,
+    top3ByCount: clientsOfType.slice().sort(byCount).slice(0, 3),
+    top3BySales: clientsOfType.slice().sort(bySales).slice(0, 3)
+  };
+}
+
+function renderClientsTypeBreakdown(typeBreakdown = [], summary = {}) {
+  const target = $("#clientsTypeBreakdown");
+  if (!target) return;
+  const totalSalesAmount = Number(summary.totalSalesAmount || 0);
+  clientsDonutRanges = [];
+  clientsDonutActiveType = null;
+  if (!typeBreakdown.length || totalSalesAmount <= 0) {
+    target.innerHTML = `<article class="action-item sales-empty-card"><strong>해당 기간 구매 데이터가 없습니다.</strong><p>기간을 변경해 다시 확인해주세요.</p></article>`;
+    return;
+  }
+  const rows = typeBreakdown.map((row) => ({
+    ...row,
+    salesRatioPct: (Number(row.salesAmount || 0) / totalSalesAmount) * 100
+  }));
+  const donutColors = ["#171717", "#6d6a62", "#b7b2a4", "#dedbd2", "#376fe3", "#c76a35"];
+  let cursor = 0;
+  clientsDonutRanges = rows.map((row, index) => {
+    const ratio = Number(row.salesRatioPct || 0);
+    const start = cursor;
+    const end = cursor + ratio;
+    cursor = end;
+    return { type: row.type, start, end, color: donutColors[index % donutColors.length] };
+  });
+  const gradientStops = clientsDonutGradient(clientsDonutRanges, null);
+  const donutAriaLabel = rows.map((row) => `${row.label || CLIENTS_TYPE_LABELS[row.type] || row.type} ${pct(row.salesRatioPct)}`).join(", ");
+  target.innerHTML = `<section class="ops-summary-hero">
+    <div class="ops-summary-hero-main clients-donut-card">
+      <div class="clients-donut" style="background: conic-gradient(${gradientStops})" role="img" aria-label="고객 유형별 매출 비율: ${esc(donutAriaLabel)}">
+        <div class="clients-donut-center">
+          <strong>${apiWon(summary.totalSalesAmount)}</strong>
+          <span>전체 실제 매출</span>
+        </div>
+      </div>
+      <ul class="clients-donut-legend">
+        ${rows.map((row, index) => {
+          const key = `donut-${row.type}`;
+          clientsTooltipData.set(key, clientsTypeDetail(row, summary));
+          const muted = Number(row.purchaseCount || 0) ? "" : "is-muted";
+          return `<li class="${muted}" data-clients-type="${esc(row.type)}" data-clients-tooltip="${esc(key)}" aria-describedby="clientsHoverTooltip" tabindex="0">
+            <i style="background:${donutColors[index % donutColors.length]}"></i>
+            <span class="clients-legend-label">${esc(row.label || CLIENTS_TYPE_LABELS[row.type] || row.type)}</span>
+            <span class="clients-legend-stats">${pct(row.salesRatioPct)} · ${apiWon(row.salesAmount)} · ${apiNum(row.purchaseCount)}건</span>
+          </li>`;
+        }).join("")}
+      </ul>
+    </div>
+  </section>`;
+}
+
+function renderClientsTop10(stylistTop10 = [], pressTop10 = [], ffTop10 = []) {
+  const target = $("#clientsTop10");
+  if (!target) return;
+  // 서버 TOP10 응답 자체에는 aliases가 없다(데이터 집계/서버 로직은 이번 작업 범위 밖) — 같은 응답에
+  // 이미 들어있는 clientsOverviewState.clients를 clientId로 매칭해 aliases만 프론트에서 보충한다.
+  const fullClientsById = new Map(
+    (Array.isArray(clientsOverviewState?.clients) ? clientsOverviewState.clients : []).map((client) => [client.clientId, client])
+  );
+  const toRow = (client, index, type) => {
+    const key = `top10-${type}-${index}`;
+    const full = fullClientsById.get(client.clientId) || {};
+    // TASK4: TOP10 행은 이제 hover tooltip이 아니라 클릭 시 여는 고객 상세 모달의 트리거다.
+    // 모달에는 서버 TOP10 응답에 없는 필드(onlineSales/offlineSales/avgOrderValue/
+    // latestPurchaseDate/purchaseDetails)도 필요해서, aliases와 동일한 방식으로
+    // clientsOverviewState.clients에서 clientId로 원본 레코드를 찾아 보충한다.
+    clientsDetailStore.set(key, {
+      clientId: client.clientId,
+      name: client.name,
+      clientType: type,
+      typeLabel: CLIENTS_TYPE_LABELS[type] || type,
+      purchaseCount: client.purchaseCount,
+      salesAmount: client.salesAmount,
+      onlineSales: full.onlineSales,
+      offlineSales: full.offlineSales,
+      avgOrderValue: full.avgOrderValue,
+      latestPurchaseDate: full.latestPurchaseDate,
+      // TASK4(2026-07-17 최종 정정): "선택 기간"은 이 응답을 만든 Clients since/until 그대로다
+      // (buildClientsOverview()가 periodStart/periodEnd로 그대로 돌려준다) — 새로 계산하지 않는다.
+      periodStart: clientsOverviewState?.periodStart || null,
+      periodEnd: clientsOverviewState?.periodEnd || null,
+      aliases: Array.isArray(full.aliases) ? full.aliases : [],
+      products: Array.isArray(client.products) ? client.products : [],
+      purchaseDetails: Array.isArray(full.purchaseDetails) ? full.purchaseDetails : []
+    });
+    return `<div class="ops-summary-rank-row" data-clients-detail="${esc(key)}" role="button" aria-haspopup="dialog" tabindex="0">
+      <span class="ops-summary-rank-no">${String(index + 1).padStart(2, "0")}</span>
+      <strong>${esc(client.name || "-")}</strong>
+      <em>${esc(`${apiNum(client.purchaseCount)}건 · ${apiWon(client.salesAmount)}`)}</em>
+    </div>`;
+  };
+  target.innerHTML = `<section class="ops-summary-cols clients-top10-cols">
+    <div class="ops-summary-block">
+      <div class="ops-summary-block-head"><h4>스타일리스트 TOP 10</h4><span>매출액 desc · 구매건수 desc · 이름 asc</span></div>
+      ${stylistTop10.length ? stylistTop10.map((client, index) => toRow(client, index, "stylist")).join("") : `<p class="hint-text">해당 기간 스타일리스트 구매 데이터가 없습니다.</p>`}
+    </div>
+    <div class="ops-summary-block">
+      <div class="ops-summary-block-head"><h4>프레스 TOP 10</h4><span>매출액 desc · 구매건수 desc · 이름 asc</span></div>
+      ${pressTop10.length ? pressTop10.map((client, index) => toRow(client, index, "samplas_press")).join("") : `<p class="hint-text">해당 기간 프레스 구매 데이터가 없습니다.</p>`}
+    </div>
+    <div class="ops-summary-block">
+      <div class="ops-summary-block-head"><h4>FF TOP 10</h4><span>매출액 desc · 구매건수 desc · 이름 asc</span></div>
+      ${ffTop10.length ? ffTop10.map((client, index) => toRow(client, index, "ff")).join("") : `<p class="hint-text">해당 기간 직원 구매 데이터가 없습니다.</p>`}
+    </div>
+  </section>`;
+}
+
+function filterAndSortClientsList() {
+  const source = Array.isArray(clientsOverviewState?.clients) ? clientsOverviewState.clients : [];
+  const query = clientsListSearch.trim().toLocaleLowerCase("ko-KR");
+  let rows = source.filter((client) => {
+    if (clientsListTypeFilter !== "all" && client.clientType !== clientsListTypeFilter) return false;
+    if (!query) return true;
+    const name = String(client.name || "").toLocaleLowerCase("ko-KR");
+    const contact = String(client.contact || "").toLocaleLowerCase("ko-KR");
+    const aliases = Array.isArray(client.aliases) ? client.aliases : [];
+    const aliasMatch = aliases.some((alias) => String(alias || "").toLocaleLowerCase("ko-KR").includes(query));
+    return name.includes(query) || contact.includes(query) || aliasMatch;
+  });
+  const sorters = {
+    recent_desc: (a, b) => String(b.latestPurchaseDate || "").localeCompare(String(a.latestPurchaseDate || "")),
+    sales_desc: (a, b) => Number(b.totalSales || 0) - Number(a.totalSales || 0),
+    sales_asc: (a, b) => Number(a.totalSales || 0) - Number(b.totalSales || 0),
+    count_desc: (a, b) => Number(b.purchaseCount || 0) - Number(a.purchaseCount || 0),
+    name_asc: (a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ko")
+  };
+  const sorter = sorters[clientsListSort] || sorters.recent_desc;
+  rows = rows.slice().sort(sorter);
+  return rows;
+}
+
+function renderClientsList() {
+  const rowsTarget = $("#clientsListRows");
+  const emptyTarget = $("#clientsListEmpty");
+  const moreBtn = $("#clientsListMoreBtn");
+  const countNote = $("#clientsListCountNote");
+  if (!rowsTarget) return;
+  const filtered = filterAndSortClientsList();
+  const visible = filtered.slice(0, clientsListVisibleCount);
+  if (emptyTarget) emptyTarget.hidden = filtered.length > 0;
+  rowsTarget.innerHTML = visible.map((client) => {
+    const key = `list-${client.clientId}`;
+    // TASK4: 목록 행 전체가 고객 상세 모달의 트리거다(hover tooltip 아님). 목록 API 응답에는
+    // 이미 onlineSales/offlineSales/avgOrderValue/purchaseDetails가 전부 들어있어 별도 조회 없이
+    // 그대로 저장한다.
+    clientsDetailStore.set(key, {
+      clientId: client.clientId,
+      name: client.name,
+      clientType: client.clientType,
+      typeLabel: CLIENTS_TYPE_LABELS[client.clientType] || client.clientType,
+      aliases: Array.isArray(client.aliases) ? client.aliases : [],
+      purchaseCount: client.purchaseCount,
+      salesAmount: client.totalSales,
+      onlineSales: client.onlineSales,
+      offlineSales: client.offlineSales,
+      avgOrderValue: client.avgOrderValue,
+      latestPurchaseDate: client.latestPurchaseDate,
+      periodStart: clientsOverviewState?.periodStart || null,
+      periodEnd: clientsOverviewState?.periodEnd || null,
+      products: Array.isArray(client.products) ? client.products : [],
+      purchaseDetails: Array.isArray(client.purchaseDetails) ? client.purchaseDetails : []
+    });
+    return `<tr data-client-row data-client-id="${esc(client.clientId)}" data-clients-detail="${esc(key)}" role="button" aria-haspopup="dialog" tabindex="0">
+    <td><span class="clients-name-cell">${esc(client.name || "-")}</span></td>
+    <td>${esc(CLIENTS_TYPE_LABELS[client.clientType] || client.clientType || "-")}</td>
+    <td>${esc(client.contact || "-")}</td>
+    <td>${esc(client.latestPurchaseDate || "-")}</td>
+    <td>${apiNum(client.purchaseCount)}건</td>
+    <td>${apiWon(client.onlineSales)}</td>
+    <td>${apiWon(client.offlineSales)}</td>
+    <td>${apiWon(client.totalSales)}</td>
+    <td>${apiWon(client.avgOrderValue)}</td>
+  </tr>`;
+  }).join("");
+  if (moreBtn) moreBtn.hidden = visible.length >= filtered.length;
+  if (countNote) countNote.textContent = filtered.length ? `${nf.format(visible.length)} / ${nf.format(filtered.length)}명 표시 중` : "";
+}
+
+function scheduleClientsListRefresh() {
+  clearTimeout(clientsListSearchTimer);
+  clientsListSearchTimer = setTimeout(() => {
+    clientsListVisibleCount = CLIENTS_LIST_PAGE_SIZE;
+    renderClientsList();
+  }, 300);
+}
+
+// ---------------------------------------------------------------------------
+// TOP10/고객 목록 구매 제품 호버 (2026-07-17). 기존 today-sales-calendar-tooltip
+// (todaySalesCalendarTooltipNode/positionTodaySalesCalendarTooltip/show·hide, line 4909-4957)의
+// "공용 tooltip 엘리먼트 하나를 body에 붙여두고, anchor 기준으로 위치를 계산해 뷰포트 안쪽으로
+// clamp한다" 패턴을 도넛 hover와 아래 고객 상세 모달의 날짜별 제품 popover 양쪽에서 그대로 재사용한다.
+// 2026-07-17 최종 정정(TASK4): TOP10/목록의 "구매일"/"헤더" 전용 렌더러(clientsTooltipDatesHtml/
+// clientsTooltipHeaderHtml/clientsTooltipDateLabel)는 hover tooltip 폐기와 함께 제거했다(clientsDetailModalBodyHtml/
+// groupPurchaseDetailsByDate로 대체 — 구매일별 매출까지 함께 보여줘야 해서 구조가 달라졌다). 제품 목록
+// 렌더러(clientsTooltipProductsHtml)는 구조가 그대로 재사용 가능해 limit 매개변수만 추가해 유지한다.
+function clientsTooltipProductsHtml(products = [], limit = 5) {
+  if (!products.length) return `<p class="clients-tooltip-empty">구매 제품 데이터 없음</p>`;
+  const shown = products.slice(0, limit);
+  const sourceLabel = { online: "온라인", offline: "오프라인" };
+  return `<ul class="clients-tooltip-products">
+    ${shown.map((row) => `<li class="clients-tooltip-product-row">
+      <span class="clients-tooltip-product-name">${esc(row.productName || "제품 정보 없음")}</span>
+      <span class="clients-tooltip-product-meta">
+        <strong>${apiNum(row.quantity)}개</strong>
+        <em>${apiWon(row.salesAmount)}</em>
+        ${row.source ? `<b class="clients-tooltip-source-badge is-${esc(row.source)}">${esc(sourceLabel[row.source] || row.source)}</b>` : ""}
+      </span>
+    </li>`).join("")}
+  </ul>`;
+}
+
+// TOP10/고객목록 공용 본문. kind에 따라 구매일 섹션(TOP10만) / 포함 이름 전체 목록(목록만) 여부만 갈린다.
+// 도넛/범례 호버는 완전히 다른 지표 구조라 별도 clientsTooltipDonutHtml()을 쓰지만, 같은 tooltip
+// DOM 노드·위치계산·show/hide 함수를 공유한다(중복 렌더 함수 금지 요건은 이 공용 파이프라인으로 충족).
+// 2026-07-17 최종 정정(TASK4): TOP10/고객 목록은 더 이상 이 hover tooltip을 쓰지 않는다(클릭 시
+// 여는 고객 상세 모달로 전환 — clientsDetailStore/openClientsDetailModal 참고). 도넛/범례만
+// 여전히 clientsTooltipData에 "donut" kind로 값을 채우므로, 이 함수는 그 경우만 남긴다.
+function clientsTooltipHtml(key) {
+  const data = clientsTooltipData.get(key);
+  if (!data) return "";
+  if (data.kind === "donut") return clientsTooltipDonutHtml(data);
+  return "";
+}
+
+// 도넛 조각/범례 hover 전용 내용. typeBreakdown에 이미 있는 값(비율/건수/고객수/매출)은 그대로 쓰고
+// TOP3 2종은 clientsTypeDetail()에서 clientsOverviewState.clients를 필터링해 미리 계산해둔 값을 그대로 표시한다.
+function clientsTooltipDonutHtml(data) {
+  const top3Html = (rows, valueHtml) => {
+    if (!rows.length) return `<p class="clients-tooltip-empty">데이터 없음</p>`;
+    return `<ul class="clients-tooltip-list">${rows.map((client, index) => `<li>${index + 1}. ${esc(client.name || "-")} <strong>${valueHtml(client)}</strong></li>`).join("")}</ul>`;
+  };
+  return `<div class="clients-tooltip-body">
+    <div class="clients-tooltip-head"><strong class="clients-tooltip-title">${esc(data.label || "-")}</strong></div>
+    <div class="clients-tooltip-stats clients-tooltip-stats-donut">
+      <div class="clients-tooltip-stat"><span>구매 비율</span><strong>${pct(data.ratioPct)}</strong></div>
+      <div class="clients-tooltip-stat"><span>구매 건수</span><strong>${apiNum(data.purchaseCount)}건</strong></div>
+      <div class="clients-tooltip-stat"><span>고객 수</span><strong>${apiNum(data.clientCount)}명</strong></div>
+      <div class="clients-tooltip-stat"><span>총매출</span><strong>${apiWon(data.salesAmount)}</strong></div>
+      <div class="clients-tooltip-stat"><span>평균 구매금액</span><strong>${data.avgOrderValue == null ? "-" : apiWon(data.avgOrderValue)}</strong></div>
+      <div class="clients-tooltip-stat"><span>매출 비율</span><strong>${pct(data.salesRatioPct)}</strong></div>
+    </div>
+    <p class="clients-tooltip-subhead">구매건수 TOP 3</p>
+    ${top3Html(data.top3ByCount, (client) => `${apiNum(client.purchaseCount)}건`)}
+    <p class="clients-tooltip-subhead">매출 TOP 3</p>
+    ${top3Html(data.top3BySales, (client) => apiWon(client.totalSales))}
+  </div>`;
+}
+
+function clientsTooltipNode() {
+  let tooltip = $("#clientsHoverTooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.id = "clientsHoverTooltip";
+    tooltip.className = "clients-hover-tooltip";
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.hidden = true;
+    document.body.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+// 뷰포트 4면 16px 마진을 지키면서, 기본 위치(anchor 아래·왼쪽 정렬)가 오른쪽/아래로 넘치면
+// 각각 왼쪽/위로 뒤집는다. 헤더·사이드바보다 z-index가 높고(.clients-hover-tooltip 참고),
+// 카드의 overflow에 영향받지 않도록 body에 fixed로 붙여둔 노드를 그대로 옮겨 쓴다.
+function positionClientsTooltip(anchor, tooltip) {
+  const margin = 16;
+  const gap = 10;
+  const rect = anchor.getBoundingClientRect();
+  const size = tooltip.getBoundingClientRect();
+  const width = size.width || tooltip.offsetWidth || 320;
+  const height = size.height || tooltip.offsetHeight || 160;
+  const overflowsRight = rect.left + width + margin > window.innerWidth;
+  let left = overflowsRight ? rect.right - width : rect.left;
+  const overflowsBottom = rect.bottom + gap + height + margin > window.innerHeight;
+  let top = overflowsBottom ? rect.top - height - gap : rect.bottom + gap;
+  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin));
+  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin));
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function cancelHideClientsTooltip() {
+  clearTimeout(clientsTooltipHideTimer);
+  clientsTooltipHideTimer = null;
+}
+
+// 즉시 닫지 않고 약간의 지연을 둔 뒤 닫는다 — anchor와 tooltip 사이의 gap(10px)을 마우스가
+// 지나가는 짧은 순간에 깜빡이며 닫히는 것을 막기 위함이다. anchor나 tooltip 자체로 다시
+// 들어오면 cancelHideClientsTooltip()으로 취소된다.
+function scheduleHideClientsTooltip() {
+  cancelHideClientsTooltip();
+  clientsTooltipHideTimer = setTimeout(() => hideClientsTooltip(), 120);
+}
+
+function showClientsTooltipForKey(key, anchor) {
+  if (!key || !anchor) return;
+  const tooltip = clientsTooltipNode();
+  const html = clientsTooltipHtml(key);
+  if (!html) return;
+  cancelHideClientsTooltip();
+  const reused = tooltip.dataset.activeKey === key && !tooltip.hidden;
+  tooltip.innerHTML = html;
+  tooltip.dataset.activeKey = key;
+  if (!reused) {
+    tooltip.classList.remove("is-visible");
+    tooltip.hidden = false;
+    tooltip.style.left = "0px";
+    tooltip.style.top = "0px";
+  } else {
+    tooltip.hidden = false;
+  }
+  positionClientsTooltip(anchor, tooltip);
+  requestAnimationFrame(() => tooltip.classList.add("is-visible"));
+}
+
+function showClientsTooltip(target) {
+  const key = target?.dataset?.clientsTooltip;
+  if (!key) return;
+  showClientsTooltipForKey(key, target);
+}
+
+function hideClientsTooltip() {
+  cancelHideClientsTooltip();
+  const tooltip = $("#clientsHoverTooltip");
+  if (!tooltip) return;
+  tooltip.classList.remove("is-visible");
+  tooltip.hidden = true;
+  delete tooltip.dataset.activeKey;
+}
+
+// ---------------------------------------------------------------------------
+// Clients 고객 상세 모달 (2026-07-17 최종 정정, TASK4/5). TOP10/고객 목록의 상세는 더 이상
+// hover tooltip이 아니라 클릭 시 여는 모달이다. 도넛/범례의 가벼운 비율 안내(hover tooltip)는
+// 그대로 두고, 고객 상세에는 쓰지 않는다(clientsTooltipHtml 참고 — donut kind만 남김).
+// ---------------------------------------------------------------------------
+
+// purchaseDetails(개별 거래 라인)를 날짜별로 묶어 건수/매출을 합산한다. 날짜별 "구매일별 내역"
+// 표시와, 그 안의 각 날짜 hover/focus 시 보여줄 "그 날짜만의 제품 목록"(items) 둘 다 이 결과
+// 하나로 충당한다 — 다른 날짜 제품이 섞이지 않도록 날짜별로 완전히 분리해 둔다.
+function groupPurchaseDetailsByDate(purchaseDetails = []) {
+  const map = new Map();
+  for (const detail of purchaseDetails) {
+    const date = detail?.date;
+    if (!date) continue;
+    if (!map.has(date)) map.set(date, { date, count: 0, salesAmount: 0, items: [] });
+    const row = map.get(date);
+    row.count += 1;
+    const amount = Number(detail.salesAmount);
+    row.salesAmount += Number.isFinite(amount) ? amount : 0;
+    row.items.push(detail);
+  }
+  const sortItems = (items) => items.slice().sort((a, b) => (
+    (Number(b.salesAmount || 0) - Number(a.salesAmount || 0)) ||
+    (Number(b.quantity || 0) - Number(a.quantity || 0)) ||
+    String(a.productName || "").localeCompare(String(b.productName || ""), "ko")
+  ));
+  return [...map.values()]
+    .map((row) => ({ ...row, items: sortItems(row.items) }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+// TASK5(2026-07-17 최종 정정): "포함 이름 N개"를 문자열 나열이 아니라 원본 판매명(rawName)별
+// 건수/매출/최근 구매일로 집계해 보여준다(aliasStats). purchaseDetails에 서버가 추가해 준 rawName
+// 필드를 그대로 쓰며, 추측하지 않는다 — 기프트로 제외된 판매행은 애초에 purchaseDetails 자체에
+// 들어있지 않으므로(백엔드 isGiftSalesLine 필터가 먼저 적용됨) 이 집계에도 자연히 포함되지 않는다.
+// rawName이 없는 거래(드묾, 예: 온라인 주문에 결제 식별 텍스트가 비어있는 경우)는 "원본명 미상"으로 묶는다.
+function groupPurchaseDetailsByRawName(purchaseDetails = []) {
+  const map = new Map();
+  for (const detail of purchaseDetails) {
+    const rawName = detail?.rawName || "원본명 미상";
+    if (!map.has(rawName)) map.set(rawName, { rawName, count: 0, salesAmount: 0, latestDate: null });
+    const row = map.get(rawName);
+    row.count += 1;
+    const amount = Number(detail.salesAmount);
+    row.salesAmount += Number.isFinite(amount) ? amount : 0;
+    if (detail.date && (!row.latestDate || detail.date > row.latestDate)) row.latestDate = detail.date;
+  }
+  return [...map.values()].sort((a, b) => (
+    (b.count - a.count) ||
+    (b.salesAmount - a.salesAmount) ||
+    a.rawName.localeCompare(b.rawName, "ko")
+  ));
+}
+
+function clientsDetailModalNode() {
+  let modal = $("#clientsDetailModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "clientsDetailModal";
+    modal.className = "clients-detail-modal";
+    modal.hidden = true;
+    modal.innerHTML = `
+      <div class="clients-detail-backdrop" data-clients-detail-close></div>
+      <div class="clients-detail-panel" role="dialog" aria-modal="true" aria-labelledby="clientsDetailModalTitle" tabindex="-1">
+        <button type="button" class="clients-detail-close-btn" data-clients-detail-close aria-label="닫기">×</button>
+        <div class="clients-detail-body" id="clientsDetailModalBody"></div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  return modal;
+}
+
+// 상세 창 기본 내용: 대표 고객명/유형/aliases/선택 기간 구매 건수/총매출/평균 구매금액/최근
+// 구매일/온라인·오프라인 매출/구매 제품 TOP10/구매일별 내역(TASK5) 순서로 구성한다.
+function clientsDetailModalBodyHtml(data) {
+  if (!data) return "";
+  const dateGroups = groupPurchaseDetailsByDate(data.purchaseDetails);
+  const shownDates = clientsDetailShowAllDates ? dateGroups : dateGroups.slice(0, 10);
+  const dateOverflow = dateGroups.length - shownDates.length;
+  const products = Array.isArray(data.products) ? data.products : [];
+  const shownProducts = products.slice(0, 10);
+  const productOverflow = Math.max(0, products.length - shownProducts.length);
+  const badge = data.typeLabel ? `<span class="clients-tooltip-badge">${esc(data.typeLabel)}</span>` : "";
+
+  // TASK4(2026-07-17 최종 정정): "선택 기간"(Clients since/until, 서버 periodStart/periodEnd 그대로)과
+  // "구매 발생 기간"(이 엔티티의 purchaseDetails 중 실제 최소~최대 날짜, 선택 기간을 벗어나지 않음 —
+  // purchaseDetails 자체가 이미 선택 기간으로 필터링된 값이기 때문)을 명확히 구분해 표시한다.
+  const selectedPeriodLabel = (data.periodStart && data.periodEnd)
+    ? `${data.periodStart} ~ ${data.periodEnd}`
+    : "-";
+  const purchaseDates = dateGroups.map((row) => row.date).filter(Boolean).sort();
+  const purchaseSpanLabel = purchaseDates.length
+    ? (purchaseDates[0] === purchaseDates[purchaseDates.length - 1]
+      ? purchaseDates[0]
+      : `${purchaseDates[0]} ~ ${purchaseDates[purchaseDates.length - 1]}`)
+    : "-";
+
+  // TASK5(2026-07-17 최종 정정): "포함 이름 N개" 단순 나열 대신 원본 판매명별 건수/매출/최근
+  // 구매일(aliasStats)을 보여준다. purchaseDetails는 "정상 판매행"(salesAmount > 0)만 담고 있어
+  // (반품/음수 라인은 구매 건수에 넣지 않는 기존 설계 — buildClientsOverview의 offlinePositiveLines
+  // 참고, 이번 작업 범위 밖이라 변경하지 않음) 순수 판매명별 매출 합계가 반품이 포함된 엔티티
+  // 총매출(data.salesAmount)보다 클 수 있다(실측 확인: 2026-07 "영은님 판매"에 반품 4건 -498,950원
+  // 존재). 개별 판매명에 반품을 억지로 귀속시켜 추측하지 않고, 그 차액을 "기타 조정" 한 줄로
+  // 투명하게 보여줘 화면에 표시되는 합계가 항상 총매출과 일치하도록 한다.
+  const aliasStats = groupPurchaseDetailsByRawName(data.purchaseDetails);
+  const shownAliasStats = clientsDetailShowAllAliasStats ? aliasStats : aliasStats.slice(0, 10);
+  const aliasStatsOverflow = aliasStats.length - shownAliasStats.length;
+  const aliasStatsSalesSum = aliasStats.reduce((sum, row) => sum + row.salesAmount, 0);
+  const reconcileDelta = Math.round((Number(data.salesAmount || 0) - aliasStatsSalesSum) * 100) / 100;
+  const reconcileRow = reconcileDelta !== 0
+    ? `<li class="clients-detail-alias-stats-row is-adjustment">
+        <span class="clients-detail-alias-stats-name">기타 조정 (반품/환불 등, 특정 판매명에 귀속되지 않음)</span>
+        <span class="clients-detail-alias-stats-meta">${apiWon(reconcileDelta)}</span>
+      </li>`
+    : "";
+
+  return `
+    <div class="clients-tooltip-head">
+      <strong class="clients-tooltip-title" id="clientsDetailModalTitle">${esc(data.name || "-")}</strong>
+      ${badge}
+    </div>
+    <div class="clients-tooltip-stats clients-detail-stats-grid">
+      <div class="clients-tooltip-stat"><span>구매 건수</span><strong>${apiNum(data.purchaseCount)}건</strong></div>
+      <div class="clients-tooltip-stat"><span>총매출</span><strong>${apiWon(data.salesAmount)}</strong></div>
+      <div class="clients-tooltip-stat"><span>평균 구매금액</span><strong>${data.avgOrderValue == null ? "-" : apiWon(data.avgOrderValue)}</strong></div>
+      <div class="clients-tooltip-stat"><span>온라인 매출</span><strong>${apiWon(data.onlineSales)}</strong></div>
+      <div class="clients-tooltip-stat"><span>오프라인 매출</span><strong>${apiWon(data.offlineSales)}</strong></div>
+    </div>
+    <div class="clients-detail-period-block">
+      <div class="clients-detail-period-row"><span>선택 기간</span><strong>${esc(selectedPeriodLabel)}</strong></div>
+      <div class="clients-detail-period-row"><span>구매 발생 기간</span><strong>${esc(purchaseSpanLabel)}</strong></div>
+      <div class="clients-detail-period-row"><span>최근 구매일</span><strong>${esc(data.latestPurchaseDate || "-")}</strong></div>
+    </div>
+    <p class="clients-tooltip-subhead">원본 판매명별 내역 (${nf.format(aliasStats.length)}개) · 선택 기간 내 확인된 원본 판매명</p>
+    ${shownAliasStats.length ? `<ul class="clients-detail-alias-stats-list">${shownAliasStats.map((row) => `<li class="clients-detail-alias-stats-row">
+        <span class="clients-detail-alias-stats-name">${esc(row.rawName)}</span>
+        <span class="clients-detail-alias-stats-meta">${apiNum(row.count)}건 · ${apiWon(row.salesAmount)} · 최근 ${esc(row.latestDate || "-")}</span>
+      </li>`).join("")}${reconcileRow}</ul>` : (reconcileRow ? `<ul class="clients-detail-alias-stats-list">${reconcileRow}</ul>` : `<p class="clients-tooltip-empty">선택 기간 내 구매 데이터 없음</p>`)}
+    ${aliasStatsOverflow > 0 ? `<button type="button" class="clients-detail-more-dates-btn" data-clients-detail-more-alias-stats>더보기 (외 ${nf.format(aliasStatsOverflow)}개)</button>` : ""}
+    <p class="clients-tooltip-subhead">구매 제품 TOP 10</p>
+    ${clientsTooltipProductsHtml(products, 10)}
+    ${productOverflow > 0 ? `<p class="clients-tooltip-more">외 ${nf.format(productOverflow)}개 제품</p>` : ""}
+    <p class="clients-tooltip-subhead">구매일별 내역</p>
+    ${shownDates.length ? `<ul class="clients-detail-date-list">${shownDates.map((row) => `<li class="clients-detail-date-row" data-clients-detail-date="${esc(row.date)}" tabindex="0">
+        <span>${esc(row.date)}</span>
+        <strong>${apiNum(row.count)}건</strong>
+        <em>${apiWon(row.salesAmount)}</em>
+      </li>`).join("")}</ul>` : `<p class="clients-tooltip-empty">구매일 데이터 없음</p>`}
+    ${dateOverflow > 0 ? `<button type="button" class="clients-detail-more-dates-btn" data-clients-detail-more-dates>더보기 (외 ${nf.format(dateOverflow)}일)</button>` : ""}
+  `;
+}
+
+function rerenderClientsDetailModalBody() {
+  const data = clientsDetailStore.get(clientsDetailActiveKey);
+  const body = $("#clientsDetailModalBody");
+  if (data && body) body.innerHTML = clientsDetailModalBodyHtml(data);
+}
+
+function clientsDetailFocusableEls(panel) {
+  return [...panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => !el.hasAttribute("disabled") && el.getClientRects().length > 0);
+}
+
+function openClientsDetailModal(key) {
+  const data = clientsDetailStore.get(key);
+  if (!data) return;
+  clientsDetailActiveKey = key;
+  clientsDetailShowAllDates = false;
+  clientsDetailShowAllAliasStats = false;
+  hideClientsTooltip();
+  const modal = clientsDetailModalNode();
+  const body = $("#clientsDetailModalBody");
+  if (body) body.innerHTML = clientsDetailModalBodyHtml(data);
+  clientsDetailPreviousFocus = document.activeElement;
+  modal.hidden = false;
+  document.body.classList.add("clients-detail-modal-open");
+  requestAnimationFrame(() => {
+    modal.classList.add("is-visible");
+    modal.querySelector(".clients-detail-panel")?.focus();
+  });
+}
+
+// 닫힌 후 원래 클릭/포커스했던 행으로 포커스를 복귀시킨다(요구사항 — 포커스 복귀).
+function closeClientsDetailModal() {
+  const modal = $("#clientsDetailModal");
+  if (!modal || modal.hidden) return;
+  modal.classList.remove("is-visible");
+  modal.hidden = true;
+  document.body.classList.remove("clients-detail-modal-open");
+  hideClientsDetailDatePopover();
+  clientsDetailActiveKey = null;
+  const toFocus = clientsDetailPreviousFocus;
+  clientsDetailPreviousFocus = null;
+  if (toFocus && typeof toFocus.focus === "function" && document.contains(toFocus)) toFocus.focus();
+}
+
+// 구매일별 내역의 각 날짜 행에 hover/focus하면 그 날짜의 purchaseDetails만 필터링해 작은
+// popover로 보여준다(TASK5) — 다른 날짜 제품이 섞이지 않도록 clientsDetailActiveKey로 현재
+// 열려 있는 고객의 데이터에서만 찾는다.
+function clientsDetailDatePopoverNode() {
+  let node = $("#clientsDetailDatePopover");
+  if (!node) {
+    node = document.createElement("div");
+    node.id = "clientsDetailDatePopover";
+    node.className = "clients-hover-tooltip clients-detail-date-popover";
+    node.setAttribute("role", "tooltip");
+    node.hidden = true;
+    document.body.appendChild(node);
+  }
+  return node;
+}
+
+// 2026-07-17 최종 정정(TASK3): 날짜별 popover 전용 제품 목록 렌더러. 기존 clientsTooltipProductsHtml()은
+// TOP10/도넛 호버에서 이미 쓰고 있어(제품명/수량/매출/온라인·오프라인만 표시) 그대로 재사용하면
+// 이번 요구사항(원본 판매명/주문번호 표시, 10개 초과 시 "외 N개 제품")을 만족할 수 없다 — 공용 함수를
+// 건드려 다른 화면에 영향을 주지 않도록 이 popover 전용 함수를 별도로 둔다. 같은 CSS 클래스
+// (.clients-tooltip-products/.clients-tooltip-product-row 등)를 그대로 재사용해 스타일은 통일한다.
+function clientsDetailDateProductsHtml(items = []) {
+  if (!items.length) return `<p class="clients-tooltip-empty">구매 제품 데이터 없음</p>`;
+  const shown = items.slice(0, 10);
+  const overflow = items.length - shown.length;
+  const sourceLabel = { online: "온라인", offline: "오프라인" };
+  return `<ul class="clients-tooltip-products">
+    ${shown.map((row) => `<li class="clients-tooltip-product-row">
+      <span class="clients-tooltip-product-name">${esc(row.productName || "제품 정보 없음")}</span>
+      <span class="clients-tooltip-product-meta">
+        <strong>${apiNum(row.quantity)}개</strong>
+        <em>${apiWon(row.salesAmount)}</em>
+        ${row.source ? `<b class="clients-tooltip-source-badge is-${esc(row.source)}">${esc(sourceLabel[row.source] || row.source)}</b>` : ""}
+        <span class="clients-detail-date-product-sub">${esc(row.rawName || "원본명 미상")}${row.orderId ? ` · ${esc(row.orderId)}` : ""}</span>
+      </span>
+    </li>`).join("")}
+  </ul>${overflow > 0 ? `<p class="clients-tooltip-more">외 ${nf.format(overflow)}개 제품</p>` : ""}`;
+}
+
+function clientsDetailDatePopoverHtml(dateKey) {
+  const data = clientsDetailStore.get(clientsDetailActiveKey);
+  if (!data) return "";
+  const group = groupPurchaseDetailsByDate(data.purchaseDetails).find((row) => row.date === dateKey);
+  const items = group ? group.items : [];
+  return `<div class="clients-tooltip-body">
+    <p class="clients-tooltip-subhead">${esc(dateKey)} 구매 제품 (${nf.format(items.length)}건)</p>
+    ${clientsDetailDateProductsHtml(items)}
+  </div>`;
+}
+
+function showClientsDetailDatePopover(dateKey, anchor) {
+  if (!dateKey || !anchor) return;
+  const popover = clientsDetailDatePopoverNode();
+  const html = clientsDetailDatePopoverHtml(dateKey);
+  if (!html) return;
+  clearTimeout(clientsDetailDateHideTimer);
+  popover.innerHTML = html;
+  popover.hidden = false;
+  popover.classList.add("is-visible");
+  positionClientsTooltip(anchor, popover);
+}
+
+function hideClientsDetailDatePopover() {
+  clearTimeout(clientsDetailDateHideTimer);
+  const popover = $("#clientsDetailDatePopover");
+  if (!popover) return;
+  popover.classList.remove("is-visible");
+  popover.hidden = true;
+}
+
+function scheduleHideClientsDetailDatePopover() {
+  clearTimeout(clientsDetailDateHideTimer);
+  clientsDetailDateHideTimer = setTimeout(() => hideClientsDetailDatePopover(), 120);
 }
 
 // options.forceRefresh (2026-07-08 Instagram 자동 동기화 기능 추가): "지금 동기화"
@@ -8690,6 +10802,7 @@ function bind() {
     $("#operationsCustomRange")?.toggleAttribute("hidden", !isCustom);
     const renderSeq = renderOperationsSections();
     renderOverviewLiveData(selectedMonth(), renderSeq);
+    if ($("#Clients")?.classList.contains("active")) refreshClientsView();
   });
   $("#operationsSince")?.addEventListener("change", (event) => {
     const nextSince = event.target.value || "";
@@ -8708,6 +10821,7 @@ function bind() {
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
       const renderSeq = renderOperationsSections();
       renderOverviewLiveData(selectedMonth(), renderSeq);
+      if ($("#Clients")?.classList.contains("active")) refreshClientsView();
     }
   });
   $("#operationsUntil")?.addEventListener("change", (event) => {
@@ -8727,7 +10841,257 @@ function bind() {
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
       const renderSeq = renderOperationsSections();
       renderOverviewLiveData(selectedMonth(), renderSeq);
+      if ($("#Clients")?.classList.contains("active")) refreshClientsView();
     }
+  });
+  $("#clientsListSearch")?.addEventListener("input", (event) => {
+    clientsListSearch = event.target.value || "";
+    scheduleClientsListRefresh();
+  });
+  $("#clientsListTypeFilter")?.addEventListener("change", (event) => {
+    clientsListTypeFilter = event.target.value || "all";
+    clientsListVisibleCount = CLIENTS_LIST_PAGE_SIZE;
+    renderClientsList();
+  });
+  $("#clientsListSort")?.addEventListener("change", (event) => {
+    clientsListSort = event.target.value || "recent_desc";
+    clientsListVisibleCount = CLIENTS_LIST_PAGE_SIZE;
+    renderClientsList();
+  });
+  $("#clientsListMoreBtn")?.addEventListener("click", () => {
+    clientsListVisibleCount += CLIENTS_LIST_PAGE_SIZE;
+    renderClientsList();
+  });
+  $("#clientsListRows")?.addEventListener("click", (event) => {
+    const row = event.target.closest("[data-client-row]");
+    if (!row) return;
+    // 2026-07-17 최종 정정(TASK4): 행 선택(강조 표시) 동작은 그대로 두고, 같은 클릭으로
+    // 고객 상세 모달도 함께 연다(요구사항 — "고객 목록 행" 클릭 시 상세 창).
+    selectedClientId = row.dataset.clientId || null;
+    $$("#clientsListRows tr").forEach((node) => node.classList.toggle("is-selected", node === row));
+    if (row.dataset.clientsDetail) openClientsDetailModal(row.dataset.clientsDetail);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const row = event.target.closest("#clientsListRows [data-client-row]");
+    if (!row) return;
+    event.preventDefault();
+    selectedClientId = row.dataset.clientId || null;
+    $$("#clientsListRows tr").forEach((node) => node.classList.toggle("is-selected", node === row));
+    if (row.dataset.clientsDetail) openClientsDetailModal(row.dataset.clientsDetail);
+  });
+  // 2026-07-17 최종 정정(TASK4): 스타일리스트/프레스 TOP10 행 클릭 시 고객 상세 모달을 연다.
+  // 고객 목록 행은 위의 #clientsListRows 전용 핸들러가 이미 처리하므로([data-client-row]),
+  // 여기서는 그 행을 제외한 나머지 [data-clients-detail] 트리거(TOP10)만 다룬다 — 같은 클릭이
+  // 두 핸들러에서 중복으로 모달을 열지 않게 하기 위함이다.
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("#Clients [data-clients-detail]");
+    if (!trigger || trigger.closest("[data-client-row]")) return;
+    openClientsDetailModal(trigger.dataset.clientsDetail);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const trigger = event.target.closest("#Clients [data-clients-detail]");
+    if (!trigger || trigger.closest("[data-client-row]")) return;
+    event.preventDefault();
+    openClientsDetailModal(trigger.dataset.clientsDetail);
+  });
+  // 고객 상세 모달: 닫기 버튼/배경 클릭/ESC로 닫고, Tab은 모달 안에서만 순환시킨다(포커스 트랩).
+  // 닫힌 뒤에는 openClientsDetailModal()이 기억해 둔 원래 트리거 엘리먼트로 포커스를 되돌린다.
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-clients-detail-close]")) closeClientsDetailModal();
+  });
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-clients-detail-more-dates]")) {
+      clientsDetailShowAllDates = true;
+      rerenderClientsDetailModalBody();
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-clients-detail-more-alias-stats]")) {
+      clientsDetailShowAllAliasStats = true;
+      rerenderClientsDetailModalBody();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    const modal = $("#clientsDetailModal");
+    if (!modal || modal.hidden) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeClientsDetailModal();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const panel = modal.querySelector(".clients-detail-panel");
+    if (!panel) return;
+    const focusable = clientsDetailFocusableEls(panel);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  // 구매일별 내역의 각 날짜 행 hover/focus 시 그 날짜만의 제품 popover를 보여준다(TASK5).
+  document.addEventListener("pointerover", (event) => {
+    const dateRow = event.target.closest("#clientsDetailModal [data-clients-detail-date]");
+    if (!dateRow) return;
+    showClientsDetailDatePopover(dateRow.dataset.clientsDetailDate, dateRow);
+  });
+  document.addEventListener("pointermove", (event) => {
+    const dateRow = event.target.closest("#clientsDetailModal [data-clients-detail-date]");
+    const popover = $("#clientsDetailDatePopover");
+    if (dateRow && popover && !popover.hidden) positionClientsTooltip(dateRow, popover);
+  });
+  document.addEventListener("pointerout", (event) => {
+    // 2026-07-17 최종 정정(TASK3): 날짜 행 -> popover 방향뿐 아니라 popover -> 바깥 방향으로
+    // 마우스가 나갈 때도 닫히도록 양쪽을 모두 처리한다. popover는 #clientsDetailModal 밖(body
+    // 직속)에 붙어 있어 기존 코드는 "popover에서 날짜 행이 아닌 곳으로 마우스가 나가는 경우"를
+    // 전혀 감지하지 못해 popover가 계속 열려 있는 채로 남는 문제가 있었다.
+    const dateRow = event.target.closest("#clientsDetailModal [data-clients-detail-date]");
+    if (dateRow) {
+      if (dateRow.contains(event.relatedTarget)) return;
+      if (event.relatedTarget && event.relatedTarget.closest?.(".clients-detail-date-popover")) return;
+      scheduleHideClientsDetailDatePopover();
+      return;
+    }
+    const fromPopover = event.target.closest(".clients-detail-date-popover");
+    if (fromPopover) {
+      if (fromPopover.contains(event.relatedTarget)) return;
+      if (event.relatedTarget && event.relatedTarget.closest?.("#clientsDetailModal [data-clients-detail-date]")) return;
+      scheduleHideClientsDetailDatePopover();
+    }
+  });
+  document.addEventListener("focusin", (event) => {
+    const dateRow = event.target.closest("#clientsDetailModal [data-clients-detail-date]");
+    if (dateRow) showClientsDetailDatePopover(dateRow.dataset.clientsDetailDate, dateRow);
+  });
+  document.addEventListener("focusout", (event) => {
+    const dateRow = event.target.closest("#clientsDetailModal [data-clients-detail-date]");
+    if (!dateRow || dateRow.contains(event.relatedTarget)) return;
+    scheduleHideClientsDetailDatePopover();
+  });
+  window.addEventListener("scroll", () => hideClientsDetailDatePopover(), { passive: true, capture: true });
+  // TOP10/도넛 범례 구매 제품·유형 호버. today-sales-calendar-tooltip과 동일하게 pointerover/
+  // pointermove/pointerout(마우스) + focusin/focusout(키보드) 둘 다 바인딩한다. 2026-07-17 최종
+  // 정정(TASK4) 이후 이 [data-clients-tooltip] 셀렉터는 도넛/범례 행에만 남아 있다(TOP10/목록은
+  // [data-clients-detail]로 분리돼 클릭 모달을 쓴다) — 그래서 아래 hover 로직은 이제 "도넛의
+  // 가벼운 비율 안내"에만 자연스럽게 적용된다. anchor를 벗어나도 바로 닫지 않고
+  // scheduleHideClientsTooltip()으로 지연시킨 뒤, tooltip 자체로 마우스가 들어오면
+  // cancelHideClientsTooltip()으로 취소한다 — 이렇게 해야 anchor와 tooltip 사이 gap을 지나갈 때
+  // 깜빡이며 닫히지 않고, tooltip 위에서는 계속 열려 있는다.
+  document.addEventListener("pointerover", (event) => {
+    const target = event.target.closest("#Clients [data-clients-tooltip]");
+    if (!target) return;
+    showClientsTooltip(target);
+  });
+  document.addEventListener("pointermove", (event) => {
+    const target = event.target.closest("#Clients [data-clients-tooltip]");
+    const tooltip = $("#clientsHoverTooltip");
+    if (target && tooltip && !tooltip.hidden) positionClientsTooltip(target, tooltip);
+  });
+  document.addEventListener("pointerout", (event) => {
+    const target = event.target.closest("#Clients [data-clients-tooltip]");
+    if (!target || target.contains(event.relatedTarget)) return;
+    if (event.relatedTarget && event.relatedTarget.closest?.(".clients-hover-tooltip")) return;
+    scheduleHideClientsTooltip();
+  });
+  document.addEventListener("focusin", (event) => {
+    const target = event.target.closest("#Clients [data-clients-tooltip]");
+    if (target) showClientsTooltip(target);
+  });
+  document.addEventListener("focusout", (event) => {
+    const target = event.target.closest("#Clients [data-clients-tooltip]");
+    if (!target || target.contains(event.relatedTarget)) return;
+    scheduleHideClientsTooltip();
+  });
+  // Enter/Space로 열기(접근성 Task 8) — focusin에서 이미 열리지만, 탭 이동 없이 재확인하는
+  // 브라우저/스크린리더 조합을 위해 명시적으로도 처리한다.
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target.closest("#Clients [data-clients-tooltip]");
+    if (!target) return;
+    event.preventDefault();
+    showClientsTooltip(target);
+  });
+  // 스크롤하면 anchor가 화면상 다른 위치로 움직이는데(포인터는 그대로) fixed 위치 tooltip은
+  // 따라가지 않아 엉뚱한 내용을 계속 보여주게 된다 — 스크롤 시작 시 그냥 닫는다.
+  window.addEventListener("scroll", () => hideClientsTooltip(), { passive: true, capture: true });
+  // tooltip 자체 위로 마우스가 올라와도 닫히지 않도록: 진입 시 예약된 닫기를 취소하고,
+  // tooltip을 완전히 벗어나면(그리고 활성 anchor로 돌아간 게 아니면) 다시 닫기를 예약한다.
+  document.addEventListener("pointerover", (event) => {
+    if (event.target.closest(".clients-hover-tooltip")) cancelHideClientsTooltip();
+  });
+  document.addEventListener("pointerout", (event) => {
+    const tooltipEl = event.target.closest(".clients-hover-tooltip");
+    if (!tooltipEl || tooltipEl.contains(event.relatedTarget)) return;
+    if (event.relatedTarget && event.relatedTarget.closest?.("#Clients [data-clients-tooltip]")) return;
+    scheduleHideClientsTooltip();
+  });
+  // 도넛 조각 hover: 별도 DOM 슬라이스가 없는 단일 conic-gradient div라, 중심 기준 각도를 계산해
+  // 어떤 유형 구간인지 판정한다(clientsDonutAngleToType). 범례 hover와 동일한 setActiveDonutType() +
+  // showClientsTooltipForKey()를 그대로 재사용해 강조/툴팁 로직이 하나로 유지되게 한다.
+  document.addEventListener("pointermove", (event) => {
+    const donut = event.target.closest("#Clients .clients-donut");
+    if (!donut) return;
+    cancelHideClientsTooltip();
+    const type = clientsDonutAngleToType(clientsDonutRanges, event, donut);
+    if (type !== clientsDonutActiveType) {
+      setActiveDonutType(type);
+      if (type) showClientsTooltipForKey(`donut-${type}`, donut);
+      else scheduleHideClientsTooltip();
+    } else if (type) {
+      const tooltip = $("#clientsHoverTooltip");
+      if (tooltip && !tooltip.hidden) positionClientsTooltip(donut, tooltip);
+    }
+  });
+  document.addEventListener("pointerout", (event) => {
+    const donut = event.target.closest("#Clients .clients-donut");
+    if (!donut || donut.contains(event.relatedTarget)) return;
+    if (event.relatedTarget && event.relatedTarget.closest?.(".clients-hover-tooltip")) return;
+    setActiveDonutType(null);
+    scheduleHideClientsTooltip();
+  });
+  // 범례 행 hover는 위의 공용 pointerover/focusin 핸들러가 이미 tooltip을 열어주므로,
+  // 여기서는 도넛 조각 강조만 동기화한다(같은 강조 상태를 공유 — Task 3/4 요건).
+  document.addEventListener("pointerover", (event) => {
+    const legendRow = event.target.closest("#Clients .clients-donut-legend li");
+    if (legendRow?.dataset?.clientsType) setActiveDonutType(legendRow.dataset.clientsType);
+  });
+  document.addEventListener("focusin", (event) => {
+    const legendRow = event.target.closest("#Clients .clients-donut-legend li");
+    if (legendRow?.dataset?.clientsType) setActiveDonutType(legendRow.dataset.clientsType);
+  });
+  document.addEventListener("pointerout", (event) => {
+    const legendRow = event.target.closest("#Clients .clients-donut-legend li");
+    if (!legendRow || legendRow.contains(event.relatedTarget)) return;
+    setActiveDonutType(null);
+  });
+  document.addEventListener("focusout", (event) => {
+    const legendRow = event.target.closest("#Clients .clients-donut-legend li");
+    if (!legendRow || legendRow.contains(event.relatedTarget)) return;
+    setActiveDonutType(null);
+  });
+  // 모바일 등 hover가 없는 환경을 위한 최소 대응: 탭하면 열리고, 같은 항목을 다시 탭하거나
+  // 다른 곳을 탭하면 닫힌다. 부모의 data-client-row 클릭(행 선택)은 그대로 함께 동작해도 무방하다.
+  // tooltip 자신을 탭한 경우는 닫지 않는다(터치 환경에서 tooltip 안 내용을 보는 도중 닫히지 않게).
+  document.addEventListener("click", (event) => {
+    if (event.target.closest(".clients-hover-tooltip")) return;
+    const target = event.target.closest("#Clients [data-clients-tooltip]");
+    const tooltip = $("#clientsHoverTooltip");
+    if (target) {
+      if (tooltip && !tooltip.hidden && tooltip.dataset.activeKey === target.dataset.clientsTooltip) {
+        hideClientsTooltip();
+      } else {
+        showClientsTooltip(target);
+      }
+      return;
+    }
+    if (tooltip && !tooltip.hidden) hideClientsTooltip();
   });
   $("#todayBriefReset")?.addEventListener("click", () => {
     localStorage.removeItem(todayStorageKey());
@@ -8771,7 +11135,86 @@ function bind() {
     hideTodaySalesCalendarTooltip();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") hideTodaySalesCalendarTooltip();
+    if (event.key === "Escape") {
+      hideTodaySalesCalendarTooltip();
+      hideClientsTooltip();
+      hideCalendarTooltip();
+      closeProductBrandOrderPopover();
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      const trendDetail = event.target.closest?.("[data-brand-trend-detail]");
+      if (trendDetail) {
+        event.preventDefault();
+        showBrandTrendDetailPanel(trendDetail);
+      }
+      const annualMonthDetail = event.target.closest?.("[data-annual-brand-month-detail]");
+      if (annualMonthDetail) {
+        event.preventDefault();
+        showAnnualBrandMonthDetail(annualMonthDetail.dataset.annualBrandMonthDetail || "");
+      }
+    }
+  });
+  document.addEventListener("click", (event) => {
+    const brandPanel = $("#productBrandOrderPopover");
+    if (
+      !brandPanel ||
+      brandPanel.hidden ||
+      !/^(annual|trend):/.test(String(activeBrandOrderPopoverCode || "")) ||
+      brandPanel.contains(event.target) ||
+      event.target.closest?.("[data-annual-brand-detail], [data-brand-trend-detail]")
+    ) return;
+    closeProductBrandOrderPopover();
+  }, true);
+  // Calendar x Sales Heatmap Phase 1: 월 이동 버튼, 날짜 셀 hover/클릭, Day Overview 닫기 버튼.
+  // Today 캘린더와 동일한 이벤트 패턴(pointerover/pointermove/pointerout + focusin/focusout +
+  // click)을 그대로 재사용하되 셀렉터만 Calendar 전용(data-calendar-nav/data-calendar-day)으로 둔다.
+  document.addEventListener("click", (event) => {
+    const navButton = event.target.closest("[data-calendar-nav]");
+    if (navButton) {
+      const offset = Number(navButton.dataset.calendarNav || 0);
+      if (Number.isFinite(offset) && offset !== 0) renderCalendarMonth(shiftCalendarMonth(calendarViewMonth, offset));
+      return;
+    }
+    const closeButton = event.target.closest("[data-calendar-close]");
+    if (closeButton) {
+      closeCalendarDayOverview();
+      return;
+    }
+    const dayCell = event.target.closest(".calendar-day-cell");
+    if (dayCell && dayCell.dataset.nodata !== "1" && dayCell.dataset.calendarDay) {
+      openCalendarDayOverview(dayCell.dataset.calendarDay);
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const dayCell = event.target.closest?.(".calendar-day-cell");
+    if (!dayCell || dayCell.dataset.nodata === "1" || !dayCell.dataset.calendarDay) return;
+    event.preventDefault();
+    openCalendarDayOverview(dayCell.dataset.calendarDay);
+  });
+  document.addEventListener("pointerover", (event) => {
+    const cell = event.target.closest("#calendarGridContainer .calendar-day-cell");
+    if (!cell || !cell.dataset.calendarDay) return;
+    showCalendarTooltip(cell.dataset.calendarDay, cell);
+  });
+  document.addEventListener("pointermove", (event) => {
+    const cell = event.target.closest("#calendarGridContainer .calendar-day-cell");
+    const tooltip = $("#calendarTooltip");
+    if (cell && tooltip && !tooltip.hidden) positionTodaySalesCalendarTooltip(cell, tooltip);
+  });
+  document.addEventListener("pointerout", (event) => {
+    const cell = event.target.closest("#calendarGridContainer .calendar-day-cell");
+    if (!cell || cell.contains(event.relatedTarget)) return;
+    hideCalendarTooltip();
+  });
+  document.addEventListener("focusin", (event) => {
+    const cell = event.target.closest("#calendarGridContainer .calendar-day-cell");
+    if (cell && cell.dataset.calendarDay) showCalendarTooltip(cell.dataset.calendarDay, cell);
+  });
+  document.addEventListener("focusout", (event) => {
+    const cell = event.target.closest("#calendarGridContainer .calendar-day-cell");
+    if (!cell || cell.contains(event.relatedTarget)) return;
+    hideCalendarTooltip();
   });
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-brief-status]");
@@ -8808,6 +11251,10 @@ function bind() {
     }
   });
   document.addEventListener("pointerover", (event) => {
+    const brandDetail = event.target.closest("[data-annual-brand-detail]");
+    if (brandDetail) return;
+    const trendDetail = event.target.closest("[data-brand-trend-detail]");
+    if (trendDetail) return;
     const bar = event.target.closest(".annual-flow-bar");
     if (!bar) return;
     const flow = bar.closest("#annualArchiveFlow");
@@ -8819,12 +11266,20 @@ function bind() {
     positionAnnualFlowTooltip(event, tooltip);
   });
   document.addEventListener("pointermove", (event) => {
+    const brandDetail = event.target.closest("[data-annual-brand-detail]");
+    if (brandDetail) return;
+    const trendDetail = event.target.closest("[data-brand-trend-detail]");
+    if (trendDetail) return;
     const bar = event.target.closest(".annual-flow-bar");
     if (!bar) return;
     const tooltip = bar.closest("#annualArchiveFlow")?.querySelector(".annual-flow-tooltip");
     if (tooltip && !tooltip.hidden) positionAnnualFlowTooltip(event, tooltip);
   });
   document.addEventListener("pointerout", (event) => {
+    const brandDetail = event.target.closest("[data-annual-brand-detail]");
+    if (brandDetail && !brandDetail.contains(event.relatedTarget)) return;
+    const trendDetail = event.target.closest("[data-brand-trend-detail]");
+    if (trendDetail && !trendDetail.contains(event.relatedTarget)) return;
     const bar = event.target.closest(".annual-flow-bar");
     if (!bar || bar.contains(event.relatedTarget)) return;
     const tooltip = bar.closest("#annualArchiveFlow")?.querySelector(".annual-flow-tooltip");
@@ -8832,7 +11287,43 @@ function bind() {
     tooltip.hidden = true;
     tooltip.classList.remove("is-visible");
   });
+  document.addEventListener("focusin", (event) => {
+    const brandDetail = event.target.closest("[data-annual-brand-detail]");
+    if (brandDetail) return;
+  });
+  document.addEventListener("focusout", (event) => {
+    const brandDetail = event.target.closest("[data-annual-brand-detail]");
+    if (!brandDetail || brandDetail.contains(event.relatedTarget)) return;
+  });
   document.addEventListener("click", (event) => {
+    const trendDetail = event.target.closest("[data-brand-trend-detail]");
+    if (trendDetail) {
+      event.preventDefault();
+      event.stopPropagation();
+      showBrandTrendDetailPanel(trendDetail);
+      return;
+    }
+    const annualMonthDetail = event.target.closest("[data-annual-brand-month-detail]");
+    if (annualMonthDetail) {
+      event.preventDefault();
+      event.stopPropagation();
+      showAnnualBrandMonthDetail(annualMonthDetail.dataset.annualBrandMonthDetail || "");
+      return;
+    }
+    const annualSummaryBack = event.target.closest("[data-annual-brand-summary-back]");
+    if (annualSummaryBack) {
+      event.preventDefault();
+      event.stopPropagation();
+      replaceBrandPanelContent(annualArchiveBrandDetailPopoverHtml(annualBrandPerformanceRows, annualSummaryBack.dataset.annualBrandSummaryBack || ""));
+      return;
+    }
+    const annualBrandDetail = event.target.closest("[data-annual-brand-detail]");
+    if (annualBrandDetail) {
+      event.preventDefault();
+      event.stopPropagation();
+      showAnnualBrandDetailPopover(annualBrandDetail);
+      return;
+    }
     const annualBar = event.target.closest("[data-annual-month]");
     if (annualBar) {
       const month = annualBar.dataset.annualMonth || "";
@@ -8849,6 +11340,15 @@ function bind() {
         item.classList.toggle("annual-flow-hidden", filter !== "all" && item.dataset.annualCategory !== filter);
       });
       return;
+    }
+    const brandPanel = $("#productBrandOrderPopover");
+    if (
+      brandPanel &&
+      !brandPanel.hidden &&
+      /^(annual|trend):/.test(String(activeBrandOrderPopoverCode || "")) &&
+      !brandPanel.contains(event.target)
+    ) {
+      closeProductBrandOrderPopover();
     }
     const button = event.target.closest("[data-jump-view]");
     if (!button) return;
@@ -9111,34 +11611,119 @@ function bind() {
     productSoldSort = event.target.value || "amount_desc";
     renderProductSoldProductsTable();
   });
-  document.addEventListener("mouseover", (event) => {
-    const trigger = event.target.closest("[data-brand-order-history]");
-    if (trigger) showProductBrandOrderPopover(trigger);
+  document.addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-product-registry-tab]");
+    if (!tab) return;
+    productRegistryState.activeTab = tab.dataset.productRegistryTab || "all";
+    renderProductRegistryTabs(productRegistryState.items);
+    renderProductRegistryList();
+  });
+  $("#productRegistrySearch")?.addEventListener("input", (event) => {
+    productRegistryFilters.search = event.target.value || "";
+    renderProductRegistryList();
+  });
+  $("#productRegistryBrandFilter")?.addEventListener("change", (event) => {
+    productRegistryFilters.brand = event.target.value || "all";
+    renderProductRegistryList();
+  });
+  $("#productRegistryConfidenceFilter")?.addEventListener("change", (event) => {
+    productRegistryFilters.confidence = event.target.value || "all";
+    renderProductRegistryList();
+  });
+  $("#productRegistryStatusFilter")?.addEventListener("change", (event) => {
+    productRegistryFilters.status = event.target.value || "all";
+    renderProductRegistryList();
+  });
+  $("#productRegistryDiagnosticFilter")?.addEventListener("change", (event) => {
+    productRegistryFilters.diagnostic = event.target.value || "all";
+    renderProductRegistryList();
+  });
+  $("#productRegistryCandidateFilter")?.addEventListener("change", (event) => {
+    productRegistryFilters.candidateCount = event.target.value || "all";
+    renderProductRegistryList();
   });
   document.addEventListener("click", (event) => {
-    const trigger = event.target.closest("[data-brand-order-history]");
-    const popover = $("#productBrandOrderPopover");
-    if (trigger) {
-      event.preventDefault();
-      if (!popover?.hidden && activeBrandOrderPopoverCode === trigger.dataset.brandOrderHistory) closeProductBrandOrderPopover();
-      else showProductBrandOrderPopover(trigger);
-      return;
-    }
-    if (popover && !popover.hidden && !popover.contains(event.target)) closeProductBrandOrderPopover();
+    const card = event.target.closest("[data-product-registry-card]");
+    if (!card) return;
+    productRegistryState.selectedId = card.dataset.productRegistryCard || null;
+    renderProductRegistryList();
   });
-  $$("[data-content-tab]").forEach((button) => {
-    button.addEventListener("click", () => {
-      activeContentTab = button.dataset.contentTab || "All";
-      renderContentTabs();
-    });
+  document.addEventListener("keydown", (event) => {
+    const card = event.target.closest("[data-product-registry-card]");
+    if (!card || !["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    productRegistryState.selectedId = card.dataset.productRegistryCard || null;
+    renderProductRegistryList();
   });
-  $$("[data-ad-level]").forEach((button) => {
-    button.addEventListener("click", () => {
-      activeAdLevel = button.dataset.adLevel || "campaign";
-      const rows = uniqueMonthlyDataRows();
-      const current = rows.find((item) => item.month === $("#monthSelect")?.value) || rows[0];
-      if (current) renderAdvertising(current);
-    });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-product-registry-readonly]");
+    if (!button) return;
+    event.preventDefault();
+    toast("승인 기능은 Phase 2B에서 제공됩니다.");
+  });
+  document.addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-inventory-intel-tab]");
+    if (!tab) return;
+    inventoryIntelState.activeTab = tab.dataset.inventoryIntelTab || "all";
+    renderInventoryIntelTabs();
+    renderInventoryIntelList();
+  });
+  $("#inventoryIntelSearch")?.addEventListener("input", (event) => {
+    inventoryIntelFilters.search = event.target.value || "";
+    renderInventoryIntelList();
+  });
+  $("#inventoryIntelBrandFilter")?.addEventListener("change", (event) => {
+    inventoryIntelFilters.brand = event.target.value || "all";
+    renderInventoryIntelList();
+  });
+  $("#inventoryIntelSortSelect")?.addEventListener("change", (event) => {
+    inventoryIntelFilters.sort = event.target.value || "priority";
+    renderInventoryIntelList();
+  });
+  document.addEventListener("click", (event) => {
+    const card = event.target.closest("[data-inventory-intel-card]");
+    if (!card) return;
+    inventoryIntelState.selectedId = card.dataset.inventoryIntelCard || null;
+    renderInventoryIntelList();
+  });
+  document.addEventListener("keydown", (event) => {
+    const card = event.target.closest("[data-inventory-intel-card]");
+    if (!card || !["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    inventoryIntelState.selectedId = card.dataset.inventoryIntelCard || null;
+    renderInventoryIntelList();
+  });
+  document.addEventListener("click", (event) => {
+    const priorityCard = event.target.closest("[data-inventory-intel-priority-jump]");
+    if (!priorityCard) return;
+    event.preventDefault();
+    inventoryIntelState.selectedId = priorityCard.dataset.inventoryIntelPriorityJump || null;
+    inventoryIntelState.activeTab = "all";
+    inventoryIntelFilters.search = "";
+    renderInventoryIntelTabs();
+    renderInventoryIntelList();
+    $("#inventoryIntelDetail")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  document.addEventListener("click", (event) => {
+    const goToRegistryBtn = event.target.closest("[data-inventory-intel-open-registry]");
+    if (!goToRegistryBtn) return;
+    event.preventDefault();
+    const canonicalId = goToRegistryBtn.dataset.inventoryIntelOpenRegistry || null;
+    const productName = goToRegistryBtn.dataset.inventoryIntelOpenRegistryName || "";
+    if (canonicalId) productRegistryState.selectedId = canonicalId;
+    setActiveView("ProductRegistry");
+    setTimeout(() => {
+      renderProductRegistryList();
+      const selectedCard = document.querySelector(`[data-product-registry-card="${canonicalId}"]`);
+      if (selectedCard) selectedCard.scrollIntoView({ behavior: "smooth", block: "center" });
+      toast(productName ? `Product Registry에서 "${productName}"를 선택했습니다.` : "Product Registry로 이동했습니다.");
+    }, 60);
+  });
+  $("#inventoryIntelReloadBtn")?.addEventListener("click", () => {
+    renderInventoryIntelligenceView();
+  });
+  $("#inventoryIntelRerunBtn")?.addEventListener("click", () => {
+    toast("재고 진단 재실행은 다음 Phase에서 제공됩니다.");
   });
   document.addEventListener("click", (event) => {
     const tabButton = event.target.closest("[data-inventory-workspace-tab]");
@@ -9207,7 +11792,9 @@ function bind() {
     if (!row) return;
     toggleMetaProductPerformanceRow(row.dataset.metaProductToggle || "");
   });
-  // Brand Contribution 행 클릭 → Meta Product Performance 표를 해당 브랜드로 필터링.
+  // Marketing Analytics Phase 2: Brand Contribution 행 클릭 → 위 Meta Product
+  // Performance 표를 해당 브랜드로 필터링(다시 클릭하면 해제). 필터 배너의 "필터 해제"
+  // 버튼으로도 해제할 수 있다.
   document.addEventListener("click", (event) => {
     const clearBtn = event.target.closest("[data-meta-brand-filter-clear]");
     if (clearBtn) {
@@ -9218,55 +11805,39 @@ function bind() {
     if (!brandRow) return;
     toggleMetaProductPerformanceBrandFilter(brandRow.dataset.metaBrandToggle || "");
   });
-  document.addEventListener("click", (event) => {
-    const tab = event.target.closest("[data-product-registry-tab]");
-    if (!tab) return;
-    productRegistryState.activeTab = tab.dataset.productRegistryTab || "all";
-    renderProductRegistryTabs(productRegistryState.items);
-    renderProductRegistryList();
-  });
-  $("#productRegistrySearch")?.addEventListener("input", (event) => {
-    productRegistryFilters.search = event.target.value || "";
-    renderProductRegistryList();
-  });
-  $("#productRegistryBrandFilter")?.addEventListener("change", (event) => {
-    productRegistryFilters.brand = event.target.value || "all";
-    renderProductRegistryList();
-  });
-  $("#productRegistryConfidenceFilter")?.addEventListener("change", (event) => {
-    productRegistryFilters.confidence = event.target.value || "all";
-    renderProductRegistryList();
-  });
-  $("#productRegistryStatusFilter")?.addEventListener("change", (event) => {
-    productRegistryFilters.status = event.target.value || "all";
-    renderProductRegistryList();
-  });
-  $("#productRegistryDiagnosticFilter")?.addEventListener("change", (event) => {
-    productRegistryFilters.diagnostic = event.target.value || "all";
-    renderProductRegistryList();
-  });
-  $("#productRegistryCandidateFilter")?.addEventListener("change", (event) => {
-    productRegistryFilters.candidateCount = event.target.value || "all";
-    renderProductRegistryList();
+  document.addEventListener("mouseover", (event) => {
+    const trigger = event.target.closest("[data-brand-order-history]");
+    if (trigger) showProductBrandOrderPopover(trigger);
   });
   document.addEventListener("click", (event) => {
-    const card = event.target.closest("[data-product-registry-card]");
-    if (!card) return;
-    productRegistryState.selectedId = card.dataset.productRegistryCard || null;
-    renderProductRegistryList();
+    const trigger = event.target.closest("[data-brand-order-history]");
+    const popover = $("#productBrandOrderPopover");
+    if (event.target.closest("[data-brand-trend-detail], [data-annual-brand-detail], [data-annual-brand-month-detail], [data-annual-brand-summary-back]")) return;
+    if (event.target.closest("[data-brand-panel-close]")) {
+      closeProductBrandOrderPopover();
+      return;
+    }
+    if (trigger) {
+      event.preventDefault();
+      if (!popover?.hidden && activeBrandOrderPopoverCode === trigger.dataset.brandOrderHistory) closeProductBrandOrderPopover();
+      else showProductBrandOrderPopover(trigger);
+      return;
+    }
+    if (popover && !popover.hidden && !popover.contains(event.target)) closeProductBrandOrderPopover();
   });
-  document.addEventListener("keydown", (event) => {
-    const card = event.target.closest("[data-product-registry-card]");
-    if (!card || !["Enter", " "].includes(event.key)) return;
-    event.preventDefault();
-    productRegistryState.selectedId = card.dataset.productRegistryCard || null;
-    renderProductRegistryList();
+  $$("[data-content-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeContentTab = button.dataset.contentTab || "All";
+      renderContentTabs();
+    });
   });
-  document.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-product-registry-readonly]");
-    if (!button) return;
-    event.preventDefault();
-    toast("승인 기능은 Phase 2B에서 제공됩니다.");
+  $$("[data-ad-level]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeAdLevel = button.dataset.adLevel || "campaign";
+      const rows = uniqueMonthlyDataRows();
+      const current = rows.find((item) => item.month === $("#monthSelect")?.value) || rows[0];
+      if (current) renderAdvertising(current);
+    });
   });
 }
 
@@ -9289,7 +11860,6 @@ function handleCafe24OAuthRedirect() {
     cafe24OAuthErrorReason = reason || "원인을 확인할 수 없습니다.";
   }
 }
-
 
 function productRegistryDiagnosticTypes(item) {
   return Array.isArray(item?.diagnosticType) ? item.diagnosticType : Array.isArray(item?.entry?.matching?.diagnosticType) ? item.entry.matching.diagnosticType : [];
@@ -9609,6 +12179,437 @@ async function renderProductRegistryView() {
     }
     $("#productRegistryList") && ($("#productRegistryList").innerHTML = "");
     $("#productRegistryDetail") && ($("#productRegistryDetail").innerHTML = `<div class="sales-empty-card"><strong>오류</strong><p>${esc(error.message || "데이터 로딩 실패")}</p></div>`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Inventory Intelligence (Phase 2B) — Read Only.
+// scripts/diagnose-inventory-reconciliation.mjs가 생성한 work/inventory-intelligence-
+// candidates.json을 intelligence-service.mjs의 /api/inventory/intelligence/health를 통해
+// 읽기만 한다. 이 화면은 재고를 직접 수정하지 않는다.
+// ---------------------------------------------------------------------------
+
+function inventoryIntelPercent(numerator, denominator) {
+  if (!denominator) return "-";
+  return `${((numerator / denominator) * 100).toFixed(1)}%`;
+}
+
+const INVENTORY_INTEL_STATUS_META = {
+  exact_match: { label: "Exact", tone: "good" },
+  near_match: { label: "Near", tone: "informational" },
+  mismatch: { label: "Mismatch", tone: "urgent" },
+  one_source_missing: { label: "ECOUNT 재고값 누락", tone: "neutral" },
+  invalid_data: { label: "Invalid", tone: "urgent" }
+};
+
+function inventoryIntelStatusMeta(status) {
+  return INVENTORY_INTEL_STATUS_META[status] || { label: status || "-", tone: "neutral" };
+}
+
+const INVENTORY_INTEL_FLAG_LABELS = {
+  multiple_cafe24_variants: "복수 Cafe24 옵션",
+  multiple_ecount_sizes: "복수 ECOUNT 사이즈",
+  cafe24_from_fallback_cache: "Cafe24 fallback 캐시 사용",
+  missing_ecount_item: "ECOUNT 품목 누락",
+  missing_cafe24_product: "Cafe24 상품 누락",
+  ecount_stock_partial_or_full_null: "ECOUNT 재고값 누락",
+  negative_ecount_stock: "ECOUNT 음수 재고",
+  negative_cafe24_stock: "Cafe24 음수 재고",
+  qqq_product: "QQQ(브랜드 직송)",
+  consignment_product: "CON 위탁",
+  verified_without_ecount_prodcd: "ECOUNT 연결 없음"
+};
+
+const INVENTORY_INTEL_TABS = [
+  { key: "all", label: "전체" },
+  { key: "exact_match", label: "Exact" },
+  { key: "near_match", label: "Near" },
+  { key: "mismatch", label: "Mismatch" },
+  { key: "one_source_missing", label: "ECOUNT 재고 누락" },
+  { key: "invalid_data", label: "Invalid" }
+];
+
+function inventoryIntelPriorityRank(item) {
+  if (item.status === "invalid_data") return 0;
+  if (item.status === "mismatch") return 1;
+  if (item.status === "one_source_missing") return 2;
+  if (item.hasDuplicateFlag || (item.flags || []).some((flag) => flag.includes("negative"))) return 3;
+  return 4;
+}
+
+function inventoryIntelRecommendedCheck(item) {
+  if (item.status === "mismatch") return "Cafe24 옵션 재고 및 ECOUNT 실재고를 확인하세요.";
+  if (item.status === "one_source_missing") return "ECOUNT 재고 조회 응답 또는 API 수집 상태를 확인하세요.";
+  if (item.status === "invalid_data") return "연결 정보 또는 수치 데이터를 확인하세요.";
+  if (item.hasDuplicateFlag) return "동일 코드가 여러 Canonical Product에 연결되어 있는지 확인하세요.";
+  if ((item.flags || []).some((flag) => flag.includes("negative"))) return "음수 재고 데이터를 ECOUNT/Cafe24 원본에서 확인하세요.";
+  if (item.status === "near_match") return "2개 이하 또는 10% 이하의 차이입니다.";
+  return "두 시스템 재고가 일치합니다.";
+}
+
+function inventoryIntelIssueType(item) {
+  if (item.status === "mismatch") return "재고 불일치";
+  if (item.status === "one_source_missing") return "ECOUNT 재고 누락";
+  if (item.status === "invalid_data") return "데이터 오류";
+  if (item.hasDuplicateFlag) return "중복 연결";
+  if ((item.flags || []).some((flag) => flag.includes("negative"))) return "음수 재고";
+  return "정상";
+}
+
+function inventoryIntelBuildItems(raw) {
+  const conflicts = raw?.conflicts || {};
+  const duplicateIds = new Set([
+    ...(conflicts.duplicateEcountProdCdsAffectingVerified || []).flatMap((entry) => entry.canonicalProductIds || []),
+    ...(conflicts.duplicateCafe24ProductsAffectingVerified || []).flatMap((entry) => entry.canonicalProductIds || [])
+  ]);
+  return (raw?.items || []).map((item) => {
+    const flags = item.flags || [];
+    const hasDuplicateFlag = duplicateIds.has(item.canonicalProductId);
+    const searchText = [
+      item.canonicalBrandName,
+      item.canonicalProductName,
+      item.cafe24?.cafe24ProductNo,
+      item.cafe24?.cafe24ProductCode,
+      ...(item.ecount?.ecountProdCds || []),
+      ...(item.ecount?.ecountItems || []).map((row) => row.barcode)
+    ].filter(Boolean).join(" ").toLowerCase();
+    const enriched = { ...item, flags, hasDuplicateFlag, searchText };
+    enriched.priorityRank = inventoryIntelPriorityRank(enriched);
+    return enriched;
+  });
+}
+
+function inventoryIntelMatchesFilters(item) {
+  const tab = inventoryIntelState.activeTab || "all";
+  if (tab !== "all" && item.status !== tab) return false;
+  const brand = inventoryIntelFilters.brand || "all";
+  if (brand !== "all" && item.canonicalBrandName !== brand) return false;
+  const search = (inventoryIntelFilters.search || "").trim().toLowerCase();
+  if (search && !item.searchText.includes(search)) return false;
+  return true;
+}
+
+function inventoryIntelSortItems(items) {
+  const sorted = [...items];
+  const sortMode = inventoryIntelFilters.sort || "priority";
+  if (sortMode === "diff-desc") {
+    sorted.sort((a, b) => (b.comparison?.absoluteDifference ?? -1) - (a.comparison?.absoluteDifference ?? -1));
+  } else if (sortMode === "status") {
+    sorted.sort((a, b) => a.priorityRank - b.priorityRank || (a.canonicalBrandName || "").localeCompare(b.canonicalBrandName || ""));
+  } else {
+    sorted.sort((a, b) => {
+      if (a.priorityRank !== b.priorityRank) return a.priorityRank - b.priorityRank;
+      return (b.comparison?.absoluteDifference ?? -1) - (a.comparison?.absoluteDifference ?? -1);
+    });
+  }
+  return sorted;
+}
+
+function renderInventoryIntelSummaryCards(raw) {
+  const target = $("#inventoryIntelSummaryCards");
+  if (!target) return;
+  const summary = raw?.summary || {};
+  const meta = raw?.meta || {};
+  const validCompared = (summary.exactMatchCount || 0) + (summary.nearMatchCount || 0) + (summary.mismatchCount || 0);
+  const reconciled = (summary.exactMatchCount || 0) + (summary.nearMatchCount || 0);
+  const verifiedCount = meta.verifiedEntryCount || 0;
+  const registryCount = meta.registryEntryCount || 0;
+  const needsAttention = (summary.mismatchCount || 0) + (summary.oneSourceMissingCount || 0);
+  const cards = [
+    { label: "Inventory Match", value: inventoryIntelPercent(reconciled, validCompared), sub: `${apiNum(reconciled)} / ${apiNum(validCompared)} products`, tone: "good" },
+    { label: "Comparison Coverage", value: inventoryIntelPercent(validCompared, verifiedCount), sub: `${apiNum(validCompared)} / ${apiNum(verifiedCount)} products`, tone: "informational" },
+    { label: "Product Registry Coverage", value: inventoryIntelPercent(verifiedCount, registryCount), sub: `${apiNum(verifiedCount)} / ${apiNum(registryCount)} products`, tone: "neutral" },
+    { label: "Needs Attention", value: apiNum(needsAttention), sub: `mismatch ${apiNum(summary.mismatchCount || 0)} + missing ${apiNum(summary.oneSourceMissingCount || 0)}`, tone: needsAttention > 0 ? "urgent" : "good" }
+  ];
+  target.innerHTML = cards.map((card) => (
+    `<div class="action-item sales-kpi-card ${card.tone}"><span>${esc(card.label)}</span><strong>${esc(card.value)}</strong><small>${esc(card.sub)}</small></div>`
+  )).join("");
+}
+
+function renderInventoryIntelStatusBreakdown(summary) {
+  const target = $("#inventoryIntelStatusBreakdown");
+  if (!target) return;
+  const rows = [
+    { key: "exact_match", count: summary.exactMatchCount || 0 },
+    { key: "near_match", count: summary.nearMatchCount || 0 },
+    { key: "mismatch", count: summary.mismatchCount || 0 },
+    { key: "one_source_missing", count: summary.oneSourceMissingCount || 0 },
+    { key: "invalid_data", count: summary.invalidDataCount || 0 }
+  ];
+  const total = rows.reduce((sum, row) => sum + row.count, 0) || 1;
+  const bar = rows.map((row) => {
+    if (!row.count) return "";
+    const meta = inventoryIntelStatusMeta(row.key);
+    const width = ((row.count / total) * 100).toFixed(2);
+    return `<span class="inventory-intel-stack-seg ${meta.tone}" style="width:${width}%" title="${esc(meta.label)} ${row.count}"></span>`;
+  }).join("");
+  const legend = rows.map((row) => {
+    const meta = inventoryIntelStatusMeta(row.key);
+    const desc = row.key === "one_source_missing" ? "품목 연결은 존재하지만 stockQuantity가 제공되지 않았습니다." : "";
+    return `<div class="inventory-intel-legend-item ${meta.tone}"><span class="inventory-intel-dot"></span><strong>${esc(meta.label)}</strong><b>${apiNum(row.count)}</b>${desc ? `<small>${esc(desc)}</small>` : ""}</div>`;
+  }).join("");
+  target.innerHTML = `<div class="inventory-intel-stack-bar">${bar}</div><div class="inventory-intel-legend">${legend}</div>`;
+}
+
+function renderInventoryIntelCoverageBars(raw) {
+  const target = $("#inventoryIntelCoverageBars");
+  if (!target) return;
+  const summary = raw?.summary || {};
+  const meta = raw?.meta || {};
+  const validCompared = (summary.exactMatchCount || 0) + (summary.nearMatchCount || 0) + (summary.mismatchCount || 0);
+  const reconciled = (summary.exactMatchCount || 0) + (summary.nearMatchCount || 0);
+  const rows = [
+    { label: "Product Registry Verified", num: meta.verifiedEntryCount || 0, den: meta.registryEntryCount || 0, desc: "Cafe24와 ECOUNT 상품 연결이 확인된 비율" },
+    { label: "Inventory Comparable", num: validCompared, den: meta.verifiedEntryCount || 0, desc: "양쪽 재고 숫자가 모두 존재하는 비율" },
+    { label: "Reconciled Among Comparable", num: reconciled, den: validCompared, desc: "비교 가능한 상품 중 Exact 또는 Near인 비율" }
+  ];
+  target.innerHTML = rows.map((row) => {
+    const pct = row.den ? (row.num / row.den) * 100 : 0;
+    return `<div class="inventory-intel-coverage-bar">
+      <div class="inventory-intel-coverage-bar-head"><span>${esc(row.label)}</span><strong>${apiNum(row.num)} / ${apiNum(row.den)} (${pct.toFixed(1)}%)</strong></div>
+      <div class="inventory-intel-coverage-bar-track"><div class="inventory-intel-coverage-bar-fill" style="width:${Math.min(100, pct).toFixed(2)}%"></div></div>
+      <p class="inventory-intel-coverage-bar-desc">${esc(row.desc)}</p>
+    </div>`;
+  }).join("");
+}
+
+function renderInventoryIntelPriorityIssues(items) {
+  const target = $("#inventoryIntelPriorityList");
+  if (!target) return;
+  const issues = items
+    .filter((item) => item.priorityRank <= 3)
+    .sort((a, b) => {
+      if (a.priorityRank !== b.priorityRank) return a.priorityRank - b.priorityRank;
+      return (b.comparison?.absoluteDifference ?? -1) - (a.comparison?.absoluteDifference ?? -1);
+    })
+    .slice(0, 20);
+  if (!issues.length) {
+    target.innerHTML = `<div class="sales-empty-card"><strong>확인이 필요한 데이터가 없습니다.</strong></div>`;
+    return;
+  }
+  target.innerHTML = issues.map((item) => {
+    const meta = inventoryIntelStatusMeta(item.status);
+    const cafe24Stock = item.cafe24?.cafe24InventoryQuantity;
+    const ecountStock = item.ecount?.ecountStockQuantity;
+    const diff = item.comparison?.difference;
+    const priorityLabel = item.priorityRank <= 1 ? 1 : item.priorityRank === 2 ? 2 : 3;
+    return `<article class="action-item inventory-intel-priority-card ${meta.tone}">
+      <div class="inventory-intel-priority-head">
+        <span class="inventory-intel-priority-rank">Priority ${priorityLabel}</span>
+        <span>${esc(item.canonicalBrandName || "-")}</span>
+      </div>
+      <strong>${esc(item.canonicalProductName || "-")}</strong>
+      <div class="inventory-intel-priority-meta">
+        <span>${esc(inventoryIntelIssueType(item))}</span>
+        <span>Cafe24 ${cafe24Stock ?? "-"}</span>
+        <span>ECOUNT ${ecountStock ?? "-"}</span>
+        <span>Diff ${diff ?? "-"}</span>
+      </div>
+      <p class="inventory-intel-priority-desc">${esc(inventoryIntelRecommendedCheck(item))}</p>
+      <button type="button" class="today-jump-button" data-inventory-intel-priority-jump="${esc(item.canonicalProductId)}">상세 보기</button>
+    </article>`;
+  }).join("");
+}
+
+function renderInventoryIntelTabs() {
+  const target = $("#inventoryIntelTabs");
+  if (!target) return;
+  const items = inventoryIntelState.items || [];
+  target.innerHTML = INVENTORY_INTEL_TABS.map((tab) => {
+    const count = tab.key === "all" ? items.length : items.filter((item) => item.status === tab.key).length;
+    return `<button type="button" class="product-action-filter ${inventoryIntelState.activeTab === tab.key ? "active" : ""}" data-inventory-intel-tab="${tab.key}">${esc(tab.label)} (${apiNum(count)})</button>`;
+  }).join("");
+}
+
+function renderInventoryIntelFilterOptions(items) {
+  const brandSelect = $("#inventoryIntelBrandFilter");
+  if (!brandSelect) return;
+  const brands = [...new Set(items.map((item) => item.canonicalBrandName).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const current = inventoryIntelFilters.brand || "all";
+  brandSelect.innerHTML = [`<option value="all">브랜드 전체</option>`, ...brands.map((brand) => `<option value="${esc(brand)}">${esc(brand)}</option>`)].join("");
+  brandSelect.value = brands.includes(current) ? current : "all";
+  inventoryIntelFilters.brand = brandSelect.value;
+}
+
+function inventoryIntelListCardHtml(item) {
+  const meta = inventoryIntelStatusMeta(item.status);
+  const selected = inventoryIntelState.selectedId === item.canonicalProductId ? " is-selected" : "";
+  const cafe24Stock = item.cafe24?.cafe24InventoryQuantity;
+  const ecountStock = item.ecount?.ecountStockQuantity;
+  const diff = item.comparison?.difference;
+  return `<article class="product-registry-card inventory-intel-card${selected}" tabindex="0" role="button" data-inventory-intel-card="${esc(item.canonicalProductId)}">
+    <div class="product-registry-card-head">
+      <div><span class="product-registry-brand">${esc(item.canonicalBrandName || "-")}</span><strong>${esc(item.canonicalProductName || "-")}</strong></div>
+      <span class="inventory-intel-status-pill ${meta.tone}">${esc(meta.label)}</span>
+    </div>
+    <div class="product-registry-row-meta">
+      <span>Cafe24 ${cafe24Stock ?? "-"}</span>
+      <span>ECOUNT ${ecountStock ?? "-"}</span>
+      <span>Diff ${diff ?? "-"}</span>
+    </div>
+  </article>`;
+}
+
+function renderInventoryIntelList() {
+  const listTarget = $("#inventoryIntelList");
+  const emptyTarget = $("#inventoryIntelEmpty");
+  if (!listTarget) return;
+  const filtered = inventoryIntelSortItems((inventoryIntelState.items || []).filter(inventoryIntelMatchesFilters));
+  if (!filtered.some((item) => item.canonicalProductId === inventoryIntelState.selectedId)) {
+    inventoryIntelState.selectedId = filtered[0]?.canonicalProductId || null;
+  }
+  listTarget.innerHTML = filtered.map(inventoryIntelListCardHtml).join("");
+  if (emptyTarget) emptyTarget.hidden = filtered.length > 0;
+  renderInventoryIntelDetail();
+}
+
+function renderInventoryIntelDetail() {
+  const target = $("#inventoryIntelDetail");
+  if (!target) return;
+  const item = (inventoryIntelState.items || []).find((row) => row.canonicalProductId === inventoryIntelState.selectedId);
+  if (!item) {
+    target.innerHTML = `<div class="sales-empty-card"><strong>선택된 상품이 없습니다.</strong></div>`;
+    return;
+  }
+  const meta = inventoryIntelStatusMeta(item.status);
+  const cafe24 = item.cafe24 || {};
+  const ecount = item.ecount || {};
+  const comparison = item.comparison || {};
+  const variantsHtml = (cafe24.cafe24Variants || []).length
+    ? cafe24.cafe24Variants.map((v) => `<li class="product-registry-candidate-row"><strong>${esc(v.variantCode || "-")}</strong><span>${esc(v.optionName || "-")}</span><span>수량 ${v.quantity ?? "-"}</span></li>`).join("")
+    : `<li class="product-registry-candidate-row is-empty"><strong>옵션 정보가 없습니다.</strong></li>`;
+  const ecountItemsHtml = (ecount.ecountItems || []).length
+    ? ecount.ecountItems.map((row) => `<li class="product-registry-candidate-row"><strong>${esc(row.prodCd || "-")}</strong><span>${esc(row.productName || "-")}</span><span>사이즈 ${esc(row.size || "-")}</span><span>재고 ${row.stockQuantity ?? "누락"}</span></li>`).join("")
+    : `<li class="product-registry-candidate-row is-empty"><strong>연결된 ECOUNT 품목이 없습니다.</strong></li>`;
+  const flagsHtml = (item.flags || []).length
+    ? item.flags.map((flag) => `<span>${esc(INVENTORY_INTEL_FLAG_LABELS[flag] || flag)}</span>`).join("")
+    : `<span>없음</span>`;
+  target.innerHTML = `
+    <div class="product-registry-detail-head">
+      <div><span class="product-registry-brand">${esc(item.canonicalBrandName || "-")}</span><h3>${esc(item.canonicalProductName || "-")}</h3></div>
+      <span class="inventory-intel-status-pill ${meta.tone}">${esc(meta.label)}</span>
+    </div>
+    <div class="product-registry-detail-section">
+      <p class="hint-text">canonicalProductId: ${esc(item.canonicalProductId || "-")} · Cafe24 productNo ${esc(cafe24.cafe24ProductNo || "-")} / productCode ${esc(cafe24.cafe24ProductCode || "-")} · ECOUNT PROD_CD ${esc((ecount.ecountProdCds || []).join(", ") || "-")}</p>
+    </div>
+    <div class="clients-tooltip-stats clients-detail-stats-grid product-registry-detail-kpis">
+      <div><span>Cafe24 재고</span><strong>${cafe24.cafe24InventoryQuantity ?? "-"}</strong></div>
+      <div><span>ECOUNT 재고</span><strong>${ecount.ecountStockQuantity ?? "-"}</strong></div>
+      <div><span>차이</span><strong>${comparison.difference ?? "-"}</strong></div>
+      <div><span>차이 비율</span><strong>${comparison.differenceRate != null ? (comparison.differenceRate * 100).toFixed(1) + "%" : "-"}</strong></div>
+    </div>
+    <div class="product-registry-detail-section">
+      <h4>Cafe24 Variants</h4>
+      <ul class="product-registry-candidate-list">${variantsHtml}</ul>
+    </div>
+    <div class="product-registry-detail-section">
+      <h4>ECOUNT Items</h4>
+      <ul class="product-registry-candidate-list">${ecountItemsHtml}</ul>
+    </div>
+    <div class="product-registry-detail-section">
+      <h4>Flags</h4>
+      <div class="product-registry-diags">${flagsHtml}</div>
+    </div>
+    <div class="product-registry-detail-section">
+      <p class="inventory-intel-recommend"><strong>권장 확인:</strong> ${esc(inventoryIntelRecommendedCheck(item))}</p>
+    </div>
+    <div class="product-registry-detail-section">
+      <button type="button" class="today-jump-button" data-inventory-intel-open-registry="${esc(item.canonicalProductId)}" data-inventory-intel-open-registry-name="${esc(item.canonicalProductName || "")}">Product Registry에서 보기</button>
+    </div>
+  `;
+}
+
+function renderInventoryIntelDiagnosticMeta(raw) {
+  const target = $("#inventoryIntelDiagnosticMeta");
+  if (!target) return;
+  const meta = raw?.meta || {};
+  const cafe24Source = meta.cafe24Source || {};
+  const primary = cafe24Source.primary || {};
+  const rows = [
+    ["ECOUNT source", meta.ecountPath || "-"],
+    ["Cafe24 source", primary.file || "-"],
+    ["Cafe24 source 선택 규칙", cafe24Source.selectionRule || cafe24Source.mode || "-"],
+    ["임계값(절대)", meta.thresholds?.nearMatchAbsoluteUnits ?? "-"],
+    ["임계값(비율)", meta.thresholds?.nearMatchRate != null ? `${(meta.thresholds.nearMatchRate * 100).toFixed(0)}%` : "-"],
+    ["schemaVersion", raw?.schemaVersion ?? "-"],
+    ["mode", raw?.mode || "-"]
+  ];
+  target.innerHTML = rows.map(([label, value]) => `<div class="inventory-intel-meta-row"><span>${esc(label)}</span><strong>${esc(String(value))}</strong></div>`).join("");
+}
+
+function inventoryIntelIsStale(generatedAt) {
+  if (!generatedAt) return false;
+  const ts = new Date(generatedAt).getTime();
+  if (!Number.isFinite(ts)) return false;
+  return Date.now() - ts > 48 * 60 * 60 * 1000;
+}
+
+function inventoryIntelClearPanels() {
+  ["#inventoryIntelMeta", "#inventoryIntelSummaryCards", "#inventoryIntelStatusBreakdown", "#inventoryIntelCoverageBars", "#inventoryIntelPriorityList", "#inventoryIntelTabs", "#inventoryIntelList", "#inventoryIntelDetail", "#inventoryIntelDiagnosticMeta"].forEach((selector) => {
+    const node = $(selector);
+    if (node) node.innerHTML = "";
+  });
+}
+
+async function renderInventoryIntelligenceView() {
+  const seq = ++inventoryIntelRenderSeq;
+  const status = $("#inventoryIntelStatus");
+  const staleBanner = $("#inventoryIntelStaleBanner");
+  if (status) {
+    status.className = "ad-status-banner loading";
+    status.textContent = "Inventory Intelligence 로딩 중...";
+  }
+  if (staleBanner) staleBanner.hidden = true;
+  try {
+    const resp = await getJson(intelligenceUrl("/api/inventory/intelligence/health"), 12000);
+    if (seq !== inventoryIntelRenderSeq) return;
+    if (resp.error) throw new Error(resp.message || resp.error);
+    if (resp.ok === false) throw new Error(resp.message || "Inventory Intelligence 데이터를 불러오지 못했습니다.");
+    if (resp.available === false) {
+      if (status) {
+        status.className = "ad-status-banner warn";
+        status.textContent = "진단 데이터가 아직 없습니다. Phase 2A 진단(scripts/diagnose-inventory-reconciliation.mjs)을 먼저 실행해야 합니다.";
+      }
+      inventoryIntelClearPanels();
+      return;
+    }
+    inventoryIntelState.raw = resp;
+    inventoryIntelState.items = inventoryIntelBuildItems(resp);
+    if (!inventoryIntelState.activeTab) inventoryIntelState.activeTab = "all";
+
+    const itemCount = inventoryIntelState.items.length;
+    if (status) {
+      status.className = "ad-status-banner good";
+      status.textContent = itemCount ? `Read-only · 비교 대상 ${apiNum(itemCount)}개` : "비교 가능한 상품이 아직 없습니다.";
+    }
+    const metaTarget = $("#inventoryIntelMeta");
+    if (metaTarget) {
+      const cafe24Source = resp.meta?.cafe24Source?.primary?.file || "-";
+      const ecountSource = resp.meta?.ecountPath || "-";
+      metaTarget.innerHTML = `
+        <span>마지막 생성 ${resp.generatedAt ? new Date(resp.generatedAt).toLocaleString("ko-KR") : "-"}</span>
+        <span>ECOUNT source: ${esc(ecountSource)}</span>
+        <span>Cafe24 source: ${esc(cafe24Source)}</span>
+      `;
+    }
+    if (staleBanner) staleBanner.hidden = !inventoryIntelIsStale(resp.generatedAt);
+
+    renderInventoryIntelSummaryCards(resp);
+    renderInventoryIntelStatusBreakdown(resp.summary || {});
+    renderInventoryIntelCoverageBars(resp);
+    renderInventoryIntelPriorityIssues(inventoryIntelState.items);
+    renderInventoryIntelTabs();
+    renderInventoryIntelFilterOptions(inventoryIntelState.items);
+    renderInventoryIntelList();
+    renderInventoryIntelDiagnosticMeta(resp);
+  } catch (error) {
+    if (seq !== inventoryIntelRenderSeq) return;
+    if (status) {
+      status.className = "ad-status-banner urgent";
+      status.textContent = `Inventory Intelligence를 불러오지 못했습니다. ${error.message || ""}`;
+    }
+    $("#inventoryIntelList") && ($("#inventoryIntelList").innerHTML = "");
+    $("#inventoryIntelDetail") && ($("#inventoryIntelDetail").innerHTML = `<div class="sales-empty-card"><strong>오류</strong><p>${esc(error.message || "데이터 로딩 실패")}</p></div>`);
   }
 }
 

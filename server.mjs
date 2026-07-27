@@ -6,6 +6,7 @@ import { URL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 import { enrichMetaProductBreakdown, applyRuntimeAutoEnrichment } from "./scripts/meta-product-registry-link.mjs";
+import { handleIntelligenceRequest } from "./intelligence-service.mjs";
 
 const root = resolve(".");
 const outputDir = join(root, "outputs");
@@ -323,6 +324,19 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/diagnostics/cafe24-product-check") {
       const data = await diagnoseCafe24ProductAccess();
       return json(res, data);
+    }
+    if (
+      url.pathname.startsWith("/api/intelligence/") ||
+      url.pathname.startsWith("/api/inventory/intelligence/") ||
+      url.pathname === "/api/inventory/overview"
+    ) {
+      if (
+        (req.method === "POST" || req.method === "PATCH") &&
+        !isAuthorizedInternalRequest(req)
+      ) {
+        return json(res, { error: "Unauthorized" }, 401);
+      }
+      return handleIntelligenceRequest(req, res);
     }
     if (url.pathname.startsWith("/outputs/")) {
       return serveFile(res, join(root, url.pathname));

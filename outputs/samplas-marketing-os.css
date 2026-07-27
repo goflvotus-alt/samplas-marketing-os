@@ -2090,7 +2090,6 @@ select,
   margin: 0;
 }
 
-
 /* 2026-07-23 Meta Product Performance Phase 1: 표는 기존 .table-wrap/.ad-table-wrap을
    그대로 재사용합니다. 아래는 행 클릭(accordion), Registry Source 배지(.badge/.badge.good/
    .badge.warn 재사용), 상세 펼침 영역(.meta-product-performance-detail)에만 쓰는 최소
@@ -2142,7 +2141,7 @@ select,
 
 /* 2026-07-23 Marketing Analytics Phase 2 (Product → Brand → Order drill-down): 필터
    배너, Order List 표(기존 .table-wrap 재사용), Brand Contribution 표(기존
-   .ad-table-wrap 재사용) 행 hover/active, Parsed brand dot 표시에만 쓰는 최소 CSS. */
+   .ad-table-wrap 재사용) 행 hover/active, Runtime brand dot 표시에만 쓰는 최소 CSS. */
 .meta-product-performance-filter-banner {
   display: flex;
   align-items: center;
@@ -4049,6 +4048,21 @@ td {
   margin-bottom: 12px;
 }
 
+.brand-panel-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.brand-panel-close:hover,
+.brand-panel-close:focus-visible {
+  color: var(--ink);
+}
+
 .brand-order-popover-order {
   border-top: 1px solid rgba(17, 17, 17, 0.1);
   padding-top: 10px;
@@ -4071,6 +4085,138 @@ td {
   margin: 0;
   color: #666;
   font-size: 12px;
+}
+
+.brand-performance-detail-summary {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #555;
+}
+
+[data-annual-brand-detail],
+[data-brand-trend-detail] {
+  cursor: pointer;
+}
+
+[data-annual-brand-detail]:hover,
+[data-brand-trend-detail]:hover {
+  background: rgba(17, 17, 17, 0.03);
+}
+
+[data-annual-brand-detail]:focus-visible,
+[data-brand-trend-detail]:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.monthly-report-brand-trend-trigger {
+  border: 1px solid rgba(17, 17, 17, 0.1);
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.monthly-report-brand-trend-trigger:hover,
+.monthly-report-brand-trend-trigger:focus-visible {
+  color: var(--ink);
+  border-color: rgba(17, 17, 17, 0.28);
+}
+
+.brand-trend-detail-chart {
+  color: var(--ink);
+  margin: 8px 0 12px;
+}
+
+.brand-trend-detail-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.brand-trend-detail-chart circle {
+  fill: #111;
+}
+
+.brand-trend-detail-chart circle.is-missing {
+  fill: #c9c3b8;
+}
+
+.brand-trend-detail-table {
+  display: grid;
+  gap: 6px;
+}
+
+.brand-trend-detail-row {
+  display: grid;
+  grid-template-columns: 72px minmax(120px, 1fr);
+  gap: 4px 10px;
+  align-items: baseline;
+  border-top: 1px solid rgba(17, 17, 17, 0.08);
+  padding-top: 6px;
+  font-size: 12px;
+}
+
+.brand-trend-detail-row strong {
+  font-size: 13px;
+}
+
+.brand-trend-detail-row em,
+.brand-trend-detail-row small {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.brand-trend-detail-row em {
+  grid-column: 2;
+}
+
+.brand-trend-detail-row small {
+  grid-column: 1 / -1;
+}
+
+.brand-trend-detail-row.is-missing {
+  color: var(--muted);
+}
+
+.annual-brand-month-list {
+  display: grid;
+  gap: 8px;
+}
+
+.annual-brand-month-row {
+  border: 1px solid rgba(17, 17, 17, 0.1);
+  background: #fff;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  text-align: left;
+}
+
+.annual-brand-month-row:hover,
+.annual-brand-month-row:focus-visible {
+  border-color: rgba(17, 17, 17, 0.3);
+  background: rgba(17, 17, 17, 0.03);
+}
+
+.annual-brand-month-row span,
+.annual-brand-month-row em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 12px;
+}
+
+.annual-brand-month-row.is-missing {
+  color: var(--muted);
 }
 
 /* Operations Summary */
@@ -4303,6 +4449,136 @@ td {
   .ops-summary-cols,
   .ops-summary-content-row,
   .ops-summary-compare-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Clients v1 (2026-07-17). 기존 .ops-summary-hero/.ops-summary-cols/.ops-summary-block
+   패턴을 그대로 재사용하고, 도넛 차트와 2열 TOP10 레이아웃만 최소로 추가한다. */
+.clients-donut-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.clients-donut {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  min-width: 132px;
+  border-radius: 50%;
+  align-self: center;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.clients-donut.is-hovering {
+  transform: scale(1.03);
+}
+
+/* 조각 경계를 살짝 드러내는 정도의 얇은 링(1px) — 두껍지도 흐릿하지도 않게 */
+.clients-donut {
+  box-shadow: 0 0 0 1px rgba(23, 23, 23, 0.06);
+}
+
+.clients-donut-center {
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(23, 23, 23, 0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.clients-donut-center strong {
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.clients-donut-center span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.clients-donut-legend {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+  align-self: center;
+}
+
+.clients-donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.clients-donut-legend li:hover,
+.clients-donut-legend li:focus-visible,
+.clients-donut-legend li.is-active {
+  background: #f2f1ec;
+  outline: none;
+}
+
+.clients-donut-legend li.is-muted {
+  opacity: 0.55;
+}
+
+.clients-donut-legend i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  min-width: 9px;
+  border-radius: 2px;
+}
+
+.clients-legend-label {
+  color: var(--ink);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.clients-legend-stats {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clients-top10-cols {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+#clientsListRows tr[data-client-row] {
+  cursor: pointer;
+}
+
+#clientsListRows tr[data-client-row]:hover {
+  background: #f7f6f2;
+}
+
+#clientsListRows tr.is-selected {
+  background: #f0efe8;
+}
+
+@media (max-width: 900px) {
+  .clients-top10-cols {
     grid-template-columns: 1fr;
   }
 }
@@ -4679,6 +4955,36 @@ td {
   background: var(--ink);
 }
 
+.monthly-report-brand-trend {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--ink);
+}
+
+.monthly-report-brand-trend svg {
+  width: min(150px, 100%);
+  height: 34px;
+  display: block;
+}
+
+.monthly-report-brand-trend circle {
+  fill: var(--ink);
+}
+
+.monthly-report-brand-trend circle.is-missing {
+  fill: transparent;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.monthly-report-brand-trend small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .monthly-report-compare {
   display: grid;
   gap: 12px;
@@ -5004,6 +5310,12 @@ td {
   background: #c8792d;
 }
 
+/* 2026-07-17 Calendar Hover UX 개선: 총매출을 Hover 최상단에서 가장 크게 보여달라는 요구사항
+   충족을 위한 최소 CSS(다른 섹션의 스타일/구조는 그대로 재사용). */
+.today-sales-tooltip-section.is-total strong {
+  font-size: 20px;
+}
+
 .today-sales-calendar-cell.sales-heat-0 { background: #fffefd; }
 .today-sales-calendar-cell.sales-heat-1 { background: #f5fbf7; }
 .today-sales-calendar-cell.sales-heat-2 { background: #e6f3ea; }
@@ -5022,6 +5334,131 @@ td {
 .today-sales-calendar-cell.sales-heat-5 .today-sales-calendar-dayline b {
   background: rgba(255, 255, 255, 0.18);
   color: #fff;
+}
+
+/* Calendar x Sales Heatmap Phase 1 (2026-07-17). 새 CSS는 최소화하고, 위의 today-sales-calendar*
+   /sales-heat-* 및 today-sales-tooltip-* 클래스를 그대로 재사용한다(요구사항: "기존 색상 시스템
+   재사용, 새 CSS 최소화"). 여기서는 두 컬럼 레이아웃(달력+Day Overview 패널)과, Today에는 없는
+   "빈 날 회색 처리"/"선택된 날짜 강조"/Day Overview 패널 내부 행 배치만 최소로 추가한다. */
+.calendar-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .calendar-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.calendar-month-switch {
+  justify-content: center;
+}
+
+.calendar-month-label {
+  min-width: 96px;
+  text-align: center;
+  font-size: 14px;
+}
+
+/* 빈 날(미래/미확인 데이터) 회색 처리 — 기존 is-future/is-unavailable에 배경색이 명시돼 있지
+   않은 경우를 위한 보강. sales-heat-0(거의 흰색)보다 우선하도록 더 구체적인 선택자를 쓴다. */
+.today-sales-calendar-cell.calendar-day-cell.is-nodata {
+  background: #eeece5;
+  color: var(--muted);
+}
+
+.today-sales-calendar-cell.calendar-day-cell.is-nodata .calendar-cell-nodata {
+  color: var(--muted);
+}
+
+.today-sales-calendar-cell.calendar-day-cell.is-selected {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px rgba(32, 111, 84, 0.28);
+}
+
+.calendar-day-overview {
+  position: sticky;
+  top: 12px;
+}
+
+.calendar-day-overview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 24px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.calendar-day-overview-panel {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-day-overview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.calendar-day-overview-head h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.calendar-day-overview-close {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.calendar-day-overview-close:hover {
+  color: var(--ink);
+}
+
+.calendar-overview-total {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.calendar-overview-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.calendar-overview-row {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(23, 23, 23, 0.03);
+}
+
+.calendar-overview-subhead {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.calendar-overview-top-line {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .intelligence-search-row {
@@ -5591,6 +6028,490 @@ td {
   }
 }
 
+/* Clients TOP10/목록/도넛 구매 제품·유형 호버 (2026-07-17 초판, 2026-07-17 UI 재설계).
+   today-sales-calendar-tooltip과 동일한 위치·전환 규칙(고정 위치, 뷰포트 clamp, fade+scale
+   전환)을 재사용하되, 폭·내용 레이아웃은 헤더/구매일/구매제품 TOP5/푸터 구조로 새로 짠다.
+   pointer-events는 auto로 둬 tooltip 위로 마우스가 올라와도(hover-continuity) 계속 열려
+   있을 수 있게 한다 — 실제 닫힘/취소는 JS의 schedule/cancelHideClientsTooltip이 처리한다. */
+.clients-hover-tooltip {
+  position: fixed;
+  z-index: 1500;
+  box-sizing: border-box;
+  width: 420px;
+  max-width: min(420px, calc(100vw - 32px));
+  min-width: min(320px, calc(100vw - 32px));
+  padding: 16px 18px;
+  border: 1px solid rgba(23, 23, 23, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.99);
+  box-shadow: 0 18px 42px rgba(25, 25, 20, 0.16);
+  color: var(--ink);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+  transform-origin: top left;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.clients-hover-tooltip.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.clients-hover-tooltip[hidden] {
+  display: none;
+}
+
+/* 헤더: 이름/유형명 + 유형 배지 */
+.clients-tooltip-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.clients-tooltip-title {
+  font-size: 16px;
+  font-weight: 900;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clients-tooltip-badge {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid rgba(23, 23, 23, 0.14);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+/* 헤더 하단 통계 칩(구매건수/총매출/최근구매일 등) */
+.clients-tooltip-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px 12px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.clients-tooltip-stats-donut {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.clients-tooltip-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.clients-tooltip-stat span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.clients-tooltip-stat strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clients-tooltip-subhead {
+  margin: 10px 0 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.clients-tooltip-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.clients-tooltip-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.clients-tooltip-list.clients-tooltip-aliases {
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.clients-tooltip-list.clients-tooltip-aliases li {
+  color: var(--muted);
+  justify-content: flex-start;
+}
+
+/* 구매 제품 TOP5: 제품명 영역과 수량/매출 영역을 시각적으로 분리하고, 수량/매출은
+   오른쪽 정렬 + 행 사이 구분선. 긴 제품명은 최대 2줄로 클램프한다. */
+.clients-tooltip-products {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.clients-tooltip-product-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.clients-tooltip-product-row:last-child {
+  border-bottom: none;
+}
+
+.clients-tooltip-product-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.35;
+}
+
+.clients-tooltip-product-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  text-align: right;
+}
+
+.clients-tooltip-product-meta strong {
+  font-size: 13px;
+}
+
+.clients-tooltip-product-meta em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.clients-tooltip-source-badge {
+  padding: 1px 6px;
+  border: 1px solid rgba(23, 23, 23, 0.14);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.clients-tooltip-source-badge.is-offline {
+  background: #171717;
+  border-color: #171717;
+  color: #fff;
+}
+
+/* 2026-07-17 최종 정정(TASK3): 날짜별 제품 popover에만 쓰는 원본 판매명/주문번호 보조 라벨. */
+.clients-detail-date-product-sub {
+  color: var(--muted);
+  font-size: 10px;
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clients-tooltip-more,
+.clients-tooltip-empty {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.clients-tooltip-footer {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.clients-name-cell {
+  cursor: pointer;
+  border-bottom: 1px dotted var(--muted);
+}
+
+/* Clients 고객 상세 모달 (2026-07-17 최종 정정, TASK4/5). 도넛/범례의 가벼운 hover tooltip
+   (z-index 1500)보다 위에 떠야 해서 2000대를 쓴다. 배경은 별도 형제 div(.clients-detail-backdrop)로
+   전체 화면을 덮고, 패널은 그 위에 별도로 중앙 배치한다 — 패널 안쪽 클릭이 배경 클릭(닫기)으로
+   전파되지 않도록 부모-자식이 아니라 형제 구조로 둔다. */
+.clients-detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.clients-detail-modal[hidden] {
+  display: none;
+}
+
+.clients-detail-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 19, 15, 0.5);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.clients-detail-modal.is-visible .clients-detail-backdrop {
+  opacity: 1;
+}
+
+.clients-detail-panel {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 480px;
+  max-width: min(480px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow-y: auto;
+  padding: 24px 24px 20px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 30px 70px rgba(20, 19, 15, 0.28);
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.clients-detail-modal.is-visible .clients-detail-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.clients-detail-panel:focus {
+  outline: none;
+}
+
+.clients-detail-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.clients-detail-close-btn:hover,
+.clients-detail-close-btn:focus-visible {
+  background: #171717;
+  border-color: #171717;
+  color: #fff;
+}
+
+.clients-detail-body {
+  padding-right: 28px;
+}
+
+/* body 스크롤 잠금(배경 스크롤 제어 요구사항) */
+body.clients-detail-modal-open {
+  overflow: hidden;
+}
+
+.clients-detail-stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+/* TASK4(2026-07-17 최종 정정): 선택 기간/구매 발생 기간/최근 구매일 3종 구분 표시. */
+.clients-detail-period-block {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-2, rgba(23, 23, 23, 0.03));
+  font-size: 12px;
+}
+
+.clients-detail-period-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.clients-detail-period-row span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.clients-detail-period-row strong {
+  text-align: right;
+}
+
+/* TASK5(2026-07-17 최종 정정): 원본 판매명별 건수/매출/최근구매일(aliasStats). */
+.clients-detail-alias-stats-list {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.clients-detail-alias-stats-row {
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: var(--paper-2, rgba(23, 23, 23, 0.03));
+}
+
+.clients-detail-alias-stats-name {
+  font-weight: 800;
+}
+
+.clients-detail-alias-stats-meta {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.clients-detail-alias-stats-row.is-adjustment {
+  background: transparent;
+  border: 1px dashed var(--line);
+}
+
+.clients-detail-alias-stats-row.is-adjustment .clients-detail-alias-stats-name {
+  color: var(--muted);
+  font-weight: 700;
+  font-style: italic;
+}
+
+.clients-detail-date-list {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.clients-detail-date-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.clients-detail-date-row:hover,
+.clients-detail-date-row:focus-visible {
+  background: var(--paper-2, rgba(23, 23, 23, 0.05));
+  outline: none;
+}
+
+.clients-detail-date-row em {
+  color: var(--muted);
+  font-style: normal;
+  text-align: right;
+}
+
+.clients-detail-more-dates-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.clients-detail-more-dates-btn:hover {
+  background: #171717;
+  border-color: #171717;
+  color: #fff;
+}
+
+.clients-detail-date-popover {
+  /* 2026-07-17 최종 정정(TASK3): 날짜별 제품 popover는 .clients-hover-tooltip의 기본 z-index(1500)를
+     그대로 물려받는데, 이는 .clients-detail-modal의 z-index(2000)보다 낮아 모달이 열려 있을 때
+     popover가 모달 패널 뒤에 가려져 "명확하게 뜨지 않는" 원인이었다. 모달보다 항상 위에 뜨도록
+     명시적으로 더 높은 z-index를 지정한다. */
+  z-index: 2100;
+  width: 320px;
+  max-width: min(320px, calc(100vw - 32px));
+}
+
+.clients-detail-order-id {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+@media (max-width: 480px) {
+  .intelligence-search-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .intelligence-search-row > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .clients-hover-tooltip {
+    padding: 14px 16px;
+  }
+
+  .clients-tooltip-product-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .clients-tooltip-product-meta {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .clients-detail-modal {
+    padding: 0;
+  }
+
+  .clients-detail-panel {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+}
+
 .product-registry-workbench {
   display: grid;
   gap: 14px;
@@ -5834,8 +6755,9 @@ td {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Inventory 화면 공통 재사용 스타일 — Inventory Overview에서 사용.          */
-/* (Inventory Intelligence 화면도 동일 클래스를 공유해서 사용 중인 유틸리티)   */
+/* Inventory Intelligence (Phase 2B) — Read Only.                          */
+/* 대부분의 구조(list/card/detail/필터)는 위 product-registry-* 클래스를      */
+/* 그대로 재사용하고, 여기서는 이 화면에서만 필요한 요소만 추가한다.          */
 /* ---------------------------------------------------------------------- */
 
 .inventory-intel-header-actions {
@@ -5854,6 +6776,12 @@ td {
   font-weight: 750;
 }
 
+#inventoryIntelStaleBanner[hidden] {
+  display: none;
+}
+
+/* KPI 카드 톤: good/urgent는 기존 .action-item 톤을 그대로 쓰고,
+   informational(Near용)과 neutral(Missing용)만 이 화면에서 새로 추가한다. */
 .action-item.informational {
   border-color: rgba(40, 93, 154, 0.35);
   background: #f2f7fc;
@@ -5874,6 +6802,163 @@ td {
   color: var(--muted);
 }
 
+.inventory-intel-status-breakdown {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.inventory-intel-stack-bar {
+  display: flex;
+  height: 10px;
+  width: 100%;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(20, 19, 15, 0.06);
+}
+
+.inventory-intel-stack-seg {
+  height: 100%;
+}
+
+.inventory-intel-stack-seg.good { background: var(--green); }
+.inventory-intel-stack-seg.informational { background: var(--blue); }
+.inventory-intel-stack-seg.urgent { background: var(--red); }
+.inventory-intel-stack-seg.neutral { background: #b9ac86; }
+
+.inventory-intel-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+}
+
+.inventory-intel-legend-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 150px;
+}
+
+.inventory-intel-legend-item small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+
+.inventory-intel-legend-item strong {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.inventory-intel-legend-item b {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.inventory-intel-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+}
+
+.inventory-intel-legend-item.good .inventory-intel-dot { background: var(--green); }
+.inventory-intel-legend-item.informational .inventory-intel-dot { background: var(--blue); }
+.inventory-intel-legend-item.urgent .inventory-intel-dot { background: var(--red); }
+.inventory-intel-legend-item.neutral .inventory-intel-dot { background: #b9ac86; }
+
+.inventory-intel-coverage-bars {
+  display: grid;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.inventory-intel-coverage-bar-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.inventory-intel-coverage-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(20, 19, 15, 0.08);
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.inventory-intel-coverage-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green);
+}
+
+.inventory-intel-coverage-bar-desc {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.inventory-intel-priority-list {
+  display: grid;
+  gap: 10px;
+}
+
+.inventory-intel-priority-card {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.inventory-intel-priority-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.inventory-intel-priority-rank {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(20, 19, 15, 0.08);
+  color: var(--ink);
+}
+
+.inventory-intel-priority-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inventory-intel-priority-meta span {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(248, 247, 242, 0.92);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.inventory-intel-priority-desc {
+  margin: 2px 0 4px;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
 .inventory-intel-status-pill {
   display: inline-flex;
   align-items: center;
@@ -5889,6 +6974,58 @@ td {
 .inventory-intel-status-pill.urgent { background: rgba(169, 66, 61, 0.12); color: var(--red); }
 .inventory-intel-status-pill.neutral { background: rgba(109, 106, 98, 0.12); color: var(--muted); }
 
+.inventory-intel-layout {
+  grid-template-columns: minmax(360px, 0.6fr) minmax(0, 0.4fr);
+}
+
+.inventory-intel-recommend {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(248, 247, 242, 0.7);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.inventory-intel-diagnostic-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.inventory-intel-meta-row {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.inventory-intel-meta-row span {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.inventory-intel-meta-row strong {
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 800;
+  word-break: break-all;
+}
+
+@media (max-width: 1080px) {
+  .inventory-intel-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
 /* Inventory Overview (Phase 3A) — 실제 매장 운영 재고. ECOUNT stockQuantity만  */
 /* 기준으로 쓴다. 대부분 위 Inventory Intelligence / product-registry 클래스를 */
 /* 그대로 재사용하고, 여기서는 이 화면에서만 필요한 요소만 추가한다.           */

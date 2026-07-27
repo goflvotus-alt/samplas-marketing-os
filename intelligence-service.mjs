@@ -50,7 +50,7 @@ await ensureDecisionHistoryFile();
 await ensureLearningDbFile();
 await ensureMissionCacheFile();
 
-const server = createServer(async (req, res) => {
+export async function handleIntelligenceRequest(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || `${host}:${port}`}`);
     if (req.method === "OPTIONS") {
@@ -127,6 +127,9 @@ const server = createServer(async (req, res) => {
     if (brandIntelligenceMatch) {
       return handleBrandIntelligenceRoute(brandIntelligenceMatch[1], url, res);
     }
+    if (url.pathname === "/api/intelligence/clients") {
+      return handleClientsOverviewRoute(url, res);
+    }
     if (url.pathname === "/api/intelligence/product-registry") {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return handleProductRegistryGet(res);
@@ -165,20 +168,25 @@ const server = createServer(async (req, res) => {
       message: safeErrorMessage(error)
     }, 500);
   }
-});
+}
 
-server.listen(port, host, () => {
-  console.log(`SAMPLAS Intelligence Service running at http://${host}:${port}`);
-});
+const isDirectRun = import.meta.url === `file://${process.argv[1]}`;
 
-server.on("error", (error) => {
-  if (error?.code === "EADDRINUSE") {
-    console.error(`SAMPLAS Intelligence Service cannot start: http://${host}:${port} is already in use.`);
-    process.exitCode = 1;
-    return;
-  }
-  throw error;
-});
+if (isDirectRun) {
+  const server = createServer(handleIntelligenceRequest);
+  server.listen(port, host, () => {
+    console.log(`SAMPLAS Intelligence Service running at http://${host}:${port}`);
+  });
+
+  server.on("error", (error) => {
+    if (error?.code === "EADDRINUSE") {
+      console.error(`SAMPLAS Intelligence Service cannot start: http://${host}:${port} is already in use.`);
+      process.exitCode = 1;
+      return;
+    }
+    throw error;
+  });
+}
 
 function json(res, payload, status = 200) {
   res.writeHead(status, {
@@ -490,6 +498,23 @@ async function handleMissionsRoute(url, res) {
   }
   const result = await getMissionsResult(parsed);
   return json(res, result);
+}
+
+// Clients v1 (Stage 6 데이터 엔진의 기간 기반 버전). buildClientSummaries()는 "이번 달/전체"
+// 고정 기준이라 화면의 "기간 변경 시 전체 갱신" 요구를 만족하지 못해, 같은 판별 로직
+// (classifyClientType/buildClientDisplayName/extractClientMatchKey/loadEcountClientLines/
+// loadCafe24PersonalPaymentOrders)을 그대로 재사용하는 별도 함수로 둔다.
+async function handleClientsOverviewRoute(url, res) {
+  const period = brandIntelligencePeriod(url);
+  if (!period.ok) {
+    return json(res, { ok: false, error: "Bad Request", message: period.message }, 400);
+  }
+  try {
+    const overview = await buildClientsOverview({ since: period.since, until: period.until });
+    return json(res, { ok: true, ...overview });
+  } catch (error) {
+    return json(res, { ok: false, error: "Internal Server Error", message: safeErrorMessage(error) }, 500);
+  }
 }
 
 async function handleBriefRoute(url, res) {
@@ -2318,6 +2343,344 @@ const CLIENT_TYPE_RULE3_EXACT_NAMES = [
 ];
 const CLIENT_LOGISTICS_NAMES = new Set(["택배"]);
 
+// ---- 2026-07-17 고객 분류 정정(사용자 실측 확인 반영) ----
+// 아래 4개 규칙은 classifyClientType()의 우선순위 맨 앞(TAXFREE보다도 먼저 검사해야 하는
+// "온라인 첫가입" 예외 제외)에 최소 추가된 것으로, 기존 실장님/팀/RULE3/매장방문고객 규칙은
+// 그대로 두고 새 규칙이 먼저 가로채도록만 구성했다(전체 분류 체계 재설계 아님).
+
+// TASK1: "일반 고객"/"매장방문고객" 계열 변형(공백 유무만 다름)을 하나의 대표 고객으로 병합하기
+// 위한 판별. 공백만 제거해 비교하므로 "매장 방문 고"처럼 글자 자체가 다른(축약/오타) 변형이나
+// "매장방문고객 (현금)"처럼 부가 정보가 붙은 변형은 의도적으로 포함하지 않는다 — 사용자가 제시한
+// 6개 변형(일반 고객/일반고객/매장 방문 고객/매장방문고객/매장 방문고객/매장방문 고객)만 정확히
+// 커버하며, 다른 개인 고객 이름을 잘못 합치지 않기 위해 이 이상으로 확장하지 않았다.
+const CLIENT_TYPE_GENERIC_CUSTOMER_KEYS = new Set(["일반고객", "매장방문고객"]);
+function isGenericCustomerRawName(rawName) {
+  const compact = String(rawName || "").replace(/\s+/g, "");
+  return CLIENT_TYPE_GENERIC_CUSTOMER_KEYS.has(compact);
+}
+
+// 2026-07-17 보완: 사용자가 "일반 고객 완전 통합"에서 명시적으로 지정한 RULE3 판매명
+// (윤재/영은 님 판매)도 위의 매장방문고객 계열과 동일한 고정 mergeKey로 합친다.
+// 애림/우혁/준희/민철은 RULE3 목록에는 있지만 이보다 먼저 실행되는 foreign 명시 규칙에서
+// 가로채져 이 시점(RULE3 분기)에는 절대 도달하지 않으므로 여기 포함하지 않는다 — 혹시
+// 나중에 RULE3 목록이 바뀌더라도 실수로 다른 이름까지 통합되지 않도록 이름을 명시적으로
+// 검사한다. (2026-07-17 추가 보완: 민철도 foreign으로 이동하며 이 Set에서 제외했다 —
+// 사용자가 "customer:generic_customer에 포함되면 안 됨"이라고 명시했다.)
+const CLIENT_TYPE_GENERIC_CUSTOMER_STAFF_NAMES = new Set(["윤재", "영은"]);
+
+// 2026-07-17 마지막 정정(alias 화이트리스트로 되돌림): 이전 단계에서 "한글 이름 + 님(선택) + 판매"
+// 전체를 일반화하는 정규식(/^[가-힣]{2,8}님?\s*판매$/)을 썼으나, 사용자가 향후 데이터가 추가될 때
+// 오분류 위험이 있다는 이유로 일반화를 명시적으로 철회하고 "실제 확인된 alias만" 일반 고객으로
+// 처리하도록 요청했다. 정규식 대신 실측으로 확인된 9개 이름의 "OO님 판매" 문자열만 정확히
+// 화이트리스트로 등록한다 — 향후 새로운 "OO님 판매"가 들어와도 이 목록에 없으면 자동으로 일반
+// 고객으로 가지 않고 기존 fallback(샘플라스 프레스 등)을 그대로 따른다. 새 이름을 일반 고객으로
+// 편입하려면 이 배열에 문자열을 하나씩 수동으로 추가해야 한다(사용자가 명시한 운영 방식).
+// TAXFREE 검사가 이 함수보다 먼저 실행되므로 "OO님 판매 TAXFREE"류는 항상 foreign이 먼저 가로챈다.
+const CLIENT_TYPE_GENERIC_CUSTOMER_SALES_ALIASES = [
+  "애림님 판매",
+  "민철님 판매",
+  "우혁님 판매",
+  "준희님 판매",
+  "윤재님 판매",
+  "영은님 판매",
+  "서빈님 판매",
+  "서현님 판매",
+  "동환님 판매"
+];
+function isGenericCustomerSalesRawName(rawName) {
+  const text = String(rawName || "").replace(/\s+/g, " ").trim();
+  return CLIENT_TYPE_GENERIC_CUSTOMER_SALES_ALIASES.includes(text);
+}
+
+// TASK3: "우혁 판매 온라인 첫 가입 / 제품 하자"류 예외. 공백/슬래시 표기 차이를 무시하기 위해
+// 공백과 슬래시를 모두 제거한 뒤 "온라인첫가입" 포함 여부만 본다. 이 검사는 TASK2의 외국인
+// 명시 규칙(우혁 판매 포함)보다 먼저 실행해야 "우혁님 판매(온라인 첫 가입 / 제품 하자)"가
+// 외국인으로 먼저 판정되지 않는다(사용자가 명시한 "중요 예외" 요구사항).
+function isOnlineFirstSignupRawName(rawName) {
+  const compact = String(rawName || "").replace(/[\s/]+/g, "");
+  return compact.includes("온라인첫가입");
+}
+
+// TASK3(2026-07-17 최종 정정): 기프트 판정은 거래처명/고객 엔티티 단위가 아니라 "판매행 자신"의
+// 실제 필드로만 한다. work/ecount-sales/2026-0{1..7}.json 전체(8,405개 라인)를 전수 조사한 결과
+// "기프트"라는 문자열이 등장하는 필드는 customerName 하나뿐이었다(productName/specification/poNo/
+// personalPaymentReason에는 단 한 건도 없음) — 이 스키마에는애초에 별도의 "적요/판매적요/비고" 필드
+// 자체가 존재하지 않는다. 따라서 이 판매행 자신의 customerName에 "기프트"가 포함된 경우에만 그
+// 판매행 1건을 제외하고, 같은 mergeKey/같은 사람의 다른 정상 판매행(다른 customerName)에는
+// 전혀 영향을 주지 않는다 — 거래처/고객/주문 전체를 지우는 것이 아니라 판매행 단위 필터다.
+function isGiftSalesLine(line) {
+  return String(line?.customerName || "").includes("기프트");
+}
+
+// TASK4: 이름 끝에 직책으로 "이사"(또는 "이사님")가 붙은 경우만 스타일리스트로 인정한다.
+// 전체 문자열이 "이름 + (공백) + 이사(님)?" 형태일 때만 매치되도록 앵커(^...$)를 둬서
+// "대표 지인 이전 시즌이라 수수료 20%" 같은 일반 문장이나 회사명이 섞인 텍스트는 걸리지 않는다.
+function isStylistTitleRawName(rawName) {
+  return /^[가-힣]{2,8}\s?이사님?$/.test(String(rawName || "").trim());
+}
+
+// TASK4: 대표 표시명에서 끝의 "이사(님)?" 직책만 제거한다(실장님/팀원 등 기존 처리와 동일하게
+// 보수적으로 — 패턴에 매치된 경우에만 제거하고, 그 외에는 원문을 그대로 둔다).
+function stripStylistTitleSuffix(rawName) {
+  const text = String(rawName || "").trim();
+  if (!isStylistTitleRawName(text)) return text;
+  return text.replace(/\s?이사님?$/, "").trim();
+}
+
+// Clients v1 화면용 기간 기반 집계. 원천 로딩/판별 함수는 buildClientSummaries()와 완전히 동일한
+// 것을 재사용하고, 여기서는 "이번 달 고정"이 아니라 임의의 since~until 구간으로 온라인(Cafe24
+// 개인결제창 매칭)/오프라인(ECOUNT isOfflineRevenue) 금액·건수를 다시 합산한다.
+//
+// "정상 구매"의 정의(추정이 아니라 이미 존재하는 필드만으로 판단):
+// - 온라인: 매칭된 Cafe24 개인결제창 주문 중 paidAmount > 0 인 것만 카운트한다(0원 주문 제외).
+// - 오프라인: ECOUNT 라인 중 isOfflineRevenue === true 인 것을 매출 합계에는 그대로 반영하고
+//   (반품 등 음수 라인이 있으면 자연스럽게 상쇄됨 — 기존 canonical offlineSales 계산과 동일 방식),
+//   "건수"는 salesAmount > 0인 라인만 센다(반품 라인 자체를 하나의 "구매"로 세지 않기 위함).
+// 기간 내 purchaseCount가 0인 고객(즉 이 기간에 실제 거래가 없는 고객)은 요약/목록에서 제외한다 —
+// "전체 고객 수"가 "현재 기간 내 고객 식별 가능한 고유 고객 수"이기 때문에 이 필터와 일치해야 한다.
+const CLIENT_TYPE_LABELS = {
+  stylist: "스타일리스트",
+  samplas_press: "프레스",
+  customer: "일반 손님",
+  foreign: "외국인",
+  online_first_signup: "온라인 첫가입",
+  ff: "직원 구매"
+};
+const CLIENT_TYPE_ORDER = ["stylist", "samplas_press", "customer", "foreign", "online_first_signup", "ff"];
+const CLIENT_TYPE_FF_NAMES = new Set(["관우", "동환", "명석", "서빈", "서현", "애림", "영은", "우혁", "윤재", "준희", "진규"]);
+const CLIENT_TYPE_EXPLICIT_OVERRIDES = new Map([
+  ["전예린", { type: "stylist", salesStaff: null, override: "explicit_name" }]
+]);
+
+function normalizeClientOverrideKey(rawName) {
+  return String(rawName || "")
+    .normalize("NFKC")
+    .replace(/개인\s*결제창|개인결제창|개인결제/g, " ")
+    .replace(/실장님|실장|스타일리스트/g, " ")
+    .replace(/[()[\]{}·,._-]/g, " ")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function explicitClientTypeOverride(rawName) {
+  const key = normalizeClientOverrideKey(rawName);
+  return CLIENT_TYPE_EXPLICIT_OVERRIDES.get(key) || null;
+}
+
+function isFfPurchaseRawName(rawName) {
+  const match = /^([가-힣]{2,8})님\s*구매(?:\s|[(/]|$)/.exec(String(rawName || "").trim());
+  return Boolean(match && CLIENT_TYPE_FF_NAMES.has(match[1]));
+}
+
+export async function buildClientsOverview(options = {}) {
+  const since = isDateKey(options.since) ? options.since : currentMonthStartKey();
+  const until = isDateKey(options.until) ? options.until : todayKey();
+  const now = options.now ? new Date(options.now) : new Date();
+  const currentMonth = options.currentMonth || clientsIntelligenceMonthKey(now);
+
+  const ecountClients = await loadEcountClientLines();
+  const cafe24PersonalPaymentOrders = await loadCafe24PersonalPaymentOrders({ currentMonth });
+
+  // buildClientSummaries()와 동일한 병합 로직(alias/mergeKey)을 그대로 재사용한다 — 같은 사람이
+  // "최재은 실장님"/"최재은실장님"/"개인결제창 (최재은 실장님)" 등 여러 rawName으로 흩어지는 문제를
+  // 여기서도 동일하게 해소해야 요약·TOP10·목록 수치가 buildClientSummaries와 어긋나지 않는다.
+  const mergedClients = new Map();
+  for (const [rawName, lines] of ecountClients) {
+    const entity = classifyClientEntity(rawName);
+    if (entity.entityType !== "client") continue;
+    const classification = classifyClientType(rawName);
+    const matchKey = extractClientMatchKey(rawName);
+    const mergeKey = clientMergeKey(rawName, classification, matchKey);
+    if (!mergedClients.has(mergeKey)) {
+      mergedClients.set(mergeKey, {
+        mergeKey,
+        classification,
+        matchKey,
+        aliases: [],
+        aliasSet: new Set(),
+        lines: [],
+        orders: new Map()
+      });
+    }
+    const group = mergedClients.get(mergeKey);
+    if (!group.aliasSet.has(rawName)) {
+      group.aliasSet.add(rawName);
+      group.aliases.push(rawName);
+    }
+    group.lines.push(...lines);
+    const orderMatchKey = clientOrderMatchKey(classification, matchKey);
+    const matchedOrders = orderMatchKey ? cafe24PersonalPaymentOrders.filter((order) => order.matchKey === orderMatchKey) : [];
+    for (const order of matchedOrders) {
+      group.orders.set(clientOrderDedupeKey(order), order);
+    }
+  }
+
+  let excludedGiftCount = 0;
+  let excludedGiftSalesAmount = 0;
+
+  const clients = [];
+  for (const group of mergedClients.values()) {
+    const representativeRawName = selectRepresentativeClientRawName(group.aliases);
+    const classification = group.classification;
+
+    const onlineOrdersInPeriod = [...group.orders.values()].filter((order) => (
+      order.paidAmount > 0 &&
+      order.orderDate >= since &&
+      order.orderDate <= until
+    ));
+    const onlineSales = onlineOrdersInPeriod.reduce((sum, order) => sum + order.paidAmount, 0);
+    const onlinePurchaseCount = onlineOrdersInPeriod.length;
+
+    const offlineLinesInPeriodRaw = group.lines.filter((line) => (
+      line?.isOfflineRevenue === true &&
+      String(line?.date || "") >= since &&
+      String(line?.date || "") <= until
+    ));
+    // TASK3(2026-07-17 최종 정정): 기프트는 거래처/고객 단위가 아니라 "판매행 자신"의 실제 필드
+    // (이 데이터 스키마에서는 customerName 하나뿐 — 실측 확인, 아래 isGiftSalesLine 주석 참고)로만
+    // 판정해 그 판매행 1건만 집계에서 제외한다. 같은 그룹(mergeKey)에 속한 다른 정상 판매행에는
+    // 영향을 주지 않는다.
+    const giftLinesInPeriod = offlineLinesInPeriodRaw.filter((line) => isGiftSalesLine(line));
+    const giftPurchaseLinesInPeriod = giftLinesInPeriod.filter((line) => Number(line.salesAmount) > 0);
+    excludedGiftCount += giftPurchaseLinesInPeriod.length;
+    excludedGiftSalesAmount += giftPurchaseLinesInPeriod.reduce((sum, line) => sum + Number(line.salesAmount), 0);
+    const offlineLinesInPeriod = offlineLinesInPeriodRaw.filter((line) => !isGiftSalesLine(line));
+    const offlineSales = offlineLinesInPeriod.reduce((sum, line) => {
+      const amount = Number(line.salesAmount);
+      return sum + (Number.isFinite(amount) ? amount : 0);
+    }, 0);
+    const offlinePositiveLines = offlineLinesInPeriod.filter((line) => Number(line.salesAmount) > 0);
+    const offlinePurchaseCount = offlinePositiveLines.length;
+
+    const purchaseCount = onlinePurchaseCount + offlinePurchaseCount;
+    if (purchaseCount <= 0) continue;
+
+    const totalSales = onlineSales + offlineSales;
+    const latestDates = [
+      ...onlineOrdersInPeriod.map((order) => order.orderDate),
+      ...offlinePositiveLines.map((line) => line.date)
+    ].filter(Boolean).sort();
+
+    // 스타일리스트 "대분류" 표시명: 이미 계산된 group.matchKey(=extractClientMatchKey 결과, 실장님/
+    // 스타일리스트/팀/팀원 등 직책·조직 표현을 안전하게 제거한 뒤 남는 첫 토큰)를 그대로 쓴다.
+    // representativeRawName(가장 긴 alias)을 그대로 쓰면 "김협 강유림팀원7/13픽업"처럼 조직/메모
+    // 텍스트가 붙은 별칭이 표시명이 되는 문제가 있었다 — matchKey는 이미 병합 키로 쓰이고 있어
+    // 같은 그룹의 모든 alias가 동일한 값을 공유하므로, 새로운 병합 규칙을 추가하지 않고 표시명만
+    // 정정한다. matchKey가 비어있는 예외(그룹이 raw 정규화 키로 묶인 경우)만 기존 로직을 유지한다.
+    const displayName = (classification.type === "stylist" && group.matchKey)
+      ? group.matchKey
+      : buildClientDisplayName(representativeRawName, classification);
+
+    const purchaseDetails = [
+      ...offlinePositiveLines.map((line) => ({
+        date: line.date || null,
+        orderId: line.slipNo || line.documentNo || null,
+        productName: line.productName || null,
+        quantity: Number.isFinite(line.quantity) ? line.quantity : null,
+        salesAmount: Number.isFinite(Number(line.salesAmount)) ? Number(line.salesAmount) : 0,
+        source: "offline",
+        // TASK5(2026-07-17 최종 정정): aliasStats(원본 판매명별 건수/매출/최근구매일) 계산을 위해
+        // 이 판매행 자신의 실제 원본 거래처명(ECOUNT customerName)을 그대로 보존한다 — 추측하지
+        // 않고 실제 필드값만 사용한다는 요구사항에 따름.
+        rawName: line.customerName || null
+      })),
+      ...onlineOrdersInPeriod.map((order) => ({
+        date: order.orderDate || null,
+        orderId: order.orderId || null,
+        // Cafe24 개인결제창 주문의 상품명은 "이름 개인결제창 [날짜]" 형태의 결제 식별용 텍스트일 뿐
+        // 실제 구매 제품명이 아니다(intelligence-service.mjs 상단 설계 전제 참고) — 실제 제품 데이터가
+        // 없는 거래이므로 추측하지 않고 productName은 null로 두고(화면에서 "제품 정보 없음" 표시),
+        // 거래 자체는 버리지 않는다.
+        productName: null,
+        quantity: Number.isFinite(order.quantity) ? order.quantity : null,
+        salesAmount: Number.isFinite(order.paidAmount) ? order.paidAmount : 0,
+        source: "online",
+        // 온라인 개인결제창 주문의 "원본명"은 결제 식별 텍스트(personalPaymentProductName) 그대로다.
+        rawName: order.personalPaymentProductName || null
+      }))
+    ].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+
+    const products = summarizeClientProducts(purchaseDetails);
+    const purchaseDateCounts = summarizePurchaseDateCounts(purchaseDetails);
+
+    clients.push({
+      clientId: clientIdFromMatchKey(group.mergeKey),
+      name: displayName,
+      clientType: classification.type,
+      salesStaff: classification.salesStaff || null,
+      contact: null,
+      latestPurchaseDate: latestDates.length ? latestDates.at(-1) : null,
+      purchaseCount,
+      onlineSales,
+      offlineSales,
+      totalSales,
+      avgOrderValue: purchaseCount > 0 ? totalSales / purchaseCount : null,
+      aliases: [...group.aliases],
+      purchaseDetails,
+      purchaseDateCounts,
+      products
+    });
+  }
+
+  const totalClients = clients.length;
+  const totalPurchaseCount = clients.reduce((sum, client) => sum + client.purchaseCount, 0);
+  const totalSalesAmount = clients.reduce((sum, client) => sum + client.totalSales, 0);
+  const avgOrderValue = totalPurchaseCount > 0 ? totalSalesAmount / totalPurchaseCount : null;
+
+  const typeBreakdown = CLIENT_TYPE_ORDER.map((type) => {
+    const rows = clients.filter((client) => client.clientType === type);
+    const purchaseCount = rows.reduce((sum, client) => sum + client.purchaseCount, 0);
+    const salesAmount = rows.reduce((sum, client) => sum + client.totalSales, 0);
+    return {
+      type,
+      label: CLIENT_TYPE_LABELS[type],
+      clientCount: rows.length,
+      purchaseCount,
+      salesAmount,
+      ratioPct: totalPurchaseCount > 0 ? (purchaseCount / totalPurchaseCount) * 100 : 0
+    };
+  });
+
+  const rankSort = (a, b) => (
+    (b.totalSales - a.totalSales) ||
+    (b.purchaseCount - a.purchaseCount) ||
+    a.name.localeCompare(b.name, "ko")
+  );
+  const toTop10Row = (client) => ({
+    clientId: client.clientId,
+    name: client.name,
+    purchaseCount: client.purchaseCount,
+    salesAmount: client.totalSales,
+    purchaseDateCounts: client.purchaseDateCounts,
+    products: client.products
+  });
+  const stylistTop10 = clients.filter((client) => client.clientType === "stylist").sort(rankSort).slice(0, 10).map(toTop10Row);
+  const pressTop10 = clients.filter((client) => client.clientType === "samplas_press").sort(rankSort).slice(0, 10).map(toTop10Row);
+  const ffTop10 = clients.filter((client) => client.clientType === "ff").sort(rankSort).slice(0, 10).map(toTop10Row);
+
+  return {
+    periodStart: since,
+    periodEnd: until,
+    summary: {
+      totalClients,
+      totalPurchaseCount,
+      totalSalesAmount,
+      avgOrderValue
+    },
+    typeBreakdown,
+    stylistTop10,
+    pressTop10,
+    ffTop10,
+    clients,
+    // TASK3(2026-07-17 최종 정정): 내부 검증용 — 기프트로 판정되어 이번 기간 집계(구매 건수/매출)에서
+    // 제외된 판매행 수와 금액. Clients 화면/이 API 전용 필드이며 다른 화면 매출에는 전혀 영향 없다.
+    meta: {
+      excludedGiftCount,
+      excludedGiftSalesAmount
+    }
+  };
+}
+
 export async function buildClientSummaries(options = {}) {
   const now = options.now ? new Date(options.now) : new Date();
   const currentMonth = options.currentMonth || clientsIntelligenceMonthKey(now);
@@ -2396,32 +2759,119 @@ function clientIdFromMatchKey(matchKey) {
   return `client_${createHash("sha1").update(String(matchKey || "")).digest("hex").slice(0, 12)}`;
 }
 
+// 제품 TOP N(구매 상세 호버)용 집계: 수량 내림차순 -> 매출액 내림차순 -> 제품명 오름차순.
+// productName이 없는 거래(Cafe24 개인결제창 온라인 거래는 실제 제품명이 없음)는 버리지 않고
+// "제품 정보 없음" 한 항목으로 합산한다.
+function summarizeClientProducts(purchaseDetails = []) {
+  const map = new Map();
+  for (const detail of purchaseDetails) {
+    const key = detail.productName || "__NONE__";
+    if (!map.has(key)) {
+      map.set(key, { productName: detail.productName || "제품 정보 없음", quantity: 0, purchaseCount: 0, salesAmount: 0, sources: new Set() });
+    }
+    const row = map.get(key);
+    row.quantity += Number.isFinite(detail.quantity) ? detail.quantity : 0;
+    row.purchaseCount += 1;
+    row.salesAmount += Number.isFinite(detail.salesAmount) ? detail.salesAmount : 0;
+    if (detail.source) row.sources.add(detail.source);
+  }
+  return [...map.values()]
+    .map((row) => ({
+      productName: row.productName,
+      quantity: row.quantity,
+      purchaseCount: row.purchaseCount,
+      salesAmount: row.salesAmount,
+      // 이 제품이 온라인/오프라인 한쪽에서만 발생했으면 표시하고, 두 경로 모두에서 섞여
+      // 발생했으면(드묾) 어느 한쪽으로 단정하지 않고 null로 둔다.
+      source: row.sources.size === 1 ? [...row.sources][0] : null
+    }))
+    .sort((a, b) => (
+      (b.quantity - a.quantity) ||
+      (b.salesAmount - a.salesAmount) ||
+      a.productName.localeCompare(b.productName, "ko")
+    ));
+}
+
+// TOP10/목록 호버의 "구매일" 표시용: 날짜별 구매 건수를 오름차순으로 반환한다.
+// 프론트엔드에서 최근 5개만 남기고 나머지는 "외 N일"로 축약한다.
+function summarizePurchaseDateCounts(purchaseDetails = []) {
+  const map = new Map();
+  for (const detail of purchaseDetails) {
+    const date = detail.date;
+    if (!date) continue;
+    map.set(date, (map.get(date) || 0) + 1);
+  }
+  return [...map.entries()].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function classifyClientEntity(rawName) {
   const text = String(rawName || "").trim();
   if (CLIENT_LOGISTICS_NAMES.has(text)) return { entityType: "logistics" };
   return { entityType: "client" };
 }
 
-// Client Type 규칙 (우선순위 순서대로 검사):
-// 1) 거래처명에 "TAXFREE" 포함 -> foreign
-// 2) 거래처명에 "실장님"/"스타일리스트"/"팀" 포함 -> stylist
-// 3) 거래처명이 아래 6개 문자열과 정확히 일치 -> customer (salesStaff는 이름만 별도 저장)
-// 4) 그 외 -> samplas_press
+// Client Type 규칙 (2026-07-17 마지막 정정 — alias 화이트리스트로 되돌림, 우선순위 순서대로 검사):
+// 1) 물류 등 고객이 아닌 엔티티는 classifyClientEntity()에서 이미 제외됨(이 함수 호출 전)
+// 2) "온라인 첫가입" 정확 예외(우혁 판매 온라인 첫 가입 / 제품 하자류) -> online_first_signup
+//    (TAXFREE, "OO님 판매" 화이트리스트 규칙보다 반드시 먼저 판정)
+// 3) 기프트 판매행 제외는 classifyClientType() 밖(buildClientsOverview의 isGiftSalesLine 필터,
+//    판매행 단위)에서 처리한다 — 엔티티 유형 판정과는 독립적인 라인 필터라 여기 포함하지 않는다.
+// 4) 거래처명에 "TAXFREE" 포함 -> foreign (같은 이름이라도 TAXFREE가 있으면 무조건 이 규칙이 이김)
+// 5) CLIENT_TYPE_GENERIC_CUSTOMER_SALES_ALIASES 화이트리스트(9개 "OO님 판매" 문자열, 정확히 일치)
+//    -> customer(일반 고객). 정규식 일반화가 아니라 실제 확인된 이름만 등록한 목록이라, 목록에 없는
+//    새로운 "OO님 판매"는 이 규칙에 걸리지 않고 아래 fallback(9번, samplas_press)으로 그대로 빠진다
+//    — 향후 새 이름을 일반 고객으로 편입하려면 이 배열에 문자열을 수동으로 추가해야 한다.
+// 6) "일반 고객"/"매장방문고객" 계열 변형(공백 차이만) -> customer로 통합
+// 7) 거래처명에 "실장"/"스타일리스트"/"팀"/"어시" 포함, 또는 "이름 + 이사(님)?" 직책 패턴 -> stylist
+// 8) 거래처명이 RULE3 문자열과 정확히 일치 -> customer (salesStaff는 이름만 별도 저장; 5번 화이트
+//    리스트가 같은 9개 문자열을 먼저 가로채므로 RULE3 목록의 "OO님 판매" 항목들은 사실상 도달하지
+//    않는다 — 죽은 코드지만 안전을 위해 그대로 남겨둔다)
+// 9) 그 외 -> samplas_press (fallback, 화이트리스트에 없는 새 "OO님 판매"도 여기로 떨어짐)
 function classifyClientType(rawName) {
   const text = String(rawName || "");
+  const explicit = explicitClientTypeOverride(text);
+  if (explicit) return explicit;
+  if (isOnlineFirstSignupRawName(text)) return { type: "online_first_signup", salesStaff: null };
   if (text.includes("TAXFREE")) return { type: "foreign", salesStaff: null };
-  if (text.includes("실장님") || text.includes("스타일리스트") || text.includes("팀")) {
+  // 2026-07-17 마지막 정정: "OO님 판매" 일반화 정규식을 철회하고, 실제 확인된 9개 alias만
+  // 정확히 일치하는 경우에만 일반 고객으로 분류한다(오분류 위험 방지, 사용자 명시 요청).
+  // TAXFREE가 붙은 경우는 위에서 이미 foreign으로 확정되어 여기 도달하지 않는다.
+  if (isGenericCustomerSalesRawName(text)) return { type: "customer", salesStaff: null, genericCustomer: true };
+  if (isGenericCustomerRawName(text)) return { type: "customer", salesStaff: null, genericCustomer: true };
+  // 2026-07-17 최종 정정(실장 규칙 강화): 기존에는 "실장님"(님 포함)만 검사해 "전예린 실장"처럼
+  // 님이 생략된 실제 표기가 프레스로 새는 문제가 있었다(실측 확인: "개인결제창 전예린 실장",
+  // "오주현 실장", "최제윤 실장" 3건 실제 존재, 전부 인명+직책 형태이고 문장형 메모와 혼동될 여지 없음).
+  // "실장" 하나로 검사하면 "실장님"도 당연히 포함되므로 별도 분기 없이 통합한다. "어시/어시스턴트"는
+  // 사용자가 요청한 동일 계층 직책이나 현재 실데이터에는 해당 문자열이 없어(실측 확인) 영향 없이
+  // 안전하게 추가만 해 둔다.
+  if (text.includes("실장") || text.includes("스타일리스트") || text.includes("팀") || text.includes("어시")) {
     return { type: "stylist", salesStaff: null };
   }
+  if (isStylistTitleRawName(text)) return { type: "stylist", salesStaff: null };
   if (CLIENT_TYPE_RULE3_EXACT_NAMES.includes(text)) {
     const match = text.match(/^(.+?)님\s*판매$/);
-    return { type: "customer", salesStaff: match ? match[1] : null };
+    const salesStaff = match ? match[1] : null;
+    // 2026-07-17 보완: 윤재/영은/민철 판매명은 "일반 고객" 통합 대상이므로 매장방문고객
+    // 계열과 동일한 genericCustomer 플래그를 붙여 clientMergeKey/buildClientDisplayName이
+    // 하나의 고정 키·표시명으로 병합하도록 한다(애림/우혁/준희는 이 분기에 도달하지 않음).
+    const isGenericStaff = Boolean(salesStaff && CLIENT_TYPE_GENERIC_CUSTOMER_STAFF_NAMES.has(salesStaff));
+    return { type: "customer", salesStaff, genericCustomer: isGenericStaff };
   }
   if (text === "매장방문고객") return { type: "customer", salesStaff: null };
+  if (isFfPurchaseRawName(text)) return { type: "ff", salesStaff: null };
   return { type: "samplas_press", salesStaff: null };
 }
 
 function clientMergeKey(rawName, classification, matchKey) {
+  // TASK1: "일반 고객"/"매장방문고객" 계열은 공백 차이 때문에 extractClientMatchKey()의
+  // 첫 토큰이 서로 달라질 수 있어(예: "매장 방문 고객" -> "매장") matchKey에 의존하지 않고
+  // 고정된 병합 키 하나로 강제 통합한다.
+  if (classification.genericCustomer) return "customer:generic_customer";
+  // 2026-07-17 최종 정정(외국인 대표 엔티티 통합): classifyClientType()이 "foreign"으로 판정한
+  // 모든 rawName(TAXFREE 계열 전체 + 준희/애림/우혁/민철 판매 명시 규칙)을 개인별 매칭키와
+  // 무관하게 고정 mergeKey 하나로 강제 병합한다 — 온라인 첫가입(online_first_signup)과 기프트는
+  // classifyClientType()에서 이미 별도 유형/버킷으로 분리되어 이 분기에 도달하지 않으므로 영향 없다.
+  if (classification.type === "foreign") return "foreign:generic_foreign";
   if (classification.salesStaff) return `${classification.type}:staff:${normalizeClientIdentityKey(classification.salesStaff)}`;
   if (matchKey) return `${classification.type}:${matchKey}`;
   return `${classification.type}:raw:${normalizeClientIdentityKey(rawName)}`;
@@ -2437,22 +2887,53 @@ function clientOrderDedupeKey(order) {
   return String(order?.orderId || `${order?.orderDate || ""}:${order?.paidAmount || 0}:${order?.personalPaymentProductName || ""}`);
 }
 
+// 2026-07-17 최종 정정(TASK3 보완, 실측으로 발견): 같은 그룹(mergeKey) 안에 "위뎀보이즈 바타
+// 기프트"처럼 기프트 라인의 rawName과 "위뎀보이즈"/"위뎀보이즈 호준님" 등 정상 판매 rawName이
+// 함께 alias로 섞여 있으면, 기존에는 "더 긴 문자열"을 대표로 뽑다 보니 "기프트"라는 글자가
+// 붙어 더 길어진 기프트 쪽 이름이 대표 표시명으로 잘못 선택됐다(집계 금액/건수 자체는 이미
+// TASK3에서 그 판매행만 정확히 제외돼 있었지만, 화면에 보이는 이름이 "OOO 기프트"로 나와
+// "기프트가 그대로 남아있다"는 오해를 줄 수 있었다). aliases 배열 자체(요구사항상 보존 대상)는
+// 건드리지 않고, 대표 이름 선택 시에만 기프트 표기가 아닌 alias를 우선한다 — 모든 alias가
+// 기프트뿐인 경우(이론상 존재해도 그 그룹은 purchaseCount 0으로 이미 걸러짐)에 한해 원래
+// 로직(전체 중 최장 문자열)으로 안전하게 폴백한다.
 function selectRepresentativeClientRawName(aliases = []) {
-  return [...aliases].sort((left, right) => String(right || "").length - String(left || "").length || String(left || "").localeCompare(String(right || "")))[0] || "";
+  const byLengthDesc = (left, right) => (
+    String(right || "").length - String(left || "").length ||
+    String(left || "").localeCompare(String(right || ""))
+  );
+  const nonGiftAliases = aliases.filter((alias) => !String(alias || "").includes("기프트"));
+  const pool = nonGiftAliases.length ? nonGiftAliases : aliases;
+  return [...pool].sort(byLengthDesc)[0] || "";
 }
 
 function buildClientDisplayName(rawName, classification = classifyClientType(rawName)) {
+  // TASK1: "일반 고객"/"매장방문고객" 계열 변형은 원본 표기와 무관하게 대표 이름을 "일반 고객"
+  // 하나로 고정한다(기존에는 "매장방문고객"만 원문 그대로 표시하던 특례가 있었으나, 이번 정정으로
+  // 두 계열 모두 동일한 대표 고객 한 행으로 병합되므로 표시명도 통일한다).
+  if (classification.genericCustomer) return "일반 고객";
   if (classification.type === "customer") {
     if (String(rawName || "").trim() === "매장방문고객") return "매장방문고객";
     if (classification.salesStaff) return "일반 고객";
   }
   let text = String(rawName || "");
+  if (classification.type === "online_first_signup") {
+    text = cleanClientNameText(text);
+    return text || "온라인 첫가입 고객";
+  }
   if (classification.type === "foreign") {
-    text = cleanClientNameText(text.replace(/TAXFREE/gi, " "));
-    return text || "Foreign Client";
+    // 2026-07-17 최종 정정: 애림/민철/준희/우혁 등 개인별 이름을 남기지 않고 대표 표시명을
+    // "외국인" 하나로 고정한다(clientMergeKey도 동일하게 foreign:generic_foreign 고정 키를 쓰므로
+    // 표시명과 병합 키가 항상 일치한다). 원본 이름은 aliases에 그대로 보존되어 상세 창/검색에서 확인 가능.
+    return "외국인";
   }
   if (classification.type === "stylist") {
-    text = cleanClientNameText(text.replace(/실장님|스타일리스트/g, " "));
+    // TASK4: "이름 + 이사(님)?" 패턴에 매치된 경우에만 끝의 직책을 제거한다(패턴 밖의 텍스트에는
+    // 영향 없음 — isStylistTitleRawName()이 내부에서 다시 검사하므로 여기서 무조건 치환하지 않는다).
+    // 2026-07-17 최종 정정: "실장님"보다 "실장"을 먼저 매치하면 "님"이 남을 수 있어 알파벳(문자)
+    // 순서가 아니라 긴 패턴("실장님"/"어시스턴트")을 짧은 패턴("실장"/"어시")보다 먼저 두어
+    // 정규식 대체가 항상 전체 직책을 제거하도록 한다.
+    text = stripStylistTitleSuffix(text);
+    text = cleanClientNameText(text.replace(/실장님|실장|스타일리스트|어시스턴트|어시/g, " "));
     return text || "Stylist Client";
   }
   text = cleanClientNameText(text);
@@ -2610,12 +3091,14 @@ function normalizeCafe24CsvOrder(order) {
   const orderDate = String(order?.order_date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return null;
   const paidAmount = Number(order?.actual_payment_amount);
+  const quantity = Number(ppItem.quantity);
   return {
     orderId: order?.order_id || null,
     orderDate,
     monthKey: orderDate.slice(0, 7),
     paidAmount: Number.isFinite(paidAmount) ? paidAmount : 0,
-    personalPaymentProductName: ppItem.productName || ""
+    personalPaymentProductName: ppItem.productName || "",
+    quantity: Number.isFinite(quantity) ? quantity : null
   };
 }
 
@@ -2628,12 +3111,14 @@ function normalizeCafe24ProxyOrder(order) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return null;
   const rawAmount = order?.payment_amount ?? order?.actual_order_amount?.payment_amount;
   const paidAmount = Number(rawAmount);
+  const quantity = Number(ppItem.quantity);
   return {
     orderId: order?.order_id || null,
     orderDate,
     monthKey: orderDate.slice(0, 7),
     paidAmount: Number.isFinite(paidAmount) ? paidAmount : 0,
-    personalPaymentProductName: ppItem.product_name || ""
+    personalPaymentProductName: ppItem.product_name || "",
+    quantity: Number.isFinite(quantity) ? quantity : null
   };
 }
 
