@@ -10024,7 +10024,7 @@ let clientsDetailShowAllAliasStats = false;
 let clientsDetailPreviousFocus = null;
 let clientsDetailDateHideTimer = null;
 
-function getClientsOverviewJson(url, requestKey, timeoutMs = 20000) {
+function getClientsOverviewJson(url, requestKey, timeoutMs = 60000) {
   if (clientsRequestsInFlight.has(requestKey)) return clientsRequestsInFlight.get(requestKey);
   const promise = getJson(url, timeoutMs);
   clientsRequestsInFlight.set(requestKey, promise);
