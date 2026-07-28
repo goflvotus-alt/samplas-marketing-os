@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 import { enrichMetaProductBreakdown, applyRuntimeAutoEnrichment } from "./scripts/meta-product-registry-link.mjs";
 import { handleIntelligenceRequest } from "./intelligence-service.mjs";
+import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import {
   parseCafe24Money,
   firstCafe24Money,
@@ -1491,104 +1492,16 @@ async function fetchCafe24OrdersFromProxy(startDate, endDate, options = {}) {
 }
 
 async function readCachedCafe24Orders(startDate, endDate) {
-  const filterCachedOrders = (cached) => {
-    const orders = (cached.orders || []).filter((order) => {
-      const orderDate = trustedCafe24OrderDate(order);
-      return orderDate && startDate <= orderDate && orderDate <= endDate;
-    });
-    if (!orders.length) return null;
-    return { ...cached, orders, ...summarizeCafe24Orders(orders) };
-  };
-  const cachedOrderDateRange = (cached) => {
-    const dates = (cached.orders || []).map((order) => trustedCafe24OrderDate(order)).filter(Boolean).sort();
-    return { actualMin: dates[0] || "", actualMax: dates.at(-1) || "", orderCount: cached.orders?.length || 0 };
-  };
-  const nextMonthKey = (month) => {
-    const [year, monthNumber] = month.split("-").map(Number);
-    const next = new Date(Date.UTC(year, monthNumber, 1));
-    return next.toISOString().slice(0, 7);
-  };
-  const requestedMonthSegments = () => {
-    const segments = [];
-    for (let month = startDate.slice(0, 7); month <= endDate.slice(0, 7); month = nextMonthKey(month)) {
-      segments.push({
-        start: month === startDate.slice(0, 7) ? startDate : `${month}-01`,
-        end: month === endDate.slice(0, 7) ? endDate : monthEndKey(month)
-      });
-    }
-    return segments;
-  };
-  const orderIdentity = (order, fallback) => String(order.order_id || order.orderId || order.order_no || order.id || fallback);
-  const exactFiles = [
-    join(workDir, `cafe24-csv-orders-${startDate}_${endDate}.json`),
-    join(workDir, `cafe24-proxy-orders-${startDate}_${endDate}.json`),
-    join(workDir, `cafe24-orders-${startDate}_${endDate}.json`)
-  ];
-  for (const file of exactFiles) {
-    if (existsSync(file)) {
-      const filtered = filterCachedOrders(JSON.parse(await readFile(file, "utf8")));
-      if (filtered) return filtered;
-    }
-  }
-
-  const candidates = await readdirSafe(workDir);
-  const prefixes = [`cafe24-csv-orders-${startDate}_`, `cafe24-proxy-orders-${startDate}_`, `cafe24-orders-${startDate}_`];
-  let latest = null;
-  for (const prefix of prefixes) {
-    latest = candidates
-      .filter((name) => name.startsWith(prefix) && name.endsWith(".json"))
-      .sort()
-      .at(-1);
-    if (latest) break;
-  }
-  if (latest) {
-    const cached = JSON.parse(await readFile(join(workDir, latest), "utf8"));
-    const filtered = filterCachedOrders({
-      ...cached,
-      requestedStartDate: startDate,
-      requestedEndDate: endDate,
-      cacheFile: latest
-    });
-    if (filtered) return filtered;
-  }
-
-  const csvCaches = [];
-  const csvCandidates = candidates.filter((name) => /^cafe24-csv-orders-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.json$/.test(name)).sort();
-  for (const name of csvCandidates) {
-    const cached = JSON.parse(await readFile(join(workDir, name), "utf8"));
-    const range = cachedOrderDateRange(cached);
-    if (!range.orderCount || !range.actualMin || !range.actualMax) continue;
-    csvCaches.push({ name, cached, ...range });
-  }
-  const selectedByName = new Map();
-  for (const segment of requestedMonthSegments()) {
-    const covering = csvCaches
-      .filter((cache) => cache.actualMin <= segment.start && cache.actualMax >= segment.end)
-      .sort((left, right) => {
-        const rangeDiff = (Date.parse(left.actualMax) - Date.parse(left.actualMin)) - (Date.parse(right.actualMax) - Date.parse(right.actualMin));
-        if (rangeDiff !== 0) return rangeDiff;
-        return left.name.localeCompare(right.name);
-      });
-    if (!covering.length) return null;
-    selectedByName.set(covering[0].name, covering[0]);
-  }
-  const mergedOrders = new Map();
-  for (const selected of selectedByName.values()) {
-    for (const [index, order] of (selected.cached.orders || []).entries()) {
-      const orderDate = trustedCafe24OrderDate(order);
-      if (!orderDate || orderDate < startDate || orderDate > endDate) continue;
-      mergedOrders.set(orderIdentity(order, `${selected.name}:${index}`), order);
-    }
-  }
-  if (!mergedOrders.size) return null;
-  return filterCachedOrders({
-    source: "cafe24_csv_import",
+  const cached = await loadCanonicalCafe24OrderCache({ workDir, since: startDate, until: endDate });
+  if (!cached.orders.length) return null;
+  return {
+    source: "cafe24_canonical_cache",
     requestedStartDate: startDate,
     requestedEndDate: endDate,
-    cacheFile: [...selectedByName.keys()].join(","),
-    cacheFallback: selectedByName.size > 1 ? "covering_csv_multi" : "covering_csv",
-    orders: [...mergedOrders.values()].sort((left, right) => String(trustedCafe24OrderDate(left)).localeCompare(String(trustedCafe24OrderDate(right))) || orderIdentity(left, "").localeCompare(orderIdentity(right, "")))
-  });
+    cacheFile: cached.cacheFiles.join(","),
+    orders: cached.orders,
+    ...summarizeCafe24Orders(cached.orders)
+  };
 }
 
 function summarizeCafe24Orders(orders = []) {
