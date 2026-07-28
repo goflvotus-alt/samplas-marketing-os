@@ -2490,7 +2490,7 @@ export async function buildClientsOverview(options = {}) {
   const currentMonth = options.currentMonth || clientsIntelligenceMonthKey(now);
 
   const ecountClients = await loadEcountClientLines();
-  const cafe24PersonalPaymentOrders = await loadCafe24PersonalPaymentOrders({ currentMonth });
+  const cafe24PersonalPaymentOrders = await loadCafe24PersonalPaymentOrders({ currentMonth, since, until });
 
   // buildClientSummaries()와 동일한 병합 로직(alias/mergeKey)을 그대로 재사용한다 — 같은 사람이
   // "최재은 실장님"/"최재은실장님"/"개인결제창 (최재은 실장님)" 등 여러 rawName으로 흩어지는 문제를
@@ -3143,15 +3143,38 @@ async function loadEcountClientLines() {
 // (함수명은 기존 호출부를 깨지 않기 위해 그대로 유지). 개인결제창 여부(isPersonalPayment)는 여전히
 // 판별해 반환하므로, 기존 "개인결제창 주문 -> 기존 ECOUNT 고객 매칭" 로직(clientOrderMatchKey 등)은
 // 전혀 변경하지 않고 그대로 재사용할 수 있다.
-// - 과거월: work/cafe24-csv-orders-*.json 전체(월별 canonical 캐시)를 읽는다.
-// - 현재월: work/cafe24-proxy-orders-{currentMonth}-01_*.json 중 주문 수가 가장 많은(가장 최신 동기화된) 파일 1개만 쓴다.
-// 이 함수는 디스크 캐시만 읽고 실시간 Cafe24 API 호출은 하지 않는다(진단 세션 네트워크 정책상 프록시가
-// 항상 연결 가능하다고 보장할 수 없어, 이미 동기화되어 있는 캐시 파일을 신뢰 소스로 사용한다).
-async function loadCafe24PersonalPaymentOrders({ currentMonth }) {
+//
+// STEP20(2026-07-27) Clients Cafe24 캐시 소스 통합 — 실측 확인된 문제: Render는
+// cafe24Mode: "local_oauth"(직접 모드)로 동작하고, 직접 모드에서 실시간으로 가져온 당월
+// 주문은 server.mjs의 fetchCafe24Orders()가 "cafe24-orders-{start}_{end}.json"으로
+// 저장한다(server.mjs 1406행). 반면 이 함수는 지금까지 "cafe24-proxy-orders-{월}-01_*"
+// 접두사만 찾았기 때문에, 직접 모드에서 만들어진 "cafe24-orders-" 캐시를 전혀 읽지 못해
+// Clients 온라인 매출이 0으로 보이는 문제가 있었다. 두 접두사("cafe24-proxy-orders-",
+// "cafe24-orders-")가 담는 주문 원본 JSON 구조는 동일하다 — 실측 확인(work/cafe24-proxy-orders-
+// 2026-07-01_2026-07-27.json 샘플): order_id/order_date/billing_name/member_id/
+// actual_order_amount.{points_spent_amount,credits_spent_amount,shipping_fee}/items 등
+// 필드가 모두 동일한 Cafe24 Admin Orders API 원본 형태다("cafe24-proxy-orders-"는 로컬
+// 개발 환경이 Render의 /api/cafe24/orders를 호출해 받은 응답을 그대로 캐싱한 것이고, 그
+// /api/cafe24/orders 라우트 자체가 내부적으로 fetchCafe24Orders()의 직접 모드 결과를 그대로
+// 반환하기 때문이다 — server.mjs 147-154행). 따라서 정규화 함수는 기존 normalizeCafe24ProxyOrder
+// 하나만 그대로 재사용하고, 새 정규화 로직을 추가하지 않는다.
+//
+// 또한 실측으로 확인한 위험(부분 기간 캐시 다수 존재: 예 cafe24-proxy-orders-2026-07-01_2026-07-15.json과
+// cafe24-proxy-orders-2026-07-01_2026-07-31.json이 동시에 존재)에 대응해, "주문 수가 가장
+// 많은 파일 1개만 쓰는" 기존 방식을 버리고, 대상 월과 날짜 범위가 겹치는 캐시 파일을 "전부"
+// 모아 주문을 합친 뒤 order_id 기준으로 중복 제거한다(파일 하나만 고르면 다른 파일에만 있는
+// 기간의 주문이 통째로 누락될 수 있기 때문). 탐색은 readdir 순서에 의존하지 않도록 파일명의
+// 날짜 범위로 정렬해 결정론적으로 동작한다.
+// - 과거(완료된) 월: work/cafe24-csv-orders-{월}-01_*.json (기존과 동일, 변경 없음)
+// - CSV 캐시가 아직 없는 월(보통 이번 달): work/cafe24-proxy-orders-*.json +
+//   work/cafe24-orders-*.json 중 그 달과 겹치는 파일 전부
+// 이 함수는 디스크 캐시만 읽고 실시간 Cafe24 API 호출은 하지 않는다(기존과 동일한 설계 원칙 유지).
+async function loadCafe24PersonalPaymentOrders({ currentMonth, since, until } = {}) {
   const files = await safeReaddir(workRoot);
   const orders = [];
 
   const csvFiles = files.filter((name) => /^cafe24-csv-orders-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.json$/.test(name));
+  const csvMonths = new Set();
   for (const name of csvFiles) {
     let data;
     try {
@@ -3159,35 +3182,124 @@ async function loadCafe24PersonalPaymentOrders({ currentMonth }) {
     } catch {
       continue;
     }
+    const monthMatch = name.match(/^cafe24-csv-orders-(\d{4}-\d{2})-01_/);
+    if (monthMatch) csvMonths.add(monthMatch[1]);
     for (const order of data?.orders || []) {
       const normalized = normalizeCafe24CsvOrder(order);
       if (normalized) orders.push(normalized);
     }
   }
 
-  const currentMonthPrefix = `cafe24-proxy-orders-${currentMonth}-01_`;
-  const proxyCandidates = files.filter((name) => name.startsWith(currentMonthPrefix) && name.endsWith(".json"));
-  let bestProxyData = null;
-  let bestProxyOrderCount = -1;
-  for (const name of proxyCandidates) {
-    let data;
-    try {
-      data = JSON.parse(await readFile(join(workRoot, name), "utf8"));
-    } catch {
-      continue;
+  // 실시간(라이브) 캐시가 필요한 대상 월 목록.
+  // - since/until이 함께 주어지면(예: buildClientsOverview) 그 범위 안에서 CSV가 아직 없는
+  //   달만 대상으로 삼는다. 이 경우 currentMonth는 무시한다 — currentMonth는 "오늘" 기준으로
+  //   계산되므로(예: 실제로는 7월인데 since/until로 1~6월 과거 데이터를 조회하는 경우) 그대로
+  //   더하면 요청 범위와 무관한 이번 달 라이브 캐시가 함께 섞여 들어가는 버그가 생긴다(실측으로
+  //   발견: 6월만 조회했는데 7월 라이브 주문이 온라인 매출에 섞여 들어감).
+  // - since/until이 없으면(하위호환 기존 호출부, 예: buildClientSummaries) currentMonth만으로
+  //   대상 월을 정한다(기존 동작 그대로).
+  const targetMonths = new Set();
+  if (isDateKey(since) && isDateKey(until)) {
+    for (let month = since.slice(0, 7); month <= until.slice(0, 7); month = cafe24NextMonthKey(month)) {
+      if (!csvMonths.has(month)) targetMonths.add(month);
     }
-    const count = Array.isArray(data?.orders) ? data.orders.length : 0;
-    if (count > bestProxyOrderCount) {
-      bestProxyOrderCount = count;
-      bestProxyData = data;
+  } else if (currentMonth && !csvMonths.has(currentMonth)) {
+    targetMonths.add(currentMonth);
+  }
+
+  // 실측(work/ 캐시 직접 검사)으로 확인된 중요 사실: 라이브 캐시 파일명의 날짜 구간
+  // (예: "cafe24-proxy-orders-2026-07-01_2026-07-31.json")은 그 파일이 "요청했던" 기간일
+  // 뿐, 그 안에 실제로 들어있는 주문의 order_date가 전부 그 구간 안이라는 보장이 아니다.
+  // 실제로 로컬 캐시를 검사한 결과 7월 구간으로 명명된 파일 안에 2026-04/2026-06 주문이
+  // 다수 섞여 있었다(관측: 434개 고유 주문 중 234개가 파일명 기준 기간 밖). 파일명만 믿고
+  // 합치면 다른 달 매출이 섞여 온라인 매출이 부풀려진다 — 그래서 파일은 "후보 선정"에만 쓰고,
+  // 최종 포함 여부는 반드시 각 주문의 실제 order_date를 요청 범위와 대조해 판정한다(구현
+  // 원칙 5: 요청 범위 밖 주문은 제외).
+  // since/until이 함께 주어지면 그 범위가 항상 우선(권위)이다 — currentMonth는 "오늘" 기준으로
+  // 계산되어 요청 범위와 다른 달일 수 있으므로 섞지 않는다(위 targetMonths 주석 참고).
+  // since/until이 없을 때만(하위호환 경로) currentMonth 자체의 월 경계를 범위로 쓴다.
+  const hasExplicitRange = isDateKey(since) && isDateKey(until);
+  const rangeStart = hasExplicitRange ? since : (currentMonth ? `${currentMonth}-01` : null);
+  const rangeEnd = hasExplicitRange ? until : (currentMonth ? cafe24MonthEndKey(currentMonth) : null);
+  const withinRequestedRange = (orderDate) => {
+    if (!rangeStart || !rangeEnd) return true;
+    return orderDate >= rangeStart && orderDate <= rangeEnd;
+  };
+
+  const liveOrdersById = new Map();
+  const liveOrdersWithoutId = [];
+  if (targetMonths.size) {
+    const liveFilePattern = /^cafe24-(?:proxy-)?orders-(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.json$/;
+    const relevantFiles = [];
+    for (const name of files) {
+      const match = name.match(liveFilePattern);
+      if (!match) continue;
+      const [, fileStart, fileEnd] = match;
+      const overlapsTarget = [...targetMonths].some((month) => fileStart <= cafe24MonthEndKey(month) && fileEnd >= `${month}-01`);
+      if (overlapsTarget) relevantFiles.push({ name, fileEnd });
+    }
+    // 결정론적 정렬: 커버 종료일이 이른 파일 -> 늦은 파일 순으로 처리해, 같은 order_id가
+    // 여러 파일에 있으면 항상 "더 최신에 동기화된" 원본(raw) 레코드가 이전 것을 덮어쓰게
+    // 한다. 동일한 종료일이면 파일명 문자열로 최종 확정해 readdir 순서 영향이 전혀 없게 한다.
+    relevantFiles.sort((left, right) => left.fileEnd.localeCompare(right.fileEnd) || left.name.localeCompare(right.name));
+
+    // 실측으로 확인된 두 번째 함정: 주문은 시간이 지나며 상태가 바뀐다(정상 -> 취소/환불).
+    // 오래된 스냅샷 파일에는 "취소 전" 상태로 남아있고, 최신 스냅샷 파일에는 "취소됨"으로
+    // 반영돼 있다. 만약 정규화(normalizeCafe24ProxyOrder, 취소 주문은 null 반환)를 먼저 하고
+    // order_id로 병합하면, 최신 파일의 취소 레코드는 null이 되어 Map에 아무 것도 쓰지 않고
+    // "건너뛰기"만 하게 되고, 그 결과 예전 파일의 취소 전(활성) 레코드가 Map에 그대로 남아
+    // 매출이 부풀려진다(실측: 취소 반영 누락으로 온라인 매출이 약 646만원 과대 계상됨).
+    // 이를 막기 위해 먼저 "원본(raw) 주문"을 order_id 기준으로 병합(최신 파일이 이전 파일을
+    // 덮어씀 — 취소 상태 변경도 함께 덮어써진다)한 뒤, 병합이 끝난 후에 딱 한 번만
+    // normalizeCafe24ProxyOrder/날짜필터를 적용한다.
+    const rawById = new Map();
+    const rawWithoutId = [];
+    for (const file of relevantFiles) {
+      let data;
+      try {
+        data = JSON.parse(await readFile(join(workRoot, file.name), "utf8"));
+      } catch (readError) {
+        // 원칙9: 캐시를 못 찾았다고 조용히 0으로 보이면 안 된다 — 토큰/PII 없이 파일명과
+        // 오류 메시지만 남겨 운영자가 "이 기간 데이터가 왜 빠졌는지"를 로그로 진단할 수
+        // 있게 한다(새 UI 오류 팝업은 만들지 않는다).
+        console.warn(`[cafe24_live_cache_read_failed] file=${file.name} reason=${safeErrorMessage(readError)}`);
+        continue;
+      }
+      for (const rawOrder of data?.orders || []) {
+        const id = rawOrder?.order_id;
+        if (id) {
+          rawById.set(String(id), rawOrder);
+        } else {
+          // order_id가 없는 레코드: 파일 간 동일성 판정이 불가능하므로 임의로 합치지 않고
+          // (date, billing_name/member_id, payment_amount) 조합의 안정적 키로만 재중복을
+          // 걸러낸다 — 완전히 버리지는 않는다(요구사항: 주문번호가 없다고 함부로 제거하지 않는다).
+          rawWithoutId.push(rawOrder);
+        }
+      }
+    }
+    const seenFallbackKeys = new Set();
+    for (const rawOrder of rawWithoutId) {
+      const fallbackKey = [
+        String(rawOrder?.order_date || "").slice(0, 10),
+        rawOrder?.billing_name || rawOrder?.member_id || rawOrder?.member_email || "",
+        rawOrder?.payment_amount ?? rawOrder?.actual_order_amount?.payment_amount ?? ""
+      ].join("|");
+      if (seenFallbackKeys.has(fallbackKey)) continue;
+      seenFallbackKeys.add(fallbackKey);
+      const normalized = normalizeCafe24ProxyOrder(rawOrder);
+      if (!normalized) continue;
+      if (!withinRequestedRange(normalized.orderDate)) continue;
+      liveOrdersWithoutId.push(normalized);
+    }
+    for (const [id, rawOrder] of rawById) {
+      const normalized = normalizeCafe24ProxyOrder(rawOrder);
+      if (!normalized) continue;
+      // 파일명이 아니라 주문 자체의 실제 orderDate로 범위를 판정한다(위 주석 참고).
+      if (!withinRequestedRange(normalized.orderDate)) continue;
+      liveOrdersById.set(id, normalized);
     }
   }
-  if (bestProxyData) {
-    for (const order of bestProxyData.orders || []) {
-      const normalized = normalizeCafe24ProxyOrder(order);
-      if (normalized) orders.push(normalized);
-    }
-  }
+  orders.push(...liveOrdersById.values(), ...liveOrdersWithoutId);
 
   // matchKey: 개인결제창 주문에만 의미가 있다(기존 로직 그대로). 일반 주문은 matchKey가
   // 빈 문자열이며, 더 이상 여기서 걸러내지 않는다(과거에는 matchKey가 없으면 통째로
@@ -3196,6 +3308,18 @@ async function loadCafe24PersonalPaymentOrders({ currentMonth }) {
     ...order,
     matchKey: order.isPersonalPayment ? extractClientMatchKey(order.personalPaymentProductName) : ""
   }));
+}
+
+function cafe24NextMonthKey(month) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const next = new Date(Date.UTC(year, monthNumber, 1));
+  return next.toISOString().slice(0, 7);
+}
+
+function cafe24MonthEndKey(month) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const end = new Date(Date.UTC(year, monthNumber, 0));
+  return end.toISOString().slice(0, 10);
 }
 
 function safeReaddir(dir) {
