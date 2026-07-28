@@ -8,6 +8,7 @@ import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sa
 import { enrichMetaProductBreakdown, applyRuntimeAutoEnrichment } from "./scripts/meta-product-registry-link.mjs";
 import { handleIntelligenceRequest } from "./intelligence-service.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
+import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
 import {
   parseCafe24Money,
   firstCafe24Money,
@@ -4277,12 +4278,10 @@ async function attachCafe24OrderItems(orders = []) {
   const activeOrders = orders.filter((order) => !isCafe24CanceledOrRefunded(order));
   const ordersNeedingItems = activeOrders.filter((order) => cafe24OrderItems(order).length === 0 && order.order_id);
   for (const order of ordersNeedingItems) {
-    try {
-      order.items = await cafe24GetOrderItems(order.order_id);
-    } catch (error) {
+    const error = await attachCafe24OrderItemsWithRetry(order, () => cafe24GetOrderItems(order.order_id));
+    if (error) {
       await logApiError("cafe24_order_items", error, { orderId: order.order_id });
-      order.items = [];
-      order.itemFetchError = error.message;
+      order.itemFetchError = safeErrorMessage(error);
     }
   }
 }
