@@ -274,7 +274,7 @@ function operationsDateRange(data = selectedMonth()) {
     return next;
   };
   const monthSince = `${data.month}-01`;
-  const monthUntil = monthEnd(data.month);
+  const monthUntil = boundedMonthUntil(data.month);
   if (operationsRange === "today") {
     const day = dateKey(today);
     return { since: day, until: day, label: "오늘" };
