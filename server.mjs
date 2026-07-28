@@ -4564,6 +4564,15 @@ async function diagnoseCafe24ProductAccess() {
   return { mallId, apiChecks, requestedFieldCheck, dashboardReady };
 }
 
+// 2026-07-27 STEP19-C 인증 갱신 오류 수정: 이전에는 refresh 과정에서 발생하는 "모든" 오류
+// (네트워크 오류, Cafe24 응답 파싱 실패, 일시적 5xx 등 포함)를 무조건 status=reauth_required로
+// 고정시켜, refresh_token 자체는 아직 살아있는데도 이후의 모든 자동 재시도가 "재인증 필요"로
+// 즉시 막혀버리는 문제가 있었다(ensureCafe24AccessToken이 status===reauth_required면 refresh
+// 시도조차 하지 않고 바로 throw하기 때문). 이제는 Cafe24가 refresh_token 자체를 명시적으로
+// 거부한 경우(isCafe24RefreshTokenInvalid, 실측: "Invalid refresh_token")에만 reauth_required로
+// 고정하고, 그 외(네트워크 오류, 응답 파싱 실패 등 일시적 실패)는 이번 시도만 실패로 끝내
+// 다음 요청에서 다시 정상적으로 refresh를 재시도할 수 있게 한다. 저장/갱신 로직(writeCafe24TokenRecord,
+// hydrateCafe24EnvFromTokenRecord 등) 자체는 전혀 건드리지 않았다.
 async function refreshCafe24Token() {
   const record = await readCafe24TokenRecord();
   const required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID", "CAFE24_CLIENT_SECRET"];
@@ -4581,8 +4590,10 @@ async function refreshCafe24Token() {
     grant_type: "refresh_token",
     refresh_token: record.refreshToken
   });
+
+  let response;
   try {
-    const response = await fetch(url, {
+    response = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Basic ${credentials}`,
@@ -4590,38 +4601,65 @@ async function refreshCafe24Token() {
       },
       body: params.toString()
     });
-    const body = await response.json();
-    if (!response.ok || body.error) {
-      const message = body.error_description || body.error?.message || body.message || `Cafe24 token refresh failed ${response.status}`;
-      throw new Error(`${message} refresh token도 만료됐으면 Cafe24 OAuth 재인증이 필요합니다.`);
-    }
-
-    if (!body.access_token) {
-      throw new Error("Cafe24 refresh 응답에 access_token이 없습니다.");
-    }
-
-    const updatedAt = new Date().toISOString();
-    const saved = await writeCafe24TokenRecord({
-      schema: 1,
-      status: "active",
-      accessToken: body.access_token,
-      refreshToken: body.refresh_token || record.refreshToken,
-      expiresAt: body.expires_at || record.expiresAt || null,
-      updatedAt,
-      lastRefreshAt: updatedAt,
-      reauthRequiredAt: null,
-      lastError: null
-    });
-
-    return {
-      ok: true,
-      updated: ["access_token", body.refresh_token ? "refresh_token" : null, body.expires_at ? "expires_at" : null].filter(Boolean),
-      token: safeCafe24TokenRecord(saved)
-    };
-  } catch (error) {
-    await markCafe24ReauthRequired(error);
-    throw error;
+  } catch (networkError) {
+    // 네트워크/타임아웃 등: refresh_token이 무효라는 근거가 없으므로 reauth_required로
+    // 고정하지 않는다 — 다음 자동 요청이 다시 refresh를 시도할 수 있어야 한다(토큰/비밀값은
+    // 로그에 남기지 않는다).
+    throw new Error(`Cafe24 token refresh 요청이 실패했습니다(네트워크): ${safeErrorMessage(networkError)}`);
   }
+
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    // 응답 파싱 실패도 refresh_token 자체의 무효를 의미하지 않으므로 동일하게 처리한다.
+    throw new Error(`Cafe24 token refresh 응답을 읽을 수 없습니다: HTTP ${response.status}`);
+  }
+
+  if (!response.ok || body.error) {
+    const message = body.error_description || body.error?.message || body.message || `Cafe24 token refresh failed ${response.status}`;
+    const refreshError = new Error(`${message} refresh token도 만료됐으면 Cafe24 OAuth 재인증이 필요합니다.`);
+    refreshError.status = response.status;
+    if (isCafe24RefreshTokenInvalid(response.status, body)) {
+      await markCafe24ReauthRequired(refreshError);
+    }
+    throw refreshError;
+  }
+
+  if (!body.access_token) {
+    throw new Error("Cafe24 refresh 응답에 access_token이 없습니다.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const saved = await writeCafe24TokenRecord({
+    schema: 1,
+    status: "active",
+    accessToken: body.access_token,
+    refreshToken: body.refresh_token || record.refreshToken,
+    expiresAt: body.expires_at || record.expiresAt || null,
+    updatedAt,
+    lastRefreshAt: updatedAt,
+    reauthRequiredAt: null,
+    lastError: null
+  });
+
+  return {
+    ok: true,
+    updated: ["access_token", body.refresh_token ? "refresh_token" : null, body.expires_at ? "expires_at" : null].filter(Boolean),
+    token: safeCafe24TokenRecord(saved)
+  };
+}
+
+// Cafe24가 refresh_token 자체를 명시적으로 거부했는지 판단한다(실측: HTTP 400 +
+// error_description "Invalid refresh_token"). error 코드가 invalid_grant이거나 오류 설명에
+// "refresh_token"/"refresh token"이 언급된 경우에만 참으로 판단한다 — 그 외(5xx, rate limit,
+// 알 수 없는 오류 형식 등)는 refresh_token 자체의 문제라고 단정하지 않는다.
+function isCafe24RefreshTokenInvalid(status, body) {
+  const code = String(body?.error || "").toLowerCase();
+  const description = String(body?.error_description || body?.error?.message || "").toLowerCase();
+  if (code === "invalid_grant") return true;
+  if (description.includes("refresh_token") || description.includes("refresh token")) return true;
+  return false;
 }
 
 function buildCafe24AuthorizeUrl() {
