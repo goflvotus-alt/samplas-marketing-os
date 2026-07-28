@@ -53,8 +53,8 @@ export function isCafe24StoredValuePayment(order = {}) {
 }
 
 export function isCafe24CanceledItem(item = {}) {
-  const status = String(item.status_code || item.status || "").toUpperCase();
-  const text = String(item.status_text || item.statusText || item.order_status || "").toLowerCase();
+  const status = String(item.status_code || item.status || "").trim().toUpperCase();
+  const text = String(item.status_text || item.statusText || item.order_status || "").trim().toLowerCase();
   const isCompletedReturn = status === "C3" && text.includes("반품완료");
 
   return (
