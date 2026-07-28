@@ -55,7 +55,16 @@ export function isCafe24StoredValuePayment(order = {}) {
 export function isCafe24CanceledItem(item = {}) {
   const status = String(item.status_code || item.status || "").toUpperCase();
   const text = String(item.status_text || item.statusText || item.order_status || "").toLowerCase();
-  return status === "C2" || status === "CANCEL" || text.includes("취소완료") || text.includes("cancel");
+  const isCompletedReturn = status === "C3" && text.includes("반품완료");
+
+  return (
+    status === "C1" ||
+    status === "C2" ||
+    status === "CANCEL" ||
+    text.includes("취소완료") ||
+    text.includes("cancel") ||
+    isCompletedReturn
+  );
 }
 
 export function cafe24OrderItems(order = {}) {

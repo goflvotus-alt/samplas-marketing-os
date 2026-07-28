@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createHash, createHmac } from "node:crypto";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { URL } from "node:url";
@@ -15,6 +15,7 @@ import {
   cafe24OrderAmount,
   cafe24OrderItems,
   cafe24ItemQuantity,
+  isCafe24CanceledItem,
   isCafe24CanceledOrRefunded,
   cafe24ShippingFee,
   cafe24PointsUsedAmount,
@@ -3236,12 +3237,26 @@ async function loadCafe24PersonalPaymentOrders({ currentMonth, since, until } = 
       if (!match) continue;
       const [, fileStart, fileEnd] = match;
       const overlapsTarget = [...targetMonths].some((month) => fileStart <= cafe24MonthEndKey(month) && fileEnd >= `${month}-01`);
-      if (overlapsTarget) relevantFiles.push({ name, fileEnd });
+      if (overlapsTarget) {
+        let mtimeMs;
+        try {
+          mtimeMs = (await stat(join(workRoot, name))).mtimeMs;
+        } catch (statError) {
+          console.warn(`[cafe24_live_cache_stat_failed] file=${name} reason=${safeErrorMessage(statError)}`);
+          continue;
+        }
+        relevantFiles.push({ name, fileEnd, mtimeMs });
+      }
     }
-    // 결정론적 정렬: 커버 종료일이 이른 파일 -> 늦은 파일 순으로 처리해, 같은 order_id가
-    // 여러 파일에 있으면 항상 "더 최신에 동기화된" 원본(raw) 레코드가 이전 것을 덮어쓰게
-    // 한다. 동일한 종료일이면 파일명 문자열로 최종 확정해 readdir 순서 영향이 전혀 없게 한다.
-    relevantFiles.sort((left, right) => left.fileEnd.localeCompare(right.fileEnd) || left.name.localeCompare(right.name));
+    // 결정론적 정렬: 커버 종료일이 이른 파일 -> 늦은 파일 순으로 처리한다.
+    // 동일한 종료일의 캐시가 여러 개이면 실제 파일 수정 시각이 오래된 것 -> 최신인 것
+    // 순서로 처리해, 가장 최근에 동기화된 주문 상태가 마지막에 덮어쓰도록 한다.
+    // 수정 시각까지 같을 때만 파일명 문자열을 최종 tie-breaker로 사용한다.
+    relevantFiles.sort((left, right) =>
+      left.fileEnd.localeCompare(right.fileEnd) ||
+      left.mtimeMs - right.mtimeMs ||
+      left.name.localeCompare(right.name)
+    );
 
     // 실측으로 확인된 두 번째 함정: 주문은 시간이 지나며 상태가 바뀐다(정상 -> 취소/환불).
     // 오래된 스냅샷 파일에는 "취소 전" 상태로 남아있고, 최신 스냅샷 파일에는 "취소됨"으로
@@ -3334,9 +3349,10 @@ function normalizeCafe24CsvOrder(order) {
   const orderDate = trustedCafe24OrderDate(order) || String(order?.order_date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return null;
   const items = cafe24OrderItems(order);
-  const ppItem = items.find((item) => String(item?.productName || item?.product_name || "").includes("개인결제"));
+  const activeItems = items.filter((item) => !isCafe24CanceledItem(item));
+  const ppItem = activeItems.find((item) => String(item?.productName || item?.product_name || "").includes("개인결제"));
   const paidAmount = cafe24OrderAmount(order);
-  const quantity = items.reduce((sum, item) => sum + cafe24ItemQuantity(item), 0);
+  const quantity = activeItems.reduce((sum, item) => sum + cafe24ItemQuantity(item), 0);
   return {
     orderId: order?.order_id || null,
     orderDate,
@@ -3359,9 +3375,10 @@ function normalizeCafe24ProxyOrder(order) {
   const orderDate = trustedCafe24OrderDate(order) || String(order?.order_date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return null;
   const items = cafe24OrderItems(order);
-  const ppItem = items.find((item) => String(item?.product_name || item?.productName || "").includes("개인결제"));
+  const activeItems = items.filter((item) => !isCafe24CanceledItem(item));
+  const ppItem = activeItems.find((item) => String(item?.product_name || item?.productName || "").includes("개인결제"));
   const paidAmount = cafe24OrderAmount(order);
-  const quantity = items.reduce((sum, item) => sum + cafe24ItemQuantity(item), 0);
+  const quantity = activeItems.reduce((sum, item) => sum + cafe24ItemQuantity(item), 0);
   return {
     orderId: order?.order_id || null,
     orderDate,
