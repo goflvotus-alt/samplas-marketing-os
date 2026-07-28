@@ -3188,12 +3188,13 @@ function safeReaddir(dir) {
 // cafe24-csv-orders-*.json 스키마: {order_id, order_date(YYYY-MM-DD), actual_payment_amount, items:[{productName, quantity}]}.
 // 과거월 CSV 원본은 정확히 8개 컬럼만 담고 있어(실측 확인) member_id/email/points_spent_amount/
 // credits_spent_amount/shipping_fee 등의 필드가 전혀 없다 — 없는 값을 추측하지 않고 null로 둔다.
-function normalizeCafe24CsvOrder(order) {
+export function normalizeCafe24CsvOrder(order) {
   if (isCafe24CanceledOrRefunded(order)) return null;
   const orderDate = trustedCafe24OrderDate(order) || String(order?.order_date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return null;
   const items = cafe24OrderItems(order);
   const activeItems = items.filter((item) => !isCafe24CanceledItem(item));
+  if (!activeItems.length) return null;
   const ppItem = activeItems.find((item) => String(item?.productName || item?.product_name || "").includes("개인결제"));
   const paidAmount = cafe24OrderAmount(order);
   const quantity = activeItems.reduce((sum, item) => sum + cafe24ItemQuantity(item), 0);
@@ -3214,12 +3215,13 @@ function normalizeCafe24CsvOrder(order) {
 
 // cafe24-proxy-orders-*.json 스키마: {order_id, order_date(ISO+TZ), payment_amount, member_id, member_email,
 // billing_name, actual_order_amount:{points_spent_amount, credits_spent_amount, shipping_fee, ...}, items:[{product_name, quantity}]}
-function normalizeCafe24ProxyOrder(order) {
+export function normalizeCafe24ProxyOrder(order) {
   if (isCafe24CanceledOrRefunded(order)) return null;
   const orderDate = trustedCafe24OrderDate(order) || String(order?.order_date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return null;
   const items = cafe24OrderItems(order);
   const activeItems = items.filter((item) => !isCafe24CanceledItem(item));
+  if (!activeItems.length) return null;
   const ppItem = activeItems.find((item) => String(item?.product_name || item?.productName || "").includes("개인결제"));
   const paidAmount = cafe24OrderAmount(order);
   const quantity = activeItems.reduce((sum, item) => sum + cafe24ItemQuantity(item), 0);
