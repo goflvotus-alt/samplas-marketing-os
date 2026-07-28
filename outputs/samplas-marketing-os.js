@@ -122,6 +122,7 @@ let brandMasterCatalogOnly = true;
 // renderOperationsSections() 파이프라인에는 얹지 않는다(기존 화면 동작 변경 금지).
 let clientsRenderSeq = 0;
 let clientsOverviewState = null;
+let clientsRequestInFlight = null;
 let clientsListSearch = "";
 let clientsListTypeFilter = "all";
 let clientsListSort = "recent_desc";
@@ -10023,6 +10024,36 @@ let clientsDetailShowAllAliasStats = false;
 let clientsDetailPreviousFocus = null;
 let clientsDetailDateHideTimer = null;
 
+function getClientsOverviewJson(url, requestKey, timeoutMs = 20000) {
+  if (clientsRequestInFlight?.key === requestKey) return clientsRequestInFlight.promise;
+  clientsRequestInFlight?.controller.abort();
+  const controller = new AbortController();
+  const request = { key: requestKey, controller, promise: null };
+  request.promise = (async () => {
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+      const text = await response.text();
+      let body;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = { error: `응답을 읽지 못했습니다: ${text.slice(0, 100)}` };
+      }
+      if (!response.ok && !body.error) body.error = `API 오류 ${response.status}`;
+      return body;
+    } catch (error) {
+      if (error.name === "AbortError" || controller.signal.aborted) return { aborted: true };
+      return { error: error.message };
+    } finally {
+      clearTimeout(timer);
+      if (clientsRequestInFlight === request) clientsRequestInFlight = null;
+    }
+  })();
+  clientsRequestInFlight = request;
+  return request.promise;
+}
+
 async function refreshClientsView() {
   const statusTarget = $("#clientsStatus");
   const summaryTarget = $("#clientsSummaryCards");
@@ -10033,13 +10064,25 @@ async function refreshClientsView() {
   clientsListVisibleCount = CLIENTS_LIST_PAGE_SIZE;
   statusTarget.className = "ad-status-banner loading";
   statusTarget.innerHTML = `<span class="status-dot"></span><strong>고객 데이터를 불러오고 있습니다.</strong><span class="note">ECOUNT/Cafe24 데이터를 집계하는 중입니다.</span>`;
-  summaryTarget.innerHTML = `<article class="action-item sales-kpi-card is-disabled"><span>불러오는 중</span><strong>-</strong><p>-</p></article>`.repeat(5);
-  breakdownTarget.innerHTML = "";
-  top10Target.innerHTML = "";
+  if (!clientsOverviewState) {
+    summaryTarget.innerHTML = `<article class="action-item sales-kpi-card is-disabled"><span>불러오는 중</span><strong>-</strong><p>-</p></article>`.repeat(5);
+    breakdownTarget.innerHTML = "";
+    top10Target.innerHTML = "";
+  }
   const range = operationsDateRange();
   const query = `?since=${encodeURIComponent(range.since)}&until=${encodeURIComponent(range.until)}`;
-  const data = await getJson(intelligenceUrl(`/api/intelligence/clients${query}`), 20000);
+  const data = await getClientsOverviewJson(
+    intelligenceUrl(`/api/intelligence/clients${query}`),
+    `${range.since}|${range.until}`
+  );
   if (renderSeq !== clientsRenderSeq) return;
+  if (data.aborted) {
+    if (clientsOverviewState) {
+      statusTarget.className = "ad-status-banner good";
+      statusTarget.innerHTML = `<span class="status-dot"></span><strong>고객 데이터 연결됨</strong><span class="note">${esc(clientsOverviewState.periodStart || range.since)} ~ ${esc(clientsOverviewState.periodEnd || range.until)}</span>`;
+    }
+    return;
+  }
   if (data.error || !data.ok) {
     statusTarget.className = "ad-status-banner error";
     statusTarget.innerHTML = `<span class="status-dot"></span><strong>고객 데이터를 불러오지 못했습니다.</strong><span class="note">${esc(data.error || data.message || "Intelligence Service 연결을 확인해주세요.")}</span>`;
