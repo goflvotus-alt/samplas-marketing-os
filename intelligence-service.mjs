@@ -2485,6 +2485,27 @@ function isFfPurchaseRawName(rawName) {
   return Boolean(match && CLIENT_TYPE_FF_NAMES.has(match[1]));
 }
 
+export function assignCafe24OrdersToClientGroups(mergedClients, orders) {
+  const selectedGroups = new Map();
+  for (const group of mergedClients.values()) {
+    const orderMatchKey = clientOrderMatchKey(group.classification, group.matchKey);
+    if (!orderMatchKey) continue;
+    for (const order of orders) {
+      if (order.matchKey !== orderMatchKey) continue;
+      const dedupeKey = clientOrderDedupeKey(order);
+      const selected = selectedGroups.get(dedupeKey);
+      if (!selected || (
+        selected.classification.type === "samplas_press" &&
+        group.classification.type === "stylist"
+      )) selectedGroups.set(dedupeKey, group);
+    }
+  }
+  for (const [dedupeKey, group] of selectedGroups) {
+    group.orders.set(dedupeKey, orders.find((order) => clientOrderDedupeKey(order) === dedupeKey));
+  }
+  return new Set(selectedGroups.keys());
+}
+
 export async function buildClientsOverview(options = {}) {
   const since = isDateKey(options.since) ? options.since : currentMonthStartKey();
   const until = isDateKey(options.until) ? options.until : todayKey();
@@ -2502,7 +2523,6 @@ export async function buildClientsOverview(options = {}) {
   // 실제로 매칭됐는지 추적한다 — 매칭되지 않은 주문(개인결제창이 아닌 일반 주문 전부 +
   // ECOUNT 쪽에 대응하는 이름이 없는 개인결제창 주문)을 뒤에서 "온라인 고객(일반)" 가상
   // 그룹으로 묶어 누락 없이 집계에 포함시키기 위함이다.
-  const consumedOnlineOrderKeys = new Set();
   for (const [rawName, lines] of ecountClients) {
     const entity = classifyClientEntity(rawName);
     if (entity.entityType !== "client") continue;
@@ -2526,14 +2546,8 @@ export async function buildClientsOverview(options = {}) {
       group.aliases.push(rawName);
     }
     group.lines.push(...lines);
-    const orderMatchKey = clientOrderMatchKey(classification, matchKey);
-    const matchedOrders = orderMatchKey ? cafe24PersonalPaymentOrders.filter((order) => order.matchKey === orderMatchKey) : [];
-    for (const order of matchedOrders) {
-      const dedupeKey = clientOrderDedupeKey(order);
-      group.orders.set(dedupeKey, order);
-      consumedOnlineOrderKeys.add(dedupeKey);
-    }
   }
+  const consumedOnlineOrderKeys = assignCafe24OrdersToClientGroups(mergedClients, cafe24PersonalPaymentOrders);
 
   // STEP19-C 정책(어떤 온라인 주문도 Clients 집계에서 제외되지 않는다): 위 루프에서 기존
   // ECOUNT 고객 그룹에 매칭되지 않은 Cafe24 온라인 주문 전부(일반 주문 + 매칭 실패한
@@ -2824,12 +2838,8 @@ export async function buildClientSummaries(options = {}) {
       group.aliases.push(rawName);
     }
     group.lines.push(...lines);
-    const orderMatchKey = clientOrderMatchKey(classification, matchKey);
-    const matchedOrders = orderMatchKey ? cafe24PersonalPaymentOrders.filter((order) => order.matchKey === orderMatchKey) : [];
-    for (const order of matchedOrders) {
-      group.orders.set(clientOrderDedupeKey(order), order);
-    }
   }
+  assignCafe24OrdersToClientGroups(mergedClients, cafe24PersonalPaymentOrders);
 
   const summaries = [...mergedClients.values()].map((group) => {
     const representativeRawName = selectRepresentativeClientRawName(group.aliases);

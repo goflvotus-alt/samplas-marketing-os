@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  assignCafe24OrdersToClientGroups,
   normalizeCafe24CsvOrder,
   normalizeCafe24ProxyOrder
 } from "../intelligence-service.mjs";
@@ -55,3 +56,22 @@ assert.equal(
   3,
   "교환신청·완료 주문 유지"
 );
+
+function group(type, matchKey) {
+  return { classification: { type }, matchKey, orders: new Map() };
+}
+
+const stylist = group("stylist", "김영만");
+const press = group("samplas_press", "김영만");
+const customer = group("customer", "일반고객");
+const duplicateOrder = { orderId: "20260124-0000056", matchKey: "김영만", paidAmount: 364800, quantity: 1 };
+const normalOrder = { orderId: "normal-order", matchKey: "일반고객", paidAmount: 100000, quantity: 1 };
+const consumed = assignCafe24OrdersToClientGroups(
+  new Map([["press", press], ["stylist", stylist], ["customer", customer]]),
+  [duplicateOrder, normalOrder]
+);
+
+assert.deepEqual([...stylist.orders.keys()], ["20260124-0000056"], "Stylist가 Press보다 우선");
+assert.equal(press.orders.size, 0, "동일 주문은 Press에 중복 반영하지 않음");
+assert.deepEqual([...customer.orders.keys()], ["normal-order"], "일반 고객 주문은 기존 그룹 유지");
+assert.deepEqual([...consumed].sort(), ["20260124-0000056", "normal-order"], "고유 order_id 모집합 유지");
