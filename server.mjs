@@ -10,6 +10,13 @@ import { handleIntelligenceRequest } from "./intelligence-service.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
 import {
+  buildAiAuditHealth,
+  buildAiAuditOrder,
+  buildAiAuditRevenueReconciliation,
+  isAiAuditAuthorized,
+  validateAiAuditRange
+} from "./scripts/ai-audit.mjs";
+import {
   parseCafe24Money,
   firstCafe24Money,
   firstCafe24MoneyOrNull,
@@ -26,6 +33,7 @@ import {
   cafe24GrossOrderAmount,
   cafe24InitialOrderAmount,
   cafe24OrderAmount,
+  cafe24PointsUsedAmount,
   trustedCafe24OrderDate
 } from "./scripts/cafe24-order-amount.mjs";
 
@@ -199,6 +207,84 @@ const server = createServer(async (req, res) => {
       const until = url.searchParams.get("until") || "2026-07-31";
       const data = await buildBrandSalesDiagnostics(since, until);
       return json(res, data);
+    }
+    if (url.pathname.startsWith("/api/ai-audit/") && !isAiAuditAuthorized(req, env)) {
+      return json(res, { error: "Unauthorized" }, 401);
+    }
+    if (url.pathname === "/api/ai-audit/health") {
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      const data = await buildAiAuditHealth({
+        probe: async () => {
+          const today = todayKey();
+          const probeUrl = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/orders`);
+          probeUrl.searchParams.set("start_date", today);
+          probeUrl.searchParams.set("end_date", today);
+          probeUrl.searchParams.set("limit", "1");
+          const controller = new AbortController();
+          let timer;
+          try {
+            const timeout = new Promise((_, reject) => {
+              timer = setTimeout(() => {
+                controller.abort();
+                reject(Object.assign(new Error("Cafe24 health probe timeout"), { name: "TimeoutError" }));
+              }, 5000);
+            });
+            const body = await Promise.race([cafe24FetchJson(probeUrl, { signal: controller.signal }), timeout]);
+            if (body.error) throw body.error;
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+      });
+      return json(res, data);
+    }
+    if (url.pathname === "/api/ai-audit/revenue-reconciliation") {
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      let range;
+      try {
+        range = validateAiAuditRange(url.searchParams.get("since"), url.searchParams.get("until"));
+      } catch (error) {
+        return json(res, { error: error.message }, 400);
+      }
+      const [ordersResult, diagnostics] = await Promise.all([
+        fetchCafe24Orders(range.since, range.until, { limit: 500 }),
+        buildBrandSalesDiagnostics(range.since, range.until)
+      ]);
+      return json(res, buildAiAuditRevenueReconciliation({
+        ...range,
+        orders: ordersResult.orders || [],
+        diagnostics,
+        allocateOrder: allocateCanonicalPaidSalesForOrder,
+        orderAmount: cafe24OrderAmount,
+        grossOrderAmount: cafe24GrossOrderAmount,
+        pointsUsedAmount: cafe24PointsUsedAmount,
+        isCanceledOrRefunded: isCafe24CanceledOrRefunded
+      }));
+    }
+    const aiAuditOrderMatch = url.pathname.match(/^\/api\/ai-audit\/orders\/([^/]+)$/);
+    if (aiAuditOrderMatch) {
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      const orderId = decodeURIComponent(aiAuditOrderMatch[1]).trim();
+      if (!orderId || orderId.length > 100) return json(res, { error: "Invalid order ID" }, 400);
+      const orderUrl = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/orders/${encodeURIComponent(orderId)}`);
+      const body = await cafe24FetchJson(orderUrl);
+      if (body.error) {
+        const status = Number(body.error.status) === 404 ? 404 : 502;
+        return json(res, { error: status === 404 ? "Order Not Found" : "Cafe24 request failed" }, status);
+      }
+      const order = body.order || body.orders?.[0];
+      if (!order) return json(res, { error: "Order Not Found" }, 404);
+      const items = cafe24OrderItems(order).length ? cafe24OrderItems(order) : await cafe24GetOrderItems(orderId);
+      return json(res, buildAiAuditOrder({
+        order,
+        items,
+        allocateOrder: allocateCanonicalPaidSalesForOrder,
+        orderAmount: cafe24OrderAmount,
+        grossOrderAmount: cafe24GrossOrderAmount,
+        pointsUsedAmount: cafe24PointsUsedAmount,
+        shippingFee: cafe24ShippingFee,
+        isCanceledItem: isCafe24CanceledItem
+      }));
     }
     if (url.pathname === "/api/sales/total") {
       if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
@@ -4229,7 +4315,8 @@ async function cafe24FetchJson(url, options = {}) {
   await ensureCafe24AccessToken();
   await logCafe24OrdersDebug("request", cafe24OrdersDebugContext(url));
   const response = await fetch(url, {
-    headers: cafe24OrdersHeaders()
+    headers: cafe24OrdersHeaders(),
+    signal: options.signal
   });
   const text = await response.text();
   let body;
