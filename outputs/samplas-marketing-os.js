@@ -1,18 +1,20 @@
 const navItems = [
-  { view: "Overview", label: "Today", hidden: false },
-  { view: "Calendar", label: "Calendar", hidden: false },
-  { view: "Reports", label: "Monthly Report", hidden: false },
-  { view: "Content", label: "Content", hidden: false },
-  { view: "Advertising", label: "Marketing", hidden: false },
-  { view: "Sales", label: "Commerce", hidden: false },
-  { view: "Clients", label: "Clients", hidden: false },
-  { view: "ProductRegistry", label: "Product Registry", hidden: false },
-  { view: "InventoryOverview", label: "재고 점검", hidden: false },
-  { view: "InventoryIntelligence", label: "Inventory Intelligence", hidden: true },
-  { view: "Intelligence", label: "Intelligence", hidden: false },
-  { view: "Settings", label: "Settings", hidden: false },
-  { view: "Product", label: "Product", hidden: true },
-  { view: "Editorial AI", label: "Editorial AI", hidden: true }
+  { view: "Overview", label: "Today", hash: "today", group: "public", hidden: false },
+  { view: "Reports", label: "Monthly", hash: "monthly-report", group: "public", hidden: false },
+  { view: "Reports", label: "Annual", hash: "annual-report", group: "public", hidden: false },
+  { view: "Clients", label: "Clients", hash: "clients", group: "public", hidden: false },
+  { view: "InventoryOverview", label: "Inventory", hash: "inventory-overview", group: "public", hidden: false },
+  { view: "Sales", label: "Commerce", hash: "commerce", group: "management", hidden: false },
+  { view: "ProductRegistry", label: "Product Registry", hash: "product-registry", group: "management", hidden: false },
+  { view: "Intelligence", label: "Intelligence", hash: "intelligence", group: "management", hidden: false },
+  { view: "Settings", label: "Master Data", hash: "master-data", group: "management", hidden: false },
+  { view: "Settings", label: "Settings", hash: "settings", group: "management", hidden: false },
+  { view: "Calendar", label: "Calendar", hash: "calendar", hidden: true },
+  { view: "Content", label: "Content", hash: "content", hidden: true },
+  { view: "Advertising", label: "Marketing", hash: "marketing", hidden: true },
+  { view: "InventoryIntelligence", label: "Inventory Intelligence", hash: "inventory-intelligence", hidden: true },
+  { view: "Product", label: "Product", hash: "product", hidden: true },
+  { view: "Editorial AI", label: "Editorial AI", hash: "editorial-ai", hidden: true }
 ];
 
 function buildRecentMonthKeys(referenceDate = new Date(), count = 7) {
@@ -587,18 +589,27 @@ const viewHashMap = {
   ProductRegistry: "product-registry",
   InventoryOverview: "inventory-overview",
   InventoryIntelligence: "inventory-intelligence",
-  Settings: "settings"
+  Settings: "settings",
+  Product: "product",
+  "Editorial AI": "editorial-ai"
 };
 
-const hashViewMap = Object.fromEntries(Object.entries(viewHashMap).map(([view, hash]) => [hash, view]));
+const hashViewMap = {
+  ...Object.fromEntries(Object.entries(viewHashMap).map(([view, hash]) => [hash, view])),
+  "annual-report": "Reports",
+  "master-data": "Settings"
+};
 
-function viewFromHash() {
-  const key = decodeURIComponent(String(window.location.hash || "").replace(/^#/, ""));
-  return hashViewMap[key] || "Overview";
+function currentRouteHash() {
+  return decodeURIComponent(String(window.location.hash || "").replace(/^#/, ""));
 }
 
-function updateViewHash(view) {
-  const hash = viewHashMap[view];
+function viewFromHash() {
+  return hashViewMap[currentRouteHash()] || "Overview";
+}
+
+function updateViewHash(view, routeHash = "") {
+  const hash = routeHash || viewHashMap[view];
   if (!hash) return;
   const next = `#${hash}`;
   if (window.location.hash === next) return;
@@ -607,9 +618,11 @@ function updateViewHash(view) {
 
 function setActiveView(view, options = {}) {
   const targetView = navItems.some((item) => item.view === view) ? view : "Overview";
-  $$(".nav button").forEach((node) => node.classList.toggle("active", node.dataset.view === targetView));
+  const locationHash = currentRouteHash();
+  const routeHash = options.routeHash || (hashViewMap[locationHash] === targetView ? locationHash : viewHashMap[targetView]);
+  $$(".nav button").forEach((node) => node.classList.toggle("active", node.dataset.route === routeHash));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.id === targetView));
-  setTopbarTitle(targetView);
+  setTopbarTitle(targetView, routeHash);
   updateTopbarControls(targetView);
   if (targetView === "Intelligence") refreshActiveIntelligencePanel();
   if (targetView === "Clients") refreshClientsView();
@@ -617,31 +630,53 @@ function setActiveView(view, options = {}) {
   if (targetView === "InventoryOverview") renderInventoryWorkspaceView({ reset: true });
   if (targetView === "InventoryIntelligence") renderInventoryIntelligenceView();
   if (targetView === "Calendar") renderCalendarView();
-  if (options.updateHash !== false) updateViewHash(targetView);
+  if (options.updateHash !== false) updateViewHash(targetView, routeHash);
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: options.smooth === false ? "auto" : "smooth" });
+  const aliasTarget = routeHash === "annual-report"
+    ? $("#annualArchiveFlow")
+    : routeHash === "master-data"
+      ? $("#brandMasterSummary")?.closest(".section-block")
+      : null;
+  if (aliasTarget) {
+    const scrollToAlias = () => aliasTarget.scrollIntoView({ behavior: options.smooth === false ? "auto" : "smooth" });
+    requestAnimationFrame(scrollToAlias);
+    window.setTimeout(scrollToAlias, 800);
+  }
 }
 
 function renderNav() {
   const nav = $("#nav");
-  nav.innerHTML = navItems.map((item, index) => (
-    `<button type="button" class="${index === 0 ? "active" : ""}" data-view="${esc(item.view)}" ${item.hidden ? "hidden" : ""}>${esc(item.label)}</button>`
+  const groups = [
+    { key: "public", label: "공용 운영" },
+    { key: "management", label: "관리 · 분석" }
+  ];
+  nav.innerHTML = groups.map((group) => `
+    <div class="nav-group">
+      <p class="nav-group-label">${esc(group.label)}</p>
+      ${navItems.filter((item) => item.group === group.key).map((item) => (
+        `<button type="button" data-view="${esc(item.view)}" data-route="${esc(item.hash)}">${esc(item.label)}</button>`
+      )).join("")}
+    </div>
+  `).join('<div class="nav-group-divider" aria-hidden="true"></div>') + navItems.filter((item) => item.hidden).map((item) => (
+    `<button type="button" data-view="${esc(item.view)}" data-route="${esc(item.hash)}" hidden>${esc(item.label)}</button>`
   )).join("");
-  setActiveView(viewFromHash(), { updateHash: false, scroll: false });
+  setActiveView(viewFromHash(), { routeHash: currentRouteHash(), updateHash: false, scroll: false });
   nav.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-view]");
     if (!button) return;
-    setActiveView(button.dataset.view);
+    setActiveView(button.dataset.view, { routeHash: button.dataset.route });
   });
-  window.addEventListener("popstate", () => setActiveView(viewFromHash(), { updateHash: false, smooth: false }));
-  window.addEventListener("hashchange", () => setActiveView(viewFromHash(), { updateHash: false, smooth: false }));
+  window.addEventListener("popstate", () => setActiveView(viewFromHash(), { routeHash: currentRouteHash(), updateHash: false, smooth: false }));
+  window.addEventListener("hashchange", () => setActiveView(viewFromHash(), { routeHash: currentRouteHash(), updateHash: false, smooth: false }));
 }
 
 // Topbar used to repeat "MONTHLY INTELLIGENCE / Marketing Director / SAMPLAS"
 // on every tab (already shown once in the sidebar brand block). Replaced with
 // a single line reflecting which tab is actually open right now.
-function setTopbarTitle(view) {
+function setTopbarTitle(view, routeHash = "") {
   const target = $("#topbarTitle");
-  if (target) target.textContent = view;
+  const routeItem = navItems.find((item) => item.hash === routeHash);
+  if (target) target.textContent = routeItem?.label || view;
 }
 
 function updateTopbarControls(view) {
