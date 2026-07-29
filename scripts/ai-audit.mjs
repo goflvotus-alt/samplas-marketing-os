@@ -92,6 +92,53 @@ export async function buildAiAuditHealth({ probe, now = () => new Date().toISOSt
   };
 }
 
+export function buildAiAuditClientsOverview(overview = {}) {
+  const topRows = (rows = []) => rows.map((row) => ({
+    clientId: row.clientId,
+    name: row.name,
+    purchaseCount: row.purchaseCount,
+    salesAmount: row.salesAmount
+  }));
+  return {
+    periodStart: overview.periodStart,
+    periodEnd: overview.periodEnd,
+    summary: {
+      totalClients: overview.summary?.totalClients,
+      totalPurchaseCount: overview.summary?.totalPurchaseCount,
+      totalSalesAmount: overview.summary?.totalSalesAmount,
+      avgOrderValue: overview.summary?.avgOrderValue,
+      onlineSalesAmount: overview.summary?.onlineSalesAmount,
+      offlineSalesAmount: overview.summary?.offlineSalesAmount,
+      orderCount: overview.summary?.orderCount,
+      onlineOrderCount: overview.summary?.onlineOrderCount,
+      offlineOrderCount: overview.summary?.offlineOrderCount,
+      quantity: overview.summary?.quantity,
+      onlineQuantity: overview.summary?.onlineQuantity,
+      offlineQuantity: overview.summary?.offlineQuantity,
+      pointsUsedAmount: overview.summary?.pointsUsedAmount,
+      shippingAmount: overview.summary?.shippingAmount
+    },
+    typeBreakdown: (overview.typeBreakdown || []).map((row) => ({
+      type: row.type,
+      label: row.label,
+      clientCount: row.clientCount,
+      purchaseCount: row.purchaseCount,
+      salesAmount: row.salesAmount,
+      ratioPct: row.ratioPct
+    })),
+    stylistTop10: topRows(overview.stylistTop10),
+    pressTop10: topRows(overview.pressTop10),
+    ffTop10: topRows(overview.ffTop10),
+    meta: {
+      excludedGiftCount: overview.meta?.excludedGiftCount,
+      excludedGiftSalesAmount: overview.meta?.excludedGiftSalesAmount,
+      pointsUsedOrderCount: overview.meta?.pointsUsedOrderCount,
+      pointsUsedFieldUnavailableOrderCount: overview.meta?.pointsUsedFieldUnavailableOrderCount,
+      shippingFieldUnavailableOrderCount: overview.meta?.shippingFieldUnavailableOrderCount
+    }
+  };
+}
+
 export function validateAiAuditRange(since, until) {
   const start = dateValue(since);
   const end = dateValue(until);

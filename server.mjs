@@ -6,10 +6,11 @@ import { URL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 import { enrichMetaProductBreakdown, applyRuntimeAutoEnrichment } from "./scripts/meta-product-registry-link.mjs";
-import { handleIntelligenceRequest } from "./intelligence-service.mjs";
+import { buildClientsOverview, handleIntelligenceRequest } from "./intelligence-service.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
 import {
+  buildAiAuditClientsOverview,
   buildAiAuditHealth,
   buildAiAuditOrder,
   buildAiAuditRevenueReconciliation,
@@ -237,6 +238,14 @@ const server = createServer(async (req, res) => {
         }
       });
       return json(res, data);
+    }
+    if (url.pathname === "/api/ai-audit/clients") {
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      const overview = await buildClientsOverview({
+        since: url.searchParams.get("since") || undefined,
+        until: url.searchParams.get("until") || undefined
+      });
+      return json(res, buildAiAuditClientsOverview(overview));
     }
     if (url.pathname === "/api/ai-audit/revenue-reconciliation") {
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);

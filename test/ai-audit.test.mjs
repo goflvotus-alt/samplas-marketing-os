@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildAiAuditClientsOverview,
   buildAiAuditHealth,
   buildAiAuditOrder,
   buildAiAuditRevenueReconciliation,
@@ -116,6 +117,36 @@ test("AI audit health normalizes Cafe24 success and failures without exposing er
   assert.doesNotMatch(JSON.stringify(privateFailure), /secret-value|authorization|cookie/i);
 });
 
+test("AI audit clients exposes overview totals and TOP10 without private details", () => {
+  const result = buildAiAuditClientsOverview({
+    periodStart: "2026-07-01",
+    periodEnd: "2026-07-28",
+    summary: { totalClients: 1, totalSalesAmount: 1000 },
+    typeBreakdown: [{ type: "stylist", label: "Stylist", clientCount: 1, purchaseCount: 1, salesAmount: 1000, ratioPct: 100 }],
+    stylistTop10: [{
+      clientId: "client_1",
+      name: "표시명",
+      purchaseCount: 1,
+      salesAmount: 1000,
+      purchaseDateCounts: [{ date: "2026-07-01", count: 1 }],
+      products: [{ productName: "상품", salesAmount: 1000 }]
+    }],
+    pressTop10: [],
+    ffTop10: [],
+    clients: [{ contact: "private@example.com", aliases: ["비공개"], purchaseDetails: [] }],
+    meta: { excludedGiftCount: 0 }
+  });
+  assert.equal(result.summary.totalSalesAmount, 1000);
+  assert.deepEqual(result.stylistTop10[0], {
+    clientId: "client_1",
+    name: "표시명",
+    purchaseCount: 1,
+    salesAmount: 1000
+  });
+  assert.equal("clients" in result, false);
+  assert.deepEqual(allKeys(result).filter((key) => /phone|email|address|contact|alias|token|secret|cookie|authorization/i.test(key)), []);
+});
+
 test("AI audit date range requires valid dates and allows at most 31 inclusive days", () => {
   assert.throws(() => validateAiAuditRange(null, "2026-07-29"), { status: 400 });
   assert.throws(() => validateAiAuditRange("2026-02-30", "2026-03-01"), { status: 400 });
@@ -169,6 +200,7 @@ test("AI audit routes explicitly return 401 and missing orders return 404", asyn
   assert.equal(source.includes('if (url.pathname.startsWith("/api/ai-audit/") && !isAiAuditAuthorized(req, env)) {'), true);
   assert.equal(source.includes('return json(res, { error: "Unauthorized" }, 401);'), true);
   assert.equal(source.includes('if (url.pathname === "/api/ai-audit/health") {'), true);
+  assert.equal(source.includes('if (url.pathname === "/api/ai-audit/clients") {'), true);
   assert.equal(source.includes("return json(res, data);"), true);
   assert.equal(source.includes('if (!orderId || orderId.length > 100) return json(res, { error: "Invalid order ID" }, 400);'), true);
   assert.equal(source.includes('if (!order) return json(res, { error: "Order Not Found" }, 404);'), true);

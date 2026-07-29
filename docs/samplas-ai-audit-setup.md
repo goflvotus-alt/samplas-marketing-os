@@ -14,8 +14,9 @@ Custom GPT
 - Health: Marketing OS 및 Cafe24 인증 연결 상태
 - Revenue Reconciliation: 최대 31일 동안 Cafe24 결제액과 Marketing OS canonical 매출 비교
 - Order Audit: 주문 한 건의 상품·할인·취소·제외 규칙을 개인정보 없이 조회
+- Clients Overview: 기존 Marketing OS의 요약·유형별 집계·Stylist/Press/FF TOP10 조회
 
-Phase 1에서는 Inventory, Clients, Meta, Instagram, ECOUNT 전체 분석을 지원하지 않는다.
+현재 Inventory, Meta, Instagram, ECOUNT 전체 분석은 지원하지 않는다.
 
 ## Render 설정
 
@@ -39,6 +40,8 @@ Cafe24 연결 상태 확인해줘.
 2026-07-01부터 2026-07-28까지 매출 차이 확인해줘.
 
 주문번호 20260728-0000065 분석해줘.
+
+2026-07-01부터 2026-07-28까지 Clients 현황을 알려줘.
 ```
 
 ## 보안

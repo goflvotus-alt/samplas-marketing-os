@@ -24,6 +24,39 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
+  /api/ai-audit/clients:
+    get:
+      operationId: getClientsOverview
+      summary: Read the existing Marketing OS Clients overview
+      description: Returns existing Clients summary, type breakdown, and TOP10 results without contact, alias, or purchase-detail fields.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: Optional range start in YYYY-MM-DD format. Marketing OS defaults apply when omitted.
+          schema:
+            type: string
+            format: date
+        - name: until
+          in: query
+          required: false
+          description: Optional range end in YYYY-MM-DD format. Marketing OS defaults apply when omitted.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Sanitized Clients overview completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientsOverviewResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/ai-audit/revenue-reconciliation:
     get:
       operationId: getRevenueReconciliation
@@ -224,6 +257,158 @@ components:
         - status
         - code
         - responseTimeMs
+      additionalProperties: false
+    ClientsOverviewResponse:
+      type: object
+      properties:
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        summary:
+          $ref: "#/components/schemas/ClientsSummary"
+        typeBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientTypeBreakdown"
+        stylistTop10:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/ClientTopRow"
+        pressTop10:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/ClientTopRow"
+        ffTop10:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/ClientTopRow"
+        meta:
+          $ref: "#/components/schemas/ClientsMeta"
+      required:
+        - periodStart
+        - periodEnd
+        - summary
+        - typeBreakdown
+        - stylistTop10
+        - pressTop10
+        - ffTop10
+        - meta
+      additionalProperties: false
+    ClientsSummary:
+      type: object
+      properties:
+        totalClients:
+          type: integer
+        totalPurchaseCount:
+          type: integer
+        totalSalesAmount:
+          type: number
+        avgOrderValue:
+          type:
+            - number
+            - "null"
+        onlineSalesAmount:
+          type: number
+        offlineSalesAmount:
+          type: number
+        orderCount:
+          type: integer
+        onlineOrderCount:
+          type: integer
+        offlineOrderCount:
+          type: integer
+        quantity:
+          type: number
+        onlineQuantity:
+          type: number
+        offlineQuantity:
+          type: number
+        pointsUsedAmount:
+          type: number
+        shippingAmount:
+          type: number
+      required:
+        - totalClients
+        - totalPurchaseCount
+        - totalSalesAmount
+        - avgOrderValue
+        - onlineSalesAmount
+        - offlineSalesAmount
+        - orderCount
+        - onlineOrderCount
+        - offlineOrderCount
+        - quantity
+        - onlineQuantity
+        - offlineQuantity
+        - pointsUsedAmount
+        - shippingAmount
+      additionalProperties: false
+    ClientTypeBreakdown:
+      type: object
+      properties:
+        type:
+          type: string
+        label:
+          type: string
+        clientCount:
+          type: integer
+        purchaseCount:
+          type: integer
+        salesAmount:
+          type: number
+        ratioPct:
+          type: number
+      required:
+        - type
+        - label
+        - clientCount
+        - purchaseCount
+        - salesAmount
+        - ratioPct
+      additionalProperties: false
+    ClientTopRow:
+      type: object
+      properties:
+        clientId:
+          type: string
+        name:
+          type: string
+          description: Existing Marketing OS display name. Contact and alias fields are not returned.
+        purchaseCount:
+          type: integer
+        salesAmount:
+          type: number
+      required:
+        - clientId
+        - name
+        - purchaseCount
+        - salesAmount
+      additionalProperties: false
+    ClientsMeta:
+      type: object
+      properties:
+        excludedGiftCount:
+          type: integer
+        excludedGiftSalesAmount:
+          type: number
+        pointsUsedOrderCount:
+          type: integer
+        pointsUsedFieldUnavailableOrderCount:
+          type: integer
+        shippingFieldUnavailableOrderCount:
+          type: integer
+      required:
+        - excludedGiftCount
+        - excludedGiftSalesAmount
+        - pointsUsedOrderCount
+        - pointsUsedFieldUnavailableOrderCount
+        - shippingFieldUnavailableOrderCount
       additionalProperties: false
     RevenueReconciliationResponse:
       type: object
