@@ -114,8 +114,20 @@ paths:
       summary: Compare Cafe24 paid amounts with Marketing OS canonical revenue
       description: Read-only reconciliation for an inclusive date range of at most 31 days.
       parameters:
-        - $ref: "#/components/parameters/Since"
-        - $ref: "#/components/parameters/Until"
+        - name: since
+          in: query
+          required: true
+          description: Inclusive range start in YYYY-MM-DD format.
+          schema:
+            type: string
+            format: date
+        - name: until
+          in: query
+          required: true
+          description: Inclusive range end in YYYY-MM-DD format. Maximum range is 31 days.
+          schema:
+            type: string
+            format: date
       responses:
         "200":
           description: Revenue reconciliation completed.
