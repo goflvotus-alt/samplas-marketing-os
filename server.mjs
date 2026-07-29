@@ -40,6 +40,7 @@ import {
   trustedCafe24OrderDate
 } from "./scripts/cafe24-order-amount.mjs";
 import { normalizeBrandCode, normalizeBrandName, parseBrandAliases } from "./scripts/brand-engine.mjs";
+import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
 
 const root = resolve(".");
 const outputDir = join(root, "outputs");
@@ -351,7 +352,10 @@ const server = createServer(async (req, res) => {
         && Number(cached?.sales?.onlineSales?.paidAmount || 0) === 0
         && Number(cached?.sales?.offlineSales?.offlineSalesAmount || 0) === 0
         && cached?.sales?.coverage?.missingMonths?.includes(month);
-      if (cached && !staleEmptyCache) return json(res, { ...cached, archiveStatus: "saved" });
+      if (cached && !staleEmptyCache) {
+        const enriched = await enrichMonthlyArchiveBrandSales(cached, month);
+        return json(res, { ...enriched, archiveStatus: "saved" });
+      }
       const archive = await buildMonthlyArchive(month);
       return json(res, { ...archive, archiveStatus: "draft" });
     }
@@ -3367,13 +3371,15 @@ async function buildMonthlyArchive(month) {
   ]);
 
   const commerceTotals = commerceSource.totals || {};
+  const brandSales = await buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSource);
   const commerce = {
     paidAmount: commerceTotals.paidAmount,
     orderCount: commerceTotals.orderCount,
     averageOrderValue: commerceTotals.averageOrderValue,
     excludedOrderCount: commerceSource.excludedOrderCount,
     paymentMethods: commerceSource.paymentMethods || [],
-    brandSales: commerceSource.brands || [],
+    brandSales,
+    brandSalesBasis: "online_offline",
     productSales: commerceSource.products || []
   };
   const sales = await buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource);
@@ -3461,6 +3467,50 @@ async function buildMonthlyArchive(month) {
     commerce,
     marketing,
     content
+  };
+}
+
+async function buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSource) {
+  const snapshot = await readEcountOfflineSalesSnapshot(monthStart.slice(0, 7), { workDir });
+  const offlineLines = Array.isArray(snapshot?.salesLines)
+    ? snapshot.salesLines
+    : Array.isArray(snapshot?.rows)
+      ? snapshot.rows
+      : [];
+  return mergeOfflineBrandSales({
+    brandSales: commerceSource?.brands || [],
+    productSales: commerceSource?.products || [],
+    onlinePaidAmount: Number(commerceSource?.totals?.paidAmount || 0),
+    offlineLines,
+    since: monthStart,
+    until: monthEnd
+  });
+}
+
+async function enrichMonthlyArchiveBrandSales(archive, month) {
+  if (archive?.commerce?.brandSalesBasis === "online_offline") return archive;
+  const monthStart = `${month}-01`;
+  const monthEnd = monthEndKey(month);
+  const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+  const offlineLines = Array.isArray(snapshot?.salesLines)
+    ? snapshot.salesLines
+    : Array.isArray(snapshot?.rows)
+      ? snapshot.rows
+      : [];
+  return {
+    ...archive,
+    commerce: {
+      ...(archive.commerce || {}),
+      brandSales: mergeOfflineBrandSales({
+        brandSales: archive?.commerce?.brandSales || [],
+        productSales: archive?.commerce?.productSales || [],
+        onlinePaidAmount: Number(archive?.commerce?.paidAmount || archive?.sales?.onlineSales?.paidAmount || 0),
+        offlineLines,
+        since: monthStart,
+        until: monthEnd
+      }),
+      brandSalesBasis: "online_offline"
+    }
   };
 }
 
