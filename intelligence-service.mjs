@@ -13,6 +13,12 @@ import {
 import { bootstrapProductRegistryFiles } from "./scripts/bootstrap-product-registry.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import {
+  normalizeBrandCode,
+  normalizeBrandName,
+  normalizeBrandKey,
+  resolveBrand as resolveBrandFromEngine
+} from "./scripts/brand-engine.mjs";
+import {
   cafe24OrderAmount,
   cafe24OrderItems,
   cafe24ItemQuantity,
@@ -2241,43 +2247,8 @@ function validateBrandRegistry(brands, aliases) {
 }
 
 function resolveBrand(input, registry) {
-  const key = normalizeBrandKey(input);
-  if (!key) return null;
-  const byName = new Map(registry.brands.map((brand) => [normalizeBrandKey(brand.name), brand]));
-  const direct = byName.get(key);
-  if (direct) return { brandId: direct.id, name: direct.name };
-  const byId = new Map(registry.brands.map((brand) => [normalizeBrandKey(brand.id), brand]));
-  const idMatch = byId.get(key);
-  if (idMatch) return { brandId: idMatch.id, name: idMatch.name };
-  const alias = registry.aliases.find((entry) => normalizeBrandKey(entry.alias) === key);
-  if (!alias) return null;
-  const brand = registry.brands.find((item) => item.id === alias.brandId);
-  return brand ? { brandId: brand.id, name: brand.name } : null;
-}
-
-function normalizeBrandCode(value) {
-  return String(value ?? "").trim();
-}
-
-function normalizeBrandName(value) {
-  const namedEntities = {
-    amp: "&",
-    apos: "'",
-    Ccedil: "Ç",
-    ccedil: "ç",
-    gt: ">",
-    lt: "<",
-    nbsp: " ",
-    quot: "\""
-  };
-  return String(value ?? "")
-    .replace(/&(#(\d+)|#x([0-9a-fA-F]+)|[A-Za-z][A-Za-z0-9]+);/g, (entity, name, decimal, hex) => {
-      if (decimal) return String.fromCodePoint(Number(decimal));
-      if (hex) return String.fromCodePoint(parseInt(hex, 16));
-      return namedEntities[name] || entity;
-    })
-    .replace(/\s+/g, " ")
-    .trim();
+  const resolved = resolveBrandFromEngine(input, registry);
+  return resolved ? { brandId: resolved.brandId, name: resolved.name } : null;
 }
 
 function parseBrandAliases(value) {
@@ -2286,17 +2257,6 @@ function parseBrandAliases(value) {
     .split(/[\n,]/)
     .map(normalizeBrandName)
     .filter(Boolean);
-}
-
-function normalizeBrandKey(value) {
-  return normalizeBrandName(value)
-    .normalize("NFKC")
-    .replace(/[’‘]/g, "'")
-    .replace(/[“”]/g, "\"")
-    .replace(/[‐‑‒–—―]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLocaleLowerCase("en-US");
 }
 
 function dedupeAliases(aliases) {

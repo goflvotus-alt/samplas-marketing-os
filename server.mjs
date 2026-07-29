@@ -39,6 +39,7 @@ import {
   cafe24PointsUsedAmount,
   trustedCafe24OrderDate
 } from "./scripts/cafe24-order-amount.mjs";
+import { normalizeBrandCode, normalizeBrandName, parseBrandAliases } from "./scripts/brand-engine.mjs";
 
 const root = resolve(".");
 const outputDir = join(root, "outputs");
@@ -2002,41 +2003,6 @@ async function writeJsonAtomic(file, data) {
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
   await writeFile(tmp, JSON.stringify(data, null, 2));
   await rename(tmp, file);
-}
-
-function normalizeBrandCode(value) {
-  return String(value ?? "").trim();
-}
-
-function normalizeBrandName(value) {
-  const namedEntities = {
-    amp: "&",
-    apos: "'",
-    Ccedil: "Ç",
-    ccedil: "ç",
-    gt: ">",
-    lt: "<",
-    nbsp: " ",
-    quot: "\""
-  };
-  return String(value ?? "")
-    .replace(/&(#(\d+)|#x([0-9a-fA-F]+)|[A-Za-z][A-Za-z0-9]+);/g, (entity, name, decimal, hex) => {
-      if (decimal) return String.fromCodePoint(Number(decimal));
-      if (hex) return String.fromCodePoint(parseInt(hex, 16));
-      return namedEntities[name] || entity;
-    })
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function parseBrandAliases(value) {
-  if (Array.isArray(value)) {
-    return value.map(normalizeBrandName).filter(Boolean);
-  }
-  return String(value ?? "")
-    .split(/[\n,]/)
-    .map(normalizeBrandName)
-    .filter(Boolean);
 }
 
 function suggestBrandNameFromProductName(productName) {
