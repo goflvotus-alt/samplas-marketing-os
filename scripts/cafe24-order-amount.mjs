@@ -145,6 +145,28 @@ export function cafe24InitialOrderAmount(order = {}) {
   ]);
 }
 
+function cafe24StoredValueDiscountAmount(order = {}) {
+  const activeItems = cafe24OrderItems(order).filter((item) => !isCafe24CanceledItem(item));
+  const itemDiscount = (field) => activeItems.reduce(
+    (total, item) => total + Math.max(0, firstCafe24Money([item[field]])) * cafe24ItemQuantity(item),
+    0
+  );
+  const orderDiscount = (field) => Math.max(0, firstCafe24Money([
+    order.actual_order_amount?.[field],
+    order.initial_order_amount?.[field],
+    order[field]
+  ]));
+
+  return (
+    itemDiscount("additional_discount_price") +
+    orderDiscount("membership_discount_amount") +
+    orderDiscount("set_product_discount_amount") +
+    Math.max(orderDiscount("coupon_discount_price"), itemDiscount("coupon_discount_price")) +
+    Math.max(orderDiscount("app_discount_amount"), itemDiscount("app_item_discount_amount")) +
+    Math.max(orderDiscount("market_other_discount_amount"), itemDiscount("market_discount_amount"))
+  );
+}
+
 export function cafe24OrderAmount(order = {}) {
   if (isCafe24CanceledOrRefunded(order)) return 0;
   const primary = firstCafe24MoneyOrNull([
@@ -162,7 +184,9 @@ export function cafe24OrderAmount(order = {}) {
       order.order_amount,
       order.total_price
     ]);
-    if (restored > 0 && hasCafe24ActiveOrderItems(order)) return restored;
+    if (restored > 0 && hasCafe24ActiveOrderItems(order)) {
+      return Math.max(0, restored - cafe24StoredValueDiscountAmount(order));
+    }
   }
   if (primary === 0) return 0;
   return firstCafe24Money([
@@ -176,7 +200,7 @@ export function cafe24OrderAmount(order = {}) {
 }
 
 // STEP19-C 정책1(적립금 사용액은 매출에서 차감하지 않는다)의 "정보용 부가 필드"를
-// 위해 추가. cafe24OrderAmount() 자체는 절대 바꾸지 않고(=Today 금액 불변), 실제
+// 위해 추가. cafe24OrderAmount()의 stored-value fallback도 이 값을 차감하지 않으며, 실제
 // Cafe24 원본 필드(actual_order_amount.points_spent_amount / credits_spent_amount)가
 // 존재하는 주문(현재월 live proxy 캐시)에서만 값을 추출한다. 과거월 CSV 캐시는 이
 // 필드 자체가 없으므로(원본 CSV 8개 컬럼에 없음) null을 반환한다 — 없는 값을
