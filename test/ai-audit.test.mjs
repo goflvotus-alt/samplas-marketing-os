@@ -158,6 +158,10 @@ test("single-order audit returns only allowlisted fields and no private keys", (
   ]);
   const forbidden = /name|phone|email|address|postcode|memo|member|token|secret|cookie|authorization/i;
   assert.deepEqual(allKeys(result).filter((key) => forbidden.test(key)), []);
+
+  const canceled = buildOrder({ ...privateOrder, items: [{ ...activeItem, status_code: "C2" }] });
+  assert.equal(canceled.marketing_os_amount, 0);
+  assert.deepEqual(canceled.items[0].applied_rules, ["CANCELED_ITEM_EXCLUDED"]);
 });
 
 test("AI audit routes explicitly return 401 and missing orders return 404", async () => {
@@ -166,5 +170,6 @@ test("AI audit routes explicitly return 401 and missing orders return 404", asyn
   assert.equal(source.includes('return json(res, { error: "Unauthorized" }, 401);'), true);
   assert.equal(source.includes('if (url.pathname === "/api/ai-audit/health") {'), true);
   assert.equal(source.includes("return json(res, data);"), true);
+  assert.equal(source.includes('if (!orderId || orderId.length > 100) return json(res, { error: "Invalid order ID" }, 400);'), true);
   assert.equal(source.includes('if (!order) return json(res, { error: "Order Not Found" }, 404);'), true);
 });

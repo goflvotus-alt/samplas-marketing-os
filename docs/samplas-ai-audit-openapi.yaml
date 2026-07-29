@@ -1,0 +1,441 @@
+openapi: 3.1.0
+info:
+  title: SAMPLAS AI Audit API
+  version: 1.0.0
+  description: Read-only Cafe24 audit endpoints backed by SAMPLAS Marketing OS canonical revenue logic.
+servers:
+  - url: https://samplas-marketing-os.onrender.com
+security:
+  - InternalToken: []
+paths:
+  /api/ai-audit/health:
+    get:
+      operationId: checkAiAuditHealth
+      summary: Check Marketing OS and authenticated Cafe24 connectivity
+      description: Performs a read-only, authenticated Cafe24 probe and returns normalized status codes without raw upstream errors.
+      responses:
+        "200":
+          description: Health check completed. Cafe24 failures are represented by DEGRADED status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+  /api/ai-audit/revenue-reconciliation:
+    get:
+      operationId: getRevenueReconciliation
+      summary: Compare Cafe24 paid amounts with Marketing OS canonical revenue
+      description: Read-only reconciliation for an inclusive date range of at most 31 days.
+      parameters:
+        - $ref: "#/components/parameters/Since"
+        - $ref: "#/components/parameters/Until"
+      responses:
+        "200":
+          description: Revenue reconciliation completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevenueReconciliationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/ai-audit/orders/{orderId}:
+    get:
+      operationId: getSanitizedOrderAudit
+      summary: Audit one Cafe24 order without personal information
+      description: Returns only allowlisted order, item, amount, and applied-rule fields.
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          description: Cafe24 order identifier.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        "200":
+          description: Sanitized order audit completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderAuditResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+components:
+  securitySchemes:
+    InternalToken:
+      type: apiKey
+      in: header
+      name: x-samplas-internal-token
+      description: Render AI_AUDIT_SECRET. Never place the value in this file.
+  parameters:
+    Since:
+      name: since
+      in: query
+      required: true
+      description: Inclusive range start in YYYY-MM-DD format.
+      schema:
+        type: string
+        format: date
+    Until:
+      name: until
+      in: query
+      required: true
+      description: Inclusive range end in YYYY-MM-DD format. Maximum range is 31 days.
+      schema:
+        type: string
+        format: date
+  responses:
+    BadRequest:
+      description: Invalid date range or order identifier.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid internal token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Cafe24 order was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    MethodNotAllowed:
+      description: Only GET is supported.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: Internal request failure.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UpstreamError:
+      description: Cafe24 request failed without exposing the upstream response body.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        category:
+          type:
+            - string
+            - "null"
+        status:
+          type:
+            - integer
+            - "null"
+        code:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: "null"
+        type:
+          type:
+            - string
+            - "null"
+        loggedAt:
+          type: string
+          format: date-time
+      required:
+        - error
+      additionalProperties: false
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - OK
+            - DEGRADED
+        marketingOs:
+          $ref: "#/components/schemas/MarketingOsHealth"
+        cafe24:
+          $ref: "#/components/schemas/Cafe24Health"
+        checkedAt:
+          type: string
+          format: date-time
+      required:
+        - status
+        - marketingOs
+        - cafe24
+        - checkedAt
+      additionalProperties: false
+    MarketingOsHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - OK
+      required:
+        - status
+      additionalProperties: false
+    Cafe24Health:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - OK
+            - ERROR
+        code:
+          type: string
+          enum:
+            - OK
+            - AUTH_FAILED
+            - TOKEN_REFRESH_FAILED
+            - RATE_LIMITED
+            - UPSTREAM_TIMEOUT
+            - CAFE24_UNAVAILABLE
+            - INTERNAL_ERROR
+        responseTimeMs:
+          type: integer
+          minimum: 0
+      required:
+        - status
+        - code
+        - responseTimeMs
+      additionalProperties: false
+    RevenueReconciliationResponse:
+      type: object
+      properties:
+        range:
+          $ref: "#/components/schemas/DateRange"
+        cafe24:
+          $ref: "#/components/schemas/Cafe24Revenue"
+        marketingOs:
+          $ref: "#/components/schemas/MarketingOsRevenue"
+        difference:
+          $ref: "#/components/schemas/RevenueDifference"
+        mismatchedOrders:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/MismatchedOrder"
+      required:
+        - range
+        - cafe24
+        - marketingOs
+        - difference
+        - mismatchedOrders
+      additionalProperties: false
+    DateRange:
+      type: object
+      properties:
+        since:
+          type: string
+          format: date
+        until:
+          type: string
+          format: date
+      required:
+        - since
+        - until
+      additionalProperties: false
+    Cafe24Revenue:
+      type: object
+      properties:
+        orderCount:
+          type: integer
+        grossAmount:
+          type: integer
+        paidAmount:
+          type: integer
+        discountAmount:
+          type: integer
+        pointsUsedAmount:
+          type: integer
+        cancelAmount:
+          type: integer
+        refundAmount:
+          type: integer
+      required:
+        - orderCount
+        - grossAmount
+        - paidAmount
+        - discountAmount
+        - pointsUsedAmount
+        - cancelAmount
+        - refundAmount
+      additionalProperties: false
+    MarketingOsRevenue:
+      type: object
+      properties:
+        canonicalRevenue:
+          type: integer
+        includedOrderCount:
+          type: integer
+        excludedOrderCount:
+          type: integer
+      required:
+        - canonicalRevenue
+        - includedOrderCount
+        - excludedOrderCount
+      additionalProperties: false
+    RevenueDifference:
+      type: object
+      properties:
+        amount:
+          type: integer
+        status:
+          type: string
+          enum:
+            - MATCHED
+            - MISMATCHED
+      required:
+        - amount
+        - status
+      additionalProperties: false
+    MismatchedOrder:
+      type: object
+      properties:
+        order_id:
+          type: string
+        cafe24Amount:
+          type: integer
+        marketingOsAmount:
+          type: integer
+        difference:
+          type: integer
+        rules:
+          type: array
+          items:
+            type: string
+      required:
+        - order_id
+        - cafe24Amount
+        - marketingOsAmount
+        - difference
+        - rules
+      additionalProperties: false
+    OrderAuditResponse:
+      type: object
+      properties:
+        order_id:
+          type: string
+        order_date:
+          type:
+            - string
+            - "null"
+          format: date
+        payment_date:
+          type:
+            - string
+            - "null"
+          format: date
+        order_status:
+          type:
+            - string
+            - "null"
+        gross_amount:
+          type: integer
+        paid_amount:
+          type: integer
+        discount_amount:
+          type: integer
+        points_used_amount:
+          type:
+            - integer
+            - "null"
+        shipping_amount:
+          type: integer
+        cancel_amount:
+          type: integer
+        refund_amount:
+          type: integer
+        marketing_os_amount:
+          type: integer
+        applied_rules:
+          type: array
+          items:
+            type: string
+        difference:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderAuditItem"
+      required:
+        - order_id
+        - order_date
+        - payment_date
+        - order_status
+        - gross_amount
+        - paid_amount
+        - discount_amount
+        - points_used_amount
+        - shipping_amount
+        - cancel_amount
+        - refund_amount
+        - marketing_os_amount
+        - applied_rules
+        - difference
+        - items
+      additionalProperties: false
+    OrderAuditItem:
+      type: object
+      properties:
+        product_no:
+          oneOf:
+            - type: integer
+            - type: string
+            - type: "null"
+        product_code:
+          type:
+            - string
+            - "null"
+        variant_code:
+          type:
+            - string
+            - "null"
+        quantity:
+          type: number
+        gross_amount:
+          type: integer
+        paid_amount:
+          type: integer
+        discount_amount:
+          type: integer
+        applied_rules:
+          type: array
+          items:
+            type: string
+      required:
+        - product_no
+        - product_code
+        - variant_code
+        - quantity
+        - gross_amount
+        - paid_amount
+        - discount_amount
+        - applied_rules
+      additionalProperties: false
