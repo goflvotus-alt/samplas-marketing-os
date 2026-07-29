@@ -62,6 +62,7 @@ const todaySalesCalendarInitialDate = new Date();
 let todaySalesCalendarMonth = `${todaySalesCalendarInitialDate.getFullYear()}-${String(todaySalesCalendarInitialDate.getMonth() + 1).padStart(2, "0")}`;
 let todaySalesCalendarRenderSeq = 0;
 let todayOverviewState = null;
+let todayViewDirty = true;
 // Calendar x Sales Heatmap Phase 1(2026-07-17): 신규 Calendar 화면 상태. Today의
 // todaySalesCalendar*와 완전히 별개 화면(별도 nav)이라 렌더 시퀀스/선택 월을 독립적으로 갖되,
 // 데이터 로딩 로직(월별 온라인/오프라인/Instagram)은 최대한 재사용한다(아래 함수 주석 참고).
@@ -630,6 +631,7 @@ function setActiveView(view, options = {}) {
   if (targetView === "InventoryOverview") renderInventoryWorkspaceView({ reset: true });
   if (targetView === "InventoryIntelligence") renderInventoryIntelligenceView();
   if (targetView === "Calendar") renderCalendarView();
+  if (targetView === "Overview" && todayViewDirty && monthlyData.length) renderTodayView(selectedMonth());
   if (options.updateHash !== false) updateViewHash(targetView, routeHash);
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: options.smooth === false ? "auto" : "smooth" });
   const aliasTarget = routeHash === "annual-report"
@@ -782,10 +784,34 @@ function renderReportsMonth(month, options = {}) {
   renderAnnualArchiveFlow(month, renderSeq);
 }
 
+function todayViewActive() {
+  return Boolean($("#Overview")?.classList.contains("active"));
+}
+
+function setTodayHtml(selector, html) {
+  const target = $(selector);
+  if (target) target.innerHTML = html;
+}
+
+function renderTodayView(data = selectedMonth()) {
+  if (!todayViewActive()) {
+    todayViewDirty = true;
+    return;
+  }
+  todayViewDirty = false;
+  const modeBadge = $("#dataModeBadge");
+  if (modeBadge) modeBadge.textContent = sourceLabel(data);
+  renderKpis(data);
+  renderTodaySalesCalendar(todaySalesCalendarMonth);
+  renderOverviewLiveData(data);
+}
+
 function renderKpis(data) {
+  const target = $("#kpiGrid");
+  if (!target) return;
   if (data.error) {
     const status = statusTextForError(data);
-    $("#kpiGrid").innerHTML = [
+    target.innerHTML = [
       ["데이터 오류", status, data.error],
       ["월", data.month || "-", "연결 상태를 확인하세요"],
       ["표시 상태", "0으로 대체 안 함", "실제 데이터가 없으면 원인을 표시합니다."]
@@ -802,24 +828,25 @@ function renderKpis(data) {
     ["선택 기간 주문", "확인 중", "Cafe24 확인 중"],
     ["선택 기간 인기상품", "-", "Cafe24 확인 중"]
   ];
-  $("#kpiGrid").innerHTML = items.map(([label, value, delta]) => (
+  target.innerHTML = items.map(([label, value, delta]) => (
     `<article class="kpi"><span>${label}</span><strong>${value}</strong><p class="delta">${delta}</p></article>`
   )).join("");
 }
 
 async function renderOverviewLiveData(data, renderSeq) {
-  const target = $("#overviewLiveData");
-  const supportTarget = $("#overviewLiveSupport");
-  if (!target || !supportTarget) return;
-  target.innerHTML = `<article class="action-item"><strong>선택 기간 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`;
-  supportTarget.innerHTML = "";
-  $("#todayBriefProgress").innerHTML = todayBriefProgressBar([]);
-  $("#todayBriefing").innerHTML = `<article class="today-brief-card warning"><div class="today-brief-head"><span>!</span><strong>오늘 해야 할 일을 정리 중입니다.</strong></div><p>연결 상태와 성과 데이터를 확인하고 있습니다.</p></article>`;
-  $("#todaySummaryBriefing").innerHTML = `<article class="action-item"><strong>오늘 요약 확인 중</strong><p>검증된 Commerce / Marketing 데이터를 정리합니다.</p></article>`;
-  $("#todaySummarySections").innerHTML = `<article class="action-item"><strong>섹션 요약 확인 중</strong><p>대표 숫자를 불러오고 있습니다.</p></article>`;
-  $("#actions").innerHTML = `<article class="home-action-card warn"><span>!</span><div><strong>확인 중</strong><p>중요 알림을 정리합니다.</p></div></article>`;
-  $("#nextActions").innerHTML = homeGoalCards();
-  $("#insightList").innerHTML = homeActivityCards({ status: {}, meta: {}, cafe: {}, data });
+  if (!todayViewActive()) {
+    todayViewDirty = true;
+    return;
+  }
+  setTodayHtml("#overviewLiveData", `<article class="action-item"><strong>선택 기간 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`);
+  setTodayHtml("#overviewLiveSupport", "");
+  setTodayHtml("#todayBriefProgress", todayBriefProgressBar([]));
+  setTodayHtml("#todayBriefing", `<article class="today-brief-card warning"><div class="today-brief-head"><span>!</span><strong>오늘 해야 할 일을 정리 중입니다.</strong></div><p>연결 상태와 성과 데이터를 확인하고 있습니다.</p></article>`);
+  setTodayHtml("#todaySummaryBriefing", `<article class="action-item"><strong>오늘 요약 확인 중</strong><p>검증된 Commerce / Marketing 데이터를 정리합니다.</p></article>`);
+  setTodayHtml("#todaySummarySections", `<article class="action-item"><strong>섹션 요약 확인 중</strong><p>대표 숫자를 불러오고 있습니다.</p></article>`);
+  setTodayHtml("#actions", `<article class="home-action-card warn"><span>!</span><div><strong>확인 중</strong><p>중요 알림을 정리합니다.</p></div></article>`);
+  setTodayHtml("#nextActions", homeGoalCards());
+  setTodayHtml("#insightList", homeActivityCards({ status: {}, meta: {}, cafe: {}, data }));
 
   const range = operationsDateRange(data);
   const startDate = range.since;
@@ -833,6 +860,10 @@ async function renderOverviewLiveData(data, renderSeq) {
     getJson("/api/contents/cardnews-status", 6000)
   ]);
   if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
+  if (!todayViewActive()) {
+    todayViewDirty = true;
+    return;
+  }
   const contentData = {
     ...data,
     source: contentRange.error ? data.source : contentRange.source || data.source,
@@ -863,17 +894,19 @@ async function renderOverviewLiveData(data, renderSeq) {
   renderHealthBanner({ instagram: contentData, meta, cafe });
   renderTodaySummary({ data: contentData, cafe, meta, comparison, totalSales });
   todayOverviewState = { data, meta, cafe, contentData, contentRangeError, posts, topProduct, avgSaveRate, followerDelta, range };
-  $("#overviewRangeEyebrow").textContent = range.label;
-  $("#overviewRangeTitle").textContent = `${range.label} KPI`;
+  const rangeEyebrow = $("#overviewRangeEyebrow");
+  const rangeTitle = $("#overviewRangeTitle");
+  if (rangeEyebrow) rangeEyebrow.textContent = range.label;
+  if (rangeTitle) rangeTitle.textContent = `${range.label} KPI`;
   renderTodayOverviewCards();
 
   currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account: a, topSaved, topCampaign, topProduct, roas });
   renderTodayBriefing();
 
   const actions = buildOverviewActions({ data, meta, cafe, account: a, topSaved, roas });
-  $("#actions").innerHTML = actions.map((item) => homeActionCard(item)).join("");
-  $("#nextActions").innerHTML = homeGoalCards({ cafeTotals: { ...cafeTotals, orderAmount: cafeTotals.paidAmount }, metaTotals: { ...metaTotals, spend: metaCanonical.reportingSpend, purchaseValue: metaCanonical.reportingPurchaseValue }, postCount, followerDelta });
-  $("#insightList").innerHTML = homeActivityCards({ status, meta, cafe, data });
+  setTodayHtml("#actions", actions.map((item) => homeActionCard(item)).join(""));
+  setTodayHtml("#nextActions", homeGoalCards({ cafeTotals: { ...cafeTotals, orderAmount: cafeTotals.paidAmount }, metaTotals: { ...metaTotals, spend: metaCanonical.reportingSpend, purchaseValue: metaCanonical.reportingPurchaseValue }, postCount, followerDelta }));
+  setTodayHtml("#insightList", homeActivityCards({ status, meta, cafe, data }));
 }
 
 function todayCanonicalMetaTotals(meta = {}, rangeLabel = "") {
@@ -891,29 +924,33 @@ function todayCanonicalMetaTotals(meta = {}, rangeLabel = "") {
 
 function renderTodayOverviewCards() {
   if (!todayOverviewState) return;
+  if (!todayViewActive()) {
+    todayViewDirty = true;
+    return;
+  }
   const { data, meta, cafe, contentData, contentRangeError, posts, topProduct, avgSaveRate, followerDelta, range } = todayOverviewState;
   const metaCanonical = todayCanonicalMetaTotals(meta, `${range.since} ~ ${range.until}`);
   const roas = metaCanonical.reportingSpend > 0 ? metaCanonical.reportingPurchaseValue / metaCanonical.reportingSpend : null;
   const cafeTotals = cafe.totals || {};
   const a = contentData.account || {};
   const postCount = posts.length;
-  $("#kpiGrid").innerHTML = [
+  setTodayHtml("#kpiGrid", [
     homeTopMetric("선택 기간 광고비", meta.error ? "확인 필요" : apiWon(metaCanonical.reportingSpend), meta.error ? "Meta 연결 후 표시" : "Marketing canonical 기준", cardBadge("meta", meta, hasApiValue(metaCanonical.reportingSpend))),
     homeTopMetric("선택 기간 주문", cafe.error ? "데이터 없음" : `${apiNum(cafeTotals.orderCount)}건`, cafe.error ? "Cafe24 연결 후 표시" : "정상 주문", cardBadge("cafe24", cafe, hasApiValue(cafeTotals.orderCount))),
     homeTopMetric("선택 기간 인기상품", topProduct?.productName || "데이터 없음", topProduct ? `${apiNum(topProduct.quantity)}개 · ${apiWon(topProduct.itemAmount)}` : "판매 상품 데이터 없음", cardBadge("cafe24", cafe, Boolean(topProduct)))
-  ].join("");
+  ].join(""));
 
-  $("#overviewLiveData").innerHTML = [
+  setTodayHtml("#overviewLiveData", [
     homeMonthPrimaryCard("매출", cafe.error ? "연결 필요" : apiWon(cafeTotals.paidAmount), cafe.error ? "Cafe24 확인 필요" : `주문 ${apiNum(cafeTotals.orderCount)}건`, cardBadge("cafe24", cafe, hasApiValue(cafeTotals.paidAmount))),
     homeMonthPrimaryCard("ROAS", roas === null ? "확인 중" : multiple(roas), "Meta canonical 구매값 / 광고비", cardBadge("meta", meta, roas !== null)),
     homeMonthPrimaryCard("평균 저장률", contentRangeError ? "확인 필요" : posts.length ? pct(avgSaveRate) : "데이터 없음", contentRangeError ? "Instagram 게시물 데이터 오류" : posts.length ? "콘텐츠 평균" : "콘텐츠 데이터 없음", cardBadge("instagram", contentData, posts.length > 0 && !contentRangeError))
-  ].join("");
+  ].join(""));
 
-  $("#overviewLiveSupport").innerHTML = [
+  setTodayHtml("#overviewLiveSupport", [
     homeMonthSupportCard("광고비", meta.error ? "확인 필요" : apiWon(metaCanonical.reportingSpend), meta.error ? "Meta 확인 필요" : "Marketing canonical 기준", cardBadge("meta", meta, hasApiValue(metaCanonical.reportingSpend))),
     homeMonthSupportCard("팔로워 증가", hasApiValue(followerDelta) ? `${apiNum(followerDelta)}명` : "계산 불가", `현재 ${apiNum(a.followers)}명`, cardBadge("instagram", contentData, hasApiValue(followerDelta))),
     homeMonthSupportCard("콘텐츠 개수", contentRangeError ? "확인 필요" : `${apiNum(postCount)}개`, contentRangeError ? "선택 기간 게시물 데이터 오류" : data.postsScope === "recent_media_fallback" ? "최근 미디어 기준" : "선택 기간 기준", cardBadge("instagram", contentData, postCount > 0 && !contentRangeError))
-  ].join("");
+  ].join(""));
 }
 
 function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSaved, topCampaign, topProduct, roas }) {
@@ -1106,7 +1143,7 @@ function renderTodayBriefing() {
   const target = $("#todayBriefing");
   if (!target) return;
   target.innerHTML = currentTodayBriefingItems.map((item) => todayBriefCard(item)).join("");
-  $("#todayBriefProgress").innerHTML = todayBriefProgressBar(currentTodayBriefingItems);
+  setTodayHtml("#todayBriefProgress", todayBriefProgressBar(currentTodayBriefingItems));
 }
 
 function todayBriefProgressBar(items) {
@@ -1332,6 +1369,8 @@ function explainPost(post) {
 }
 
 function renderInsights(data) {
+  const target = $("#insightList");
+  if (!target) return;
   const posts = data.posts || [];
   const a = data.account || {};
   const topReach = topPosts(posts, (post) => post.reach, 1)[0];
@@ -1343,7 +1382,7 @@ function renderInsights(data) {
     topReach ? `도달 1위는 "${esc(topReach.title)}"입니다. 도달 ${num(topReach.reach)}회입니다.` : "게시물별 데이터가 없는 월입니다.",
     topSave ? `저장 1위는 "${esc(topSave.title)}"입니다. 저장 ${num(topSave.saves)}회, 카드뉴스 평균 저장률 ${pct(cardAvgSave)}입니다.` : "저장/공유 분석은 게시물 데이터가 필요합니다."
   ];
-  $("#insightList").innerHTML = notes.map((note) => `<div class="insight">${note}</div>`).join("");
+  target.innerHTML = notes.map((note) => `<div class="insight">${note}</div>`).join("");
 }
 
 function renderPurposeRadar(posts) {
@@ -6378,10 +6417,14 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing, totalSale
   if (comparison !== undefined && comparison !== null) todaySummaryState.comparison = comparison;
   if (marketing !== undefined && marketing !== null) todaySummaryState.marketing = marketing;
   if (totalSales !== undefined && totalSales !== null) todaySummaryState.totalSales = totalSales;
+  if (!todayViewActive()) {
+    todayViewDirty = true;
+    return;
+  }
 
   const briefingTarget = $("#todaySummaryBriefing");
   const sectionsTarget = $("#todaySummarySections");
-  if (!briefingTarget || !sectionsTarget) return;
+  if (!briefingTarget && !sectionsTarget) return;
 
   const state = todaySummaryState;
   const cafeTotals = state.cafe?.totals || {};
@@ -6397,13 +6440,13 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing, totalSale
     ? "확인 필요"
     : `관리 필요 캠페인 ${apiNum(marketingState.briefingCount)}건`;
 
-  briefingTarget.innerHTML = [
+  if (briefingTarget) briefingTarget.innerHTML = [
     salesCompareCard("Commerce", comparisonState.comparable ? `오차 ${comparisonState.mismatchRate < 1 ? comparisonState.mismatchRate.toFixed(1) : Math.round(comparisonState.mismatchRate)}%` : "비교 불가", "기존 Sales 비교 결과", { status: !comparisonState.comparable, badge: { label: "Commerce", tone: "neutral" } }),
     salesCompareCard("Marketing", marketingBriefingValue, marketingState.narrative || "관리 필요 캠페인 결과를 확인 중입니다.", { badge: { label: "Marketing", tone: "neutral" } }),
     salesCompareCard("Meta Ads Cache", metaAge || "확인 필요", "기존 cache freshness 기준", { status: !metaAge, badge: { label: "Meta", tone: "cache" } })
   ].join("");
 
-  sectionsTarget.innerHTML = [
+  if (sectionsTarget) sectionsTarget.innerHTML = [
     `<article class="action-item sales-compare-card"><span>${esc(salesInfo.label)}</span><strong>${esc(salesInfo.value)}</strong><p>${esc(salesInfo.note)}</p><button class="today-jump-button" type="button" data-jump-view="Sales">Commerce 보기</button></article>`,
     `<article class="action-item sales-compare-card"><span>Marketing</span><strong>${marketingValue}</strong><p>광고비 / 실제 매출</p><button class="today-jump-button" type="button" data-jump-view="Advertising">Marketing 보기</button></article>`,
     `<article class="action-item sales-compare-card"><span>Content</span><strong>${apiNum(contentViews)}</strong><p>전체 게시물 조회 합산</p><button class="today-jump-button" type="button" data-jump-view="Content">Content 보기</button></article>`,
@@ -8489,11 +8532,9 @@ function renderAll() {
   resetSharedJsonRequests();
   const data = selectedMonth();
   reportsMonth = data.month;
-  $("#dataModeBadge").textContent = sourceLabel(data);
   renderMonthRail();
-  renderKpis(data);
-  renderTodaySalesCalendar(todaySalesCalendarMonth);
-  renderOverviewLiveData(data);
+  if (todayViewActive()) renderTodayView(data);
+  else todayViewDirty = true;
   renderReportsMonth(reportsMonth);
   renderContentTabs();
   renderContentOperations(data);
@@ -10852,7 +10893,8 @@ function bind() {
     const isCustom = operationsRange === "custom";
     $("#operationsCustomRange")?.toggleAttribute("hidden", !isCustom);
     const renderSeq = renderOperationsSections();
-    renderOverviewLiveData(selectedMonth(), renderSeq);
+    if (todayViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
+    else todayViewDirty = true;
     if ($("#Clients")?.classList.contains("active")) refreshClientsView();
   });
   $("#operationsSince")?.addEventListener("change", (event) => {
@@ -10871,7 +10913,8 @@ function bind() {
     operationsRangeCustomSince = nextSince;
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
       const renderSeq = renderOperationsSections();
-      renderOverviewLiveData(selectedMonth(), renderSeq);
+      if (todayViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
+      else todayViewDirty = true;
       if ($("#Clients")?.classList.contains("active")) refreshClientsView();
     }
   });
@@ -10891,7 +10934,8 @@ function bind() {
     operationsRangeCustomUntil = nextUntil;
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
       const renderSeq = renderOperationsSections();
-      renderOverviewLiveData(selectedMonth(), renderSeq);
+      if (todayViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
+      else todayViewDirty = true;
       if ($("#Clients")?.classList.contains("active")) refreshClientsView();
     }
   });
