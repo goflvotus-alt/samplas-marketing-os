@@ -12,6 +12,7 @@ import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fet
 import {
   buildAiAuditClientsOverview,
   buildAiAuditHealth,
+  buildAiAuditInventoryOverview,
   buildAiAuditOrder,
   buildAiAuditRevenueReconciliation,
   isAiAuditAuthorized,
@@ -246,6 +247,18 @@ const server = createServer(async (req, res) => {
         until: url.searchParams.get("until") || undefined
       });
       return json(res, buildAiAuditClientsOverview(overview));
+    }
+    if (url.pathname === "/api/ai-audit/inventory") {
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      const inventoryUrl = new URL(`http://127.0.0.1:${port}/api/inventory/overview`);
+      for (const key of ["brand", "status", "limit"]) {
+        const value = url.searchParams.get(key);
+        if (value !== null) inventoryUrl.searchParams.set(key, value);
+      }
+      const response = await fetch(inventoryUrl);
+      const overview = await response.json();
+      if (!response.ok) return json(res, { error: "Inventory overview unavailable" }, 502);
+      return json(res, buildAiAuditInventoryOverview(overview));
     }
     if (url.pathname === "/api/ai-audit/revenue-reconciliation") {
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);

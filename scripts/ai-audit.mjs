@@ -139,6 +139,74 @@ export function buildAiAuditClientsOverview(overview = {}) {
   };
 }
 
+export function buildAiAuditInventoryOverview(overview = {}) {
+  if (!overview.available) {
+    return {
+      ok: Boolean(overview.ok),
+      available: false,
+      reason: overview.reason || null
+    };
+  }
+  return {
+    ok: Boolean(overview.ok),
+    available: true,
+    generatedAt: overview.generatedAt ?? null,
+    lowStockThreshold: overview.lowStockThreshold,
+    inventoryPolicy: {
+      sourceOfTruth: overview.inventoryPolicy?.sourceOfTruth,
+      cafe24InventoryUsed: overview.inventoryPolicy?.cafe24InventoryUsed,
+      qqqNegativeMeansEstimatedSales: overview.inventoryPolicy?.qqqNegativeMeansEstimatedSales,
+      zeroStockMeaning: overview.inventoryPolicy?.zeroStockMeaning,
+      locationMode: overview.inventoryPolicy?.locationMode
+    },
+    coverage: {
+      totalItems: overview.coverage?.totalItems,
+      stockKnownItems: overview.coverage?.stockKnownItems,
+      stockUnknownItems: overview.coverage?.stockUnknownItems,
+      locationKnownItems: overview.coverage?.locationKnownItems,
+      locationUnknownItems: overview.coverage?.locationUnknownItems
+    },
+    summary: Object.fromEntries([
+      "totalKnownStock", "inStockSkuCount", "depletedSkuCount", "negativeReviewSkuCount",
+      "unknownStockSkuCount", "lowStockCandidateCount", "qqqEstimatedSoldQuantity",
+      "qqqEstimatedSoldSkuCount", "qqqDepletedRecordSkuCount", "qqqRemainingSkuCount",
+      "qqqUnknownSkuCount", "totalSkuCount", "generalSkuCount", "adminCodeSkuCount",
+      "qqqSkuCount", "locationKnownItems", "locationUnknownItems"
+    ].map((key) => [key, overview.summary?.[key]])),
+    brandRollup: (overview.brandRollup || []).map((row) => ({
+      brandKey: row.brandKey,
+      brandName: row.brandName,
+      brandCanonical: row.brandCanonical,
+      totalSku: row.totalSku,
+      knownStock: row.knownStock,
+      depletedCount: row.depletedCount,
+      negativeReviewCount: row.negativeReviewCount,
+      lowStockCandidateCount: row.lowStockCandidateCount,
+      qqqEstimatedSoldQuantity: row.qqqEstimatedSoldQuantity,
+      qqqSkuCount: row.qqqSkuCount,
+      recentSalesQty: row.recentSalesQty
+    })),
+    itemsTotal: overview.itemsTotal,
+    limit: overview.limit,
+    items: (overview.items || []).map((item) => ({
+      brandKey: item.brandKey,
+      brandName: item.brandName,
+      brandCanonical: item.brandCanonical,
+      productName: item.productName,
+      specification: item.specification,
+      prodCd: item.prodCd,
+      productType: item.productType,
+      stockQuantity: item.stockQuantity,
+      status: item.status,
+      lowStockCandidate: item.lowStockCandidate,
+      estimatedSoldQuantity: item.estimatedSoldQuantity,
+      recentSalesQty: item.recentSalesQty,
+      lastSaleDate: item.lastSaleDate,
+      registryLinked: item.registryLinked
+    }))
+  };
+}
+
 export function validateAiAuditRange(since, until) {
   const start = dateValue(since);
   const end = dateValue(until);

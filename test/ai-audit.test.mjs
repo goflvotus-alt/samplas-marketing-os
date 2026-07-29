@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildAiAuditClientsOverview,
   buildAiAuditHealth,
+  buildAiAuditInventoryOverview,
   buildAiAuditOrder,
   buildAiAuditRevenueReconciliation,
   isAiAuditAuthorized,
@@ -147,6 +148,52 @@ test("AI audit clients exposes overview totals and TOP10 without private details
   assert.deepEqual(allKeys(result).filter((key) => /phone|email|address|contact|alias|token|secret|cookie|authorization/i.test(key)), []);
 });
 
+test("AI audit inventory exposes calculated overview fields without source payloads", () => {
+  const result = buildAiAuditInventoryOverview({
+    ok: true,
+    available: true,
+    source: "/private/work/ecount-inventory/latest.json",
+    generatedAt: "2026-07-29T00:00:00.000Z",
+    lowStockThreshold: 3,
+    inventoryPolicy: {
+      sourceOfTruth: "ECOUNT",
+      cafe24InventoryUsed: false,
+      qqqNegativeMeansEstimatedSales: true,
+      zeroStockMeaning: "depleted_candidate",
+      locationMode: "unavailable"
+    },
+    coverage: { totalItems: 1, stockKnownItems: 1, stockUnknownItems: 0, locationKnownItems: 0, locationUnknownItems: 1 },
+    summary: { totalSkuCount: 1, negativeReviewSkuCount: 1 },
+    brandRollup: [{ brandKey: "xlim", brandName: "XLIM", brandCanonical: true, totalSku: 1, knownStock: 0, depletedCount: 0, negativeReviewCount: 1, lowStockCandidateCount: 0, qqqEstimatedSoldQuantity: 0, qqqSkuCount: 0, recentSalesQty: 1 }],
+    itemsTotal: 1,
+    limit: 10,
+    items: [{
+      brandKey: "xlim",
+      brandName: "XLIM",
+      brandCanonical: true,
+      productName: "제품",
+      rawProductName: "원본 payload",
+      specification: "M",
+      prodCd: "P1",
+      productType: "general",
+      barcode: "private",
+      stockQuantity: -1,
+      status: "negative_review",
+      lowStockCandidate: false,
+      estimatedSoldQuantity: null,
+      recentSalesQty: 1,
+      lastSaleDate: "2026-07-28",
+      registryLinked: true
+    }]
+  });
+  assert.equal(result.summary.negativeReviewSkuCount, 1);
+  assert.equal(result.items[0].status, "negative_review");
+  assert.equal("source" in result, false);
+  assert.equal("rawProductName" in result.items[0], false);
+  assert.equal("barcode" in result.items[0], false);
+  assert.deepEqual(allKeys(result).filter((key) => /token|secret|environment|filePath|rawPayload/i.test(key)), []);
+});
+
 test("AI audit date range requires valid dates and allows at most 31 inclusive days", () => {
   assert.throws(() => validateAiAuditRange(null, "2026-07-29"), { status: 400 });
   assert.throws(() => validateAiAuditRange("2026-02-30", "2026-03-01"), { status: 400 });
@@ -201,6 +248,7 @@ test("AI audit routes explicitly return 401 and missing orders return 404", asyn
   assert.equal(source.includes('return json(res, { error: "Unauthorized" }, 401);'), true);
   assert.equal(source.includes('if (url.pathname === "/api/ai-audit/health") {'), true);
   assert.equal(source.includes('if (url.pathname === "/api/ai-audit/clients") {'), true);
+  assert.equal(source.includes('if (url.pathname === "/api/ai-audit/inventory") {'), true);
   assert.equal(source.includes("return json(res, data);"), true);
   assert.equal(source.includes('if (!orderId || orderId.length > 100) return json(res, { error: "Invalid order ID" }, 400);'), true);
   assert.equal(source.includes('if (!order) return json(res, { error: "Order Not Found" }, 404);'), true);

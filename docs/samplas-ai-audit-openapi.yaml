@@ -57,6 +57,57 @@ paths:
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/ai-audit/inventory:
+    get:
+      operationId: getInventoryOverview
+      summary: Read the existing Marketing OS Inventory overview
+      description: Returns the existing ECOUNT-based Inventory Overview calculation with an explicit allowlist and no source payloads or internal file paths.
+      parameters:
+        - name: brand
+          in: query
+          required: false
+          description: Existing Inventory brand key.
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: Existing Inventory status filter.
+          schema:
+            type: string
+            enum:
+              - all
+              - in_stock
+              - depleted_candidate
+              - negative_review
+              - unknown
+              - qqq_estimated_sale
+              - qqq_depleted_record
+              - qqq_remaining
+              - qqq_unknown
+              - location_unknown
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of filtered item rows returned.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Sanitized Inventory overview or an available=false response.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/InventoryOverviewResponse"
+                  - $ref: "#/components/schemas/InventoryUnavailableResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
   /api/ai-audit/revenue-reconciliation:
     get:
       operationId: getRevenueReconciliation
@@ -409,6 +460,263 @@ components:
         - pointsUsedOrderCount
         - pointsUsedFieldUnavailableOrderCount
         - shippingFieldUnavailableOrderCount
+      additionalProperties: false
+    InventoryUnavailableResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        available:
+          type: boolean
+          const: false
+        reason:
+          type:
+            - string
+            - "null"
+      required:
+        - ok
+        - available
+        - reason
+      additionalProperties: false
+    InventoryOverviewResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        available:
+          type: boolean
+          const: true
+        generatedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        lowStockThreshold:
+          type: integer
+        inventoryPolicy:
+          $ref: "#/components/schemas/InventoryPolicy"
+        coverage:
+          $ref: "#/components/schemas/InventoryCoverage"
+        summary:
+          $ref: "#/components/schemas/InventorySummary"
+        brandRollup:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryBrandRollup"
+        itemsTotal:
+          type: integer
+        limit:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryItem"
+      required:
+        - ok
+        - available
+        - generatedAt
+        - lowStockThreshold
+        - inventoryPolicy
+        - coverage
+        - summary
+        - brandRollup
+        - itemsTotal
+        - limit
+        - items
+      additionalProperties: false
+    InventoryPolicy:
+      type: object
+      properties:
+        sourceOfTruth:
+          type: string
+        cafe24InventoryUsed:
+          type: boolean
+        qqqNegativeMeansEstimatedSales:
+          type: boolean
+        zeroStockMeaning:
+          type: string
+        locationMode:
+          type: string
+      required:
+        - sourceOfTruth
+        - cafe24InventoryUsed
+        - qqqNegativeMeansEstimatedSales
+        - zeroStockMeaning
+        - locationMode
+      additionalProperties: false
+    InventoryCoverage:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+        stockKnownItems:
+          type: integer
+        stockUnknownItems:
+          type: integer
+        locationKnownItems:
+          type: integer
+        locationUnknownItems:
+          type: integer
+      required:
+        - totalItems
+        - stockKnownItems
+        - stockUnknownItems
+        - locationKnownItems
+        - locationUnknownItems
+      additionalProperties: false
+    InventorySummary:
+      type: object
+      properties:
+        totalKnownStock:
+          type: number
+        inStockSkuCount:
+          type: integer
+        depletedSkuCount:
+          type: integer
+        negativeReviewSkuCount:
+          type: integer
+        unknownStockSkuCount:
+          type: integer
+        lowStockCandidateCount:
+          type: integer
+        qqqEstimatedSoldQuantity:
+          type: number
+        qqqEstimatedSoldSkuCount:
+          type: integer
+        qqqDepletedRecordSkuCount:
+          type: integer
+        qqqRemainingSkuCount:
+          type: integer
+        qqqUnknownSkuCount:
+          type: integer
+        totalSkuCount:
+          type: integer
+        generalSkuCount:
+          type: integer
+        adminCodeSkuCount:
+          type: integer
+        qqqSkuCount:
+          type: integer
+        locationKnownItems:
+          type: integer
+        locationUnknownItems:
+          type: integer
+      required:
+        - totalKnownStock
+        - inStockSkuCount
+        - depletedSkuCount
+        - negativeReviewSkuCount
+        - unknownStockSkuCount
+        - lowStockCandidateCount
+        - qqqEstimatedSoldQuantity
+        - qqqEstimatedSoldSkuCount
+        - qqqDepletedRecordSkuCount
+        - qqqRemainingSkuCount
+        - qqqUnknownSkuCount
+        - totalSkuCount
+        - generalSkuCount
+        - adminCodeSkuCount
+        - qqqSkuCount
+        - locationKnownItems
+        - locationUnknownItems
+      additionalProperties: false
+    InventoryBrandRollup:
+      type: object
+      properties:
+        brandKey:
+          type: string
+        brandName:
+          type: string
+        brandCanonical:
+          type: boolean
+        totalSku:
+          type: integer
+        knownStock:
+          type: number
+        depletedCount:
+          type: integer
+        negativeReviewCount:
+          type: integer
+        lowStockCandidateCount:
+          type: integer
+        qqqEstimatedSoldQuantity:
+          type: number
+        qqqSkuCount:
+          type: integer
+        recentSalesQty:
+          type: number
+      required:
+        - brandKey
+        - brandName
+        - brandCanonical
+        - totalSku
+        - knownStock
+        - depletedCount
+        - negativeReviewCount
+        - lowStockCandidateCount
+        - qqqEstimatedSoldQuantity
+        - qqqSkuCount
+        - recentSalesQty
+      additionalProperties: false
+    InventoryItem:
+      type: object
+      properties:
+        brandKey:
+          type: string
+        brandName:
+          type: string
+        brandCanonical:
+          type: boolean
+        productName:
+          type: string
+        specification:
+          type:
+            - string
+            - "null"
+        prodCd:
+          type: string
+        productType:
+          type: string
+          enum:
+            - general
+            - admin_code
+            - qqq
+        stockQuantity:
+          type:
+            - number
+            - "null"
+        status:
+          type: string
+        lowStockCandidate:
+          type: boolean
+        estimatedSoldQuantity:
+          type:
+            - number
+            - "null"
+        recentSalesQty:
+          type: number
+        lastSaleDate:
+          type:
+            - string
+            - "null"
+          format: date
+        registryLinked:
+          type: boolean
+      required:
+        - brandKey
+        - brandName
+        - brandCanonical
+        - productName
+        - specification
+        - prodCd
+        - productType
+        - stockQuantity
+        - status
+        - lowStockCandidate
+        - estimatedSoldQuantity
+        - recentSalesQty
+        - lastSaleDate
+        - registryLinked
       additionalProperties: false
     RevenueReconciliationResponse:
       type: object
