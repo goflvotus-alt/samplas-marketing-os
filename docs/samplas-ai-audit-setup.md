@@ -16,6 +16,7 @@ Custom GPT
 - Order Audit: 주문 한 건의 상품·할인·취소·제외 규칙을 개인정보 없이 조회
 - Clients Overview: 기존 Marketing OS의 요약·유형별 집계·Stylist/Press/FF TOP10 조회
 - Inventory Overview: 기존 ECOUNT 기반 재고 요약·브랜드 집계·상태별 품목 조회
+- Commerce Overview: 기존 Cafe24 canonical Commerce 요약·브랜드/상품 TOP10 조회
 
 현재 Meta, Instagram, ECOUNT 전체 분석은 지원하지 않는다.
 
@@ -49,6 +50,10 @@ Cafe24 연결 상태 확인해줘.
 QQQ 음수 재고 보여줘.
 
 음수 재고 TOP10 알려줘.
+
+2026-07-01부터 2026-07-28까지 Commerce 현황을 알려줘.
+
+2026-07-01부터 2026-07-28까지 XLIM Commerce 현황을 알려줘.
 ```
 
 ## 보안

@@ -207,6 +207,70 @@ export function buildAiAuditInventoryOverview(overview = {}) {
   };
 }
 
+export function buildAiAuditCommerceOverview(diagnostics = {}, brand = "") {
+  const brandFilter = String(brand || "").trim();
+  const normalizedFilter = brandFilter.toLowerCase();
+  const matchesBrand = (row = {}) => !normalizedFilter || [
+    row.brand_code,
+    row.brand_name,
+    row.manufacturer_name
+  ].some((value) => String(value || "").toLowerCase() === normalizedFilter);
+  const brands = (diagnostics.brands || []).filter(matchesBrand);
+  const products = (diagnostics.products || []).filter(matchesBrand);
+  const selectedBrand = normalizedFilter && brands.length === 1 ? brands[0] : null;
+  const totals = diagnostics.totals || {};
+  const summary = selectedBrand ? {
+    orderCount: selectedBrand.orderCount,
+    quantitySold: selectedBrand.quantitySold,
+    paidAmount: selectedBrand.sales?.paidAmount,
+    grossAmount: selectedBrand.sales?.grossAmount,
+    averageOrderValue: selectedBrand.orderCount ? selectedBrand.sales?.paidAmount / selectedBrand.orderCount : 0
+  } : {
+    orderCount: totals.orderCount,
+    quantitySold: totals.quantitySold,
+    paidAmount: totals.paidAmount,
+    grossAmount: totals.sales?.grossAmount,
+    averageOrderValue: totals.averageOrderValue
+  };
+  const brandRow = (row = {}) => ({
+    brandCode: row.brand_code,
+    brandName: row.brand_name,
+    orderCount: row.orderCount,
+    quantitySold: row.quantitySold,
+    grossAmount: row.sales?.grossAmount,
+    paidAmount: row.sales?.paidAmount,
+    discountAmount: row.sales?.discountAmount
+  });
+  const productRow = (row = {}) => ({
+    productNo: row.productNo,
+    productCode: row.productCode,
+    productName: row.productName,
+    brandCode: row.brand_code,
+    brandName: row.brand_name,
+    orderCount: row.orderCount,
+    quantitySold: row.quantitySold,
+    grossAmount: row.sales?.grossAmount,
+    paidAmount: row.sales?.paidAmount,
+    discountAmount: row.sales?.discountAmount
+  });
+  return {
+    period: {
+      since: diagnostics.period?.since,
+      until: diagnostics.period?.until
+    },
+    summary,
+    brandTop10: brands.map(brandRow).sort((left, right) => Number(right.paidAmount || 0) - Number(left.paidAmount || 0)).slice(0, 10),
+    productTop10: products.map(productRow).sort((left, right) => Number(right.paidAmount || 0) - Number(left.paidAmount || 0)).slice(0, 10),
+    meta: {
+      brandFilter: brandFilter || null,
+      matchedBrandCount: brands.length,
+      excludedOrderCount: diagnostics.excludedOrderCount,
+      reconciliationMatched: diagnostics.reconciliation?.matched,
+      reconciliationDifference: diagnostics.reconciliation?.difference
+    }
+  };
+}
+
 export function validateAiAuditRange(since, until) {
   const start = dateValue(since);
   const end = dateValue(until);

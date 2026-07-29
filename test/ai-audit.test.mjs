@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildAiAuditCommerceOverview,
   buildAiAuditClientsOverview,
   buildAiAuditHealth,
   buildAiAuditInventoryOverview,
@@ -194,6 +195,53 @@ test("AI audit inventory exposes calculated overview fields without source paylo
   assert.deepEqual(allKeys(result).filter((key) => /token|secret|environment|filePath|rawPayload/i.test(key)), []);
 });
 
+test("AI audit commerce reuses canonical diagnostics with brand filtering and no private payloads", () => {
+  const result = buildAiAuditCommerceOverview({
+    period: { since: "2026-07-01", until: "2026-07-28" },
+    source: "/private/cache.json",
+    totals: {
+      orderCount: 2,
+      quantitySold: 3,
+      paidAmount: 2700,
+      averageOrderValue: 1350,
+      sales: { grossAmount: 3000 }
+    },
+    brands: [{
+      brand_code: "B1",
+      brand_name: "BRAND",
+      manufacturer_name: "BRAND",
+      orderCount: 2,
+      quantitySold: 3,
+      sales: { grossAmount: 3000, paidAmount: 2700, discountAmount: 300 },
+      orderHistory: [{ billing_name: "비공개" }]
+    }],
+    products: [{
+      productNo: "1",
+      productCode: "P1",
+      productName: "상품",
+      brand_code: "B1",
+      brand_name: "BRAND",
+      orderCount: 2,
+      quantitySold: 3,
+      sales: { grossAmount: 3000, paidAmount: 2700, discountAmount: 300 },
+      rawPayload: { token: "secret" }
+    }],
+    excludedOrderCount: 1,
+    reconciliation: { matched: true, difference: 0 }
+  }, "B1");
+  assert.deepEqual(result.summary, {
+    orderCount: 2,
+    quantitySold: 3,
+    paidAmount: 2700,
+    grossAmount: 3000,
+    averageOrderValue: 1350
+  });
+  assert.equal(result.brandTop10.length, 1);
+  assert.equal(result.productTop10.length, 1);
+  assert.equal("source" in result, false);
+  assert.deepEqual(allKeys(result).filter((key) => /phone|email|address|token|secret|environment|filePath|rawPayload/i.test(key)), []);
+});
+
 test("AI audit date range requires valid dates and allows at most 31 inclusive days", () => {
   assert.throws(() => validateAiAuditRange(null, "2026-07-29"), { status: 400 });
   assert.throws(() => validateAiAuditRange("2026-02-30", "2026-03-01"), { status: 400 });
@@ -249,6 +297,7 @@ test("AI audit routes explicitly return 401 and missing orders return 404", asyn
   assert.equal(source.includes('if (url.pathname === "/api/ai-audit/health") {'), true);
   assert.equal(source.includes('if (url.pathname === "/api/ai-audit/clients") {'), true);
   assert.equal(source.includes('if (url.pathname === "/api/ai-audit/inventory") {'), true);
+  assert.equal(source.includes('if (url.pathname === "/api/ai-audit/commerce") {'), true);
   assert.equal(source.includes("return json(res, data);"), true);
   assert.equal(source.includes('if (!orderId || orderId.length > 100) return json(res, { error: "Invalid order ID" }, 400);'), true);
   assert.equal(source.includes('if (!order) return json(res, { error: "Order Not Found" }, 404);'), true);

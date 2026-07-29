@@ -108,6 +108,47 @@ paths:
           $ref: "#/components/responses/MethodNotAllowed"
         "502":
           $ref: "#/components/responses/UpstreamError"
+  /api/ai-audit/commerce:
+    get:
+      operationId: getCommerceOverview
+      summary: Read the existing Marketing OS Commerce overview
+      description: Returns existing canonical Commerce totals and TOP10 results without Cafe24 source payloads or customer information.
+      parameters:
+        - name: since
+          in: query
+          required: true
+          description: Inclusive range start in YYYY-MM-DD format.
+          schema:
+            type: string
+            format: date
+        - name: until
+          in: query
+          required: true
+          description: Inclusive range end in YYYY-MM-DD format. Maximum range is 31 days.
+          schema:
+            type: string
+            format: date
+        - name: brand
+          in: query
+          required: false
+          description: Exact existing brand code, brand name, or manufacturer name.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sanitized Commerce overview completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommerceOverviewResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/ai-audit/revenue-reconciliation:
     get:
       operationId: getRevenueReconciliation
@@ -729,6 +770,135 @@ components:
         - recentSalesQty
         - lastSaleDate
         - registryLinked
+      additionalProperties: false
+    CommerceOverviewResponse:
+      type: object
+      properties:
+        period:
+          $ref: "#/components/schemas/DateRange"
+        summary:
+          $ref: "#/components/schemas/CommerceSummary"
+        brandTop10:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/CommerceBrandRow"
+        productTop10:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/CommerceProductRow"
+        meta:
+          $ref: "#/components/schemas/CommerceMeta"
+      required:
+        - period
+        - summary
+        - brandTop10
+        - productTop10
+        - meta
+      additionalProperties: false
+    CommerceSummary:
+      type: object
+      properties:
+        orderCount:
+          type: integer
+        quantitySold:
+          type: number
+        paidAmount:
+          type: number
+        grossAmount:
+          type: number
+        averageOrderValue:
+          type: number
+      required:
+        - orderCount
+        - quantitySold
+        - paidAmount
+        - grossAmount
+        - averageOrderValue
+      additionalProperties: false
+    CommerceBrandRow:
+      type: object
+      properties:
+        brandCode:
+          type: string
+        brandName:
+          type: string
+        orderCount:
+          type: integer
+        quantitySold:
+          type: number
+        grossAmount:
+          type: number
+        paidAmount:
+          type: number
+        discountAmount:
+          type: number
+      required:
+        - brandCode
+        - brandName
+        - orderCount
+        - quantitySold
+        - grossAmount
+        - paidAmount
+        - discountAmount
+      additionalProperties: false
+    CommerceProductRow:
+      type: object
+      properties:
+        productNo:
+          type: string
+        productCode:
+          type: string
+        productName:
+          type: string
+        brandCode:
+          type: string
+        brandName:
+          type: string
+        orderCount:
+          type: integer
+        quantitySold:
+          type: number
+        grossAmount:
+          type: number
+        paidAmount:
+          type: number
+        discountAmount:
+          type: number
+      required:
+        - productNo
+        - productCode
+        - productName
+        - brandCode
+        - brandName
+        - orderCount
+        - quantitySold
+        - grossAmount
+        - paidAmount
+        - discountAmount
+      additionalProperties: false
+    CommerceMeta:
+      type: object
+      properties:
+        brandFilter:
+          type:
+            - string
+            - "null"
+        matchedBrandCount:
+          type: integer
+        excludedOrderCount:
+          type: integer
+        reconciliationMatched:
+          type: boolean
+        reconciliationDifference:
+          type: number
+      required:
+        - brandFilter
+        - matchedBrandCount
+        - excludedOrderCount
+        - reconciliationMatched
+        - reconciliationDifference
       additionalProperties: false
     RevenueReconciliationResponse:
       type: object

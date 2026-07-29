@@ -10,6 +10,7 @@ import { buildClientsOverview, handleIntelligenceRequest } from "./intelligence-
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
 import {
+  buildAiAuditCommerceOverview,
   buildAiAuditClientsOverview,
   buildAiAuditHealth,
   buildAiAuditInventoryOverview,
@@ -259,6 +260,17 @@ const server = createServer(async (req, res) => {
       const overview = await response.json();
       if (!response.ok) return json(res, { error: "Inventory overview unavailable" }, 502);
       return json(res, buildAiAuditInventoryOverview(overview));
+    }
+    if (url.pathname === "/api/ai-audit/commerce") {
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      let range;
+      try {
+        range = validateAiAuditRange(url.searchParams.get("since"), url.searchParams.get("until"));
+      } catch (error) {
+        return json(res, { error: error.message }, 400);
+      }
+      const diagnostics = await buildBrandSalesDiagnostics(range.since, range.until);
+      return json(res, buildAiAuditCommerceOverview(diagnostics, url.searchParams.get("brand")));
     }
     if (url.pathname === "/api/ai-audit/revenue-reconciliation") {
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
