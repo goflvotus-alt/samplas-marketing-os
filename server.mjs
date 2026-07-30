@@ -2004,7 +2004,7 @@ async function uploadWorkDataFiles(payload) {
 
 async function writeJsonAtomic(file, data) {
   await mkdir(workDir, { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  const tmp = `${file}.tmp-${process.pid}-${randomUUID()}`;
   await writeFile(tmp, JSON.stringify(data, null, 2));
   await rename(tmp, file);
 }
