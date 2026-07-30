@@ -3088,7 +3088,7 @@ function annualArchiveBrandPerformanceBlock(rows) {
     <p class="monthly-report-fnote">비교 기준: ${esc(comparisonLabel)} · Saved Archive만 사용하며 Live Draft는 제외합니다.</p>
   ` : "";
   return `<section class="monthly-report-block" data-annual-category="commerce">
-    <div class="monthly-report-block-head"><h4>Brand Performance</h4><span>brand_code 기준</span></div>
+    <div class="monthly-report-block-head"><h4>Brand Performance</h4><span>canonical brand · 온라인 + 오프라인 기준</span></div>
     <div class="monthly-report-block-head"><h4>연간 브랜드 매출 TOP5</h4><span>확보 데이터 기준</span></div>
     <div class="monthly-report-rank">
       ${monthlyReportRankRows(annualBrands.slice(0, 5), {
