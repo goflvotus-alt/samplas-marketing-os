@@ -623,6 +623,7 @@ function setActiveView(view, options = {}) {
   const routeHash = options.routeHash || (hashViewMap[locationHash] === targetView ? locationHash : viewHashMap[targetView]);
   $$(".nav button").forEach((node) => node.classList.toggle("active", node.dataset.route === routeHash));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.id === targetView));
+  $("#monthlyDestinationLayout")?.toggleAttribute("hidden", routeHash === "annual-report");
   setTopbarTitle(targetView, routeHash);
   updateTopbarControls(targetView);
   if (targetView === "Intelligence") refreshActiveIntelligencePanel();
@@ -632,6 +633,7 @@ function setActiveView(view, options = {}) {
   if (targetView === "InventoryIntelligence") renderInventoryIntelligenceView();
   if (targetView === "Calendar") renderCalendarView();
   if (targetView === "Overview" && todayViewDirty && monthlyData.length) renderTodayView(selectedMonth());
+  if (options.updateHash === false && ["Reports", "Settings"].includes(targetView) && monthlyData.length) renderActiveDestinationCards(selectedMonth());
   if (options.updateHash !== false) updateViewHash(targetView, routeHash);
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: options.smooth === false ? "auto" : "smooth" });
   const aliasTarget = routeHash === "annual-report"
@@ -734,6 +736,7 @@ function setReportsMonth(month, options = {}) {
   if (options.syncGlobal !== false) setSelectedMonthValue(month);
   renderMonthRail();
   renderReportsMonth(reportsMonth, options);
+  renderActiveDestinationCards(selectedMonth());
 }
 
 // Reports used to list every month as a row of pills (its own month picker,
@@ -788,9 +791,24 @@ function todayViewActive() {
   return Boolean($("#Overview")?.classList.contains("active"));
 }
 
+function monthlyDestinationViewActive() {
+  return Boolean($("#Reports")?.classList.contains("active") && !$("#monthlyDestinationLayout")?.hidden);
+}
+
+function destinationViewActive() {
+  return Boolean(monthlyDestinationViewActive() || $("#Settings")?.classList.contains("active"));
+}
+
 function setTodayHtml(selector, html) {
   const target = $(selector);
   if (target) target.innerHTML = html;
+}
+
+function renderActiveDestinationCards(data = selectedMonth()) {
+  const modeBadge = $("#dataModeBadge");
+  if (modeBadge) modeBadge.textContent = sourceLabel(data);
+  if (monthlyDestinationViewActive()) renderTodaySalesCalendar(data.month || todaySalesCalendarMonth);
+  if (destinationViewActive()) renderOverviewLiveData(data);
 }
 
 function renderTodayView(data = selectedMonth()) {
@@ -799,10 +817,7 @@ function renderTodayView(data = selectedMonth()) {
     return;
   }
   todayViewDirty = false;
-  const modeBadge = $("#dataModeBadge");
-  if (modeBadge) modeBadge.textContent = sourceLabel(data);
   renderKpis(data);
-  renderTodaySalesCalendar(todaySalesCalendarMonth);
   renderOverviewLiveData(data);
 }
 
@@ -834,19 +849,24 @@ function renderKpis(data) {
 }
 
 async function renderOverviewLiveData(data, renderSeq) {
-  if (!todayViewActive()) {
+  const renderToday = todayViewActive();
+  if (!renderToday && !destinationViewActive()) {
     todayViewDirty = true;
     return;
   }
-  setTodayHtml("#overviewLiveData", `<article class="action-item"><strong>선택 기간 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`);
-  setTodayHtml("#overviewLiveSupport", "");
-  setTodayHtml("#todayBriefProgress", todayBriefProgressBar([]));
-  setTodayHtml("#todayBriefing", `<article class="today-brief-card warning"><div class="today-brief-head"><span>!</span><strong>오늘 해야 할 일을 정리 중입니다.</strong></div><p>연결 상태와 성과 데이터를 확인하고 있습니다.</p></article>`);
-  setTodayHtml("#todaySummaryBriefing", `<article class="action-item"><strong>오늘 요약 확인 중</strong><p>검증된 Commerce / Marketing 데이터를 정리합니다.</p></article>`);
-  setTodayHtml("#todaySummarySections", `<article class="action-item"><strong>섹션 요약 확인 중</strong><p>대표 숫자를 불러오고 있습니다.</p></article>`);
-  setTodayHtml("#actions", `<article class="home-action-card warn"><span>!</span><div><strong>확인 중</strong><p>중요 알림을 정리합니다.</p></div></article>`);
+  if (!renderToday) todayViewDirty = true;
+  if (renderToday) {
+    setTodayHtml("#overviewLiveData", `<article class="action-item"><strong>선택 기간 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`);
+    setTodayHtml("#overviewLiveSupport", "");
+    setTodayHtml("#todayBriefProgress", todayBriefProgressBar([]));
+    setTodayHtml("#todayBriefing", `<article class="today-brief-card warning"><div class="today-brief-head"><span>!</span><strong>오늘 해야 할 일을 정리 중입니다.</strong></div><p>연결 상태와 성과 데이터를 확인하고 있습니다.</p></article>`);
+    setTodayHtml("#todaySummaryBriefing", `<article class="action-item"><strong>오늘 요약 확인 중</strong><p>검증된 Commerce / Marketing 데이터를 정리합니다.</p></article>`);
+    setTodayHtml("#todaySummarySections", `<article class="action-item"><strong>섹션 요약 확인 중</strong><p>대표 숫자를 불러오고 있습니다.</p></article>`);
+    setTodayHtml("#actions", `<article class="home-action-card warn"><span>!</span><div><strong>확인 중</strong><p>중요 알림을 정리합니다.</p></div></article>`);
+  }
   setTodayHtml("#nextActions", homeGoalCards());
   setTodayHtml("#insightList", homeActivityCards({ status: {}, meta: {}, cafe: {}, data }));
+  setTodayHtml("#settingsCacheStatus", `<article class="home-activity-card neutral"><div><strong>캐시 상태 확인 중</strong><p>연결 데이터를 확인하고 있습니다.</p></div></article>`);
 
   const range = operationsDateRange(data);
   const startDate = range.since;
@@ -860,7 +880,7 @@ async function renderOverviewLiveData(data, renderSeq) {
     getJson("/api/contents/cardnews-status", 6000)
   ]);
   if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
-  if (!todayViewActive()) {
+  if (!todayViewActive() && !destinationViewActive()) {
     todayViewDirty = true;
     return;
   }
@@ -892,19 +912,22 @@ async function renderOverviewLiveData(data, renderSeq) {
   const comparison = commerceMetaComparisonState(meta, cafe);
 
   renderHealthBanner({ instagram: contentData, meta, cafe });
-  renderTodaySummary({ data: contentData, cafe, meta, comparison, totalSales });
   todayOverviewState = { data, meta, cafe, contentData, contentRangeError, posts, topProduct, avgSaveRate, followerDelta, range };
-  const rangeEyebrow = $("#overviewRangeEyebrow");
-  const rangeTitle = $("#overviewRangeTitle");
-  if (rangeEyebrow) rangeEyebrow.textContent = range.label;
-  if (rangeTitle) rangeTitle.textContent = `${range.label} KPI`;
-  renderTodayOverviewCards();
+  renderSettingsCacheStatus({ instagram: contentData, meta, cafe });
 
-  currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account: a, topSaved, topCampaign, topProduct, roas });
-  renderTodayBriefing();
+  if (todayViewActive()) {
+    renderTodaySummary({ data: contentData, cafe, meta, comparison, totalSales });
+    const rangeEyebrow = $("#overviewRangeEyebrow");
+    const rangeTitle = $("#overviewRangeTitle");
+    if (rangeEyebrow) rangeEyebrow.textContent = range.label;
+    if (rangeTitle) rangeTitle.textContent = `${range.label} KPI`;
+    renderTodayOverviewCards();
 
-  const actions = buildOverviewActions({ data, meta, cafe, account: a, topSaved, roas });
-  setTodayHtml("#actions", actions.map((item) => homeActionCard(item)).join(""));
+    currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account: a, topSaved, topCampaign, topProduct, roas });
+    renderTodayBriefing();
+    const actions = buildOverviewActions({ data, meta, cafe, account: a, topSaved, roas });
+    setTodayHtml("#actions", actions.map((item) => homeActionCard(item)).join(""));
+  }
   setTodayHtml("#nextActions", homeGoalCards({ cafeTotals: { ...cafeTotals, orderAmount: cafeTotals.paidAmount }, metaTotals: { ...metaTotals, spend: metaCanonical.reportingSpend, purchaseValue: metaCanonical.reportingPurchaseValue }, postCount, followerDelta }));
   setTodayHtml("#insightList", homeActivityCards({ status, meta, cafe, data }));
 }
@@ -4061,6 +4084,19 @@ function renderHealthBanner({ instagram = {}, meta = {}, cafe = {} } = {}) {
       <span class="note">${esc(reasonText)}</span>
       ${actionHtml}
     </div>`;
+  }).join("");
+}
+
+function renderSettingsCacheStatus({ instagram = {}, meta = {}, cafe = {} } = {}) {
+  const target = $("#settingsCacheStatus");
+  if (!target) return;
+  target.innerHTML = [
+    ["Instagram", instagram, "instagram"],
+    ["Meta Ads", meta, "meta"],
+    ["Cafe24", cafe, "cafe24"]
+  ].map(([label, data, kind]) => {
+    const state = healthBannerState(data, kind);
+    return homeActivityCard(label, state.label, state.reason || "상태 확인 필요", formatSyncStamp(data.syncedAt) || "-", state.tone);
   }).join("");
 }
 
@@ -8535,6 +8571,7 @@ function renderAll() {
   renderMonthRail();
   if (todayViewActive()) renderTodayView(data);
   else todayViewDirty = true;
+  renderActiveDestinationCards(data);
   renderReportsMonth(reportsMonth);
   renderContentTabs();
   renderContentOperations(data);

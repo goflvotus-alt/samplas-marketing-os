@@ -99,9 +99,7 @@
             <p class="eyebrow">GOOD MORNING</p>
             <h3>오늘 운영 홈</h3>
           </div>
-          <span id="dataModeBadge" class="badge">연결 확인 중</span>
         </div>
-        <div id="apiHealthBanner" class="health-banner loading">연동 상태 확인 중...</div>
         <div class="section-block">
           <div class="section-title compact">
             <div>
@@ -111,7 +109,6 @@
           </div>
           <div id="todaySummaryBriefing" class="cards"></div>
           <div id="todaySummarySections" class="cards"></div>
-          <div id="todaySalesCalendar"></div>
         </div>
         <div class="section-block">
           <div class="section-title compact">
@@ -126,7 +123,7 @@
         </div>
         <div id="kpiGrid" class="kpi-grid"></div>
         <details class="section-block director-more">
-          <summary>세부 지표 더 보기 <span>Action Center · 선택 기간 KPI · 목표 진행률 · 최근 동기화 기록</span></summary>
+          <summary>세부 지표 더 보기 <span>Action Center · 선택 기간 KPI</span></summary>
           <div class="section-block">
             <div class="section-title compact">
               <div>
@@ -145,24 +142,6 @@
             </div>
             <div id="overviewLiveData" class="cards ad-core-kpi-grid"></div>
             <div id="overviewLiveSupport" class="report-support-row"></div>
-          </div>
-          <div class="section-block">
-            <div class="section-title compact">
-              <div>
-                <p class="eyebrow">Goal Progress</p>
-                <h3>이번 달 목표 진행률</h3>
-              </div>
-            </div>
-            <div id="nextActions" class="home-goal-grid"></div>
-          </div>
-          <div class="section-block">
-            <div class="section-title compact">
-              <div>
-                <p class="eyebrow">Recent Activity</p>
-                <h3>최근 동기화 기록</h3>
-              </div>
-            </div>
-            <div id="insightList" class="home-activity-list"></div>
           </div>
         </details>
       </section>
@@ -664,8 +643,15 @@
           </div>
           <div class="destination-layout">
             <div id="monthlyKpiSlot" class="destination-slot"><strong>Monthly KPI</strong><span>이동 준비 영역</span></div>
-            <div id="monthlyCalendarSlot" class="destination-slot"><strong>Monthly Calendar</strong><span>이동 준비 영역</span></div>
-            <div id="monthlyGoalsSlot" class="destination-slot"><strong>Monthly Goals</strong><span>이동 준비 영역</span></div>
+            <div id="monthlyCalendarSlot" class="destination-slot destination-slot-wide">
+              <div id="todaySalesCalendar"></div>
+            </div>
+            <div id="monthlyGoalsSlot" class="destination-slot destination-slot-wide">
+              <div class="section-title compact">
+                <div><p class="eyebrow">Goal Progress</p><h3>이번 달 목표 진행률</h3></div>
+              </div>
+              <div id="nextActions" class="home-goal-grid"></div>
+            </div>
           </div>
         </div>
         <div id="monthlyArchiveReport" class="monthly-archive-report"></div>
@@ -1091,10 +1077,22 @@
             <div><p class="eyebrow">System Operations</p><h3>데이터 연결 관리</h3></div>
           </div>
           <div class="destination-layout">
-            <div id="settingsApiHealthSlot" class="destination-slot"><strong>API Health</strong><span>이동 준비 영역</span></div>
-            <div id="settingsSyncHistorySlot" class="destination-slot"><strong>Sync History</strong><span>이동 준비 영역</span></div>
-            <div id="settingsCacheSlot" class="destination-slot"><strong>Cache</strong><span>이동 준비 영역</span></div>
-            <div id="settingsDataSourceSlot" class="destination-slot"><strong>Data Source</strong><span>이동 준비 영역</span></div>
+            <div id="settingsApiHealthSlot" class="destination-slot destination-slot-wide">
+              <div class="section-title compact"><div><p class="eyebrow">API Health</p><h3>연동 상태</h3></div></div>
+              <div id="apiHealthBanner" class="health-banner loading">연동 상태 확인 중...</div>
+            </div>
+            <div id="settingsSyncHistorySlot" class="destination-slot destination-slot-wide">
+              <div class="section-title compact"><div><p class="eyebrow">Sync History</p><h3>최근 동기화 기록</h3></div></div>
+              <div id="insightList" class="home-activity-list"></div>
+            </div>
+            <div id="settingsCacheSlot" class="destination-slot">
+              <div class="section-title compact"><div><p class="eyebrow">Cache</p><h3>캐시 상태</h3></div></div>
+              <div id="settingsCacheStatus" class="home-activity-list"></div>
+            </div>
+            <div id="settingsDataSourceSlot" class="destination-slot">
+              <div class="section-title compact"><div><p class="eyebrow">Data Source</p><h3>데이터 기준</h3></div></div>
+              <span id="dataModeBadge" class="badge">연결 확인 중</span>
+            </div>
           </div>
         </div>
         <div class="section-block">

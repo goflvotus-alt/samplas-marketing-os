@@ -359,6 +359,14 @@ select,
   font-size: 12px;
 }
 
+.destination-slot-wide {
+  grid-column: 1 / -1;
+}
+
+.destination-slot .section-title {
+  margin-bottom: 8px;
+}
+
 @media (max-width: 720px) {
   .destination-layout {
     grid-template-columns: 1fr;
