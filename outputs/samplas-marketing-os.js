@@ -633,6 +633,7 @@ function setActiveView(view, options = {}) {
   if (targetView === "InventoryIntelligence") renderInventoryIntelligenceView();
   if (targetView === "Calendar") renderCalendarView();
   if (targetView === "Overview" && todayViewDirty && monthlyData.length) renderTodayView(selectedMonth());
+  if (targetView === "Intelligence" && monthlyData.length) renderActiveDestinationCards(selectedMonth());
   if (options.updateHash === false && ["Reports", "Sales", "Settings"].includes(targetView) && monthlyData.length) renderActiveDestinationCards(selectedMonth());
   if (options.updateHash !== false) updateViewHash(targetView, routeHash);
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: options.smooth === false ? "auto" : "smooth" });
@@ -799,8 +800,12 @@ function commerceDestinationViewActive() {
   return Boolean($("#Sales")?.classList.contains("active"));
 }
 
+function intelligenceDestinationViewActive() {
+  return Boolean($("#Intelligence")?.classList.contains("active"));
+}
+
 function destinationViewActive() {
-  return Boolean(monthlyDestinationViewActive() || commerceDestinationViewActive() || $("#Settings")?.classList.contains("active"));
+  return Boolean(monthlyDestinationViewActive() || commerceDestinationViewActive() || intelligenceDestinationViewActive() || $("#Settings")?.classList.contains("active"));
 }
 
 function setTodayHtml(selector, html) {
@@ -929,10 +934,13 @@ async function renderOverviewLiveData(data, renderSeq) {
     if (rangeTitle) rangeTitle.textContent = `${range.label} KPI`;
     renderTodayOverviewCards();
   }
-  if (todayViewActive()) {
+  if (todayViewActive() || intelligenceDestinationViewActive()) {
     renderTodaySummary({ data: contentData, cafe, meta, comparison, totalSales });
     currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account: a, topSaved, topCampaign, topProduct, roas });
-    renderTodayBriefing();
+    if (todayViewActive()) renderTodayBriefing();
+    if (intelligenceDestinationViewActive()) renderIntelligenceDestinationCards();
+  }
+  if (todayViewActive()) {
     const actions = buildOverviewActions({ data, meta, cafe, account: a, topSaved, roas });
     setTodayHtml("#actions", actions.map((item) => homeActionCard(item)).join(""));
   }
@@ -1028,7 +1036,8 @@ function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSave
       expected: { reach: apiNum(meta.totals?.reach), saves: "-", shares: "-" },
       view: "Advertising",
       cta: "광고 점검",
-      projectKey: "advertising"
+      projectKey: "advertising",
+      analysisDestination: "ai"
     });
   }
   if (topSaved) {
@@ -1048,7 +1057,8 @@ function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSave
       },
       view: "Content",
       cta: "콘텐츠 보기",
-      projectKey: "content"
+      projectKey: "content",
+      analysisDestination: "ai"
     });
   }
   const cardnewsProject = activeCardnewsProject(cardnewsStatus);
@@ -1084,7 +1094,8 @@ function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSave
     expected: { reach: apiNum(Math.round(avgReach * 1.12)), saves: apiNum(Math.round(avgSaves * 1.18)), shares: apiNum(Math.round(avgShares * 1.12)) },
     view: "Editorial AI",
     cta: "전략 보기",
-    projectKey: "editorial"
+    projectKey: "editorial",
+    analysisDestination: "brand"
   });
   return items
     .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
@@ -1173,8 +1184,18 @@ function todayStatusIcon(status) {
 function renderTodayBriefing() {
   const target = $("#todayBriefing");
   if (!target) return;
-  target.innerHTML = currentTodayBriefingItems.map((item) => todayBriefCard(item)).join("");
-  setTodayHtml("#todayBriefProgress", todayBriefProgressBar(currentTodayBriefingItems));
+  const items = currentTodayBriefingItems.filter((item) => !item.analysisDestination);
+  target.innerHTML = items.map((item) => todayBriefCard(item)).join("");
+  setTodayHtml("#todayBriefProgress", todayBriefProgressBar(items));
+}
+
+function renderIntelligenceDestinationCards() {
+  const renderItems = (selector, title, destination) => {
+    const items = currentTodayBriefingItems.filter((item) => item.analysisDestination === destination);
+    setTodayHtml(selector, `<strong>${title}</strong>${items.length ? items.map((item) => todayBriefCard(item)).join("") : "<span>현재 추천 없음</span>"}`);
+  };
+  renderItems("#intelligenceBrandSlot", "Brand Intelligence", "brand");
+  renderItems("#intelligenceAiRecommendationSlot", "AI Recommendation", "ai");
 }
 
 function todayBriefProgressBar(items) {
@@ -6461,14 +6482,16 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing, totalSale
   if (comparison !== undefined && comparison !== null) todaySummaryState.comparison = comparison;
   if (marketing !== undefined && marketing !== null) todaySummaryState.marketing = marketing;
   if (totalSales !== undefined && totalSales !== null) todaySummaryState.totalSales = totalSales;
-  if (!todayViewActive()) {
+  if (!todayViewActive() && !intelligenceDestinationViewActive()) {
     todayViewDirty = true;
     return;
   }
 
   const briefingTarget = $("#todaySummaryBriefing");
   const sectionsTarget = $("#todaySummarySections");
-  if (!briefingTarget && !sectionsTarget) return;
+  const marketingTarget = $("#intelligenceMarketingSlot");
+  const contentTarget = $("#intelligenceContentSlot");
+  if (!briefingTarget && !sectionsTarget && !marketingTarget && !contentTarget) return;
 
   const state = todaySummaryState;
   const cafeTotals = state.cafe?.totals || {};
@@ -6484,17 +6507,25 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing, totalSale
     ? "확인 필요"
     : `관리 필요 캠페인 ${apiNum(marketingState.briefingCount)}건`;
 
-  if (briefingTarget) briefingTarget.innerHTML = [
+  if (briefingTarget && todayViewActive()) briefingTarget.innerHTML = [
     salesCompareCard("Commerce", comparisonState.comparable ? `오차 ${comparisonState.mismatchRate < 1 ? comparisonState.mismatchRate.toFixed(1) : Math.round(comparisonState.mismatchRate)}%` : "비교 불가", "기존 Sales 비교 결과", { status: !comparisonState.comparable, badge: { label: "Commerce", tone: "neutral" } }),
-    salesCompareCard("Marketing", marketingBriefingValue, marketingState.narrative || "관리 필요 캠페인 결과를 확인 중입니다.", { badge: { label: "Marketing", tone: "neutral" } }),
     salesCompareCard("Meta Ads Cache", metaAge || "확인 필요", "기존 cache freshness 기준", { status: !metaAge, badge: { label: "Meta", tone: "cache" } })
   ].join("");
 
-  if (sectionsTarget) sectionsTarget.innerHTML = [
+  if (sectionsTarget && todayViewActive()) sectionsTarget.innerHTML = [
     `<article class="action-item sales-compare-card"><span>${esc(salesInfo.label)}</span><strong>${esc(salesInfo.value)}</strong><p>${esc(salesInfo.note)}</p><button class="today-jump-button" type="button" data-jump-view="Sales">Commerce 보기</button></article>`,
-    `<article class="action-item sales-compare-card"><span>Marketing</span><strong>${marketingValue}</strong><p>광고비 / 실제 매출</p><button class="today-jump-button" type="button" data-jump-view="Advertising">Marketing 보기</button></article>`,
-    `<article class="action-item sales-compare-card"><span>Content</span><strong>${apiNum(contentViews)}</strong><p>전체 게시물 조회 합산</p><button class="today-jump-button" type="button" data-jump-view="Content">Content 보기</button></article>`,
     `<article class="action-item sales-compare-card"><span>Reports</span><strong>Monthly Report</strong><p>월간 확정 스냅샷</p><button class="today-jump-button" type="button" data-jump-view="Reports">월간 리포트 보기</button></article>`
+  ].join("");
+
+  if (marketingTarget && intelligenceDestinationViewActive()) marketingTarget.innerHTML = [
+    "<strong>Marketing Intelligence</strong>",
+    salesCompareCard("Marketing", marketingBriefingValue, marketingState.narrative || "관리 필요 캠페인 결과를 확인 중입니다.", { badge: { label: "Marketing", tone: "neutral" } }),
+    `<article class="action-item sales-compare-card"><span>Marketing</span><strong>${marketingValue}</strong><p>광고비 / 실제 매출</p><button class="today-jump-button" type="button" data-jump-view="Advertising">Marketing 보기</button></article>`
+  ].join("");
+
+  if (contentTarget && intelligenceDestinationViewActive()) contentTarget.innerHTML = [
+    "<strong>Content Intelligence</strong>",
+    `<article class="action-item sales-compare-card"><span>Content</span><strong>${apiNum(contentViews)}</strong><p>전체 게시물 조회 합산</p><button class="today-jump-button" type="button" data-jump-view="Content">Content 보기</button></article>`
   ].join("");
 }
 
