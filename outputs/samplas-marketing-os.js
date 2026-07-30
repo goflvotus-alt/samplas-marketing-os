@@ -5,12 +5,12 @@ const navItems = [
   { view: "Clients", label: "Clients", hash: "clients", group: "public", hidden: false },
   { view: "InventoryOverview", label: "Inventory", hash: "inventory-overview", group: "public", hidden: false },
   { view: "Sales", label: "Commerce", hash: "commerce", group: "management", hidden: false },
+  { view: "Content", label: "Content", hash: "content", group: "management", hidden: false },
   { view: "ProductRegistry", label: "Product Registry", hash: "product-registry", group: "management", hidden: false },
   { view: "Intelligence", label: "Intelligence", hash: "intelligence", group: "management", hidden: false },
   { view: "Settings", label: "Master Data", hash: "master-data", group: "management", hidden: false },
   { view: "Settings", label: "Settings", hash: "settings", group: "management", hidden: false },
   { view: "Calendar", label: "Calendar", hash: "calendar", hidden: true },
-  { view: "Content", label: "Content", hash: "content", hidden: true },
   { view: "Advertising", label: "Marketing", hash: "marketing", hidden: true },
   { view: "InventoryIntelligence", label: "Inventory Intelligence", hash: "inventory-intelligence", hidden: true },
   { view: "Product", label: "Product", hash: "product", hidden: true },
@@ -627,6 +627,7 @@ function setActiveView(view, options = {}) {
   setTopbarTitle(targetView, routeHash);
   updateTopbarControls(targetView);
   if (targetView === "Intelligence") refreshActiveIntelligencePanel();
+  if (targetView === "Content" && monthlyData.length) renderContentOperations(selectedMonth());
   if (targetView === "Clients") refreshClientsView();
   if (targetView === "ProductRegistry") renderProductRegistryView();
   if (targetView === "InventoryOverview") renderInventoryWorkspaceView({ reset: true });
@@ -1477,6 +1478,7 @@ function renderContentTable(posts, data = selectedMonth()) {
 }
 
 async function renderContentOperations(data, renderSeq) {
+  if (!$("#Content")?.classList.contains("active")) return;
   const setPending = (selector, html) => {
     const target = $(selector);
     if (target) target.innerHTML = html;
@@ -6490,16 +6492,13 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing, totalSale
   const briefingTarget = $("#todaySummaryBriefing");
   const sectionsTarget = $("#todaySummarySections");
   const marketingTarget = $("#intelligenceMarketingSlot");
-  const contentTarget = $("#intelligenceContentSlot");
-  if (!briefingTarget && !sectionsTarget && !marketingTarget && !contentTarget) return;
+  if (!briefingTarget && !sectionsTarget && !marketingTarget) return;
 
   const state = todaySummaryState;
   const cafeTotals = state.cafe?.totals || {};
   const comparisonState = state.comparison || {};
   const marketingState = state.marketing || {};
   const totalSalesState = state.totalSales || {};
-  const posts = state.data?.posts || [];
-  const contentViews = sum(posts, "views");
   const metaAge = relativeAgeText(cacheAgeMinutes(state.meta || {}));
   const salesInfo = todaySummarySalesInfo(totalSalesState, cafeTotals);
   const marketingValue = marketingState.adSpendShare === null || marketingState.adSpendShare === undefined ? "확인 필요" : pct(marketingState.adSpendShare);
@@ -6523,10 +6522,6 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing, totalSale
     `<article class="action-item sales-compare-card"><span>Marketing</span><strong>${marketingValue}</strong><p>광고비 / 실제 매출</p><button class="today-jump-button" type="button" data-jump-view="Advertising">Marketing 보기</button></article>`
   ].join("");
 
-  if (contentTarget && intelligenceDestinationViewActive()) contentTarget.innerHTML = [
-    "<strong>Content Intelligence</strong>",
-    `<article class="action-item sales-compare-card"><span>Content</span><strong>${apiNum(contentViews)}</strong><p>전체 게시물 조회 합산</p><button class="today-jump-button" type="button" data-jump-view="Content">Content 보기</button></article>`
-  ].join("");
 }
 
 function shiftMonthKey(monthKey, offset) {
