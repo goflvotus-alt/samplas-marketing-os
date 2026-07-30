@@ -339,6 +339,32 @@ select,
   font-size: 19px;
 }
 
+.destination-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.destination-slot {
+  display: grid;
+  gap: 4px;
+  min-height: 76px;
+  padding: 16px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.destination-slot span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .destination-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
