@@ -633,7 +633,7 @@ function setActiveView(view, options = {}) {
   if (targetView === "InventoryIntelligence") renderInventoryIntelligenceView();
   if (targetView === "Calendar") renderCalendarView();
   if (targetView === "Overview" && todayViewDirty && monthlyData.length) renderTodayView(selectedMonth());
-  if (options.updateHash === false && ["Reports", "Settings"].includes(targetView) && monthlyData.length) renderActiveDestinationCards(selectedMonth());
+  if (options.updateHash === false && ["Reports", "Sales", "Settings"].includes(targetView) && monthlyData.length) renderActiveDestinationCards(selectedMonth());
   if (options.updateHash !== false) updateViewHash(targetView, routeHash);
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: options.smooth === false ? "auto" : "smooth" });
   const aliasTarget = routeHash === "annual-report"
@@ -795,8 +795,12 @@ function monthlyDestinationViewActive() {
   return Boolean($("#Reports")?.classList.contains("active") && !$("#monthlyDestinationLayout")?.hidden);
 }
 
+function commerceDestinationViewActive() {
+  return Boolean($("#Sales")?.classList.contains("active"));
+}
+
 function destinationViewActive() {
-  return Boolean(monthlyDestinationViewActive() || $("#Settings")?.classList.contains("active"));
+  return Boolean(monthlyDestinationViewActive() || commerceDestinationViewActive() || $("#Settings")?.classList.contains("active"));
 }
 
 function setTodayHtml(selector, html) {
@@ -808,6 +812,7 @@ function renderActiveDestinationCards(data = selectedMonth()) {
   const modeBadge = $("#dataModeBadge");
   if (modeBadge) modeBadge.textContent = sourceLabel(data);
   if (monthlyDestinationViewActive()) renderTodaySalesCalendar(data.month || todaySalesCalendarMonth);
+  if (commerceDestinationViewActive()) renderKpis(data);
   if (destinationViewActive()) renderOverviewLiveData(data);
 }
 
@@ -817,7 +822,6 @@ function renderTodayView(data = selectedMonth()) {
     return;
   }
   todayViewDirty = false;
-  renderKpis(data);
   renderOverviewLiveData(data);
 }
 
@@ -850,14 +854,17 @@ function renderKpis(data) {
 
 async function renderOverviewLiveData(data, renderSeq) {
   const renderToday = todayViewActive();
+  const renderCommerce = commerceDestinationViewActive();
   if (!renderToday && !destinationViewActive()) {
     todayViewDirty = true;
     return;
   }
   if (!renderToday) todayViewDirty = true;
-  if (renderToday) {
-    setTodayHtml("#overviewLiveData", `<article class="action-item"><strong>선택 기간 KPI 확인 중</strong><p>매출, 광고, 팔로워, 콘텐츠를 정리합니다.</p></article>`);
+  if (renderCommerce) {
+    setTodayHtml("#overviewLiveData", `<article class="action-item"><strong>선택 기간 KPI 확인 중</strong><p>매출 데이터를 정리합니다.</p></article>`);
     setTodayHtml("#overviewLiveSupport", "");
+  }
+  if (renderToday) {
     setTodayHtml("#todayBriefProgress", todayBriefProgressBar([]));
     setTodayHtml("#todayBriefing", `<article class="today-brief-card warning"><div class="today-brief-head"><span>!</span><strong>오늘 해야 할 일을 정리 중입니다.</strong></div><p>연결 상태와 성과 데이터를 확인하고 있습니다.</p></article>`);
     setTodayHtml("#todaySummaryBriefing", `<article class="action-item"><strong>오늘 요약 확인 중</strong><p>검증된 Commerce / Marketing 데이터를 정리합니다.</p></article>`);
@@ -915,14 +922,15 @@ async function renderOverviewLiveData(data, renderSeq) {
   todayOverviewState = { data, meta, cafe, contentData, contentRangeError, posts, topProduct, avgSaveRate, followerDelta, range };
   renderSettingsCacheStatus({ instagram: contentData, meta, cafe });
 
-  if (todayViewActive()) {
-    renderTodaySummary({ data: contentData, cafe, meta, comparison, totalSales });
+  if (commerceDestinationViewActive()) {
     const rangeEyebrow = $("#overviewRangeEyebrow");
     const rangeTitle = $("#overviewRangeTitle");
     if (rangeEyebrow) rangeEyebrow.textContent = range.label;
     if (rangeTitle) rangeTitle.textContent = `${range.label} KPI`;
     renderTodayOverviewCards();
-
+  }
+  if (todayViewActive()) {
+    renderTodaySummary({ data: contentData, cafe, meta, comparison, totalSales });
     currentTodayBriefingItems = buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account: a, topSaved, topCampaign, topProduct, roas });
     renderTodayBriefing();
     const actions = buildOverviewActions({ data, meta, cafe, account: a, topSaved, roas });
@@ -947,7 +955,7 @@ function todayCanonicalMetaTotals(meta = {}, rangeLabel = "") {
 
 function renderTodayOverviewCards() {
   if (!todayOverviewState) return;
-  if (!todayViewActive()) {
+  if (!commerceDestinationViewActive()) {
     todayViewDirty = true;
     return;
   }
@@ -10930,7 +10938,7 @@ function bind() {
     const isCustom = operationsRange === "custom";
     $("#operationsCustomRange")?.toggleAttribute("hidden", !isCustom);
     const renderSeq = renderOperationsSections();
-    if (todayViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
+    if (todayViewActive() || commerceDestinationViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
     else todayViewDirty = true;
     if ($("#Clients")?.classList.contains("active")) refreshClientsView();
   });
@@ -10950,7 +10958,7 @@ function bind() {
     operationsRangeCustomSince = nextSince;
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
       const renderSeq = renderOperationsSections();
-      if (todayViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
+      if (todayViewActive() || commerceDestinationViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
       else todayViewDirty = true;
       if ($("#Clients")?.classList.contains("active")) refreshClientsView();
     }
@@ -10971,7 +10979,7 @@ function bind() {
     operationsRangeCustomUntil = nextUntil;
     if (operationsRange === "custom" && operationsRangeCustomSince && operationsRangeCustomUntil && operationsRangeCustomSince <= operationsRangeCustomUntil) {
       const renderSeq = renderOperationsSections();
-      if (todayViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
+      if (todayViewActive() || commerceDestinationViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
       else todayViewDirty = true;
       if ($("#Clients")?.classList.contains("active")) refreshClientsView();
     }

@@ -121,9 +121,8 @@
           <div id="todayBriefProgress" class="today-brief-progress"></div>
           <div id="todayBriefing" class="today-briefing-list"></div>
         </div>
-        <div id="kpiGrid" class="kpi-grid"></div>
         <details class="section-block director-more">
-          <summary>세부 지표 더 보기 <span>Action Center · 선택 기간 KPI</span></summary>
+          <summary>세부 지표 더 보기 <span>Action Center</span></summary>
           <div class="section-block">
             <div class="section-title compact">
               <div>
@@ -132,16 +131,6 @@
               </div>
             </div>
             <div id="actions" class="home-action-list"></div>
-          </div>
-          <div class="section-block">
-            <div class="section-title compact">
-              <div>
-                <p id="overviewRangeEyebrow" class="eyebrow">선택 기간</p>
-                <h3 id="overviewRangeTitle">선택 기간 KPI</h3>
-              </div>
-            </div>
-            <div id="overviewLiveData" class="cards ad-core-kpi-grid"></div>
-            <div id="overviewLiveSupport" class="report-support-row"></div>
           </div>
         </details>
       </section>
@@ -602,9 +591,20 @@
             <div><p class="eyebrow">Commerce Operations</p><h3>기간별 매출 운영</h3></div>
           </div>
           <div class="destination-layout">
-            <div id="commercePeriodKpiSlot" class="destination-slot"><strong>Period KPI</strong><span>이동 준비 영역</span></div>
-            <div id="commerceRevenueSummarySlot" class="destination-slot"><strong>Revenue Summary</strong><span>이동 준비 영역</span></div>
-            <div id="commerceOrderSummarySlot" class="destination-slot"><strong>Order Summary</strong><span>이동 준비 영역</span></div>
+            <div id="commercePeriodKpiSlot" class="destination-slot">
+              <div class="section-title compact">
+                <div><p id="overviewRangeEyebrow" class="eyebrow">선택 기간</p><h3 id="overviewRangeTitle">선택 기간 KPI</h3></div>
+              </div>
+              <div id="kpiGrid" class="kpi-grid"></div>
+            </div>
+            <div id="commerceRevenueSummarySlot" class="destination-slot">
+              <div class="section-title compact"><div><p class="eyebrow">Revenue Summary</p><h3>매출 요약</h3></div></div>
+              <div id="overviewLiveData" class="cards ad-core-kpi-grid"></div>
+            </div>
+            <div id="commerceOrderSummarySlot" class="destination-slot">
+              <div class="section-title compact"><div><p class="eyebrow">Order KPI</p><h3>주문 보조 지표</h3></div></div>
+              <div id="overviewLiveSupport" class="report-support-row"></div>
+            </div>
           </div>
         </div>
 
