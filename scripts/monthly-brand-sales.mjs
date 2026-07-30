@@ -32,12 +32,21 @@ function candidateFromProductName(productName) {
 function buildResolver(brands, products) {
   const matches = new Map();
   const conflicts = new Set();
+  const productMatches = new Map();
+  const productConflicts = new Set();
   const register = (value, code) => {
     const key = matchKey(value);
     if (!key) return;
     const previous = matches.get(key);
     if (previous && previous !== code) conflicts.add(key);
     else matches.set(key, code);
+  };
+  const registerProduct = (value, code) => {
+    const key = normalizeBrandKey(value);
+    if (!key) return;
+    const previous = productMatches.get(key);
+    if (previous && previous !== code) productConflicts.add(key);
+    else productMatches.set(key, code);
   };
   for (const brand of brands) {
     const code = String(brand.brand_code || brand.brandCode || "").trim();
@@ -53,12 +62,16 @@ function buildResolver(brands, products) {
   }
   for (const product of products) {
     const code = String(product.brand_code || product.brandCode || "").trim();
-    const candidate = extractBracketBrandCandidate(product.productName || product.product_name);
+    const productName = product.productName || product.product_name;
+    const candidate = extractBracketBrandCandidate(productName);
+    if (code && code !== "UNASSIGNED") registerProduct(productName, code);
     if (code && code !== "UNASSIGNED" && candidate?.type === "single") register(candidate.candidate, code);
   }
-  return (value) => {
-    const key = matchKey(value);
-    return key && !conflicts.has(key) ? matches.get(key) || null : null;
+  return (productName) => {
+    const candidateKey = matchKey(candidateFromProductName(productName));
+    if (candidateKey && !conflicts.has(candidateKey) && matches.has(candidateKey)) return matches.get(candidateKey);
+    const productKey = normalizeBrandKey(productName);
+    return productKey && !productConflicts.has(productKey) ? productMatches.get(productKey) || null : null;
   };
 }
 
@@ -109,7 +122,7 @@ export function mergeOfflineBrandSales({
     const date = String(line?.date || "");
     const amount = Number(line?.salesAmount);
     if (line?.isOfflineRevenue !== true || !Number.isFinite(amount) || (since && date < since) || (until && date > until)) continue;
-    const code = resolveBrand(candidateFromProductName(line.productName)) || "UNASSIGNED";
+    const code = resolveBrand(line.productName) || "UNASSIGNED";
     const brand = buckets.get(code) || unassignedBrand();
     brand.offlineSalesAmount += amount;
     brand.salesAmount += amount;

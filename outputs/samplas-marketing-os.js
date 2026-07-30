@@ -3370,7 +3370,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
           </div>
         </section>
         <section class="monthly-report-block">
-          <div class="monthly-report-block-head"><h4>브랜드 매출 TOP 5</h4><span>온라인 실결제 기준</span></div>
+          <div class="monthly-report-block-head"><h4>브랜드 매출 TOP 5</h4><span>온라인 + 오프라인 총매출 기준</span></div>
           <div class="monthly-report-rank">
             ${monthlyReportRankRows(performanceBrandSales.slice(0, 5), {
               withBar: true,
