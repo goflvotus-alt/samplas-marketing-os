@@ -245,9 +245,13 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/ai-audit/clients") {
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      const since = url.searchParams.get("since") || `${currentMonth()}-01`;
+      const until = url.searchParams.get("until") || todayKey();
+      const cafe24 = await fetchCafe24Orders(since, until, { limit: 500 });
       const overview = await buildClientsOverview({
-        since: url.searchParams.get("since") || undefined,
-        until: url.searchParams.get("until") || undefined
+        since,
+        until,
+        cafe24Orders: cafe24.orders
       });
       return json(res, buildAiAuditClientsOverview(overview));
     }
@@ -481,6 +485,23 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/diagnostics/cafe24-product-check") {
       const data = await diagnoseCafe24ProductAccess();
       return json(res, data);
+    }
+    if (url.pathname === "/api/intelligence/clients") {
+      const since = url.searchParams.get("since") || `${currentMonth()}-01`;
+      const until = url.searchParams.get("until") || todayKey();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+        return json(res, { ok: false, error: "Bad Request", message: "since and until must be YYYY-MM-DD" }, 400);
+      }
+      if (since > until) {
+        return json(res, { ok: false, error: "Bad Request", message: "since must be before or equal to until" }, 400);
+      }
+      try {
+        const cafe24 = await fetchCafe24Orders(since, until, { limit: 500 });
+        const overview = await buildClientsOverview({ since, until, cafe24Orders: cafe24.orders });
+        return json(res, { ok: true, ...overview });
+      } catch (error) {
+        return json(res, { ok: false, error: "Internal Server Error", message: safeErrorMessage(error) }, 500);
+      }
     }
     if (
       url.pathname.startsWith("/api/intelligence/") ||

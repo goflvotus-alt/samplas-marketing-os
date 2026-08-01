@@ -2473,7 +2473,15 @@ export async function buildClientsOverview(options = {}) {
   const currentMonth = options.currentMonth || clientsIntelligenceMonthKey(now);
 
   const ecountClients = await loadEcountClientLines();
-  const cafe24PersonalPaymentOrders = await loadCafe24PersonalPaymentOrders({ currentMonth, since, until });
+  // STEP49-2A-2: 주입 경로도 canonicalizeCafe24ClientOrders()로 기존 캐시 경로와 동일한
+  // 정규화/기간 필터/order_id dedupe를 거친 뒤에만 matchKey를 붙인다(디스크 캐시와 병합하지 않음).
+  const cafe24PersonalPaymentOrders = Array.isArray(options.cafe24Orders)
+    ? canonicalizeCafe24ClientOrders(options.cafe24Orders, { since, until })
+      .map((order) => ({
+        ...order,
+        matchKey: order.isPersonalPayment ? extractClientMatchKey(order.personalPaymentProductName) : ""
+      }))
+    : await loadCafe24PersonalPaymentOrders({ currentMonth, since, until });
 
   // buildClientSummaries()와 동일한 병합 로직(alias/mergeKey)을 그대로 재사용한다 — 같은 사람이
   // "최재은 실장님"/"최재은실장님"/"개인결제창 (최재은 실장님)" 등 여러 rawName으로 흩어지는 문제를
@@ -3149,6 +3157,50 @@ async function loadCafe24PersonalPaymentOrders({ currentMonth, since, until } = 
     ...order,
     matchKey: order.isPersonalPayment ? extractClientMatchKey(order.personalPaymentProductName) : ""
   }));
+}
+
+// STEP49-2A-2 — options.cafe24Orders로 주입되는 라이브 주문(server.mjs fetchCafe24Orders() 결과)에도
+// 위 캐시 경로가 이미 적용하는 canonical 전처리(정규화 → 유효 날짜 검사 → since~until 기간 필터 →
+// order_id 기준 dedupe)를 그대로 적용해, 두 경로가 항상 같은 주문 집합을 계산하도록 맞춘다.
+// - 정규화/유효 날짜 검사: normalizeCafe24ProxyOrder를 그대로 재사용한다(취소·환불 제외, 활성
+//   품목 없는 주문 제외, 유효하지 않은 날짜 제외가 이미 이 함수 안에서 처리됨 — 새로 만들지 않음).
+// - 기간 필터: loadCanonicalCafe24OrderCache가 파일 스캔 중 적용하는 것과 동일한
+//   `orderDate < since` / `orderDate > until` 배제 규칙을 그대로 재사용한다.
+// - dedupe: loadCanonicalCafe24OrderCache의 order_id dedupe는 "여러 캐시 파일 중 어느 파일이
+//   더 최신인가"(fileEnd/mtimeMs/completeness)를 비교하는 다중 파일 전용 우선순위다. 이 주입
+//   경로는 fetchCafe24Orders() 한 번의 결과(단일 소스)만 받으므로 비교할 파일이 없다 — 새
+//   우선순위 정책을 만들지 않고, 같은 order_id가 두 번 나오면 나중 항목이 앞 항목을 덮어쓰는
+//   최소 동작만 적용한다(key 없는 레코드는 기존 loadCanonicalCafe24OrderCache의 unkeyed 처리와
+//   동일하게 dedupe 없이 그대로 둔다).
+//
+// [알려진 제한 — 이번 STEP 범위에서 해결하지 않음] 캐시 경로는 파일명 접두사(cafe24-csv-orders-
+// vs cafe24-(proxy-)orders-)로 CSV 원본과 API/proxy 원본을 구분해 서로 다른 정규화 함수를 쓴다
+// (바로 위 loadCafe24PersonalPaymentOrders의 `type === "csv" ? normalizeCafe24CsvOrder : ...`).
+// fetchCafe24Orders()가 라이브 성공 시 반환하는 orders는 API/proxy 원본 하나뿐이라 문제없지만,
+// fetchCafe24Orders()가 과거월이거나 라이브 실패로 디스크 캐시에 폴백하면(server.mjs
+// readCachedCafe24Orders) 그 캐시에 CSV 원본이 섞여 있을 수 있다 — 다만 그 시점엔 이미 파일
+// 단위 type 태그가 소실된 뒤라(server.mjs readCachedCafe24Orders가 raw order만 반환) 여기서는
+// 어느 주문이 CSV 원본이었는지 알 방법이 없다. 이 정보를 살리려면 server.mjs가 type을 함께
+// 넘기도록 고쳐야 하는데, 이번 STEP은 server.mjs 수정이 범위 밖이라 새 타입 감지 로직을
+// 추측으로 만들지 않았다. normalizeCafe24ProxyOrder를 CSV 원본에 적용해도 실제 계산에 쓰이는
+// paidAmount/orderDate/quantity/isPersonalPayment는 cafe24OrderAmount 등 공유 함수로 동일하게
+// 나오지만, meta.shippingFieldUnavailableOrderCount(적립금/배송비 원본 필드가 없는 과거월 CSV
+// 주문 건수 표시용) 하나만 그 좁은 경우에 부정확해질 수 있다 — 매출/주문수/고객 목록에는 영향 없음.
+function canonicalizeCafe24ClientOrders(rawOrders = [], { since, until } = {}) {
+  const deduped = new Map();
+  const unkeyed = [];
+  for (const rawOrder of rawOrders) {
+    const normalized = normalizeCafe24ProxyOrder(rawOrder);
+    if (!normalized) continue;
+    if (since && normalized.orderDate < since) continue;
+    if (until && normalized.orderDate > until) continue;
+    if (normalized.orderId) {
+      deduped.set(String(normalized.orderId), normalized);
+    } else {
+      unkeyed.push(normalized);
+    }
+  }
+  return [...deduped.values(), ...unkeyed];
 }
 
 function safeReaddir(dir) {
