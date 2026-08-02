@@ -2177,39 +2177,70 @@ async function readMarketingBrandMaster() {
   };
 }
 
-function buildIntelligenceBrandRegistry(sourceBrands = []) {
-  const brands = [];
-  const aliases = [];
+export function buildIntelligenceBrandRegistry(sourceBrands = []) {
+  const sources = [];
   const seenIds = new Set();
-  const seenNames = new Map();
   for (const source of sourceBrands) {
     const id = normalizeBrandCode(source.brand_code);
     const name = normalizeBrandName(source.brand_name);
     if (!id || !name || seenIds.has(id)) continue;
     seenIds.add(id);
-    const nameKey = normalizeBrandKey(name);
-    const existingBrandId = seenNames.get(nameKey);
-    if (existingBrandId) {
-      aliases.push({ alias: id, brandId: existingBrandId, source: "duplicate_cafe24_brand_code" });
-      continue;
-    }
-    seenNames.set(nameKey, id);
-    brands.push({
+    sources.push({
       id,
       name,
-      active: source.active === undefined ? true : Boolean(source.active)
+      active: source.active !== false,
+      aliases: parseBrandAliases(source.name_aliases),
+      instagramTag: normalizeBrandName(source.instagram_tag)
     });
-    aliases.push({ alias: id, brandId: id, source: "cafe24_brand_code" });
-    for (const alias of parseBrandAliases(source.name_aliases)) {
-      if (normalizeBrandKey(alias) !== normalizeBrandKey(name)) aliases.push({ alias, brandId: id, source: "name_alias" });
+  }
+
+  const canonicalGroups = Map.groupBy(sources, (source) => normalizeBrandKey(source.name));
+  const canonicalOwners = new Map();
+  for (const [key, candidates] of canonicalGroups) {
+    canonicalOwners.set(key, selectBrandOwner(key, candidates));
+  }
+
+  const claims = new Map();
+  const addClaim = (value, source, kind) => {
+    const key = normalizeBrandKey(value);
+    const owner = canonicalOwners.get(normalizeBrandKey(source.name));
+    if (!key || !owner) return;
+    const candidates = claims.get(key) || [];
+    candidates.push({ ...owner, value, kind });
+    claims.set(key, candidates);
+  };
+  for (const source of sources) {
+    addClaim(source.name, source, "canonical");
+    for (const alias of source.aliases) addClaim(alias, source, "name_alias");
+    if (source.instagramTag) addClaim(source.instagramTag, source, "instagram_tag");
+  }
+
+  const keyOwners = new Map();
+  for (const [key, candidates] of claims) keyOwners.set(key, selectBrandOwner(key, candidates));
+  const brands = [...canonicalOwners.entries()]
+    .filter(([key, owner]) => keyOwners.get(key)?.id === owner.id)
+    .map(([, owner]) => ({ id: owner.id, name: owner.name, active: owner.active }));
+  const aliases = [];
+  for (const source of sources) {
+    const canonicalOwner = keyOwners.get(normalizeBrandKey(source.name));
+    aliases.push({ alias: source.id, brandId: canonicalOwner.id, source: canonicalOwner.id === source.id ? "cafe24_brand_code" : "duplicate_cafe24_brand_code" });
+    for (const [value, kind] of [...source.aliases.map((alias) => [alias, "name_alias"]), [source.instagramTag, "instagram_tag"]]) {
+      const owner = keyOwners.get(normalizeBrandKey(value));
+      if (value && owner && normalizeBrandKey(value) !== normalizeBrandKey(owner.name)) aliases.push({ alias: value, brandId: owner.id, source: kind });
     }
-    const instagramTag = normalizeBrandName(source.instagram_tag);
-    if (instagramTag && normalizeBrandKey(instagramTag) !== normalizeBrandKey(name)) aliases.push({ alias: instagramTag, brandId: id, source: "instagram_tag" });
   }
   return {
     brands: brands.sort((left, right) => left.name.localeCompare(right.name, "ko")),
     aliases: dedupeAliases(aliases)
   };
+}
+
+function selectBrandOwner(key, candidates) {
+  const unique = [...new Map(candidates.map((candidate) => [candidate.id, candidate])).values()];
+  const active = unique.filter((candidate) => candidate.active !== false);
+  if (active.length > 1) throw new Error(`Active brand key conflict: ${key}`);
+  if (active.length === 1) return active[0];
+  return unique.sort((left, right) => left.id.localeCompare(right.id))[0];
 }
 
 async function readBrandRegistry() {
@@ -2222,7 +2253,7 @@ async function readBrandRegistry() {
   };
 }
 
-function validateBrandRegistry(brands, aliases) {
+export function validateBrandRegistry(brands, aliases) {
   if (!Array.isArray(brands)) throw new Error("brand-master-list.json must be an array");
   if (!Array.isArray(aliases)) throw new Error("brand-aliases.json must be an array");
   const ids = new Set();
@@ -2241,6 +2272,8 @@ function validateBrandRegistry(brands, aliases) {
     if (!entry?.alias || !entry?.brandId) throw new Error("Alias and brandId are required");
     if (!ids.has(entry.brandId)) throw new Error(`Alias references missing brandId: ${entry.brandId}`);
     const aliasKey = normalizeBrandKey(entry.alias);
+    const canonicalOwner = brands.find((brand) => normalizeBrandKey(brand.name) === aliasKey);
+    if (canonicalOwner && canonicalOwner.id !== entry.brandId) throw new Error(`Canonical/alias conflict: ${entry.alias}`);
     if (aliasKeys.has(aliasKey)) throw new Error(`Duplicate alias: ${entry.alias}`);
     aliasKeys.add(aliasKey);
   }
