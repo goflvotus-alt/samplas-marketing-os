@@ -155,10 +155,9 @@ export function buildBrandRegistry(brandMaster) {
 
 // ---------------------------------------------------------------------------
 // 6. resolveBrand
-// 정확 일치만 허용한다: ① canonical brand name exact match → ② brand id/code exact
-// match → ③ alias exact match. fuzzy/includes/startsWith 기반 추측, brandGroup 사용,
-// 첫 단어 자동 귀속, 유사 브랜드 자동 선택, alias 충돌 시 임의 선택은 전부 금지되며
-// 이 함수는 그런 로직을 포함하지 않는다. 매치 실패 시 null을 반환한다(추측하지 않는다).
+// canonical name / brand id / alias exact match 후보를 모두 수집한 뒤 brandId 기준으로
+// 중복 제거한다. active 후보가 하나면 우선 반환하고, active 후보가 없을 때만 inactive
+// 단독 후보를 fallback으로 반환한다. 같은 상태의 후보가 여러 개면 임의 선택하지 않는다.
 // ---------------------------------------------------------------------------
 export function resolveBrand(input, registry) {
   const key = normalizeBrandKey(input);
@@ -166,32 +165,30 @@ export function resolveBrand(input, registry) {
 
   const brands = registry?.brands || [];
   const aliasList = registry?.aliases || [];
+  const candidates = new Map();
+  const addCandidate = (brand, matchedBy) => {
+    if (!brand?.id || candidates.has(brand.id)) return;
+    candidates.set(brand.id, { brand, matchedBy });
+  };
 
-  // ① canonical brand name exact match
   for (const brand of brands) {
-    if (brand?.name && normalizeBrandKey(brand.name) === key) {
-      return { brandId: brand.id, name: brand.name, matchedBy: "name" };
-    }
+    if (brand?.name && normalizeBrandKey(brand.name) === key) addCandidate(brand, "name");
   }
-
-  // ② brand id/code exact match
   for (const brand of brands) {
-    if (brand?.id && normalizeBrandKey(brand.id) === key) {
-      return { brandId: brand.id, name: brand.name, matchedBy: "id" };
-    }
+    if (brand?.id && normalizeBrandKey(brand.id) === key) addCandidate(brand, "id");
   }
-
-  // ③ alias exact match (buildBrandRegistry에서 이미 충돌 alias는 제거된 상태이므로
-  //    여기서 다시 충돌을 판단하지 않는다 — 충돌 alias는애초에 이 목록에 존재하지 않는다)
   for (const entry of aliasList) {
     if (entry?.alias && normalizeBrandKey(entry.alias) === key) {
       const brand = brands.find((item) => item.id === entry.brandId);
-      if (brand) return { brandId: brand.id, name: brand.name, matchedBy: "alias" };
-      return null;
+      if (brand) addCandidate(brand, "alias");
     }
   }
 
-  return null;
+  const active = [...candidates.values()].filter(({ brand }) => brand.active !== false);
+  const eligible = active.length ? active : [...candidates.values()].filter(({ brand }) => brand.active === false);
+  if (eligible.length !== 1) return null;
+  const [{ brand, matchedBy }] = eligible;
+  return { brandId: brand.id, name: brand.name, matchedBy };
 }
 
 // ---------------------------------------------------------------------------
