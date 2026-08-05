@@ -1926,6 +1926,9 @@ const productSalesHistoryFile = () => join(workDir, "product-sales-history.json"
 const brandMasterFile = () => join(workDir, "brand-master.json");
 const productBrandMapFile = () => join(workDir, "product-brand-map.json");
 const workDataUploadPaths = new Set([
+  "brand-master.json",
+  "intelligence/brand-master-list.json",
+  "intelligence/brand-aliases.json",
   "ecount-inventory/latest.json",
   "ecount-inventory/diagnostic.json"
 ]);

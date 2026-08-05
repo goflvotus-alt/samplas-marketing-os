@@ -4,7 +4,13 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const monthlyPathPattern = /^(?:ecount-sales|monthly)\/\d{4}-(?:0[1-9]|1[0-2])\.json$/;
-const explicitPaths = ["ecount-inventory/latest.json", "ecount-inventory/diagnostic.json"];
+const explicitPaths = [
+  "brand-master.json",
+  "ecount-inventory/latest.json",
+  "ecount-inventory/diagnostic.json",
+  "intelligence/brand-aliases.json",
+  "intelligence/brand-master-list.json"
+];
 const allowedPath = (relativePath) => explicitPaths.includes(relativePath) || monthlyPathPattern.test(relativePath);
 
 export async function discoverWorkSnapshotPaths(workDir = join(root, "work")) {
