@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir, readdir as fsReaddir, rename, link, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, extname, join, resolve } from "node:path";
-import { URL } from "node:url";
+import { dirname, extname, join, resolve, sep } from "node:path";
+import { URL, fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 import { enrichMetaProductBreakdown, applyRuntimeAutoEnrichment } from "./scripts/meta-product-registry-link.mjs";
@@ -51,6 +51,7 @@ const cafe24TokenStoreFile = join(cafe24TokenStoreDir, "cafe24-token-store.json"
 const port = Number(env.PORT || 8787);
 const host = env.HOST || "127.0.0.1";
 const graphVersion = env.GRAPH_VERSION || "v25.0";
+const isMainModule = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -60,7 +61,7 @@ const mimeTypes = {
   ".txt": "text/plain; charset=utf-8"
 };
 
-const server = createServer(async (req, res) => {
+const server = isMainModule ? createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname === "/") {
@@ -509,9 +510,9 @@ const server = createServer(async (req, res) => {
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
   setInterval(runInstagramBackgroundSync, instagramSyncScheduler.intervalMs);
-});
+}) : null;
 
-server.on("error", (error) => {
+server?.on("error", (error) => {
   if (error?.code === "EADDRINUSE") {
     console.error(`SAMPLAS Marketing OS cannot start: http://${host}:${port} is already in use. 기존 서버가 실행 중인지 확인한 뒤 다시 실행하세요.`);
     process.exitCode = 1;
@@ -1925,10 +1926,11 @@ const productSalesHistoryFile = () => join(workDir, "product-sales-history.json"
 const brandMasterFile = () => join(workDir, "brand-master.json");
 const productBrandMapFile = () => join(workDir, "product-brand-map.json");
 const workDataUploadPaths = new Set([
-  ...Array.from({ length: 7 }, (_, index) => `ecount-sales/2026-${String(index + 1).padStart(2, "0")}.json`),
   "ecount-inventory/latest.json",
   "ecount-inventory/diagnostic.json"
 ]);
+const monthlyWorkDataPathPattern = /^(?:ecount-sales|monthly)\/\d{4}-(?:0[1-9]|1[0-2])\.json$/;
+export const isAllowedWorkDataUploadPath = (relativePath) => workDataUploadPaths.has(relativePath) || monthlyWorkDataPathPattern.test(relativePath);
 
 async function uploadWorkDataFiles(payload) {
   const files = Array.isArray(payload?.files) ? payload.files : [];
@@ -1937,7 +1939,7 @@ async function uploadWorkDataFiles(payload) {
   const seen = new Set();
   const prepared = files.map((file) => {
     const relativePath = String(file?.relativePath || "").trim();
-    if (!workDataUploadPaths.has(relativePath)) {
+    if (!isAllowedWorkDataUploadPath(relativePath)) {
       throw Object.assign(new Error(`허용되지 않은 work 데이터 경로입니다: ${relativePath}`), { status: 400 });
     }
     if (seen.has(relativePath)) {
@@ -1951,18 +1953,21 @@ async function uploadWorkDataFiles(payload) {
     } catch {
       throw Object.assign(new Error(`JSON 파싱 실패: ${relativePath}`), { status: 400 });
     }
-    if (relativePath.startsWith("ecount-sales/")) {
+    if (relativePath.startsWith("ecount-sales/") || relativePath.startsWith("monthly/")) {
       const month = relativePath.slice("ecount-sales/".length, -".json".length);
-      if (parsed?.month !== month) throw Object.assign(new Error(`ECOUNT sales month 불일치: ${relativePath}`), { status: 400 });
+      const expectedMonth = relativePath.startsWith("monthly/") ? relativePath.slice("monthly/".length, -".json".length) : month;
+      if (parsed?.month !== expectedMonth) throw Object.assign(new Error(`월 데이터 month 불일치: ${relativePath}`), { status: 400 });
     } else if (relativePath.endsWith("/latest.json") && !Array.isArray(parsed)) {
       throw Object.assign(new Error(`ECOUNT inventory latest 형식 오류: ${relativePath}`), { status: 400 });
     } else if (relativePath.endsWith("/diagnostic.json") && (!parsed || typeof parsed !== "object" || Array.isArray(parsed))) {
       throw Object.assign(new Error(`ECOUNT inventory diagnostic 형식 오류: ${relativePath}`), { status: 400 });
     }
+    const target = resolve(workDir, ...relativePath.split("/"));
+    if (!target.startsWith(`${workDir}${sep}`)) throw Object.assign(new Error(`work 경로 밖에는 저장할 수 없습니다: ${relativePath}`), { status: 400 });
     return {
       relativePath,
       jsonText,
-      target: join(workDir, ...relativePath.split("/"))
+      target
     };
   });
 
@@ -3356,7 +3361,7 @@ async function buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource) {
   };
 }
 
-async function buildMonthlyArchive(month) {
+export async function buildMonthlyArchive(month) {
   if (!isValidMonthKey(month)) {
     throw new Error("month는 YYYY-MM 형식이어야 합니다.");
   }
@@ -3560,7 +3565,7 @@ async function readMonthlyArchiveReference(month) {
   }
 }
 
-async function writeMonthlyArchive(month, archive) {
+export async function writeMonthlyArchive(month, archive) {
   if (!isValidMonthKey(month)) throw new Error("Invalid month");
   if (!archive || archive.month !== month) throw new Error("Archive month mismatch");
   const file = monthlyArchivePath(month);
