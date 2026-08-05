@@ -243,6 +243,81 @@ test("resolveBrand: 빈 입력은 null", () => {
   assert.equal(resolveBrand(null, sampleRegistry), null);
 });
 
+test("resolveBrand: active canonical은 inactive canonical보다 우선", () => {
+  const registry = buildBrandRegistry({ brands: [
+    { brand_code: "ACTIVE", brand_name: "SAME", name_aliases: [], active: true },
+    { brand_code: "LEGACY", brand_name: "SAME", name_aliases: [], active: false }
+  ] });
+  assert.deepEqual(resolveBrand("SAME", registry), { brandId: "ACTIVE", name: "SAME", matchedBy: "name" });
+});
+
+test("resolveBrand: active alias는 inactive canonical보다 우선", () => {
+  const registry = buildBrandRegistry({ brands: [
+    { brand_code: "ACTIVE", brand_name: "현재", name_aliases: ["SHARED"], active: true },
+    { brand_code: "LEGACY", brand_name: "SHARED", name_aliases: [], active: false }
+  ] });
+  assert.deepEqual(resolveBrand("SHARED", registry), { brandId: "ACTIVE", name: "현재", matchedBy: "alias" });
+});
+
+test("resolveBrand: active canonical과 다른 active alias가 충돌하면 null", () => {
+  const registry = buildBrandRegistry({ brands: [
+    { brand_code: "CANONICAL", brand_name: "SHARED", name_aliases: [], active: true },
+    { brand_code: "ALIAS", brand_name: "OTHER", name_aliases: ["SHARED"], active: true }
+  ] });
+  assert.equal(resolveBrand("SHARED", registry), null);
+});
+
+test("resolveBrand: inactive 단독 후보는 fallback으로 반환", () => {
+  const registry = buildBrandRegistry({ brands: [
+    { brand_code: "LEGACY", brand_name: "LEGACY BRAND", name_aliases: [], active: false }
+  ] });
+  assert.deepEqual(resolveBrand("LEGACY BRAND", registry), { brandId: "LEGACY", name: "LEGACY BRAND", matchedBy: "name" });
+});
+
+test("resolveBrand: MEANTIME 실제 병합 구조는 active alias 소유자를 반환", () => {
+  const registry = buildBrandRegistry({ brands: [
+    { brand_code: "B00000HM", brand_name: "민타임", name_aliases: ["MEANTIME"], active: true },
+    { brand_code: "B00000KS", brand_name: "Meantime", name_aliases: [], active: false }
+  ] });
+  assert.deepEqual(resolveBrand("MEANTIME", registry), { brandId: "B00000HM", name: "민타임", matchedBy: "alias" });
+});
+
+test("resolveBrand: BARRAGAN 실제 병합 구조는 active canonical을 반환", () => {
+  const registry = buildBrandRegistry({ brands: [
+    { brand_code: "B0000BCX", brand_name: "BARRAGAN", name_aliases: [], active: true },
+    { brand_code: "B00000KI", brand_name: "BARRAGAN", name_aliases: [], active: false }
+  ] });
+  assert.deepEqual(resolveBrand("BARRAGAN", registry), { brandId: "B0000BCX", name: "BARRAGAN", matchedBy: "name" });
+});
+
+test("resolveBrand: 같은 brandId가 canonical과 alias로 매치돼도 한 후보", () => {
+  const registry = buildBrandRegistry({ brands: [
+    { brand_code: "B001", brand_name: "SAME", name_aliases: ["SAME"], active: true }
+  ] });
+  assert.deepEqual(resolveBrand("SAME", registry), { brandId: "B001", name: "SAME", matchedBy: "name" });
+});
+
+test("resolveBrand: active 누락 레거시 객체는 active로 취급", () => {
+  const registry = { brands: [{ id: "B001", name: "LEGACY", aliases: [] }], aliases: [] };
+  assert.deepEqual(resolveBrand("LEGACY", registry), { brandId: "B001", name: "LEGACY", matchedBy: "name" });
+});
+
+test("resolveBrand: inactive 후보가 둘이면 null", () => {
+  const registry = buildBrandRegistry({ brands: [
+    { brand_code: "OLD1", brand_name: "SAME", name_aliases: [], active: false },
+    { brand_code: "OLD2", brand_name: "SAME", name_aliases: [], active: false }
+  ] });
+  assert.equal(resolveBrand("SAME", registry), null);
+});
+
+test("resolveBrand: active canonical 후보가 둘이면 null", () => {
+  const registry = buildBrandRegistry({ brands: [
+    { brand_code: "A1", brand_name: "SAME", name_aliases: [], active: true },
+    { brand_code: "A2", brand_name: "SAME", name_aliases: [], active: true }
+  ] });
+  assert.equal(resolveBrand("SAME", registry), null);
+});
+
 // ---------------------------------------------------------------------------
 // extractBracketBrandCandidate
 // ---------------------------------------------------------------------------
