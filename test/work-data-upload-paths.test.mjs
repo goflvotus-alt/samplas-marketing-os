@@ -10,6 +10,7 @@ test("server allows exact monthly JSON paths and keeps explicit inventory paths"
   for (const path of [
     "ecount-sales/2026-08.json", "ecount-sales/2026-12.json", "ecount-sales/2027-01.json",
     "monthly/2026-07.json", "monthly/2027-01.json",
+    "brand-master.json", "intelligence/brand-master-list.json", "intelligence/brand-aliases.json",
     "ecount-inventory/latest.json", "ecount-inventory/diagnostic.json"
   ]) assert.equal(isAllowedWorkDataUploadPath(path), true, path);
 });
@@ -19,6 +20,8 @@ test("server rejects invalid months, traversal, extensions and unrelated paths",
     "ecount-sales/2026-00.json", "ecount-sales/2026-13.json", "ecount-sales/2026-8.json",
     "ecount-sales/../../secret.json", "ecount-sales/%2e%2e/secret.json", "ecount-sales/2026-08.json.tmp",
     "monthly/test.json", "monthly/2026-8.json", "work/brand-master.json", "backups/2026-08.json",
+    "../brand-master.json", "intelligence/../brand-master.json", "intelligence/%2e%2e/brand-master.json",
+    "brand-master.json.tmp", "brand-master.json.bak", "brand-master-merge-plan.json", "intelligence/unknown.json",
     "input/2026.08.xlsx", "/absolute/2026-08.json", "https://example.com/2026-08.json"
   ]) assert.equal(isAllowedWorkDataUploadPath(path), false, path);
 });
@@ -32,15 +35,19 @@ test("discovery includes only existing valid monthly and explicit files, sorted 
     for (const path of [
       "ecount-sales/2026-08.json", "ecount-sales/2026-12.json", "ecount-sales/2026-13.json",
       "ecount-sales/2026-08.json.tmp", "monthly/2027-01.json", "monthly/test.json",
-      "ecount-inventory/latest.json", "brand-master.json"
+      "ecount-inventory/latest.json", "brand-master.json", "intelligence/brand-master-list.json",
+      "intelligence/brand-aliases.json", "intelligence/unknown.json", "brand-master-merge-plan.json"
     ]) {
       await mkdir(join(workDir, ...path.split("/").slice(0, -1)), { recursive: true });
       await writeFile(join(workDir, ...path.split("/")), "{}");
     }
     assert.deepEqual(await discoverWorkSnapshotPaths(workDir), [
+      "brand-master.json",
       "ecount-inventory/latest.json",
       "ecount-sales/2026-08.json",
       "ecount-sales/2026-12.json",
+      "intelligence/brand-aliases.json",
+      "intelligence/brand-master-list.json",
       "monthly/2027-01.json"
     ]);
   } finally {
