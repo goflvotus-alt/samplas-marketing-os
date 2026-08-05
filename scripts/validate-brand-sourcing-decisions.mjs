@@ -354,7 +354,8 @@ ${result.validation_status === "READY_TO_APPLY" ? "가능 — 별도 반영 STEP
 
 const csvCell = (value) => {
   const raw = String(value ?? "");
-  return /[",\r\n]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+  const safe = typeof value !== "number" && !raw.startsWith("'") && /^\s*[=+\-@]/.test(raw) ? `'${raw}` : raw;
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 function toCsv(issues) {
   const headers = ["severity", "code", "workbook_row", "universe_brand_code", "universe_brand_name", "decision", "field", "value", "message"];
