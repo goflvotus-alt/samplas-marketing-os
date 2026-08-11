@@ -401,6 +401,15 @@ const server = isMainModule ? createServer(async (req, res) => {
         && cached?.sales?.coverage?.missingMonths?.includes(month);
       if (cached && !staleEmptyCache) {
         const enriched = await enrichMonthlyArchiveBrandSales(cached, month);
+        if (enriched !== cached) {
+          // 재병합이 실제로 일어났을 때만(참조가 바뀜) 다시 저장한다 — 이미 최신이면
+          // 매 요청마다 불필요하게 쓰지 않는다.
+          try {
+            await writeMonthlyArchive(month, { ...enriched, archiveStatus: "saved" });
+          } catch (error) {
+            await logApiError("monthly_archive_freshness_repair_save", error, { month });
+          }
+        }
         return json(res, { ...enriched, archiveStatus: "saved" });
       }
       const archive = await buildMonthlyArchive(month);
@@ -4015,11 +4024,33 @@ async function buildCrossBrandComparisonPeriodPayload({ baseMonth, comparisonMon
   };
 }
 
+// NEXT-MONTHLY-ARCHIVE-STALE-CACHE: brandSalesBasis="online_offline"만으로는 "병합을
+// 이미 했다"만 알 뿐 "그 병합이 지금도 최신인가"를 모른다(docs/reports/
+// NEXT-MONTHLY-ARCHIVE-STALE-CACHE-plan.md §7/§9). ECOUNT 스냅샷 자체의 importedAt을
+// 병합 시점에 archive.commerce.brandSalesSourceImportedAt으로 함께 저장해두고, 다음
+// 요청마다 현재 스냅샷의 importedAt과 비교한다 — 최신이면(archiveTime >= sourceTime)
+// 그대로 재사용, 아니면(스냅샷이 갱신됐거나 이 필드 자체가 없는 구버전 아카이브) 재병합.
+function monthlyArchiveBrandSalesIsFresh(archiveImportedAt, sourceImportedAt) {
+  if (!sourceImportedAt) return true;
+  if (!archiveImportedAt) return false;
+  const archiveTime = Date.parse(archiveImportedAt);
+  const sourceTime = Date.parse(sourceImportedAt);
+  if (!Number.isFinite(archiveTime) || !Number.isFinite(sourceTime)) return false;
+  return archiveTime >= sourceTime;
+}
+
 async function enrichMonthlyArchiveBrandSales(archive, month) {
-  if (archive?.commerce?.brandSalesBasis === "online_offline") return archive;
   const monthStart = `${month}-01`;
   const monthEnd = monthEndKey(month);
   const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+  const sourceImportedAt = snapshot?.importedAt || null;
+  const archiveImportedAt = archive?.commerce?.brandSalesSourceImportedAt || null;
+  if (
+    archive?.commerce?.brandSalesBasis === "online_offline"
+    && monthlyArchiveBrandSalesIsFresh(archiveImportedAt, sourceImportedAt)
+  ) {
+    return archive;
+  }
   const offlineLines = Array.isArray(snapshot?.salesLines)
     ? snapshot.salesLines
     : Array.isArray(snapshot?.rows)
@@ -4043,7 +4074,8 @@ async function enrichMonthlyArchiveBrandSales(archive, month) {
         until: monthEnd,
         identityContext
       }),
-      brandSalesBasis: "online_offline"
+      brandSalesBasis: "online_offline",
+      brandSalesSourceImportedAt: sourceImportedAt
     }
   };
 }
