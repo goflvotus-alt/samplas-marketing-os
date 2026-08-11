@@ -58,6 +58,20 @@ function loadEnrichMonthlyArchiveBrandSales({ readEcountOfflineSalesSnapshot, lo
   )(readEcountOfflineSalesSnapshot, loadResolverContext, mergeOfflineBrandSales, workDir);
 }
 
+// NEXT-MONTHLY-FIRST-MERGE-FRESHNESS-MARKER-FIX: buildMonthlyArchiveBrandSales() now
+// returns { brandSales, sourceImportedAt } instead of a bare array, so buildMonthlyArchive()
+// can stamp commerce.brandSalesSourceImportedAt at creation time — this is the exact
+// marker enrichMonthlyArchiveBrandSales() checks, and its absence on a freshly-built
+// archive was the root cause of the SECOND MERGE bug (docs/reports/NEXT-JULY-HISTORICAL-
+// ONLINE-SNAPSHOT-FORENSICS.md §3).
+function loadBuildMonthlyArchiveBrandSales({ readEcountOfflineSalesSnapshot, loadResolverContext, mergeOfflineBrandSales, workDir }) {
+  const source = sourceOf("buildMonthlyArchiveBrandSales");
+  return Function(
+    "readEcountOfflineSalesSnapshot", "loadResolverContext", "mergeOfflineBrandSales", "workDir",
+    `${source}; return buildMonthlyArchiveBrandSales;`
+  )(readEcountOfflineSalesSnapshot, loadResolverContext, mergeOfflineBrandSales, workDir);
+}
+
 // ---------------------------------------------------------------------------
 // 1/2. monthlyArchiveBrandSalesIsFresh(): pure freshness decision.
 // ---------------------------------------------------------------------------
@@ -229,4 +243,123 @@ test("14/15. buildCrossBrandComparisonPeriodPayload()/the cutoff endpoint never 
   assert.doesNotMatch(source, /readMonthlyArchive\(/);
   assert.doesNotMatch(source, /writeMonthlyArchive\(/);
   assert.doesNotMatch(source, /enrichMonthlyArchiveBrandSales\(/);
+});
+
+// ---------------------------------------------------------------------------
+// 16-20. THE SECOND MERGE REGRESSION — the scenario the original freshness fix
+// (5b70343) missed. buildMonthlyArchive() already produces correctly-merged
+// online+offline brandSales on first creation, but never stamped
+// brandSalesSourceImportedAt — so enrichMonthlyArchiveBrandSales() treated that
+// freshly-built archive as stale and merged offline into it a SECOND time,
+// exactly reproducing the real corrupted July archive (CARNET online 2,448,430 ->
+// 23,303,130 -> 44,157,830, see docs/reports/NEXT-JULY-HISTORICAL-ONLINE-SNAPSHOT-
+// FORENSICS.md §3). This proves buildMonthlyArchiveBrandSales()'s new
+// { brandSales, sourceImportedAt } return closes that gap.
+// ---------------------------------------------------------------------------
+const carnetLikeOnlineBrand = { brand_code: "B00000KU", brand_name: "카르넷 아카이브", sales: { paidAmount: 2448430, grossAmount: 2616000, discountAmount: 167570 }, quantitySold: 6, orderCount: 5 };
+const carnetLikeCommerceSource = { brands: [carnetLikeOnlineBrand], totals: { paidAmount: 2448430 }, products: [] };
+const carnetLikeSnapshot = {
+  importedAt: "2026-08-05T04:35:11.454Z",
+  salesLines: [
+    { date: "2026-07-01", documentNo: "1", productName: "CARNET / Product A", brandGroup: "CAR", quantity: 1, salesAmount: 20854700, isOfflineRevenue: true }
+  ]
+};
+async function carnetLikeIdentityContext() {
+  return {
+    brandMaster: { brands: [{ brand_code: "B00000KU", brand_name: "카르넷 아카이브" }] },
+    brandRegistry: buildBrandRegistry({ brands: [{ brand_code: "B00000KU", brand_name: "카르넷 아카이브" }] }),
+    productRegistry: { entries: [] },
+    reviewQueue: null,
+    onlineCatalogRegistry: buildBrandRegistry({
+      brands: [{ brand_code: "B00000KU", brand_name: "카르넷 아카이브", name_aliases: ["CARNET"] }]
+    })
+  };
+}
+
+test("16. buildMonthlyArchiveBrandSales() returns the exact ECOUNT snapshot importedAt used for the merge, no second snapshot read", async () => {
+  const calls = [];
+  const build = loadBuildMonthlyArchiveBrandSales({
+    readEcountOfflineSalesSnapshot: async (...args) => { calls.push(args); return carnetLikeSnapshot; },
+    loadResolverContext: carnetLikeIdentityContext,
+    mergeOfflineBrandSales,
+    workDir: "/tmp/unused"
+  });
+  const result = await build("2026-07-01", "2026-07-31", carnetLikeCommerceSource);
+  assert.equal(calls.length, 1, "exactly one snapshot read — no duplicate I/O introduced");
+  assert.equal(result.sourceImportedAt, "2026-08-05T04:35:11.454Z", "propagates the same snapshot's importedAt, not a fresh independent read");
+  assert.ok(Array.isArray(result.brandSales));
+});
+
+test("17. first build produces the correct one-time-merged CARNET-like total (online 2,448,430 + offline 20,854,700 = 23,303,130)", async () => {
+  const build = loadBuildMonthlyArchiveBrandSales({
+    readEcountOfflineSalesSnapshot: async () => carnetLikeSnapshot,
+    loadResolverContext: carnetLikeIdentityContext,
+    mergeOfflineBrandSales,
+    workDir: "/tmp/unused"
+  });
+  const { brandSales } = await build("2026-07-01", "2026-07-31", carnetLikeCommerceSource);
+  const row = brandSales.find((r) => r.brand_code === "B00000KU");
+  assert.equal(row.onlinePaidAmount, 2448430, "CARNET-LIKE FIXTURE AFTER FIRST MERGE: Online");
+  assert.equal(row.offlineSalesAmount, 20854700, "CARNET-LIKE FIXTURE AFTER FIRST MERGE: Offline");
+  assert.equal(row.sales.paidAmount, 23303130, "CARNET-LIKE FIXTURE AFTER FIRST MERGE: Total");
+});
+
+test("18/19. a freshly-built archive (brandSalesBasis + brandSalesSourceImportedAt stamped together, mirroring buildMonthlyArchive()'s commerce object) is immediately fresh and is NOT re-merged on its first read — the exact missed scenario", async () => {
+  const calls = [];
+  const spyMerge = (args) => { calls.push(args); return mergeOfflineBrandSales(args); };
+
+  // Step A: build, exactly as buildMonthlyArchive() does — construct commerce with
+  // brandSalesBasis and brandSalesSourceImportedAt from the SAME buildMonthlyArchiveBrandSales() call.
+  const build = loadBuildMonthlyArchiveBrandSales({
+    readEcountOfflineSalesSnapshot: async () => carnetLikeSnapshot,
+    loadResolverContext: carnetLikeIdentityContext,
+    mergeOfflineBrandSales: spyMerge,
+    workDir: "/tmp/unused"
+  });
+  const { brandSales, sourceImportedAt } = await build("2026-07-01", "2026-07-31", carnetLikeCommerceSource);
+  assert.equal(calls.length, 1, "one merge for the initial build");
+
+  const freshlyBuiltArchive = {
+    month: "2026-07",
+    commerce: {
+      brandSales,
+      brandSalesBasis: "online_offline",
+      brandSalesSourceImportedAt: sourceImportedAt,
+      productSales: []
+    }
+  };
+
+  // Step B: confirm the archive already carries both markers together.
+  assert.equal(freshlyBuiltArchive.commerce.brandSalesBasis, "online_offline");
+  assert.equal(freshlyBuiltArchive.commerce.brandSalesSourceImportedAt, "2026-08-05T04:35:11.454Z");
+
+  // Step C/D: immediately pass it through enrichMonthlyArchiveBrandSales() — the exact
+  // path GET /api/reports/monthly takes on the very next read after creation.
+  const enrich = loadEnrichMonthlyArchiveBrandSales({
+    readEcountOfflineSalesSnapshot: async () => carnetLikeSnapshot,
+    loadResolverContext: carnetLikeIdentityContext,
+    mergeOfflineBrandSales: spyMerge,
+    workDir: "/tmp/unused"
+  });
+  const served = await enrich(freshlyBuiltArchive, "2026-07");
+
+  assert.equal(calls.length, 1, "SECOND MERGE REGRESSION TEST: mergeOfflineBrandSales must NOT be invoked again — still exactly one call total");
+  assert.equal(served, freshlyBuiltArchive, "the freshly-built archive is returned by reference, untouched");
+
+  // Step E: brand values must be byte-identical to the first-merge result — never the
+  // doubled 44,157,830-shaped total.
+  const row = served.commerce.brandSales.find((r) => r.brand_code === "B00000KU");
+  assert.equal(row.onlinePaidAmount, 2448430, "CARNET-LIKE FIXTURE AFTER ENRICHMENT: Online (must equal first-merge value, not the merged total)");
+  assert.equal(row.offlineSalesAmount, 20854700, "CARNET-LIKE FIXTURE AFTER ENRICHMENT: Offline");
+  assert.equal(row.sales.paidAmount, 23303130, "CARNET-LIKE FIXTURE AFTER ENRICHMENT: Total — must never become 44,157,830 (raw + 2×offline)");
+});
+
+test("20. buildMonthlyArchive()'s commerce object construction stamps brandSalesSourceImportedAt from the same buildMonthlyArchiveBrandSales() call that produces brandSales", () => {
+  const source = sourceOf("buildMonthlyArchive");
+  assert.match(
+    source,
+    /const \{ brandSales, sourceImportedAt: brandSalesSourceImportedAt \} = await buildMonthlyArchiveBrandSales\(monthStart, monthEnd, commerceSource\);/,
+    "brandSales and the marker must come from one destructured call, not two separate computations"
+  );
+  assert.match(source, /brandSalesBasis: "online_offline",\s*\n\s*brandSalesSourceImportedAt,/, "both markers are set together in the same commerce object literal");
 });

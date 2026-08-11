@@ -3852,7 +3852,7 @@ export async function buildMonthlyArchive(month) {
   ]);
 
   const commerceTotals = commerceSource.totals || {};
-  const brandSales = await buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSource);
+  const { brandSales, sourceImportedAt: brandSalesSourceImportedAt } = await buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSource);
   const commerce = {
     paidAmount: commerceTotals.paidAmount,
     orderCount: commerceTotals.orderCount,
@@ -3861,6 +3861,7 @@ export async function buildMonthlyArchive(month) {
     paymentMethods: commerceSource.paymentMethods || [],
     brandSales,
     brandSalesBasis: "online_offline",
+    brandSalesSourceImportedAt,
     productSales: commerceSource.products || []
   };
   const sales = await buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource);
@@ -3956,6 +3957,13 @@ export async function buildMonthlyArchive(month) {
 // 카탈로그) 조회원은 Resolver F가 쓰던 것과 동일한 brandSales/productSales를 그대로
 // 재사용한다(새 데이터 소스 없음 — buildOnlineCatalogRegistry가 Brand Master에 실재하는
 // brand_code만 등록하므로 임의 canonical을 새로 만들지 않는다).
+// NEXT-MONTHLY-FIRST-MERGE-FRESHNESS-MARKER-FIX: 이 함수가 이미 읽은 ECOUNT 스냅샷의
+// importedAt을 brandSales와 함께 반환한다 — buildMonthlyArchive()가 이 값을
+// commerce.brandSalesSourceImportedAt으로 즉시 기록해야, 방금 만든(이미 성공적으로
+// 병합된) 아카이브가 다음 서빙 시 enrichMonthlyArchiveBrandSales()에 의해 "stale"로
+// 오판돼 다시 병합되는(SECOND MERGE, docs/reports/NEXT-JULY-HISTORICAL-ONLINE-
+// SNAPSHOT-FORENSICS.md §3) 사고를 막는다. 새 스냅샷 읽기를 추가하지 않고, 이미
+// 호출 중인 readEcountOfflineSalesSnapshot()의 결과를 그대로 재사용한다.
 async function buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSource) {
   const snapshot = await readEcountOfflineSalesSnapshot(monthStart.slice(0, 7), { workDir });
   const offlineLines = Array.isArray(snapshot?.salesLines)
@@ -3966,7 +3974,7 @@ async function buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSourc
   const identityContext = await loadResolverContext({
     onlineCatalog: { brands: commerceSource?.brands || [], products: commerceSource?.products || [] }
   });
-  return mergeOfflineBrandSales({
+  const brandSales = mergeOfflineBrandSales({
     brandSales: commerceSource?.brands || [],
     onlinePaidAmount: Number(commerceSource?.totals?.paidAmount || 0),
     offlineLines,
@@ -3974,6 +3982,7 @@ async function buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSourc
     until: monthEnd,
     identityContext
   });
+  return { brandSales, sourceImportedAt: snapshot?.importedAt || null };
 }
 
 // STEP67 cross-brand-partial-period P1: 정규화된(day-cutoff 포함 가능) 기간 하나에
@@ -4001,7 +4010,7 @@ function crossBrandPeriodBrandRow(row) {
 
 async function buildCrossBrandPeriodWindow(range) {
   const commerceSource = await buildBrandSalesDiagnostics(range.startDate, range.endDate);
-  const brandSales = await buildMonthlyArchiveBrandSales(range.startDate, range.endDate, commerceSource);
+  const { brandSales } = await buildMonthlyArchiveBrandSales(range.startDate, range.endDate, commerceSource);
   return brandSales.map(crossBrandPeriodBrandRow);
 }
 
