@@ -4,17 +4,29 @@ const navItems = [
   { view: "Reports", label: "Annual", hash: "annual-report", group: "public", hidden: false },
   { view: "Clients", label: "Clients", hash: "clients", group: "public", hidden: false },
   { view: "InventoryOverview", label: "Inventory", hash: "inventory-overview", group: "public", hidden: false },
+  // STEP65-6 수정: "Intelligence"(Mission Brief 통합 화면)를 rename하는 건 잘못된
+  // 연결이었다 — 실제 "Brand Selector로 브랜드를 골라 상세 분석을 보는" 화면은
+  // BrandDashboard(719행이 아니라 1227행, hash: brand-dashboard)이며 지금까지 계속
+  // hidden 상태였다. Sidebar "Brand Intelligence"는 이 화면으로 연결한다(새 화면 아님,
+  // 기존 hidden 진입을 노출만 함 — STEP65-5가 PromotionSummary에 한 것과 동일 패턴).
+  { view: "BrandDashboard", label: "Brand Intelligence", hash: "brand-dashboard", group: "management", hidden: false },
+  // STEP65-5: Navigation Integration. hidden 진입(URL 직접 입력)만 있던 STEP65-3/65-4를
+  // 대체해 Sidebar에 정식 노출한다 — 직원이 클릭만으로 진입 가능해야 한다는 지시대로.
+  { view: "PromotionSummary", label: "Promotion Intelligence", hash: "promotion-summary", group: "management", hidden: false },
   { view: "Sales", label: "Commerce", hash: "commerce", group: "management", hidden: false },
   { view: "Content", label: "Content", hash: "content", group: "management", hidden: false },
   { view: "ProductRegistry", label: "Product Registry", hash: "product-registry", group: "management", hidden: false },
-  { view: "Intelligence", label: "Intelligence", hash: "intelligence", group: "management", hidden: false },
   { view: "Settings", label: "Master Data", hash: "master-data", group: "management", hidden: false },
   { view: "Settings", label: "Settings", hash: "settings", group: "management", hidden: false },
   { view: "Calendar", label: "Calendar", hash: "calendar", hidden: true },
   { view: "Advertising", label: "Marketing", hash: "marketing", hidden: true },
   { view: "InventoryIntelligence", label: "Inventory Intelligence", hash: "inventory-intelligence", hidden: true },
   { view: "Product", label: "Product", hash: "product", hidden: true },
-  { view: "Editorial AI", label: "Editorial AI", hash: "editorial-ai", hidden: true }
+  { view: "Editorial AI", label: "Editorial AI", hash: "editorial-ai", hidden: true },
+  // STEP65-6 수정: 기존 통합 Intelligence(Mission Brief) 화면은 삭제하지 않고 hidden
+  // 처리만 한다 — URL(#intelligence) 직접 접근은 계속 가능하다.
+  { view: "Intelligence", label: "Intelligence", hash: "intelligence", hidden: true },
+  { view: "EntityOverview", label: "Brand Overview", hash: "brands", hidden: true }
 ];
 
 function buildRecentMonthKeys(referenceDate = new Date(), count = 7) {
@@ -217,6 +229,17 @@ function brandPerformancePaidAmount(record = {}) {
   return canonicalPaidAmount(record);
 }
 
+// HOTFIX(2026-07-30) — Monthly Report > 01 Commerce > 브랜드 매출 TOP5 카드 전용 헬퍼.
+// commerce.brandSales는 scripts/monthly-brand-sales.mjs의 mergeOfflineBrandSales()가
+// 오프라인(ECOUNT) 매출을 합산하면서도, 브랜드별 온라인(Cafe24 canonical 실제 결제)
+// 금액을 record.onlinePaidAmount 필드에 그대로 보존해 둔다. 이 함수는 그 값을 그대로
+// 읽기만 하며, 필드가 없는 예외 상황에서만 canonicalPaidAmount(온라인+오프라인 합산)로
+// 폴백한다. brandPerformancePaidAmount(기존, 온라인+오프라인 합산 기준)는 다른 카드/화면이
+// 계속 그대로 사용하므로 이 함수는 건드리지 않는다.
+function brandPerformanceOnlinePaidAmount(record = {}) {
+  return firstFiniteValue(record?.onlinePaidAmount, canonicalPaidAmount(record), 0);
+}
+
 function brandPerformanceCode(record = {}) {
   return String(record?.brand_code || record?.brandCode || "").trim();
 }
@@ -261,6 +284,76 @@ function esc(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+// STEP48 — Data Freshness Header: 계산 로직은 전혀 건드리지 않고, 각 화면이 이미 받고 있는
+// 응답의 타임스탬프/상태 값만으로 "이 데이터가 언제 기준인지"를 표시하는 공용 컴포넌트.
+// Today/Commerce/Clients/Monthly가 renderFreshnessHeader()를, Product Registry/Inventory
+// Intelligence(운영 기능 아님)가 renderBetaFreshnessBadge()를 재사용한다 — 화면마다 중복
+// 구현하지 않는다.
+//
+// STEP48A(2026-07-31) — 화면 전체를 LIVE/CACHE/ARCHIVE 단일 상태로 표시하면, 서로 다른
+// 최신성을 가진 데이터가 한 화면에 섞여 있을 때 사용자가 "전체가 실시간"이라고 오해할 수
+// 있다는 지적에 따라 MIXED 상태를 추가했다. 실제 데이터 소스 재추적 결과(계산 로직 변경 없음,
+// 표시 문구만 재검토):
+//   - Today: `#todaySummarySections`의 "총매출" 카드가 Cafe24 LIVE 온라인 매출과 ECOUNT
+//     오프라인 SNAPSHOT을 합산해 하나의 숫자로 보여준다(todaySummarySalesInfo). 광고비/ROAS는
+//     Meta Ads 캐시, 콘텐츠 지표는 Instagram 캐시 기준이라 화면 전체가 이미 다중 소스 혼합이다.
+//     → status: "mixed"
+//   - Commerce: 화면 하단 매출 요약(Hero/Compare/결제수단, #commerceSummaryHero 등)은
+//     오프라인/ECOUNT를 전혀 포함하지 않는 Cafe24 온라인 실결제 LIVE 값만 사용함을 재확인했다
+//     (totalSales는 fetch만 되고 화면에는 렌더링되지 않는 미사용 상태값). 다만 화면 상단
+//     KPI(#kpiGrid, #overviewLiveData/#overviewLiveSupport)에는 Meta Ads 캐시·Instagram
+//     캐시 기준 카드가 함께 있어 완전한 단일 LIVE 화면은 아니다 → status는 "live"로 유지하되
+//     note에 이 사실을 명시한다.
+//   - Clients: Cafe24 온라인 주문은 디스크 캐시(loadCanonicalCafe24OrderCache, 파일 mtime
+//     기준)를, 오프라인은 ECOUNT 수동 업로드 스냅샷(importedAt)을 쓴다. Cafe24 캐시 쪽 생성
+//     시각은 intelligence-service.mjs 내부에서만 계산되고 API 응답에 노출되지 않아(이번 STEP은
+//     intelligence-service.mjs 수정 금지) 실제 값을 가져올 수 없다 — 추측값을 넣는 대신 ECOUNT
+//     importedAt만 표시하고, Cafe24 캐시 시각은 "현재 API로 확인 불가"임을 note에 명시한다.
+//   - Monthly: archive.sales.totalSales가 Cafe24 온라인 + ECOUNT 오프라인을 합산한다
+//     (buildMonthlyArchiveSales, server.mjs). archiveStatus "saved"(저장된 과거월)만 더 이상
+//     바뀌지 않는 ARCHIVE이고, "live"(당월)/"draft"(미저장 과거월)는 매 요청마다 이 혼합 계산을
+//     다시 수행하므로 LIVE가 아니라 MIXED다.
+//
+// LIVE/CACHE/ARCHIVE/MIXED 기준 정의:
+//   LIVE    = 화면을 열 때마다 원본 소스(Cafe24 API 등)를 다시 조회해 즉석 계산한 값
+//   CACHE   = 자동 재동기화 없이 이미 저장된 스냅샷/캐시 파일을 읽은 값
+//   ARCHIVE = 특정 과거 시점에 저장되어 더 이상 바뀌지 않는 기록
+//             (Monthly의 저장된 과거월 archiveStatus === "saved")
+//   MIXED   = 서로 다른 최신성을 가진 데이터 소스(예: LIVE 온라인 + SNAPSHOT 오프라인)를
+//             하나의 화면·카드에서 함께 사용하는 경우
+//             (Today 전체, Monthly의 당월/미저장 과거월)
+const FRESHNESS_STATUS_LABEL = { live: "LIVE", cache: "CACHE", archive: "ARCHIVE", mixed: "MIXED" };
+
+function freshnessTimestampLabel(value) {
+  if (!value) return "확인 불가";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "확인 불가";
+  return date.toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function renderFreshnessHeader(targetId, { status, dataAsOf, lastUpdated, note } = {}) {
+  const target = $(`#${targetId}`);
+  if (!target) return;
+  const statusKey = String(status || "").toLowerCase();
+  const statusLabel = FRESHNESS_STATUS_LABEL[statusKey] || "-";
+  target.innerHTML = `<div class="freshness-header">
+    <span class="freshness-badge freshness-badge-${esc(statusKey || "unknown")}">${esc(statusLabel)}</span>
+    <span class="freshness-item"><strong>Data As Of</strong><em>${esc(dataAsOf || "-")}</em></span>
+    <span class="freshness-item"><strong>Last Updated</strong><em>${esc(freshnessTimestampLabel(lastUpdated))}</em></span>
+    ${note ? `<span class="freshness-note">${esc(note)}</span>` : ""}
+  </div>`;
+}
+
+function renderBetaFreshnessBadge(targetId, { lastUpdated, note } = {}) {
+  const target = $(`#${targetId}`);
+  if (!target) return;
+  target.innerHTML = `<div class="freshness-header freshness-header-beta">
+    <span class="freshness-badge freshness-badge-beta">BETA</span>
+    <span class="freshness-item"><strong>Last Updated</strong><em>${esc(freshnessTimestampLabel(lastUpdated))}</em></span>
+    ${note ? `<span class="freshness-note">${esc(note)}</span>` : ""}
+  </div>`;
 }
 
 function monthEnd(month) {
@@ -358,6 +451,15 @@ function registerBrandRegistryNames(brands) {
 
 function registerBrandMasterResponse(body) {
   registerBrandRegistryNames(body?.brands);
+}
+
+function registerProductRegistryCanonicalNames(entries) {
+  if (!Array.isArray(entries)) return;
+  entries.forEach((entry) => {
+    const code = String(entry?.brandId || "").trim();
+    const english = intelligenceBrandNameFromProductName(entry?.cafe24?.productName);
+    if (code && english && !brandCanonicalNameCache.has(code)) brandCanonicalNameCache.set(code, english);
+  });
 }
 
 // 프로젝트 전체에서 브랜드명을 출력하는 단일 공통 함수입니다. 화면마다 displayName/
@@ -592,7 +694,10 @@ const viewHashMap = {
   InventoryIntelligence: "inventory-intelligence",
   Settings: "settings",
   Product: "product",
-  "Editorial AI": "editorial-ai"
+  "Editorial AI": "editorial-ai",
+  BrandDashboard: "brand-dashboard",
+  EntityOverview: "brands",
+  PromotionSummary: "promotion-summary"
 };
 
 const hashViewMap = {
@@ -633,6 +738,7 @@ function setActiveView(view, options = {}) {
   if (targetView === "InventoryOverview") renderInventoryWorkspaceView({ reset: true });
   if (targetView === "InventoryIntelligence") renderInventoryIntelligenceView();
   if (targetView === "Calendar") renderCalendarView();
+  if (targetView === "PromotionSummary") renderPromotionSummaryView();
   if (targetView === "Overview" && todayViewDirty && monthlyData.length) renderTodayView(selectedMonth());
   if (targetView === "Intelligence" && monthlyData.length) renderActiveDestinationCards(selectedMonth());
   if (options.updateHash === false && ["Reports", "Sales", "Settings"].includes(targetView) && monthlyData.length) renderActiveDestinationCards(selectedMonth());
@@ -648,6 +754,9 @@ function setActiveView(view, options = {}) {
     requestAnimationFrame(scrollToAlias);
     window.setTimeout(scrollToAlias, 800);
   }
+  // STEP60-2: Cross Entity Navigation. Workspace를 전환할 때마다 Brand/Period/Compare
+  // Context Bar를 다시 그린다 — 새 상태는 만들지 않고 이미 있는 값을 다시 표시할 뿐이다.
+  renderWorkspaceContextBar();
 }
 
 function renderNav() {
@@ -858,6 +967,308 @@ function renderKpis(data) {
   )).join("");
 }
 
+// STEP65-3/STEP65-4: Promotion Intelligence. GET /api/promotion/:categoryNo/summary
+// (STEP65-2)를 그대로 표시만 한다 — 새 계산/저장 없음.
+//
+// categoryNo -> 이름 매핑(PROMOTION_CATALOG)은 추측/하드코딩이 아니다: 실제 SAMPLAS
+// 공개 스토어(https://scause.cafe24.com) 상단 메뉴를 STEP65-4 조사 중 직접 열어
+// "ONLINE GARAGE" 링크의 href가 `/product/list.html?cate_no=425`, "이런 ㅅㅂ" 링크의
+// href가 `?cate_no=437`임을 확인했고, 두 카테고리 페이지를 각각 열어 REMAGINE(437,
+// 20% 할인)/TOGA(437, 50% 할인) 등 사용자가 언급한 실제 할인율과 일치하는 상품이
+// 진열돼 있음까지 재확인했다(work/reports/STEP65-4.md 2번 항목). Category API가 아직
+// 배포되지 않아 서버가 이름을 못 줄 뿐, 이 두 값 자체는 실측된 사실이다. 새 카테고리를
+// 추가하려면(가상 프로모션 금지) 반드시 동일한 방식으로 실측 확인해야 한다.
+const PROMOTION_CATALOG = [
+  { id: "online-garage", name: "ONLINE GARAGE", categoryNo: "425" },
+  { id: "irun-ssb", name: "이런 ㅅㅂ", categoryNo: "437" }
+];
+
+let promotionSummaryRenderSeq = 0;
+let promotionSelectorOpen = false;
+
+function promotionCatalogEntry(id) {
+  return PROMOTION_CATALOG.find((entry) => entry.id === id) || null;
+}
+
+function promotionIdentifierFromQuery() {
+  const raw = (new URLSearchParams(window.location.search).get("promotion") || "").trim();
+  return promotionCatalogEntry(raw) ? raw : "";
+}
+
+// PART G: URL state. hash(#promotion-summary)는 그대로 두고 쿼리(?promotion=<id>)만
+// 갱신한다 — 새로고침해도 URL에 그대로 남아 선택이 유지된다. categoryNo 숫자는 URL에
+// 전혀 등장하지 않는다. replace:true는 STEP65-5의 "첫 진입 시 기본 Promotion 자동
+// 선택"에 쓴다 — pushState를 쓰면 "선택 안 됨" 상태가 별도 뒤로가기 히스토리 항목으로
+// 남아 뒤로가기를 눌러도 Promotion 화면에 갇히므로, 자동 선택은 replaceState로
+// 히스토리를 늘리지 않는다. 사람이 Selector에서 직접 고를 때만 pushState를 쓴다
+// (selectPromotion).
+function updatePromotionQuery(id, options = {}) {
+  const url = new URL(window.location.href);
+  if (id) url.searchParams.set("promotion", id);
+  else url.searchParams.delete("promotion");
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+  if (options.replace) window.history.replaceState(null, "", nextUrl);
+  else window.history.pushState(null, "", nextUrl);
+}
+
+function renderPromotionSelectorList() {
+  const list = $("#promotionSelectorList");
+  if (!list) return;
+  const activeId = promotionIdentifierFromQuery();
+  list.innerHTML = PROMOTION_CATALOG.map((entry) => (
+    `<li class="${entry.id === activeId ? "active" : ""}" data-promotion-id="${esc(entry.id)}" tabindex="0">${esc(entry.name)}</li>`
+  )).join("");
+}
+
+function openPromotionSelector() {
+  promotionSelectorOpen = true;
+  const dropdown = $("#promotionSelectorDropdown");
+  dropdown?.removeAttribute("hidden");
+  // .brand-selector-dropdown은 opacity:0이 기본값이라 hidden 해제만으로는 안 보인다 —
+  // 기존 Brand Selector와 동일하게 .is-visible을 함께 토글해야 실제로 나타난다.
+  dropdown?.classList.add("is-visible");
+  $("#promotionSelectorTrigger")?.setAttribute("aria-expanded", "true");
+}
+
+function closePromotionSelector() {
+  promotionSelectorOpen = false;
+  const dropdown = $("#promotionSelectorDropdown");
+  dropdown?.classList.remove("is-visible");
+  dropdown?.setAttribute("hidden", "");
+  $("#promotionSelectorTrigger")?.setAttribute("aria-expanded", "false");
+}
+
+function selectPromotion(id) {
+  if (!promotionCatalogEntry(id)) return;
+  updatePromotionQuery(id);
+  closePromotionSelector();
+  renderPromotionSummaryView();
+}
+
+// Brand Selector(브랜드 291개, 검색/최근/비교 포함)와 같은 CSS를 쓰지만 별도의 작은
+// 독립 토글로 구현한다 — entitySelectorInstances 프레임워크는 291개 브랜드용으로 만든
+// 장치라 고정 2개 프로모션에는 과하다(지시사항 "동일 패턴 재사용", 동일 CSS 클래스로
+// 충족, JS 프레임워크 강제 결합은 하지 않음).
+function initPromotionSelector() {
+  const trigger = $("#promotionSelectorTrigger");
+  const dropdown = $("#promotionSelectorDropdown");
+  const list = $("#promotionSelectorList");
+  if (!trigger || !dropdown || !list) return;
+  renderPromotionSelectorList();
+  trigger.addEventListener("click", () => {
+    if (promotionSelectorOpen) closePromotionSelector();
+    else openPromotionSelector();
+  });
+  list.addEventListener("click", (event) => {
+    const li = event.target.closest("[data-promotion-id]");
+    if (li) selectPromotion(li.dataset.promotionId);
+  });
+  list.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const li = event.target.closest("[data-promotion-id]");
+    if (!li) return;
+    event.preventDefault();
+    selectPromotion(li.dataset.promotionId);
+  });
+  document.addEventListener("click", (event) => {
+    if (!promotionSelectorOpen) return;
+    if (event.target.closest(".promotion-selector")) return;
+    closePromotionSelector();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && promotionSelectorOpen) closePromotionSelector();
+  });
+}
+
+function promotionCoverageBarRow({ rank, label, sublabel, headline, share, desc }) {
+  const barHtml = share === null ? "" : `<div class="inventory-intel-coverage-bar-track"><div class="inventory-intel-coverage-bar-fill" style="width:${Math.min(100, Math.max(0, share)).toFixed(2)}%"></div></div>`;
+  return `<div class="inventory-intel-coverage-bar">
+    <div class="inventory-intel-coverage-bar-head">
+      <span><strong>${rank}.</strong> ${esc(label)}${sublabel ? ` <span class="muted">${esc(sublabel)}</span>` : ""}</span>
+      <strong>${headline}</strong>
+    </div>
+    ${barHtml}
+    <p class="inventory-intel-coverage-bar-desc">${desc}</p>
+  </div>`;
+}
+
+// STEP66-1 SECTION 1: Hero Status Badge 색 매핑. docs/DESIGN_SYSTEM.md 8번(Status
+// Color)과 동일한 규칙 재사용 — 새 상태 계산이 아니라 API가 이미 준 status 문자열을
+// good/warn/error 세 클래스 중 하나로 보여주기만 한다. 현재 API는 항상 "UNKNOWN"만
+// 반환하므로(Benefit API 미배포, STEP64-6) 실질적으로 항상 neutral(클래스 없음, 기본
+// 회색 dot)이 된다 — 실데이터가 오면 이 매핑이 자동으로 색을 입힌다.
+function promotionStatusBadgeClass(status) {
+  const value = String(status || "").toUpperCase();
+  if (value.includes("진행") || value === "ACTIVE") return "good";
+  if (value.includes("종료임박") || value === "ENDING_SOON") return "warn";
+  if (value.includes("종료") || value === "ENDED") return "";
+  return "";
+}
+
+async function renderPromotionSummaryView() {
+  const nameTarget = $("#promotionSummaryName");
+  const statusBadge = $("#promotionSummaryStatusBadge");
+  const statusBadgeText = $("#promotionSummaryStatusBadgeText");
+  const metaTarget = $("#promotionSummaryMeta");
+  const periodBadge = $("#promotionSummaryPeriodBadge");
+  const productBadge = $("#promotionSummaryProductBadge");
+  const brandBadge = $("#promotionSummaryBrandBadge");
+  const bannerTarget = $("#promotionSummaryStatusBanner");
+  const insightBlock = $("#promotionSummaryInsight");
+  const insightText = $("#promotionSummaryInsightText");
+  const tierOneBlock = $("#promotionSummaryTierOneBlock");
+  const tierOneTarget = $("#promotionSummaryTierOne");
+  const tierTwoBlock = $("#promotionSummaryTierTwoBlock");
+  const tierTwoTarget = $("#promotionSummaryTierTwo");
+  const brandsBlock = $("#promotionSummaryBrandsBlock");
+  const topBrandsTarget = $("#promotionSummaryTopBrandsList");
+  const productsBlock = $("#promotionSummaryProductsBlock");
+  const topProductsTarget = $("#promotionSummaryTopProductsList");
+  if (!nameTarget || !bannerTarget || !tierOneTarget || !tierTwoTarget || !topBrandsTarget || !topProductsTarget) return;
+
+  const identifier = promotionIdentifierFromQuery();
+  let entry = promotionCatalogEntry(identifier);
+  // STEP65-5 PART 4: 첫 진입 시 기본 Promotion 자동 선택. Sidebar 클릭 등 URL에
+  // ?promotion=이 없는 정상 진입 경로에서 "프로모션을 선택하세요" 빈 상태를 보여주지
+  // 않고, PROMOTION_CATALOG의 첫 항목(ONLINE GARAGE)을 바로 보여준다. 사람이 URL을
+  // 직접 편집할 필요가 없어야 한다는 지시 그대로.
+  if (!entry && PROMOTION_CATALOG.length) {
+    entry = PROMOTION_CATALOG[0];
+    updatePromotionQuery(entry.id, { replace: true });
+  }
+  renderPromotionSelectorList();
+  const renderSeq = ++promotionSummaryRenderSeq;
+
+  const triggerLabel = $("#promotionSelectorTriggerLabel");
+  if (triggerLabel) triggerLabel.textContent = entry ? entry.name : "프로모션 선택";
+
+  // SECTION 7: Empty State. 빈 화면을 두지 않고 항상 안내 문구를 보여준다.
+  const hideDetailBlocks = () => {
+    metaTarget?.setAttribute("hidden", "");
+    insightBlock?.setAttribute("hidden", "");
+    tierOneBlock?.setAttribute("hidden", "");
+    tierTwoBlock?.setAttribute("hidden", "");
+    brandsBlock?.setAttribute("hidden", "");
+    productsBlock?.setAttribute("hidden", "");
+  };
+
+  if (!entry) {
+    nameTarget.textContent = "프로모션을 선택하세요";
+    if (statusBadge) statusBadge.className = "brand-hero-status-badge";
+    if (statusBadgeText) statusBadgeText.textContent = "상태 확인 중";
+    hideDetailBlocks();
+    bannerTarget.removeAttribute("hidden");
+    bannerTarget.className = "ad-status-banner error";
+    bannerTarget.innerHTML = `<span class="status-dot"></span><strong>프로모션을 선택해주세요.</strong><span class="note">상단 Promotion Selector에서 ONLINE GARAGE 또는 이런 ㅅㅂ를 선택하세요.</span>`;
+    return;
+  }
+
+  nameTarget.textContent = entry.name;
+  hideDetailBlocks();
+  bannerTarget.removeAttribute("hidden");
+  bannerTarget.className = "ad-status-banner loading";
+  bannerTarget.innerHTML = `<span class="status-dot"></span><strong>${esc(entry.name)} 데이터를 불러오고 있습니다.</strong>`;
+  tierOneTarget.innerHTML = `<article class="action-item ad-summary-card ad-core-kpi-card"><span>불러오는 중</span><strong>-</strong></article>`.repeat(2);
+  tierTwoTarget.innerHTML = `<article class="kpi"><span>불러오는 중</span><strong>-</strong></article>`.repeat(4);
+  topBrandsTarget.innerHTML = "";
+  topProductsTarget.innerHTML = "";
+
+  const data = await getJson(`/api/promotion/${encodeURIComponent(entry.categoryNo)}/summary`, 10000);
+  if (renderSeq !== promotionSummaryRenderSeq) return;
+
+  if (!data || !data.ok || data.error) {
+    bannerTarget.className = "ad-status-banner error";
+    bannerTarget.innerHTML = `<span class="status-dot"></span><strong>${esc(entry.name)} 데이터를 불러오지 못했습니다.</strong><span class="note">${esc((data && (data.error || data.message)) || "API 연결을 확인해주세요.")}</span>`;
+    return;
+  }
+
+  bannerTarget.setAttribute("hidden", "");
+
+  // SECTION 1: Hero. Name/Status/기간/Products/Brands를 한 카드(#promotionSummaryHero)
+  // 안에서 표현한다. 기간은 API가 실제 조회한 since/until을 그대로 쓴다(새 계산 아님,
+  // buildPromotionSummary의 기존 입력 파라미터를 노출한 것 — STEP65-4 server.mjs 수정
+  // 참고). status는 여전히 UNKNOWN이 기본값이라 "상태 확인 중"으로 중립 표시한다.
+  const statusLabel = !data.status || data.status === "UNKNOWN" ? "상태 확인 중" : String(data.status);
+  if (statusBadge) statusBadge.className = `brand-hero-status-badge ${promotionStatusBadgeClass(data.status)}`.trim();
+  if (statusBadgeText) statusBadgeText.textContent = statusLabel;
+  metaTarget?.removeAttribute("hidden");
+  if (periodBadge) periodBadge.textContent = data.since && data.until ? `${data.since} ~ ${data.until}` : "기간 확인 중";
+  if (productBadge) productBadge.textContent = `상품 ${apiNum(data.productCount)}개`;
+  if (brandBadge) brandBadge.textContent = `브랜드 ${apiNum(data.brandCount)}개`;
+
+  // SECTION 2: Primary KPI(매출/주문 수) -> ad-core-kpi-card. 전부 API 값 그대로,
+  // 새 계산 없음.
+  tierOneBlock?.removeAttribute("hidden");
+  tierOneTarget.innerHTML = [
+    ["매출", won(data.revenue)],
+    ["주문 수", apiNum(data.orderCount)]
+  ].map(([label, value]) => `<article class="action-item ad-summary-card ad-core-kpi-card"><span>${esc(label)}</span><strong>${value}</strong></article>`).join("");
+
+  // SECTION 3: Secondary KPI(판매수량/객단가/브랜드 수/상품 수) -> kpi. 브랜드/상품
+  // 수는 이전에는 헤더 아래 텍스트 한 줄이었으나, 이번 STEP에서 정식 KPI 카드로
+  // 승격했다(Hero의 뱃지와 값은 같지만 표현 형태가 다르다 — 뱃지는 빠른 스캔용,
+  // 카드는 다른 KPI와 같은 비중으로 비교하기 위한 용도).
+  tierTwoBlock?.removeAttribute("hidden");
+  tierTwoTarget.innerHTML = [
+    ["판매 수량", apiNum(data.quantity)],
+    ["객단가", won(data.averageOrderValue)],
+    ["브랜드 수", apiNum(data.brandCount)],
+    ["상품 수", apiNum(data.productCount)]
+  ].map(([label, value]) => `<article class="kpi"><span>${esc(label)}</span><strong>${value}</strong></article>`).join("");
+
+  // SECTION 4: Performance Summary. 전부 API가 이미 준 값(topBrands[0]/topProducts[0]/
+  // productCount)의 문장 조합일 뿐 새 추론/계산이 아니다.
+  const topBrands = Array.isArray(data.topBrands) ? data.topBrands : [];
+  const topProducts = Array.isArray(data.topProducts) ? data.topProducts : [];
+  const revenue = Number(data.revenue || 0);
+  if (insightBlock && insightText) {
+    if (!topBrands.length && !topProducts.length) {
+      insightBlock.removeAttribute("hidden");
+      insightText.textContent = `${entry.name}에 판매 실적이 있는 상품이 아직 없습니다.`;
+    } else {
+      const topBrand = topBrands[0];
+      const topProduct = topProducts[0];
+      const topBrandShare = topBrand && revenue > 0 ? `${(Number(topBrand.salesAmount || 0) / revenue * 100).toFixed(1)}%` : null;
+      const parts = [];
+      if (topBrand) parts.push(`매출 1위 브랜드는 ${brandCanonicalDisplayName(topBrand)}${topBrandShare ? `(기여도 ${topBrandShare})` : ""}`);
+      if (topProduct) parts.push(`1위 상품은 "${topProduct.productName || "상품명 없음"}"`);
+      parts.push(`총 ${apiNum(data.productCount)}개 상품, ${apiNum(data.brandCount)}개 브랜드가 참여 중`);
+      insightBlock.removeAttribute("hidden");
+      insightText.textContent = `${parts.join(", ")}입니다.`;
+    }
+  }
+
+  // SECTION 5: Brand Performance. 기존 .inventory-intel-coverage-bar 패턴(Inventory
+  // Intelligence 화면)을 그대로 재사용 — 새 CSS 없음. 기여도 %는 STEP65-3과 동일한
+  // 비율 계산(salesAmount/revenue)이다.
+  brandsBlock?.removeAttribute("hidden");
+  topBrandsTarget.innerHTML = topBrands.length ? topBrands.map((brand, index) => {
+    const share = revenue > 0 ? Number(brand.salesAmount || 0) / revenue * 100 : null;
+    const shareLabel = share === null ? "-" : `${share.toFixed(1)}%`;
+    return promotionCoverageBarRow({
+      rank: index + 1,
+      label: brand.brand_name || brand.brand_code || "-",
+      sublabel: brand.brand_code || "",
+      headline: `${won(brand.salesAmount)} (${shareLabel})`,
+      share,
+      desc: `판매수량 ${apiNum(brand.quantitySold)} · 주문수 ${apiNum(brand.orderCount)}`
+    });
+  }).join("") : `<p class="hint-text">데이터 없음</p>`;
+
+  // SECTION 6: Top Products. 표 대신 같은 rank row 컴포넌트를 막대 없이 재사용한다.
+  productsBlock?.removeAttribute("hidden");
+  topProductsTarget.innerHTML = topProducts.length ? topProducts.map((product, index) => (
+    promotionCoverageBarRow({
+      rank: index + 1,
+      label: product.productName || "상품명 없음",
+      sublabel: "",
+      headline: won(product.salesAmount),
+      share: null,
+      desc: `${esc(product.brand_name || product.brand_code || "-")} · 판매수량 ${apiNum(product.quantitySold)}`
+    })
+  )).join("") : `<p class="hint-text">데이터 없음</p>`;
+}
+
 async function renderOverviewLiveData(data, renderSeq) {
   const renderToday = todayViewActive();
   const renderCommerce = commerceDestinationViewActive();
@@ -927,6 +1338,18 @@ async function renderOverviewLiveData(data, renderSeq) {
   renderHealthBanner({ instagram: contentData, meta, cafe });
   todayOverviewState = { data, meta, cafe, contentData, contentRangeError, posts, topProduct, avgSaveRate, followerDelta, range };
   renderSettingsCacheStatus({ instagram: contentData, meta, cafe });
+
+  if (todayViewActive()) {
+    // STEP48A: "총매출" 카드(todaySummarySalesInfo)가 Cafe24 LIVE 온라인 매출과 ECOUNT
+    // 오프라인 SNAPSHOT을 합산하고, 광고비/ROAS는 Meta 캐시, 콘텐츠 지표는 Instagram 캐시
+    // 기준이라 화면 전체를 LIVE 단일 상태로 표시하면 오해를 줄 수 있어 MIXED로 표시한다.
+    renderFreshnessHeader("todayFreshnessHeader", {
+      status: "mixed",
+      dataAsOf: range.label || "오늘",
+      lastUpdated: new Date().toISOString(),
+      note: "온라인 매출·광고·콘텐츠는 지금 다시 조회한 값이지만, 광고비는 Meta 캐시, 콘텐츠는 Instagram 캐시, 총매출은 여기에 오프라인(매장) ECOUNT 스냅샷까지 합산한 값입니다. 오프라인 매출은 Commerce/Clients 화면의 ECOUNT 동기화 시각까지만 반영됩니다."
+    });
+  }
 
   if (commerceDestinationViewActive()) {
     const rangeEyebrow = $("#overviewRangeEyebrow");
@@ -3187,6 +3610,24 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     return;
   }
 
+  // STEP48: archiveStatus는 서버가 이미 계산해 응답에 포함하는 값이다(live=당월 즉석 재계산,
+  // saved=저장된 과거 월, draft=아직 저장되지 않은 과거 월). 새 필드를 만들지 않고 그대로 매핑한다.
+  // STEP48A: archive.sales.totalSales(server.mjs buildMonthlyArchiveSales)는 Cafe24 온라인
+  // LIVE 재계산 값과 ECOUNT 오프라인 SNAPSHOT을 합산한다. "saved"(저장된 과거월)만 더 이상
+  // 바뀌지 않는 ARCHIVE이고, "live"/"draft"는 요청마다 이 혼합 계산을 다시 수행하므로 LIVE가
+  // 아니라 MIXED로 표시한다(계산 로직은 변경하지 않음, 표시 상태만 재분류).
+  const monthlyIsSavedArchive = archive.archiveStatus === "saved";
+  renderFreshnessHeader("monthlyFreshnessHeader", {
+    status: monthlyIsSavedArchive ? "archive" : "mixed",
+    dataAsOf: monthlyIsSavedArchive ? `${month} · 저장된 아카이브` : `${month} · 지금 재계산됨`,
+    lastUpdated: archive.generatedAt,
+    note: monthlyIsSavedArchive
+      ? "저장 시점에 Cafe24 온라인 매출과 ECOUNT 오프라인 매출이 합산되어 더 이상 바뀌지 않습니다."
+      : (offlineSnapshot && !offlineSnapshot.error
+        ? `Cafe24 온라인 매출은 지금 다시 계산되지만, 오프라인(ECOUNT) 매출은 ${freshnessTimestampLabel(offlineSnapshot.importedAt)} 업로드분까지만 반영되며 자동 동기화되지 않습니다.`
+        : "Cafe24 온라인 매출은 지금 다시 계산되지만, 오프라인(ECOUNT) 매출 스냅샷을 확인하지 못했습니다.")
+  });
+
   const commerce = archive.commerce || {};
   const marketing = archive.marketing || {};
   const content = archive.content || {};
@@ -3205,6 +3646,12 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const performanceBrandSales = brandSales
     .filter((item) => !isExcludedBrandPerformance(item))
     .sort((left, right) => brandPerformancePaidAmount(right) - brandPerformancePaidAmount(left));
+  // HOTFIX(2026-07-30) — "브랜드 매출 TOP 5" 카드 전용 정렬(온라인 Cafe24 canonical 실제 결제 기준).
+  // performanceBrandSales(온라인+오프라인 합산 기준)는 위 브랜드 매출 시그널 블록 등 다른 카드가
+  // 그대로 사용하므로 변경하지 않고, TOP5 카드에서만 쓰는 별도 배열을 추가한다.
+  const performanceBrandSalesOnline = brandSales
+    .filter((item) => !isExcludedBrandPerformance(item))
+    .sort((left, right) => brandPerformanceOnlinePaidAmount(right) - brandPerformanceOnlinePaidAmount(left));
   const canonicalProductSales = [...productSales].sort((left, right) => canonicalPaidAmount(right) - canonicalPaidAmount(left));
   const formatMix = content.formatMix || [];
   const topContent = content.topContent || [];
@@ -3370,11 +3817,11 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
           </div>
         </section>
         <section class="monthly-report-block">
-          <div class="monthly-report-block-head"><h4>브랜드 매출 TOP 5</h4><span>온라인 + 오프라인 총매출 기준</span></div>
+          <div class="monthly-report-block-head"><h4>브랜드 매출 TOP 5</h4><span>온라인 실결제 기준</span></div>
           <div class="monthly-report-rank">
-            ${monthlyReportRankRows(performanceBrandSales.slice(0, 5), {
+            ${monthlyReportRankRows(performanceBrandSalesOnline.slice(0, 5), {
               withBar: true,
-              valueFn: brandPerformancePaidAmount,
+              valueFn: brandPerformanceOnlinePaidAmount,
               labelFn: brandPerformanceDisplayName,
               subFn: (item) => item.brand_code || "",
               formatValue: (value) => apiWon(value)
@@ -6341,6 +6788,16 @@ async function renderCafe24Sales(data, renderSeq) {
     getJson(`/api/sales/total?since=${startDate}&until=${endDate}`, 10000)
   ]);
   if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
+  // STEP48A: 매출 요약(Hero/Compare/결제수단) 카드는 재확인 결과 오프라인/ECOUNT를 전혀
+  // 포함하지 않는 Cafe24 LIVE 값만 사용해 status는 "live"를 유지한다. 다만 화면 상단 KPI
+  // 카드(광고비·콘텐츠 저장률)는 Meta/Instagram 캐시 기준이라 전체가 100% LIVE는 아니라는
+  // 점을 note로 명시한다(계산 로직/데이터 소스는 변경하지 않음).
+  renderFreshnessHeader("commerceFreshnessHeader", {
+    status: "live",
+    dataAsOf: range.label || `${startDate} ~ ${endDate}`,
+    lastUpdated: new Date().toISOString(),
+    note: "매출 요약(Hero/결제수단)은 Cafe24 온라인 실결제 기준으로 지금 다시 조회한 값이며 오프라인(매장) 매출은 포함하지 않습니다. 상단 KPI의 광고비는 Meta 캐시, 콘텐츠 저장률은 Instagram 캐시 기준이라 갱신 주기가 다를 수 있습니다."
+  });
   if (sales.error) {
     renderCommerceSummary(sales, null, totalSales);
     await renderCampaignPeriodComparison($("#campaignPeriodComparison"), renderSeq);
@@ -6423,6 +6880,84 @@ function renderCommerceSummary(cafe, comparisonResult, totalSales) {
     </div>
   </section>` : `<article class="action-item sales-empty-card"><strong>결제수단 데이터 없음</strong><p>Commerce 데이터가 쌓이면 표시됩니다.</p></article>`;
   renderTodaySummary({ cafe: commerceSummaryState.cafe, comparison: commerceSummaryState.comparison });
+  renderCommercePrimaryKpi();
+  renderCommerceSecondaryKpi();
+  renderCommerceChannelCards();
+  renderCommerceSalesSummary();
+}
+
+// STEP66-2 SECTION 2/3/5: 새 계산이 아니라 todaySummarySalesInfo()(6876행, 기존
+// Today 요약이 이미 쓰던 순수 함수)와 commerceSummaryState.totals가 이미 갖고 있는
+// 값을 다시 읽어 카드로만 보여준다. onlineSales/offlineSales/totalSales 필드는
+// todaySummarySalesInfo와 완전히 동일한 fallback 체인을 쓴다.
+function commerceOnlineOfflineSplit() {
+  const totalSales = commerceSummaryState.totalSales || {};
+  const cafeTotals = commerceSummaryState.cafe?.totals || {};
+  const onlineRaw = hasApiValue(totalSales?.onlineSales?.paidAmount) ? totalSales.onlineSales.paidAmount : cafeTotals.paidAmount;
+  const offlineRaw = totalSales?.offlineSales?.offlineSalesAmount;
+  const totalRaw = totalSales?.totalSales?.amount;
+  const online = hasApiValue(onlineRaw) ? Number(onlineRaw) : null;
+  const offline = hasApiValue(offlineRaw) ? Number(offlineRaw) : null;
+  const total = hasApiValue(totalRaw) ? Number(totalRaw) : (Number.isFinite(online) && Number.isFinite(offline) ? online + offline : (Number.isFinite(online) ? online : null));
+  return { online, offline, total, cafeTotals };
+}
+
+function renderCommercePrimaryKpi() {
+  const target = $("#commercePrimaryKpi");
+  if (!target) return;
+  const { online, offline, total } = commerceOnlineOfflineSplit();
+  target.innerHTML = [
+    ["총매출", total],
+    ["온라인", online],
+    ["오프라인", offline]
+  ].map(([label, value]) => `<article class="action-item ad-summary-card ad-core-kpi-card"><span>${esc(label)}</span><strong>${value === null ? "-" : apiWon(value)}</strong></article>`).join("");
+}
+
+function renderCommerceSecondaryKpi() {
+  const target = $("#commerceSecondaryKpi");
+  if (!target) return;
+  const { online, offline, cafeTotals } = commerceOnlineOfflineSplit();
+  const shareBase = (Number.isFinite(online) ? online : 0) + (Number.isFinite(offline) ? offline : 0);
+  const onlineShare = shareBase > 0 && Number.isFinite(online) ? `${(online / shareBase * 100).toFixed(1)}%` : "-";
+  const offlineShare = shareBase > 0 && Number.isFinite(offline) ? `${(offline / shareBase * 100).toFixed(1)}%` : "-";
+  target.innerHTML = [
+    ["주문수", `${apiNum(cafeTotals.orderCount)}건`],
+    ["객단가", apiWon(cafeTotals.averageOrderValue)],
+    ["온라인 비중", onlineShare],
+    ["오프라인 비중", offlineShare]
+  ].map(([label, value]) => `<article class="kpi"><span>${esc(label)}</span><strong>${value}</strong></article>`).join("");
+}
+
+function renderCommerceChannelCards() {
+  const target = $("#commerceChannelCards");
+  if (!target) return;
+  const { online, offline } = commerceOnlineOfflineSplit();
+  const shareBase = (Number.isFinite(online) ? online : 0) + (Number.isFinite(offline) ? offline : 0);
+  const rows = [
+    { label: "Online", value: online, note: "Cafe24 canonical 실결제 기준" },
+    { label: "Offline", value: offline, note: "ECOUNT 매장 매출 기준" }
+  ];
+  target.innerHTML = rows.map((row) => {
+    const share = shareBase > 0 && Number.isFinite(row.value) ? `${(row.value / shareBase * 100).toFixed(1)}%` : "-";
+    return `<article class="action-item ad-summary-card"><span>${esc(row.label)} · ${share}</span><strong>${row.value === null ? "-" : apiWon(row.value)}</strong><p>${esc(row.note)}</p></article>`;
+  }).join("");
+}
+
+// STEP66-2 SECTION 4: Sales Summary. todaySummarySalesInfo()(총매출/온라인/오프라인
+// 문장, 기존 Today 요약과 동일 함수)와 salesDecisionState()가 이미 만든 "대표 이슈"
+// (renderAdComparison의 decision, healthBanner와 같은 값)를 한 카드에 합친다 — 새
+// 판단 로직 없음.
+function renderCommerceSalesSummary() {
+  const block = $("#commerceSalesSummary");
+  const text = $("#commerceSalesSummaryText");
+  if (!block || !text) return;
+  const totalSales = commerceSummaryState.totalSales || {};
+  const cafeTotals = commerceSummaryState.cafe?.totals || {};
+  const decision = commerceSummaryState.decision || null;
+  const salesInfo = todaySummarySalesInfo(totalSales, cafeTotals);
+  const issue = decision ? `${decision.label} — ${decision.reason}` : "이슈 확인 중";
+  block.removeAttribute("hidden");
+  text.textContent = `${salesInfo.label} ${salesInfo.value}(${salesInfo.note}). 대표 이슈: ${issue}`;
 }
 
 function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}) {
@@ -7707,6 +8242,12 @@ async function renderAdComparison(data, renderSeq) {
   const comparison = commerceMetaComparisonState(meta, cafe);
 
   const decision = salesDecisionState({ meta, cafe, ...comparison });
+  // STEP66-2: decision을 commerceSummaryState에 실어 보내야 renderCommerceSummary()가
+  // (renderOperationsLiveData 쪽 호출을 포함해) 항상 최신 totalSales와 함께
+  // renderCommerceSalesSummary()를 다시 그릴 수 있다 — 두 호출 경로 중 하나가 먼저
+  // 끝나도 Sales Summary가 stale한 totalSales를 쓰지 않는다(실측으로 발견한 타이밍
+  // 버그 수정).
+  commerceSummaryState.decision = decision;
   renderCommerceSummary(cafe, comparison);
 
   healthTarget.className = `ad-status-banner ${esc(decision.tone)}`;
@@ -10168,6 +10709,7 @@ let clientsDetailStore = new Map();
 let clientsDetailActiveKey = null;
 let clientsDetailShowAllDates = false;
 let clientsDetailShowAllAliasStats = false;
+let clientsDetailShowAllTimeline = false;
 let clientsDetailPreviousFocus = null;
 let clientsDetailDateHideTimer = null;
 
@@ -10198,10 +10740,16 @@ async function refreshClientsView() {
   }
   const range = operationsDateRange();
   const query = `?since=${encodeURIComponent(range.since)}&until=${encodeURIComponent(range.until)}`;
-  const data = await getClientsOverviewJson(
-    intelligenceUrl(`/api/intelligence/clients${query}`),
-    `${range.since}|${range.until}`
-  );
+  // STEP48: ECOUNT 동기화 시각 표시용. 새 API를 만들지 않고, Monthly/Today가 이미 쓰는
+  // /api/ecount-sales/monthly를 재사용해 importedAt만 함께 읽는다(계산에는 쓰지 않음).
+  const ecountFreshnessMonth = String(range.until || "").slice(0, 7);
+  const [data, ecountFreshnessSnapshot] = await Promise.all([
+    getClientsOverviewJson(
+      intelligenceUrl(`/api/intelligence/clients${query}`),
+      `${range.since}|${range.until}`
+    ),
+    /^\d{4}-\d{2}$/.test(ecountFreshnessMonth) ? getJson(`/api/ecount-sales/monthly?month=${ecountFreshnessMonth}`, 6000) : Promise.resolve(null)
+  ]);
   if (renderSeq !== clientsRenderSeq) return;
   if (data.error || !data.ok) {
     statusTarget.className = "ad-status-banner error";
@@ -10220,6 +10768,17 @@ async function refreshClientsView() {
   renderClientsTypeBreakdown(data.typeBreakdown || [], data.summary || {});
   renderClientsTop10(data.stylistTop10 || [], data.pressTop10 || [], data.ffTop10 || []);
   renderClientsList();
+  // STEP48A: Cafe24 온라인 주문은 디스크 캐시(파일 mtime 기준)를, 오프라인은 ECOUNT 수동
+  // 업로드 스냅샷(importedAt)을 쓴다. Cafe24 캐시 쪽 생성 시각은 intelligence-service.mjs
+  // 내부에서만 계산되고 API 응답에 노출되지 않는다(이번 STEP은 intelligence-service.mjs
+  // 수정 금지) — 존재하지 않는 값을 추측해 넣지 않고, ECOUNT 시각만 표시하며 Cafe24 캐시
+  // 시각은 확인 불가임을 note에 명시한다.
+  renderFreshnessHeader("clientsFreshnessHeader", {
+    status: "cache",
+    dataAsOf: `${data.periodStart || range.since} ~ ${data.periodEnd || range.until}`,
+    lastUpdated: ecountFreshnessSnapshot && !ecountFreshnessSnapshot.error ? ecountFreshnessSnapshot.importedAt : null,
+    note: "Cafe24 온라인 전체 주문(캐시)과 오프라인(ECOUNT 스냅샷) 데이터를 합산합니다. 두 소스 모두 자동 재동기화되지 않습니다. 'Last Updated'는 오프라인(ECOUNT) 마지막 업로드 시각이며, 온라인(Cafe24) 캐시 생성 시각은 현재 API로 노출되지 않아 별도 표시하지 못합니다."
+  });
 }
 
 function renderClientsSummaryCards(summary = {}, ff = {}) {
@@ -10517,6 +11076,200 @@ function scheduleClientsListRefresh() {
 // clientsTooltipHeaderHtml/clientsTooltipDateLabel)는 hover tooltip 폐기와 함께 제거했다(clientsDetailModalBodyHtml/
 // groupPurchaseDetailsByDate로 대체 — 구매일별 매출까지 함께 보여줘야 해서 구조가 달라졌다). 제품 목록
 // 렌더러(clientsTooltipProductsHtml)는 구조가 그대로 재사용 가능해 limit 매개변수만 추가해 유지한다.
+// STEP62-1: Purchase Timeline. purchaseDetails(개별 거래 라인, 서버에서 이미 날짜 내림차순
+// 정렬됨)을 그대로 개별 항목으로 나열한다 — 날짜별로 묶지 않고(groupPurchaseDetailsByDate와는
+// 다른 용도) 거래 하나하나를 "구매일/브랜드/상품명/결제금액/온라인·오프라인/개인결제창 여부"로
+// 보여준다. 새 계산 없음: brand/productName/salesAmount/source 전부 서버가 이미 채워 준 필드
+// 그대로 쓰고, 없으면(온라인 개인결제창 주문의 brand/productName처럼) 기존 관례와 동일하게
+// "정보 없음"으로 정직하게 표시한다. orderId는 화면에 표시하지 않고 data 속성에만 담아 Order
+// Detail Drawer 연결(placeholder)에 대비해 내부적으로 유지한다.
+// STEP62-1B: "온라인 고객 일반"에는 개인결제창이 아닌 일반 온라인 주문도 섞여 있어(rawName
+// 비어있음) source==="online"만으로는 개인결제창 여부를 판별할 수 없다(STEP62-1A Audit로 확인) —
+// 서버가 이미 채워 준 rawName(personalPaymentProductName) 유무를 그대로 재사용한다(새 판별 로직 아님).
+// STEP62-2: Order Detail Drawer(공용 컴포넌트, openOrderDetailDrawer 참고)를 열 때 필요한 값을
+// data-* 속성에 그대로 실어 둔다 — 별도 store/Map을 새로 만들지 않고, 클릭 시 dataset만 읽어
+// openOrderDetailDrawer(plain object)를 호출한다(Drawer 자체는 Clients 상태를 전혀 모른다).
+// STEP63-3: Identity Pipeline(STEP63-2/62-2B, intelligence-service.mjs가 purchaseDetails에
+// 이미 채워 준 canonicalBrandName/brandConfidence) 결과를 우선 쓰되, Confidence Contract
+// (work/reports/STEP63-1-resolver-spec.md 8번 항목)에 따라 confidence가 VERIFIED/REVIEWED일
+// 때만 표시를 허용한다. 그렇지 않으면(CANDIDATE/UNRESOLVED) STEP62-3의 기존 표시 로직
+// (resolveRawBrandCanonical, Brand Master 정확 일치)으로 그대로 fallback한다 — 임의 승격
+// 없음, Card/Drawer가 동일한 판단을 쓰도록 한 함수로 통일한다(중복 방지).
+function clientsTimelineBrandDisplay(item) {
+  if (!item.brand) return null;
+  if ((item.brandConfidence === "VERIFIED" || item.brandConfidence === "REVIEWED") && item.canonicalBrandName) {
+    return item.canonicalBrandName;
+  }
+  return resolveRawBrandCanonical(item.brand) || item.brand;
+}
+
+// STEP62-3: Card는 대표 정보만 보여준다 — 원본 코드(item.brand)를 canonical 표시명으로
+// 바꿔 보여주고, 일치하는 항목이 없으면 원본 코드를 그대로 쓴다("기존 표시 유지").
+// Developer 정보(원본 코드 자체)는 Card에 노출하지 않고 Drawer에서만 함께 보여준다
+// (orderDetailDrawerBodyHtml 참고).
+function clientsPurchaseTimelineItemHtml(item, clientName) {
+  const sourceLabel = { online: "온라인", offline: "오프라인" };
+  const brandDisplay = clientsTimelineBrandDisplay(item);
+  return `<li class="clients-detail-alias-stats-row" data-clients-timeline-item tabindex="0" role="button"
+    data-order-id="${esc(item.orderId || "")}"
+    data-order-date="${esc(item.date || "")}"
+    data-order-client-name="${esc(clientName || "")}"
+    data-order-brand="${esc(item.brand || "")}"
+    data-order-canonical-brand-name="${esc(item.canonicalBrandName || "")}"
+    data-order-brand-confidence="${esc(item.brandConfidence || "")}"
+    data-order-product-name="${esc(item.productName || "")}"
+    data-order-quantity="${esc(item.quantity ?? "")}"
+    data-order-sales-amount="${esc(item.salesAmount ?? "")}"
+    data-order-source="${esc(item.source || "")}"
+    data-order-raw-name="${esc(item.rawName || "")}">
+    <span class="clients-detail-alias-stats-name">${esc(item.date || "-")} · ${esc(brandDisplay || "브랜드 정보 없음")}</span>
+    <span class="clients-detail-alias-stats-meta">
+      ${esc(item.productName || "제품 정보 없음")} · ${apiWon(item.salesAmount)}
+      <b class="clients-tooltip-source-badge is-${esc(item.source || "")}">${esc(sourceLabel[item.source] || item.source || "-")}</b>
+      ${item.source === "online" && item.rawName ? `<b class="clients-tooltip-source-badge">개인결제창</b>` : ""}
+    </span>
+  </li>`;
+}
+
+function clientsPurchaseTimelineHtml(purchaseDetails = [], clientName, limit = 10) {
+  if (!purchaseDetails.length) return `<p class="clients-tooltip-empty">구매 내역 없음</p>`;
+  const shown = clientsDetailShowAllTimeline ? purchaseDetails : purchaseDetails.slice(0, limit);
+  const overflow = purchaseDetails.length - shown.length;
+  return `<ul class="clients-detail-alias-stats-list">${shown.map((item) => clientsPurchaseTimelineItemHtml(item, clientName)).join("")}</ul>
+    ${overflow > 0 ? `<button type="button" class="clients-detail-more-dates-btn" data-clients-detail-more-timeline>더보기 (외 ${nf.format(overflow)}건)</button>` : ""}`;
+}
+
+// ---------------------------------------------------------------------------
+// Order Detail Drawer (STEP62-2/62-3, STEP63-3에서 브랜드 표시 갱신). Marketing OS 공용
+// 컴포넌트 — 어느 화면(Clients Purchase Timeline 등)에서 열렸는지 전혀 모른 채, 호출자가
+// 넘겨준 순수 데이터 객체(order)만으로 그려진다. 새 API 호출 없음 — 이미 purchaseDetails에
+// 있는 값만 사용하고, 없는 값은 "정보 없음"으로 정직하게 표시한다. 브랜드는
+// "대표명"(clientsTimelineBrandDisplay — Confidence Contract 만족 시 STEP63-3 Identity
+// Pipeline의 canonicalBrandName, 아니면 STEP62-3의 Brand Master 정확 일치 fallback)과
+// "원본 그룹"(order.brand, ECOUNT brandGroup 원본 그대로, 절대 덮어쓰지 않음) 두 항목을
+// 함께 보여준다. 옵션은
+// purchaseDetails에 담겨 오는 필드가 없어(스키마 확장은 이번 STEP 범위 밖, API 변경 금지)
+// "옵션 정보 없음"으로 고정 표시한다. 단가는 금액/수량의 단순 화면 계산(기존 avgOrderValue와
+// 같은 방식의 표시용 나눗셈)일 뿐 새 비즈니스 로직이 아니다.
+// ---------------------------------------------------------------------------
+let orderDetailDrawerPreviousFocus = null;
+
+function orderFromTimelineItemDataset(dataset) {
+  return {
+    orderId: dataset.orderId || null,
+    date: dataset.orderDate || null,
+    clientName: dataset.orderClientName || null,
+    brand: dataset.orderBrand || null,
+    // STEP63-3: Timeline Card와 동일한 Confidence Contract 판단을 Drawer도 쓸 수 있도록
+    // canonical 값/confidence를 그대로 넘긴다(원본 brand는 절대 건드리지 않음).
+    canonicalBrandName: dataset.orderCanonicalBrandName || null,
+    brandConfidence: dataset.orderBrandConfidence || null,
+    productName: dataset.orderProductName || null,
+    quantity: dataset.orderQuantity === "" ? null : Number(dataset.orderQuantity),
+    salesAmount: dataset.orderSalesAmount === "" ? null : Number(dataset.orderSalesAmount),
+    source: dataset.orderSource || null,
+    rawName: dataset.orderRawName || null
+  };
+}
+
+function orderDetailDrawerModeLabel(order) {
+  if (order.source === "offline") return "오프라인 판매";
+  if (order.source === "online") return order.rawName ? "온라인 개인결제창" : "온라인 일반 주문";
+  return "-";
+}
+
+// 새 CSS를 만들지 않는다 — 이미 있는 entity-drawer-*(우측 슬라이드 패널, z-index 2100으로
+// clients-detail-modal의 2000보다 위에 뜬다)와 clients-detail-period-*(label/value 행) 클래스를
+// 그대로 재사용한다.
+function orderDetailDrawerNode() {
+  let el = $("#orderDetailDrawer");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "orderDetailDrawer";
+    el.className = "entity-drawer-modal";
+    el.hidden = true;
+    el.innerHTML = `
+      <div class="entity-drawer-backdrop" data-order-detail-drawer-close></div>
+      <div class="entity-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="orderDetailDrawerTitle" tabindex="-1">
+        <div class="entity-drawer-header">
+          <div>
+            <strong id="orderDetailDrawerTitle" class="entity-drawer-title">주문 상세</strong>
+            <p class="entity-drawer-description">Order Detail</p>
+          </div>
+          <button type="button" class="entity-drawer-close-btn" data-order-detail-drawer-close aria-label="닫기">×</button>
+        </div>
+        <div class="entity-drawer-body" id="orderDetailDrawerBody"></div>
+      </div>`;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function orderDetailDrawerBodyHtml(order) {
+  const sourceLabel = { online: "온라인", offline: "오프라인" };
+  const quantity = Number(order.quantity);
+  const salesAmount = Number(order.salesAmount);
+  const unitPrice = Number.isFinite(quantity) && quantity > 0 && Number.isFinite(salesAmount)
+    ? Math.round(salesAmount / quantity)
+    : null;
+  return `
+    <div class="clients-detail-period-block">
+      <div class="clients-detail-period-row"><span>주문번호</span><strong>${esc(order.orderId || "주문번호 정보 없음")}</strong></div>
+      <div class="clients-detail-period-row"><span>결제일</span><strong>${esc(order.date || "-")}</strong></div>
+      <div class="clients-detail-period-row"><span>고객명</span><strong>${esc(order.clientName || "-")}</strong></div>
+      <div class="clients-detail-period-row"><span>주문방식</span><strong>${esc(orderDetailDrawerModeLabel(order))}</strong></div>
+      <div class="clients-detail-period-row">
+        <span>구분</span>
+        <strong>
+          <b class="clients-tooltip-source-badge is-${esc(order.source || "")}">${esc(sourceLabel[order.source] || order.source || "-")}</b>
+          ${order.source === "online" && order.rawName ? `<b class="clients-tooltip-source-badge">개인결제창</b>` : ""}
+        </strong>
+      </div>
+    </div>
+    <p class="clients-tooltip-subhead">브랜드</p>
+    <div class="clients-detail-period-block">
+      <div class="clients-detail-period-row"><span>대표명</span><strong>${esc(clientsTimelineBrandDisplay(order) || "브랜드 정보 없음")}</strong></div>
+      <div class="clients-detail-period-row"><span>원본 그룹</span><strong>${esc(order.brand || "원본 정보 없음")}</strong></div>
+    </div>
+    <p class="clients-tooltip-subhead">상품</p>
+    <div class="clients-detail-period-block">
+      <div class="clients-detail-period-row"><span>상품명</span><strong>${esc(order.productName || "제품 정보 없음")}</strong></div>
+      <div class="clients-detail-period-row"><span>옵션</span><strong>옵션 정보 없음</strong></div>
+      <div class="clients-detail-period-row"><span>수량</span><strong>${Number.isFinite(quantity) ? apiNum(quantity) : "-"}</strong></div>
+      <div class="clients-detail-period-row"><span>단가</span><strong>${unitPrice == null ? "-" : apiWon(unitPrice)}</strong></div>
+      <div class="clients-detail-period-row"><span>금액</span><strong>${apiWon(order.salesAmount)}</strong></div>
+    </div>
+    <p class="clients-tooltip-subhead">향후 영역</p>
+    <div class="clients-detail-period-block">
+      <div class="clients-detail-period-row"><span>Category</span><strong>연결 예정 (Placeholder)</strong></div>
+      <div class="clients-detail-period-row"><span>Promotion</span><strong>연결 예정 (Placeholder)</strong></div>
+    </div>
+  `;
+}
+
+function openOrderDetailDrawer(order) {
+  if (!order) return;
+  const drawer = orderDetailDrawerNode();
+  const body = $("#orderDetailDrawerBody");
+  if (body) body.innerHTML = orderDetailDrawerBodyHtml(order);
+  orderDetailDrawerPreviousFocus = document.activeElement;
+  drawer.hidden = false;
+  requestAnimationFrame(() => {
+    drawer.classList.add("is-visible");
+    drawer.querySelector(".entity-drawer-panel")?.focus();
+  });
+}
+
+function closeOrderDetailDrawer() {
+  const drawer = $("#orderDetailDrawer");
+  if (!drawer || drawer.hidden) return;
+  drawer.classList.remove("is-visible");
+  drawer.hidden = true;
+  const toFocus = orderDetailDrawerPreviousFocus;
+  orderDetailDrawerPreviousFocus = null;
+  if (toFocus && typeof toFocus.focus === "function" && document.contains(toFocus)) toFocus.focus();
+}
+
 function clientsTooltipProductsHtml(products = [], limit = 5) {
   if (!products.length) return `<p class="clients-tooltip-empty">구매 제품 데이터 없음</p>`;
   const shown = products.slice(0, limit);
@@ -10785,6 +11538,8 @@ function clientsDetailModalBodyHtml(data) {
       <div class="clients-detail-period-row"><span>구매 발생 기간</span><strong>${esc(purchaseSpanLabel)}</strong></div>
       <div class="clients-detail-period-row"><span>최근 구매일</span><strong>${esc(data.latestPurchaseDate || "-")}</strong></div>
     </div>
+    <p class="clients-tooltip-subhead">최근 구매</p>
+    ${clientsPurchaseTimelineHtml(data.purchaseDetails, data.name)}
     <p class="clients-tooltip-subhead">원본 판매명별 내역 (${nf.format(aliasStats.length)}개) · 선택 기간 내 확인된 원본 판매명</p>
     ${shownAliasStats.length ? `<ul class="clients-detail-alias-stats-list">${shownAliasStats.map((row) => `<li class="clients-detail-alias-stats-row">
         <span class="clients-detail-alias-stats-name">${esc(row.rawName)}</span>
@@ -10821,6 +11576,7 @@ function openClientsDetailModal(key) {
   clientsDetailActiveKey = key;
   clientsDetailShowAllDates = false;
   clientsDetailShowAllAliasStats = false;
+  clientsDetailShowAllTimeline = false;
   hideClientsTooltip();
   const modal = clientsDetailModalNode();
   const body = $("#clientsDetailModalBody");
@@ -10950,8 +11706,4194 @@ async function refreshInstagramMonthlyData() {
   toast("Instagram 최신 게시물을 다시 확인했습니다.");
 }
 
+// Sidebar Data Refresh Center 카드(Cafe24/Meta Ads/Instagram)의 Refresh 버튼.
+// 새 API/판정 로직을 만들지 않고 기존 함수(getCafe24Status/getJson refresh=1/
+// refreshInstagramMonthlyData)만 호출해 카드의 배지·시각만 다시 그린다.
+// (STEP53-2D Refresh Center 기능 연결)
+const refreshCardInFlight = new Set();
+
+// 이 세션에서 실제로 완료된 Refresh 실행 결과만 보관한다(서버 저장/localStorage 없음,
+// 새로고침하면 사라지는 것이 의도된 동작). 최신 항목이 앞에 오도록 unshift 후 5개로 자른다.
+// (STEP53-3 Recent Activity Live Wiring)
+const refreshActivityLabel = { cafe24: "Cafe24 Refresh", meta: "Meta Ads Refresh", instagram: "Instagram Refresh" };
+let sessionRefreshActivities = [];
+
+function renderRefreshActivities() {
+  const list = $("#refreshActivityList");
+  if (!list) return;
+  if (!sessionRefreshActivities.length) {
+    list.innerHTML = `<p class="refresh-activity-empty">아직 이 세션에서 실행된 갱신이 없습니다.</p>`;
+    return;
+  }
+  list.innerHTML = sessionRefreshActivities.map((item) => `
+    <div class="refresh-activity-item">
+      <span class="refresh-activity-time">${esc(item.time)}</span>
+      <span class="refresh-activity-label">${esc(refreshActivityLabel[item.service] || item.service)}</span>
+      <span class="refresh-activity-result${item.ok ? "" : " failed"}">${item.ok ? "Success" : "Failed"}</span>
+    </div>
+  `).join("");
+}
+
+function addRefreshActivity(service, ok) {
+  sessionRefreshActivities = [{ service, ok, time: healthTime() }, ...sessionRefreshActivities].slice(0, 5);
+  renderRefreshActivities();
+}
+
+async function refreshDataCenterCard(service) {
+  if (refreshCardInFlight.has(service)) return;
+  const button = $(`[data-refresh="${service}"]`);
+  const card = button?.closest(".refresh-card");
+  const badge = card?.querySelector(".refresh-badge");
+  const time = card?.querySelector(".refresh-card-time");
+  if (!button || !card || !badge || !time) return;
+
+  refreshCardInFlight.add(service);
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "새로고침 중...";
+  try {
+    const data = selectedMonth();
+    const since = `${data.month}-01`;
+    const until = monthEnd(data.month);
+    let ok = false;
+    if (service === "cafe24") {
+      ok = (await getCafe24Status(since, until)).ok;
+    } else if (service === "meta") {
+      const meta = await getJson(`/api/meta-ads/summary?since=${since}&until=${until}&refresh=1`, 8000);
+      ok = !meta.error;
+    } else if (service === "instagram") {
+      await refreshInstagramMonthlyData();
+      ok = !selectedMonth().error;
+    }
+    badge.classList.remove("good", "warn", "error", "unknown");
+    badge.classList.add(ok ? "good" : "error");
+    badge.innerHTML = `<i></i>${ok ? "Healthy" : "Error"}`;
+    time.textContent = healthTime();
+    addRefreshActivity(service, ok);
+  } finally {
+    refreshCardInFlight.delete(service);
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
+
+// ECOUNT Offline Refresh Wizard (STEP53-4 UI, STEP67-2B Data Apply 구현). "대상 월"은
+// scripts/refresh-monthly-sales.mjs의 파일명 규칙(YYYY-MM.xlsx / YYYY.MM.xlsx)을 미리보기
+// 표시 목적으로 클라이언트에서 재해석한 것이다. Data Apply는 선택된 XLSX 원본 바이트를
+// POST /api/ecount-sales/import로 전송하고, 서버가 기존 importEcountOfflineSalesSnapshot()/
+// refreshMonthlySales() 정책을 그대로 재사용해 처리한다(새 파서/파이프라인 없음).
+let ecountWizardPreviousFocus = null;
+let ecountWizardSelectedFile = null;
+
+function ecountWizardModalNode() {
+  let modal = $("#ecountWizardModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "ecountWizardModal";
+    modal.className = "ecount-wizard-modal";
+    modal.hidden = true;
+    modal.innerHTML = `
+      <div class="ecount-wizard-backdrop" data-ecount-wizard-close></div>
+      <div class="ecount-wizard-panel" role="dialog" aria-modal="true" aria-labelledby="ecountWizardTitle" tabindex="-1">
+        <button type="button" class="ecount-wizard-close-btn" data-ecount-wizard-close aria-label="닫기">×</button>
+        <strong id="ecountWizardTitle" class="ecount-wizard-title">ECOUNT Offline Refresh</strong>
+        <p class="ecount-wizard-desc">엑셀 파일을 선택하면 예상 처리 내용을 미리 볼 수 있습니다. 이 화면에서는 실제 처리가 실행되지 않습니다.</p>
+        <div class="ecount-wizard-step">
+          <label for="ecountWizardFile">파일 선택 (.xlsx)</label>
+          <input type="file" id="ecountWizardFile" accept=".xlsx">
+        </div>
+        <div id="ecountWizardPreview" hidden>
+          <div class="ecount-wizard-row"><span>선택 파일</span><strong id="ecountWizardFileName">-</strong></div>
+          <div class="ecount-wizard-row"><span>대상 월</span><strong id="ecountWizardMonth">-</strong></div>
+          <div class="ecount-wizard-row"><span>Snapshot</span><strong id="ecountWizardSnapshot">-</strong></div>
+          <div class="ecount-wizard-row"><span>Monthly Archive</span><strong id="ecountWizardArchive">-</strong></div>
+        </div>
+        <p class="ecount-wizard-note">Data Apply 실행 시 처리 순서: XLSX 업로드 → Snapshot 생성 → (과거월인 경우) Monthly Archive 갱신. 로컬 Marketing OS(127.0.0.1:8787)에만 반영되며, Render 운영 배포는 별도로 진행합니다.</p>
+        <button type="button" class="button primary ecount-wizard-apply-btn" id="ecountWizardApplyBtn" disabled>Data Apply</button>
+        <p id="ecountWizardApplyStatus" class="ecount-wizard-apply-status" hidden></p>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  return modal;
+}
+
+function ecountWizardMonthFromFileName(name) {
+  const match = String(name || "").match(/^(\d{4})[.-](\d{2})\.xlsx$/i);
+  return match ? `${match[1]}-${match[2]}` : "";
+}
+
+function ecountWizardHandleFileChange(event) {
+  const file = event.target.files?.[0] || null;
+  ecountWizardSelectedFile = file;
+  const preview = $("#ecountWizardPreview");
+  const applyBtn = $("#ecountWizardApplyBtn");
+  const applyStatus = $("#ecountWizardApplyStatus");
+  if (applyStatus) applyStatus.hidden = true;
+  if (!file) {
+    if (preview) preview.hidden = true;
+    if (applyBtn) applyBtn.disabled = true;
+    return;
+  }
+  const month = ecountWizardMonthFromFileName(file.name);
+  $("#ecountWizardFileName").textContent = file.name;
+  $("#ecountWizardMonth").textContent = month || "파일명에서 확인 불가 (예: 2026-08.xlsx)";
+  $("#ecountWizardSnapshot").textContent = month ? `work/ecount-sales/${month}.json (예정)` : "-";
+  $("#ecountWizardArchive").textContent = month ? `work/monthly/${month}.json (예정)` : "-";
+  if (preview) preview.hidden = false;
+  if (applyBtn) applyBtn.disabled = false;
+}
+
+// XLSX 원본 바이트를 그대로 POST body로 보낸다(multipart 불필요) — 파일명은 헤더로 전달.
+async function postEcountOfflineFile(file, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch("/api/ecount-sales/import", {
+      method: "POST",
+      headers: { "X-Ecount-File-Name": encodeURIComponent(file.name) },
+      body: file,
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { error: `응답을 읽지 못했습니다: ${text.slice(0, 100)}` };
+    }
+    if (!response.ok && !body.error) body.error = `API 오류 ${response.status}`;
+    return body;
+  } catch (error) {
+    return { error: error.name === "AbortError" ? "응답 지연" : error.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function ecountWizardHandleApplyClick() {
+  const status = $("#ecountWizardApplyStatus");
+  const applyBtn = $("#ecountWizardApplyBtn");
+  if (!status || !applyBtn) return;
+  const file = ecountWizardSelectedFile;
+  if (!file) {
+    status.textContent = "파일을 먼저 선택하세요.";
+    status.hidden = false;
+    return;
+  }
+  const originalLabel = applyBtn.textContent;
+  applyBtn.disabled = true;
+  applyBtn.textContent = "처리 중...";
+  status.textContent = "업로드 및 반영 중...";
+  status.hidden = false;
+  status.classList.remove("is-error");
+  try {
+    const result = await postEcountOfflineFile(file);
+    if (result?.error) {
+      status.textContent = `적용 실패: ${result.error}`;
+      status.classList.add("is-error");
+      return;
+    }
+    const periodLabel = result.periodStart && result.periodEnd
+      ? `${result.periodStart} ~ ${result.periodEnd}`
+      : "-";
+    status.textContent = [
+      `반영 월 ${result.month || "-"}`,
+      `데이터 기간 ${periodLabel}`,
+      `오프라인 매출 ${hasApiValue(result.totalOfflineSales) ? won(result.totalOfflineSales) : "-"}`,
+      `처리 행 수 ${hasApiValue(result.totalLineCount) ? apiNum(result.totalLineCount) : "-"}`,
+      "적용 완료"
+    ].join(" · ");
+    await refreshEcountOfflineCard(result.month);
+  } catch (error) {
+    status.textContent = `적용 실패: ${error.message}`;
+    status.classList.add("is-error");
+  } finally {
+    applyBtn.disabled = false;
+    applyBtn.textContent = originalLabel;
+  }
+}
+
+// Data Apply 성공 후 사이드바 ECOUNT Offline 카드를 GET /api/ecount-sales/monthly로
+// 재조회해 갱신한다 — Cafe24/Meta/Instagram 카드가 쓰는 refreshDataCenterCard()와 같은
+// 배지/시각 갱신 방식을 재사용하되, ECOUNT 카드는 Refresh 버튼이 아니라 Upload 완료
+// 시점에 갱신되므로 별도의 [data-refresh] 클릭 배선에는 연결하지 않는다.
+async function refreshEcountOfflineCard(month) {
+  const card = $("#ecountOfflineRefreshCard");
+  if (!card || !month) return;
+  const badge = card.querySelector(".refresh-badge");
+  const time = card.querySelector(".refresh-card-time");
+  const data = await getJson(`/api/ecount-sales/monthly?month=${encodeURIComponent(month)}`, 8000);
+  const ok = !data?.error;
+  if (badge) {
+    badge.classList.remove("good", "warn", "error", "unknown");
+    badge.classList.add(ok ? "good" : "error");
+    badge.innerHTML = `<i></i>${ok ? "Healthy" : "Error"}`;
+  }
+  if (time) time.textContent = ok ? (data.periodEnd || month) : month;
+}
+
+function openEcountWizard() {
+  const modal = ecountWizardModalNode();
+  const fileInput = $("#ecountWizardFile");
+  if (fileInput) fileInput.value = "";
+  ecountWizardSelectedFile = null;
+  $("#ecountWizardPreview")?.setAttribute("hidden", "");
+  $("#ecountWizardApplyBtn")?.setAttribute("disabled", "");
+  const status = $("#ecountWizardApplyStatus");
+  if (status) {
+    status.hidden = true;
+    status.classList.remove("is-error");
+  }
+  ecountWizardPreviousFocus = document.activeElement;
+  modal.hidden = false;
+  requestAnimationFrame(() => modal.querySelector(".ecount-wizard-panel")?.focus());
+}
+
+function closeEcountWizard() {
+  const modal = $("#ecountWizardModal");
+  if (!modal || modal.hidden) return;
+  modal.hidden = true;
+  const toFocus = ecountWizardPreviousFocus;
+  ecountWizardPreviousFocus = null;
+  if (toFocus && typeof toFocus.focus === "function" && document.contains(toFocus)) toFocus.focus();
+}
+
+// Brand Intelligence Dashboard Hero Section (STEP54-2A). UI/Hover 전용 — 값은 전부
+// placeholder이며 어떤 API도 호출하지 않는다. Clients 탭의 hover tooltip 데이터/저장소는
+// 건드리지 않고, 동일한 뷰포트 인지 포지셔닝 방식만 독립적인 헬퍼로 재구성했다.
+const entityHeroTooltipText = {
+  score: "공식 Health Score 산식이 연결되기 전까지 점수를 표시하지 않습니다.",
+  "score-sales": "매출 성장 점수 산식 연결 대기",
+  "score-inventory": "재고 건전성 점수 산식 연결 대기",
+  "score-turnover": "판매 회전율 점수 산식 연결 대기",
+  "score-customer": "고객 성장 점수 산식 연결 대기",
+  sales: "선택 기간 온라인+오프라인 합산 매출입니다.",
+  qty: "선택 기간 판매된 총 수량입니다.",
+  sellthrough: "공식 Sell-through 산식이 확정되지 않아 계산하지 않습니다.",
+  stock: "ECOUNT 현재 재고 중 canonical brand_code로 확인된 잔여 수량입니다.",
+  sku: "선택 기간 판매가 확인된 상품 수입니다.",
+  aov: "선택 기간 총매출을 주문수로 나눈 객단가입니다."
+};
+
+function entityHeroTooltipNode() {
+  let tooltip = $("#entityHeroTooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.id = "entityHeroTooltip";
+    tooltip.className = "brand-hero-hover-tooltip";
+    tooltip.hidden = true;
+    document.body.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+function positionEntityHeroTooltip(anchor, tooltip) {
+  const margin = 16;
+  const gap = 10;
+  const rect = anchor.getBoundingClientRect();
+  const width = tooltip.offsetWidth || 260;
+  const height = tooltip.offsetHeight || 60;
+  const overflowsRight = rect.left + width + margin > window.innerWidth;
+  let left = overflowsRight ? rect.right - width : rect.left;
+  const overflowsBottom = rect.bottom + gap + height + margin > window.innerHeight;
+  let top = overflowsBottom ? rect.top - height - gap : rect.bottom + gap;
+  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin));
+  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin));
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+// anchor 옆에 임의 HTML을 띄운다 — showEntityHeroTooltip(정적 텍스트)와 Customer
+// Composition의 동적 tooltip(도넛 조각/TOP5 행)이 이 함수 하나를 공유한다.
+function showEntityHeroTooltipContent(anchor, html) {
+  if (!anchor || !html) return;
+  const tooltip = entityHeroTooltipNode();
+  tooltip.innerHTML = html;
+  tooltip.hidden = false;
+  tooltip.style.left = "0px";
+  tooltip.style.top = "0px";
+  positionEntityHeroTooltip(anchor, tooltip);
+  requestAnimationFrame(() => tooltip.classList.add("is-visible"));
+}
+
+function showEntityHeroTooltip(anchor) {
+  const key = anchor?.dataset?.entityHeroTooltip;
+  const text = entityHeroTooltipText[key];
+  if (!text) return;
+  showEntityHeroTooltipContent(anchor, esc(text));
+}
+
+function hideEntityHeroTooltip() {
+  const tooltip = $("#entityHeroTooltip");
+  if (!tooltip) return;
+  tooltip.classList.remove("is-visible");
+  tooltip.hidden = true;
+}
+
+// STEP58-1/58-2: Brand Selector (Real Brand List UI, Compact UX). Placeholder 브랜드를
+// 만들지 않고 실제 canonical Brand Master(/api/brand-master — renderBrandMasterSettings/
+// Annual·Monthly Report가 쓰는 것과 동일한 엔드포인트+getSharedJson 캐시)만 사용한다.
+// 평소에는 선택된 브랜드명만 보이는 트리거 버튼이고, 클릭 시 absolute overlay Dropdown이
+// 열린다(레이아웃을 밀지 않음 — position:relative인 .brand-selector 안에서 .brand-selector
+// -dropdown만 absolute). 선택 시 Hero 제목(#entityHeroName)만 바꾸고 KPI/Customer/
+// Monthly Trend/Category Intelligence는 이번 STEP 범위 밖(실데이터 연결 없음, 그대로 유지).
+const brandSelectorRecentNames = [];
+let brandSelectorAllBrands = [];
+let brandSelectorActiveName = null;
+// STEP61-1: Brand Identity Layer. initBrandSelector()가 /api/brand-master에서 받은 brand
+// 원본 항목(brand_code/name_aliases 포함)을 지금까지는 표시용 이름만 뽑고 버렸다 — 그
+// 이름(brandCanonicalDisplayName 결과, Selector 목록/선택에 실제로 쓰이는 값)을 키로 원본
+// 항목을 그대로 보관해두면, 선택된 이름에서 되돌아가 brand_code를 찾을 수 있다. 새 alias
+// 테이블이 아니라 이미 fetch한 응답을 버리지 않고 재사용하는 것뿐이다.
+let brandSelectorIdentityByName = new Map();
+let brandIdentityState = { name: null, brandCode: null, aliases: [], sourcingType: null };
+const entitySourcingLabels = {
+  WHOLESALE: "사입",
+  CONSIGNMENT: "위탁",
+  HYBRID: "하이브리드",
+  OWN_PRODUCTION: "제작"
+};
+
+// STEP59-4C: Unified Entity Selector. 기존 Brand Selector(검색/최근/전체 목록/열기·닫기
+// 애니메이션/hover/키보드)를 "brand entity" 전용 함수 세트에서 instance(기준 "primary"/
+// 비교 "compare")를 받는 공용 함수 세트로 승격한다. primary의 DOM id·동작은 100% 그대로
+// 유지하고(#brandSelectorTrigger 등 기존 id 무변경), compare는 같은 함수를 새 DOM id
+// 세트로만 재사용한다 — Selector를 복사 생성하지 않는다. entityType까지는 아직 없고
+// instance만 분기한다(향후 Client/Category/SKU 등 entityType 축 추가 여지).
+const entitySelectorInstances = {
+  primary: {
+    dom: {
+      trigger: "#brandSelectorTrigger", triggerLabel: "#brandSelectorTriggerLabel",
+      dropdown: "#brandSelectorDropdown", search: "#brandSelectorSearch",
+      recent: "#brandSelectorRecent", all: "#brandSelectorAll", wrapper: ".brand-selector"
+    },
+    getActive: () => brandSelectorActiveName,
+    onSelect: (name) => selectBrandSelectorName(name),
+    isDisabled: () => false
+  },
+  compare: {
+    dom: {
+      trigger: "#entityCompareBrandBTrigger", triggerLabel: "#entityCompareBrandBTriggerLabel",
+      dropdown: "#entityCompareBrandBDropdown", search: "#entityCompareBrandBSearch",
+      recent: "#entityCompareBrandBRecent", all: "#entityCompareBrandBAll", wrapper: ".entity-compare-brand-selector"
+    },
+    // entityCompareBrandBSelection(사용자가 명시적으로 고른 값)이 아니라
+    // entityCompareBrandB()(fallback 포함 최종 표시값)를 기준으로 active 표시해야,
+    // 아직 선택하지 않은 상태에서도 트리거 라벨과 목록 강조가 항상 일치한다.
+    getActive: () => entityCompareBrandB(),
+    onSelect: (name) => selectEntityCompareBrandB(name),
+    // STEP59-4B에서 정한 규칙 그대로: 기준 브랜드와 같은 이름은 비교 목록에서 선택 불가.
+    isDisabled: (name) => name === entityCompareBrandA()
+  },
+  // STEP67-8D: Comparison Brand A Local Selector. "기준 브랜드"는 Comparison 전용
+  // 상태가 아니라 메인 브랜드(brandSelectorActiveName) 그 자체다 — primary와 동일한
+  // getActive/onSelect를 재사용해 이 selector에서 고른 값이 곧 메인 Brand Intelligence
+  // 브랜드가 되도록 한다(새 Comparison 전용 상태를 만들지 않음). isDisabled는 이번
+  // STEP에서 항상 false — Brand B와 같은 브랜드라는 이유로 메인 브랜드 선택 자체를
+  // 막는 새 제약을 추가하지 않는다(사용자 확정).
+  compareA: {
+    dom: {
+      trigger: "#entityCompareBrandATrigger", triggerLabel: "#entityCompareBrandAName",
+      dropdown: "#entityCompareBrandADropdown", search: "#entityCompareBrandASearch",
+      recent: "#entityCompareBrandARecent", all: "#entityCompareBrandAAll", wrapper: ".entity-compare-brand-selector"
+    },
+    getActive: () => brandSelectorActiveName,
+    onSelect: (name) => selectBrandSelectorName(name),
+    isDisabled: () => false
+  }
+};
+const entitySelectorState = {
+  primary: { query: "", open: false, closeTimer: null },
+  compare: { query: "", open: false, closeTimer: null },
+  compareA: { query: "", open: false, closeTimer: null }
+};
+
+function entitySelectorRowHtml(instanceKey, name) {
+  const inst = entitySelectorInstances[instanceKey];
+  const isActive = name === inst.getActive();
+  const isDisabled = inst.isDisabled(name);
+  return `<li data-entity-selector-name="${esc(name)}" data-entity-selector-instance="${instanceKey}" class="${isActive ? "active" : ""}${isDisabled ? " is-disabled" : ""}" aria-disabled="${isDisabled}" tabindex="0">${esc(name)}</li>`;
+}
+
+function renderEntitySelectorRecent(instanceKey) {
+  const list = $(entitySelectorInstances[instanceKey].dom.recent);
+  if (!list) return;
+  list.closest(".brand-selector-group")?.toggleAttribute("hidden", !brandSelectorRecentNames.length);
+  list.innerHTML = brandSelectorRecentNames.map((name) => entitySelectorRowHtml(instanceKey, name)).join("");
+}
+
+function renderEntitySelectorAll(instanceKey) {
+  const list = $(entitySelectorInstances[instanceKey].dom.all);
+  if (!list) return;
+  const query = entitySelectorState[instanceKey].query.trim().toLowerCase();
+  const filtered = query ? brandSelectorAllBrands.filter((name) => name.toLowerCase().includes(query)) : brandSelectorAllBrands;
+  list.innerHTML = filtered.length
+    ? filtered.map((name) => entitySelectorRowHtml(instanceKey, name)).join("")
+    : `<li class="brand-selector-empty">검색 결과가 없습니다.</li>`;
+}
+
+function openEntitySelectorDropdown(instanceKey) {
+  const inst = entitySelectorInstances[instanceKey];
+  const state = entitySelectorState[instanceKey];
+  const dropdown = $(inst.dom.dropdown);
+  const trigger = $(inst.dom.trigger);
+  if (!dropdown || state.open) return;
+  clearTimeout(state.closeTimer);
+  state.open = true;
+  dropdown.hidden = false;
+  trigger?.setAttribute("aria-expanded", "true");
+  requestAnimationFrame(() => dropdown.classList.add("is-visible"));
+  $(inst.dom.search)?.focus();
+}
+
+function closeEntitySelectorDropdown(instanceKey) {
+  const inst = entitySelectorInstances[instanceKey];
+  const state = entitySelectorState[instanceKey];
+  const dropdown = $(inst.dom.dropdown);
+  const trigger = $(inst.dom.trigger);
+  if (!dropdown || !state.open) return;
+  state.open = false;
+  dropdown.classList.remove("is-visible");
+  trigger?.setAttribute("aria-expanded", "false");
+  clearTimeout(state.closeTimer);
+  state.closeTimer = setTimeout(() => {
+    dropdown.hidden = true;
+  }, 150);
+  // 다음에 열 때는 항상 전체 목록부터 보이도록 검색어를 초기화한다.
+  state.query = "";
+  const searchInput = $(inst.dom.search);
+  if (searchInput) searchInput.value = "";
+  renderEntitySelectorAll(instanceKey);
+}
+
+function toggleEntitySelectorDropdown(instanceKey) {
+  if (entitySelectorState[instanceKey].open) closeEntitySelectorDropdown(instanceKey);
+  else openEntitySelectorDropdown(instanceKey);
+}
+
+function selectBrandSelectorName(name) {
+  if (!name) return;
+  brandSelectorActiveName = name;
+  const recentIndex = brandSelectorRecentNames.indexOf(name);
+  if (recentIndex >= 0) brandSelectorRecentNames.splice(recentIndex, 1);
+  brandSelectorRecentNames.unshift(name);
+  brandSelectorRecentNames.splice(5);
+  const heroName = $("#entityHeroName");
+  if (heroName) heroName.textContent = name;
+  const triggerLabel = $("#brandSelectorTriggerLabel");
+  if (triggerLabel) triggerLabel.textContent = name;
+  renderEntitySelectorRecent("primary");
+  renderEntitySelectorAll("primary");
+  closeEntitySelectorDropdown("primary");
+  renderEntityHeroState();
+  // STEP59-4: entityCompareBrandA()가 brandSelectorActiveName을 그대로 읽는 파생값이라
+  // 브랜드가 바뀔 때마다 Compare Header 표시도 함께 새로고침한다(새 state 결합 아님 —
+  // 이미 있는 값을 다시 그리는 것뿐). 비교 목록의 disabled 표시도 같이 갱신되도록
+  // compare 목록도 다시 그린다(비교 목록 전용 선택 로직은 아님).
+  renderEntityCompareUI();
+  renderEntitySelectorRecent("compare");
+  renderEntitySelectorAll("compare");
+  // STEP67-8D: compareA(Comparison "기준 브랜드" 로컬 selector)도 primary와 동일한
+  // brandSelectorActiveName을 읽으므로(getActive), 목록의 active 표시를 갱신하고
+  // 선택이 끝났으면 이 함수를 호출한 쪽이 primary든 compareA든 자기 자신의 드롭다운을
+  // 닫는다(이미 닫혀 있으면 closeEntitySelectorDropdown이 조용히 반환 — 새 로직 아님).
+  renderEntitySelectorRecent("compareA");
+  renderEntitySelectorAll("compareA");
+  closeEntitySelectorDropdown("compareA");
+  // STEP61-1: Brand Identity Layer. Hero/KPI/Composition 등 화면은 그대로 두고, 선택된
+  // 이름 뒤에서 brand_code를 확정한 뒤 Monthly Archive와의 매핑만 확인한다(UI 반영 없음).
+  applyBrandIdentity(name);
+}
+
+// STEP58-4C: "← 전체 브랜드 보기" — 선택된 브랜드를 해제하고 Empty State로 되돌린다. 새
+// 상태 변수를 만들지 않고 selectBrandSelectorName의 반대 동작을 그대로 재사용한다
+// (brandSelectorActiveName을 비우고 renderEntityHeroState()만 다시 호출).
+function clearBrandSelectorSelection() {
+  brandSelectorActiveName = null;
+  const heroName = $("#entityHeroName");
+  if (heroName) heroName.textContent = "브랜드를 선택하세요";
+  const triggerLabel = $("#brandSelectorTriggerLabel");
+  if (triggerLabel) triggerLabel.textContent = "브랜드 선택";
+  renderEntitySelectorRecent("primary");
+  renderEntitySelectorAll("primary");
+  closeEntitySelectorDropdown("primary");
+  renderEntityHeroState();
+  renderEntityCompareUI();
+  renderEntitySelectorRecent("compare");
+  renderEntitySelectorAll("compare");
+  // STEP67-8D: selectBrandSelectorName()과 동일하게 compareA 목록/드롭다운도 함께 정리한다.
+  renderEntitySelectorRecent("compareA");
+  renderEntitySelectorAll("compareA");
+  closeEntitySelectorDropdown("compareA");
+  applyBrandIdentity(null);
+}
+
+// STEP61-1: Brand Identity Layer. brandSelectorIdentityByName은 initBrandSelector()가
+// /api/brand-master 응답에서 이미 fetch한 원본 항목을 이름별로 보관해둔 것이다 — 여기서는
+// 그 항목에서 monthlyReportBrandCode()(Monthly/Annual Report가 이미 쓰는 동일 함수)로
+// brand_code만 뽑는다. Master Data가 아직 로딩 전이라 항목을 못 찾으면 brandCode는 null로
+// 남고, 이후 Master Data가 로딩되면 initBrandSelector()가 다시 resolveBrandIdentity를
+// 호출해 갱신한다.
+function resolveBrandIdentity(name) {
+  if (!name) return { name: null, brandCode: null, aliases: [], sourcingType: null };
+  const entry = brandSelectorIdentityByName.get(name);
+  return {
+    name,
+    brandCode: entry ? monthlyReportBrandCode(entry) : null,
+    aliases: entry ? (entry.name_aliases || []) : [],
+    sourcingType: entry?.sourcing_type || null
+  };
+}
+
+function renderEntitySourcingBadge() {
+  const badge = $("#entityHeroSourcingBadge");
+  if (badge) badge.textContent = `운영 방식 · ${entitySourcingLabels[brandIdentityState.sourcingType] || "데이터 연결 대기"}`;
+}
+
+// STEP62-3: Identity Layer. ECOUNT brandGroup 등 원본 코드(예: "424", "BON CO")를 Brand
+// Master의 canonical 표시명(브랜드 선택기가 이미 fetch해 둔 brandSelectorIdentityByName,
+// STEP61-1)과 대소문자/공백만 정규화해 정확히 일치하는 항목이 있는지 확인한다. 부분/추론
+// 매칭은 하지 않는다 — 정확히 일치하지 않으면 반드시 null을 반환해 호출부가 원본 값을 그대로
+// 쓰게 한다("Brand Master에 없는 경우 기존 표시 유지"). Brand Master는 읽기만 하고 절대
+// 수정하지 않는다.
+function resolveRawBrandCanonical(rawCode) {
+  const normalized = String(rawCode || "").trim().toUpperCase();
+  if (!normalized) return null;
+  for (const [displayName, entry] of brandSelectorIdentityByName) {
+    const candidates = [displayName, entry?.brand_name, ...(entry?.name_aliases || [])];
+    if (candidates.some((candidate) => String(candidate || "").trim().toUpperCase() === normalized)) {
+      return displayName;
+    }
+  }
+  return null;
+}
+
+// STEP61-1: Brand Selector가 확정한 Identity를 Monthly Archive의 commerce.brandSales와
+// 대조해 같은 canonical brand로 이어지는지 확인한다(콘솔 로그만 — Hero/Monthly UI는 이번
+// STEP에서 손대지 않는다). Entity Period Control이 이미 갖고 있는 entityPeriodState(연/월)를
+// 그대로 재사용해 "지금 보고 있는 기간" 기준으로 확인한다(새 기간 상태를 만들지 않음).
+async function verifyBrandIdentityMonthlyMapping() {
+  if (!brandIdentityState.brandCode) {
+    if (brandIdentityState.name) {
+      console.log(`[Brand Identity] "${brandIdentityState.name}" → brand_code 미확인(Brand Master 응답에 없음). Monthly 매핑 확인을 건너뜁니다.`, brandIdentityState);
+    }
+    return;
+  }
+  if (entityPeriodState.mode !== "monthly") {
+    console.log(`[Brand Identity] 현재 기간 모드가 "${entityPeriodState.mode}"라 월별 brandSales 매핑 확인은 monthly 모드에서만 수행합니다.`);
+    return;
+  }
+  const month = `${entityPeriodState.year}-${String(entityPeriodState.month).padStart(2, "0")}`;
+  const archive = await getSharedJson(`/api/reports/monthly?month=${month}`, 8000);
+  if (archive?.error) {
+    console.log(`[Brand Identity] ${month} Monthly Archive 조회 실패:`, archive.error);
+    return;
+  }
+  const brandSales = archive?.commerce?.brandSales || [];
+  const match = brandSales.find((row) => monthlyReportBrandCode(row) === brandIdentityState.brandCode);
+  console.log(
+    `[Brand Identity] "${brandIdentityState.name}" (brand_code=${brandIdentityState.brandCode}) → ${month} Monthly brandSales 매핑: ${match ? "FOUND" : "NOT FOUND"}`,
+    match || { checkedRowCount: brandSales.length }
+  );
+}
+
+function applyBrandIdentity(name) {
+  brandIdentityState = resolveBrandIdentity(name);
+  renderEntitySourcingBadge();
+  verifyBrandIdentityMonthlyMapping();
+  // STEP61-2: Brand 변경/해제는 전부 이 함수 하나를 거치므로(selectBrandSelectorName/
+  // clearBrandSelectorSelection/initBrandSelector 3곳), Monthly Intelligence 갱신도 여기
+  // 한 곳에만 연결하면 "Brand 변경 → Monthly 값 변경" 요구사항이 세 진입점 모두에서 자동으로
+  // 충족된다(진입점마다 갱신 호출을 중복 작성하지 않음).
+  refreshEntityTrendMonths();
+}
+
+// STEP59-4C: 비교 브랜드 선택 커밋 — entityCompareBrandBSelection 하나만 바꾸고 공용
+// render 함수만 재사용한다(섹션별 개별 반영 로직 없음, STEP59-4B의 select onchange와
+// 동일한 2줄 의도를 Entity Selector 버전으로 옮긴 것뿐).
+function selectEntityCompareBrandB(name) {
+  if (!name || entitySelectorInstances.compare.isDisabled(name)) return;
+  entityCompareBrandBSelection = name;
+  const recentIndex = brandSelectorRecentNames.indexOf(name);
+  if (recentIndex >= 0) brandSelectorRecentNames.splice(recentIndex, 1);
+  brandSelectorRecentNames.unshift(name);
+  brandSelectorRecentNames.splice(5);
+  const triggerLabel = $("#entityCompareBrandBTriggerLabel");
+  if (triggerLabel) triggerLabel.textContent = name;
+  renderEntitySelectorRecent("compare");
+  renderEntitySelectorAll("compare");
+  closeEntitySelectorDropdown("compare");
+  renderEntityCompareUI();
+  refreshEntityTrendMonths();
+}
+
+// STEP59-2: Entity Period Control Foundation. 화면 전체가 바라보는 기간을 명확히 하는
+// 상태 기반만 만든다 — 실데이터 연결도, 기간별 숫자 계산도 하지 않는다. Customer/
+// Category/Trend별로 기간 변수를 따로 만들지 않고 단일 entityPeriodState 하나만 두고,
+// Brand Selector의 brandSelectorActiveName과는 절대 결합하지 않는다(브랜드를 선택/해제
+// 해도 기간은 그대로 유지). 브라우저 현재 날짜를 쓰지 않고 요구된 기본값(월간·2026·7)만
+// 사용한다.
+const entityInitialDate = new Date();
+let entityPeriodState = { mode: "monthly", year: entityInitialDate.getFullYear(), month: entityInitialDate.getMonth() + 1 };
+// STEP59-3: Compare Mode UI. entityCompareState.enabled만 실제로 켜고 끈다 — 비교
+// 대상 기간 계산/증감 계산/실데이터 연결은 하지 않는다. 켜졌을 때 보이는 모든 요소는
+// entity-compare-only 클래스 + body.entity-compare-on 조합의 CSS 표시 전환뿐이라
+// 섹션(Customer/Category/Trend/Drawer)마다 개별 토글 로직을 추가하지 않는다.
+let entityCompareState = { enabled: false };
+
+function entityPeriodLabel() {
+  if (entityPeriodState.mode === "monthly") return `${entityPeriodState.year}년 ${entityPeriodState.month}월`;
+  if (entityPeriodState.mode === "annual") return `${entityPeriodState.year}년 전체`;
+  return "전체 기간";
+}
+
+// Hero/Customer/Category/Trend 보조 문구 + Hero 배지를 이 함수 하나로만 갱신한다(섹션별
+// 개별 기간 갱신 로직 없음). 실제 숫자는 전혀 바꾸지 않고 문구만 갱신한다.
+function applyEntityPeriodContext() {
+  const label = entityPeriodLabel();
+  const labelEl = $("#entityPeriodLabel");
+  if (labelEl) labelEl.textContent = label;
+  // STEP67-6: "월간" 모드는 이제 매출/판매수량/객단가/주문수/MoM/Channel Mix/SKU/
+  // Customer Composition/AI Insight가 전부 실데이터로 연결돼 있어 "Placeholder UI" 표기가
+  // 더 이상 정확하지 않다. 연간/전체 모드는 여전히 문구만 바뀌고 실제 재계산이 없으므로
+  // (이번 STEP 범위 밖 — 새 화면/새 계산 금지) 그 두 모드에서만 라벨을 유지한다.
+  const heroBadge = $("#entityHeroPeriodBadge");
+  if (heroBadge) {
+    heroBadge.textContent = entityPeriodState.mode === "monthly" ? label : `${label} · Placeholder UI`;
+  }
+  const compositionNote = $("#entityCompositionPeriodNote");
+  if (compositionNote) compositionNote.textContent = `기준 기간: ${label}`;
+  const categoryNote = $("#entityCategoryPeriodNote");
+  if (categoryNote) categoryNote.textContent = `기준 기간: ${label}`;
+  const trendNote = $("#entityTrendPeriodNote");
+  if (trendNote) {
+    trendNote.textContent = entityPeriodState.mode === "monthly"
+      ? "선택 월을 포함한 최근 월별 흐름"
+      : entityPeriodState.mode === "annual"
+        ? "선택 연도의 월별 흐름"
+        : "전체 기간의 연도별 흐름";
+  }
+  // STEP59-4: Compare Header의 "현재 기간"도 이 함수가 유일하게 갱신한다(기간이 바뀔
+  // 때마다 호출되는 지점이 이미 여기뿐이므로, renderEntityCompareUI()에 별도 리스너를
+  // 추가하지 않고 여기서 한 줄만 더한다).
+  const compareHeaderCurrentPeriod = $("#entityCompareHeaderCurrentPeriod");
+  if (compareHeaderCurrentPeriod) compareHeaderCurrentPeriod.textContent = label;
+  // STEP60-2: Cross Entity Navigation. 기간이 바뀔 때도 Workspace Context Bar가 같은
+  // 함수 하나로 갱신되도록 여기서 한 줄만 더한다(전용 리스너 추가 없음).
+  renderWorkspaceContextBar();
+}
+
+// 활성 기간 모드 표시 + 연도/월 Select 노출 제어 + Context 갱신을 한 곳에서 처리한다.
+function renderEntityPeriodControl() {
+  $$("[data-entity-period-mode]").forEach((btn) => {
+    const active = btn.dataset.entityPeriodMode === entityPeriodState.mode;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", String(active));
+  });
+  const yearSelect = $("#entityPeriodYear");
+  const monthSelect = $("#entityPeriodMonth");
+  if (yearSelect) {
+    yearSelect.toggleAttribute("hidden", entityPeriodState.mode === "all");
+    yearSelect.value = String(entityPeriodState.year);
+  }
+  if (monthSelect) {
+    monthSelect.toggleAttribute("hidden", entityPeriodState.mode !== "monthly");
+    monthSelect.value = String(entityPeriodState.month);
+  }
+  applyEntityPeriodContext();
+}
+
+// 실제 current period에서 계산한 target key를 표시한다. custom은 입력 UI가 없으므로
+// 임의 날짜 대신 미확정 상태를 유지한다.
+function entityCompareTargetLabel() {
+  const select = $("#entityCompareTarget");
+  if (select) {
+    const prev = select.querySelector('option[value="prev"]');
+    const yoy = select.querySelector('option[value="yoy"]');
+    if (prev) prev.textContent = entityCompareMonthKeyLabel(entityComparePeriodKeyForMode("prev"));
+    if (yoy) yoy.textContent = entityCompareMonthKeyLabel(entityComparePeriodKeyForMode("yoy"));
+  }
+  const key = entityCompareTargetPeriodKey();
+  return key ? entityCompareMonthKeyLabel(key) : select?.value === "custom" ? "사용자 지정 · 미확정" : "비교 대상 미확정";
+}
+
+// STEP59-4: Compare Mode UX Refinement. 새 Entity State를 만들지 않고 기존
+// brandSelectorActiveName만 읽어 "기준 브랜드"를 파생한다. "비교 브랜드"는 실제 비교
+// 대상 선택 기능이 아직 없으므로(다음 STEP 범위) 이미 화면 다른 곳(Brand Overview)에서
+// 써온 placeholder 브랜드명 중 기준 브랜드와 겹치지 않는 하나만 고정 반환한다 — 실제
+// 데이터 연결/계산 없이 화면 표현(브랜드명 텍스트)만 통일하기 위한 헬퍼다.
+function entityCompareBrandA() {
+  return brandSelectorActiveName || "기준 브랜드 선택";
+}
+
+// STEP59-4B/STEP59-4C: Compare Brand Selector. 사용자가 비교 브랜드 Entity Selector
+// (entitySelectorInstances.compare)에서 고른 값을 이 변수 하나에만 저장한다(섹션별
+// 선택 상태 없음). 아직 선택하지 않았거나, 선택값이
+// 기준 브랜드와 같아진 경우(기준을 나중에 바꿔서 겹치게 된 경우 포함)에는 STEP59-4의
+// 기존 fallback 로직으로 되돌아간다 — 동일 브랜드가 절대 반환되지 않는다.
+let entityCompareBrandBSelection = null;
+
+function entityCompareBrandB() {
+  if (entityCompareBrandBSelection && entityCompareBrandBSelection !== entityCompareBrandA()) {
+    return entityCompareBrandBSelection;
+  }
+  return "비교 브랜드 선택";
+}
+
+// Compare 토글 버튼 하나의 상태(entityCompareState.enabled)를 body 클래스 하나로만
+// 반영한다. Hero 증감 Chip/Customer·Category TOP5 증감 Chip/Trend 두 번째 선/
+// Comparison Summary 카드/Drawer 비교 기간 줄은 전부 CSS(.entity-compare-only +
+// body.entity-compare-on)로만 표시가 전환되므로, 섹션별 렌더 함수를 다시 호출하지
+// 않아도 된다(공용 함수 1개로 전체 화면이 즉시 반응). Compare Header의 브랜드/기간
+// 텍스트도 이 함수 하나에서만 채운다(섹션별 개별 갱신 로직 없음).
+function renderEntityCompareUI() {
+  document.body.classList.toggle("entity-compare-on", entityCompareState.enabled);
+  const toggle = $("#entityCompareToggle");
+  if (toggle) toggle.setAttribute("aria-pressed", String(entityCompareState.enabled));
+  const toggleLabel = $("#entityCompareToggleLabel");
+  if (toggleLabel) toggleLabel.textContent = entityCompareState.enabled ? "비교 모드 ON" : "비교 모드 OFF";
+  const brandAEl = $("#entityCompareBrandAName");
+  if (brandAEl) brandAEl.textContent = entityCompareBrandA();
+  const targetPeriodEl = $("#entityCompareHeaderTargetPeriod");
+  if (targetPeriodEl) targetPeriodEl.textContent = entityCompareTargetLabel();
+  // STEP59-4: Customer Composition compare 블록의 브랜드명도 같은 두 헬퍼를 재사용한다
+  // (섹션 전용 브랜드 표시 로직을 새로 만들지 않음).
+  const compositionBrandA = $("#entityCompareCompositionBrandA");
+  if (compositionBrandA) compositionBrandA.textContent = entityCompareBrandA();
+  const compositionBrandB = $("#entityCompareCompositionBrandB");
+  if (compositionBrandB) compositionBrandB.textContent = entityCompareBrandB();
+  const categoryBrandA = $("#entityCompareCategoryBrandA");
+  if (categoryBrandA) categoryBrandA.textContent = entityCompareBrandA();
+  const categoryBrandB = $("#entityCompareCategoryBrandB");
+  if (categoryBrandB) categoryBrandB.textContent = entityCompareBrandB();
+  const trendBrandA = $("#entityCompareTrendBrandA");
+  if (trendBrandA) trendBrandA.textContent = entityCompareBrandA();
+  const trendBrandB = $("#entityCompareTrendBrandB");
+  if (trendBrandB) trendBrandB.textContent = entityCompareBrandB();
+  // STEP59-4C: Unified Entity Selector. 비교 브랜드 트리거 라벨은 entityCompareBrandB()의
+  // 최종 결과로 맞추고(기준과 겹쳐 자동 대체된 경우 포함), Recent/All 목록도 다시 그려
+  // disabled 표시(entitySelectorInstances.compare.isDisabled)가 항상 최신 기준 브랜드를
+  // 반영하도록 한다 — 목록 렌더 로직 자체는 새로 만들지 않고 기존 함수만 재호출한다.
+  const brandBTriggerLabel = $("#entityCompareBrandBTriggerLabel");
+  if (brandBTriggerLabel) brandBTriggerLabel.textContent = entityCompareBrandB();
+  if ($("#entityCompareBrandBRecent")) {
+    renderEntitySelectorRecent("compare");
+    renderEntitySelectorAll("compare");
+  }
+  renderWorkspaceContextBar();
+  // STEP67-9E-1: Comparison Monthly Core KPI. Brand B 변경/비교 모드 토글/종료는 전부 이
+  // 함수를 거치므로(selectEntityCompareBrandB/entityCompareToggle 클릭/종료 버튼), 별도
+  // 트리거를 추가하지 않고 여기서 한 번만 더 호출한다. Brand A 변경 경로는
+  // refreshEntityTrendMonths() 쪽에서 이미 호출한다.
+  refreshEntityCompareKpi();
+  if (entityCompareState.enabled) {
+    // STEP67-9H-3: Comparison OFF 상태에서 Primary Brand가 이미 empty(#entityCompositionContent
+    // hidden=true)였다면, 이 토글 경로는 Brand A를 재조회하지 않으므로(Brand A는 이미
+    // entityCompareCompositionState.a에 정확한 값을 갖고 있다 — refreshEntityCustomerComposition()이
+    // 이전에 채워둠) 그 hidden 상태가 그대로 남아 방금 그릴 Comparison 블록까지 함께 가려진다.
+    // renderEntityCompositionEmpty()는 이미 비교 모드일 때 content를 항상 visible로 두도록
+    // 되어 있으므로(STEP67-9H-2) 여기서 한 번 더 불러 visibility만 정리한다 — 새 fetch 없음.
+    renderEntityCompositionEmpty();
+    refreshEntityCompareCustomerComposition();
+  } else {
+    // STEP67-9H-3: 반대 방향(Comparison ON → OFF) 회귀. 비교 모드 진입 시 위에서 content를
+    // 강제로 visible 처리했으므로, 종료할 때도 Primary 상태를 다시 확인해 정확히 복원해야
+    // 한다 — 그냥 renderEntityCompositionSection()만 부르면(기존 코드) Primary가 실제로는
+    // empty인데 content가 계속 visible로 남는다. entityCompareCompositionState.a는 이미
+    // refreshEntityCustomerComposition()이 채워둔 정확한 값이므로 새 fetch 없이 그 status만
+    // 읽어 단일 브랜드 Empty State 정책을 그대로 재적용한다.
+    if (entityCompareCompositionState.a.status === "ready") {
+      const empty = $("#entityCompositionEmpty");
+      const content = $("#entityCompositionContent");
+      if (empty) empty.hidden = true;
+      if (content) content.hidden = false;
+    } else if (["empty", "error"].includes(entityCompareCompositionState.a.status)) {
+      renderEntityCompositionEmpty();
+    }
+    renderEntityCompositionSection();
+  }
+}
+
+// STEP60-2: Cross Entity Navigation. 새 Global State를 만들지 않고 이미 있는
+// brandSelectorActiveName/entityPeriodState/entityCompareState 3개만 읽는 작은 고정
+// 배지다. Brand Dashboard 밖(Inventory/Monthly/Clients 등 다른 Workspace)으로 이동해도
+// 어떤 .view 섹션에도 속하지 않는 document.body 직속 엘리먼트라 항상 보인다 — Workspace
+// Header Preview 요구사항을 topbar 구조를 건드리지 않고 만족한다.
+function workspaceContextBarNode() {
+  let el = $("#workspaceContextBar");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "workspaceContextBar";
+    el.className = "workspace-context-bar";
+    el.hidden = true;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function renderWorkspaceContextBar() {
+  const el = workspaceContextBarNode();
+  if (!brandSelectorActiveName) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  el.innerHTML = `
+    <span class="workspace-context-bar-label">Context</span>
+    <strong class="workspace-context-bar-brand">${esc(brandSelectorActiveName)}</strong>
+    <span class="workspace-context-bar-period">${esc(entityPeriodLabel())}</span>
+    <span class="workspace-context-bar-compare ${entityCompareState.enabled ? "on" : "off"}">비교 ${entityCompareState.enabled ? "ON" : "OFF"}</span>
+  `;
+}
+
+// STEP58-4/58-4B: 브랜드 미선택 시 Hero의 Health Score/AI Summary/추천 Action/KPI와
+// EntityComposition/EntityTrend/EntityCategory의 placeholder 데이터(도넛/TOP5/차트/AI
+// Insight)를 실제 분석처럼 보여주지 않는다. 계산 로직은 전혀 추가하지 않고, 기존
+// placeholder 콘텐츠 블록과 섹션별 Empty State 카드를 hidden 속성으로만 토글하는 단일
+// 함수로 처리한다(동일 상태 로직을 여러 함수에 중복 작성하지 않음) — 새 상태 변수를
+// 만들지 않고 Brand Selector가 이미 갖고 있는 brandSelectorActiveName(선택된 브랜드
+// 유무)만 참조한다. Content 래퍼가 hidden이면 내부 토글/hover 대상 DOM 자체가 화면에서
+// 사라지므로, 이벤트 리스너에 별도 분기(조건문)를 추가하지 않아도 hover/토글 호출이
+// 자연히 발생하지 않는다(DOM이 숨겨져 이벤트 진입 불가).
+function renderEntityHeroState() {
+  const selected = Boolean(brandSelectorActiveName);
+  $("#brandSelectorClearBtn")?.toggleAttribute("hidden", !selected);
+  $("#entityHeroMeta")?.toggleAttribute("hidden", !selected);
+  $("#entityHeroEmptyPanel")?.toggleAttribute("hidden", selected);
+  $("#entityHeroContent")?.toggleAttribute("hidden", !selected);
+  $("#entityHeroEmptyKpi")?.toggleAttribute("hidden", selected);
+  $("#entityHeroKpiGrid")?.toggleAttribute("hidden", !selected);
+  $("#entityHeroSkuLine")?.toggleAttribute("hidden", !selected);
+
+  $("#entityCompositionToggle")?.toggleAttribute("hidden", !selected);
+  $("#entityCompositionEmpty")?.toggleAttribute("hidden", selected);
+  $("#entityCompositionContent")?.toggleAttribute("hidden", !selected);
+
+  $("#entityTrendEmpty")?.toggleAttribute("hidden", selected);
+  $("#entityTrendContent")?.toggleAttribute("hidden", !selected);
+
+  $("#entityCategoryToggle")?.toggleAttribute("hidden", false);
+  $("#entityCategoryEmpty")?.toggleAttribute("hidden", false);
+  $("#entityCategoryContent")?.toggleAttribute("hidden", false);
+}
+
+function renderEntitySystemStatusItem(id, label, ok, updatedAt) {
+  const item = $(`#${id}`);
+  if (!item) return;
+  const badge = item.querySelector(".brand-hero-status-badge");
+  const note = item.querySelector("em");
+  const state = ok === true ? "Healthy" : ok === false ? "Unavailable" : "확인 불가";
+  if (badge) {
+    badge.classList.toggle("good", ok === true);
+    badge.classList.toggle("warn", ok !== true);
+    badge.innerHTML = `<i></i>${esc(label)} · ${state}`;
+  }
+  if (note) note.textContent = updatedAt ? freshnessTimestampLabel(updatedAt) : "실제 동기화 시각 확인 불가";
+}
+
+async function refreshEntitySystemStatus() {
+  const month = currentEntityPeriodMonthKey();
+  const [status, ecount] = await Promise.all([
+    getSharedJson("/api/status", 8000),
+    getJson(`/api/ecount-sales/monthly?month=${encodeURIComponent(month)}`, 8000)
+  ]);
+  renderEntitySystemStatusItem("entitySystemStatusCafe24", "Cafe24", status?.environment?.cafe24?.ok === true && status?.cafe24 === true, null);
+  renderEntitySystemStatusItem("entitySystemStatusMeta", "Meta Ads", status?.environment?.metaAds?.ok === true && status?.metaAds === true, null);
+  renderEntitySystemStatusItem("entitySystemStatusInstagram", "Instagram", status?.environment?.instagram?.ok === true && status?.instagram === true, status?.instagramSync?.lastSuccessAt);
+  renderEntitySystemStatusItem("entitySystemStatusEcount", "ECOUNT", !ecount?.error && Boolean(ecount?.importedAt), ecount?.importedAt);
+}
+
+// STEP59-4C: brandSelectorAllBrands는 primary/compare 두 인스턴스가 공유하는 단일
+// 데이터(같은 /api/brand-master 응답)라, 로딩 완료 후 두 인스턴스의 목록을 모두 다시
+// 그린다(API를 두 번 호출하지 않음 — 기존 호출 1회 그대로).
+async function initBrandSelector() {
+  const allList = $("#brandSelectorAll");
+  if (!allList) return;
+  renderEntitySelectorRecent("primary");
+  renderEntitySelectorRecent("compare");
+  allList.innerHTML = `<li class="brand-selector-empty">브랜드 목록을 불러오는 중...</li>`;
+  const [result, productRegistry] = await Promise.all([
+    getSharedJson("/api/brand-master", 12000),
+    getSharedJson("/api/intelligence/product-registry", 12000)
+  ]);
+  registerProductRegistryCanonicalNames(productRegistry?.registry?.entries || productRegistry?.entries);
+  registerBrandMasterResponse(result);
+  const brands = Array.isArray(result?.brands) ? result.brands : [];
+  const activeBrands = brands.filter((brand) => brand?.active !== false && String(brand?.brand_code || "").trim() !== "B0000000");
+  // STEP61-1: Brand Identity Layer. 이름만 뽑아 버리던 것을, brandCanonicalDisplayName()
+  // 결과를 키로 원본 항목까지 함께 보관한다(같은 표시 이름이 여러 brand_code에 걸리는
+  // 경우는 첫 항목을 canonical로 채택 — 기존 names 배열의 Set 중복 제거와 동일한 규칙).
+  const identityByName = new Map();
+  activeBrands.forEach((brand) => {
+    const name = brandCanonicalDisplayName(brand);
+    if (name && name !== "미분류" && !identityByName.has(name)) identityByName.set(name, brand);
+  });
+  brandSelectorIdentityByName = identityByName;
+  brandSelectorAllBrands = [...identityByName.keys()].sort((a, b) => a.localeCompare(b, "ko"));
+  renderEntitySelectorAll("primary");
+  renderEntitySelectorAll("compare");
+  // Master Data가 이 fetch보다 늦게 도착했을 수 있으므로(초기 로드 경합), 이미 선택된
+  // 브랜드가 있다면 지금 막 채워진 identityByName으로 다시 확인한다.
+  if (brandSelectorActiveName) applyBrandIdentity(brandSelectorActiveName);
+}
+
+// Entity Composition (STEP55, STEP58-3에서 Entity Intelligence Framework 명명 규칙에 맞춰
+// brandCustomer* → entityComposition*로 리네임. UI/동작은 리네임 이전과 100% 동일).
+// Clients 탭의 실제 상태(clientsDonutRanges 등)나
+// API는 전혀 참조하지 않는 완전히 독립된 placeholder 모듈이다. 도넛 conic-gradient/각도
+// 판정 "기법"만 Clients 탭과 동일하게 재구성했다(js:10396-10424 clientsDonutGradient/
+// clientsDonutAngleToType 참고, 대상 데이터와 상태는 별개).
+// STEP67-6: Customer Composition. Clients 화면과 동일한 canonical 유형/라벨을 쓴다
+// (intelligence-service.mjs의 CLIENT_TYPE_LABELS와 값 동일 — 새 라벨 발명 금지). 색상은
+// 이 프로젝트가 이미 쓰는 Category Intelligence 팔레트를 재사용한다(entityCategoryColors와
+// 동일 값, 새 색상 발명 없음).
+const entityCompositionTypeLabel = {
+  stylist: "스타일리스트",
+  samplas_press: "프레스",
+  customer: "일반 손님",
+  foreign: "외국인",
+  online_first_signup: "온라인 첫가입",
+  ff: "직원 구매"
+};
+const entityCompositionColors = {
+  stylist: "#171717",
+  samplas_press: "#c76a35",
+  customer: "#6d6a62",
+  foreign: "#4fb082",
+  online_first_signup: "#8d6ecf",
+  ff: "#d7a642"
+};
+// STEP67-6: 브랜드/기간이 바뀔 때마다 refreshEntityCustomerComposition()이 실제 API 응답으로
+// 다시 채운다(fetch 전까지는 빈 상태) — 이전에는 하드코딩된 가짜 고객 8명이 항상 표시됐다.
+let entityCompositionTypeStats = {};
+let entityCompositionRows = [];
+let entityCompositionSeq = 0;
+let entityCompositionMode = "count";
+let entityCompositionActiveType = null;
+let entityCompareCompositionSeq = 0;
+let entityCompareCompositionState = {
+  a: { key: null, status: "pending", stats: {} },
+  b: { key: null, status: "unselected", stats: {} }
+};
+
+function entityCompositionDataset(data, key) {
+  if (data?.error || !Array.isArray(data?.typeStats)) return { key, status: "error", stats: {} };
+  if (!data.typeStats.length) return { key, status: "empty", stats: {} };
+  return {
+    key,
+    status: "ready",
+    stats: Object.fromEntries(data.typeStats.map((row) => [row.type, { count: row.count, sales: row.sales }]))
+  };
+}
+
+// STEP67-customer-composition-retry-fix: Customer Composition endpoint(/api/brand-
+// intelligence/:code/customer-composition)이 STEP67-10G-1이 /api/reports/monthly에
+// 이미 적용한 것과 정확히 같은 8초 실패 시 30초 1회 재시도 패턴을 쓰지 않아, 진행 중인
+// 현재 월처럼 실시간 계산이 오래 걸리는 조합에서 고정 8초 타임아웃에 걸리면 무한 재시도
+// 없이 바로 "데이터 연결 실패"로 확정돼 버렸다(NEXT-CROSS-BRAND-PARTIAL-PERIOD-diagnosis
+// §4). getEntityCompareMonthlyArchive()와 동일하게 "응답 지연"일 때만 정확히 1회, 30초로
+// 재시도한다 — 그 외 에러는 재시도하지 않고 그대로 반환한다(무한 반복 금지).
+const ENTITY_COMPOSITION_TIMEOUT_MS = 8000;
+const ENTITY_COMPOSITION_RETRY_TIMEOUT_MS = 30000;
+
+async function getEntityCompositionJson(url) {
+  const first = await getJson(url, ENTITY_COMPOSITION_TIMEOUT_MS);
+  if (first?.error !== "응답 지연") return first;
+  return getJson(url, ENTITY_COMPOSITION_RETRY_TIMEOUT_MS);
+}
+
+function entityCompositionRatiosForStats(stats) {
+  const total = Object.values(stats).reduce((sum, row) => sum + Number(row[entityCompositionMode] || 0), 0);
+  if (!total) return [];
+  return Object.entries(stats).map(([type, row]) => ({
+    type,
+    ratioPct: (Number(row[entityCompositionMode] || 0) / total) * 100
+  }));
+}
+
+function entityCompositionRatios() {
+  return entityCompositionRatiosForStats(entityCompositionTypeStats);
+}
+
+function entityCompositionRanges() {
+  let cursor = 0;
+  return entityCompositionRatios().map((row) => {
+    const start = cursor;
+    cursor += row.ratioPct;
+    return { type: row.type, start, end: cursor };
+  });
+}
+
+function entityCompositionGradient(activeType) {
+  const ranges = entityCompositionRanges();
+  if (!ranges.length) return "#dedbd2 0% 100%";
+  return ranges.map((row) => {
+    const color = activeType && row.type !== activeType ? "#e5e2d8" : entityCompositionColors[row.type];
+    return `${color} ${row.start}% ${row.end}%`;
+  }).join(", ");
+}
+
+function entityCompareCompositionGradient(stats) {
+  let cursor = 0;
+  const ranges = entityCompositionRatiosForStats(stats).map((row) => {
+    const start = cursor;
+    cursor += row.ratioPct;
+    return { ...row, start, end: cursor };
+  });
+  return ranges.map((row) => `${entityCompositionColors[row.type]} ${row.start}% ${row.end}%`).join(", ");
+}
+
+function renderEntityCompareCompositionDonut(id, dataset, brandName) {
+  const donut = $(id);
+  if (!donut) return;
+  const label = donut.querySelector("span");
+  const statusText = dataset.status === "unselected"
+    ? "비교 브랜드를 선택하세요"
+    : dataset.status === "empty"
+      ? "해당 기간 오프라인 고객 데이터 없음"
+      : dataset.status === "error"
+        ? "데이터 연결 실패"
+        : dataset.status === "pending"
+          ? "데이터 연결 대기"
+          : "";
+  if (statusText) {
+    donut.style.background = "var(--line)";
+    donut.classList.add("is-unavailable");
+    if (label) label.textContent = statusText;
+    donut.setAttribute("aria-label", `${brandName} · ${statusText}`);
+    return;
+  }
+  const gradient = entityCompareCompositionGradient(dataset.stats);
+  const total = Object.values(dataset.stats).reduce((sum, row) => sum + Number(row[entityCompositionMode] || 0), 0);
+  donut.classList.remove("is-unavailable");
+  donut.style.background = `conic-gradient(${gradient})`;
+  if (label) label.textContent = entityCompositionMode === "count" ? `${apiNum(total)}건` : apiWon(total);
+  donut.setAttribute("aria-label", `${brandName} · ${currentEntityPeriodMonthKey()} · ${entityCompositionMode === "count" ? "건수" : "매출"} 기준 고객 구성`);
+}
+
+// STEP67-9H-2: 두 브랜드의 legend가 항상 같은 유형 목록(둘 중 하나라도 그 유형을 가지면
+// 포함)을 같은 순서로 보여준다 — 한쪽에만 있는 유형이 있어도 그 브랜드 쪽에는 0%로
+// 표시해 두 column의 행 수가 어긋나지 않게 한다(요구사항 6, 레이아웃 흔들림 방지).
+// 단, 그 브랜드 자체가 "데이터 없음"(status !== ready, 도넛이 이미 그 사실을 정직하게
+// 보여줌)이면 0%로 채운 행을 만들지 않는다 — 실제로 측정한 0%처럼 보이면 안 되므로
+// legend를 비워 둔다(도넛의 unavailable 문구가 유일한 근거).
+// entityCompositionColors/entityCompositionTypeLabel/entityCompositionRatiosForStats는
+// 전부 기존 단일 브랜드 legend가 이미 쓰는 것을 그대로 재사용한다(새 분류/새 색 없음).
+function renderEntityCompareCompositionLegend(id, dataset, types) {
+  const legend = $(id);
+  if (!legend) return;
+  if (dataset.status !== "ready") {
+    legend.innerHTML = "";
+    return;
+  }
+  const ratioByType = Object.fromEntries(entityCompositionRatiosForStats(dataset.stats).map((row) => [row.type, row.ratioPct]));
+  legend.innerHTML = types.map((type) => `
+    <li><i style="background:${entityCompositionColors[type]}"></i><span class="clients-legend-label">${esc(entityCompositionTypeLabel[type] || type)}</span><em>${(ratioByType[type] || 0).toFixed(0)}%</em></li>`).join("");
+}
+
+function renderEntityCompareComposition() {
+  if (!entityCompareState.enabled) return;
+  renderEntityCompareCompositionDonut("#entityCompareCompositionDonutA", entityCompareCompositionState.a, entityCompareBrandA());
+  renderEntityCompareCompositionDonut("#entityCompareCompositionDonutB", entityCompareCompositionState.b, entityCompareBrandB());
+  const types = [...new Set([
+    ...Object.keys(entityCompareCompositionState.a.stats),
+    ...Object.keys(entityCompareCompositionState.b.stats)
+  ])];
+  renderEntityCompareCompositionLegend("#entityCompareCompositionLegendA", entityCompareCompositionState.a, types);
+  renderEntityCompareCompositionLegend("#entityCompareCompositionLegendB", entityCompareCompositionState.b, types);
+  // STEP67-10G-3: 고객 구성이 이 함수를 거쳐 최종 확정될 때마다 Comparison Summary도
+  // 다시 그린다(정의는 renderEntityCompareTargetPeriodData 근처, 아래에 위치).
+  renderEntityCompareSummary();
+}
+
+async function refreshEntityCompareCustomerComposition(month = currentEntityPeriodMonthKey()) {
+  const brandBName = entityCompareBrandB();
+  if (!entityCompareState.enabled || brandBName === "비교 브랜드 선택") {
+    entityCompareCompositionState.b = { key: null, status: "unselected", stats: {} };
+    renderEntityCompareComposition();
+    return;
+  }
+  const brandBCode = resolveBrandIdentity(brandBName).brandCode;
+  const key = `${brandBCode || ""}|${month || ""}`;
+  if (!brandBCode || !month) {
+    entityCompareCompositionState.b = { key, status: "error", stats: {} };
+    renderEntityCompareComposition();
+    return;
+  }
+  if (entityCompareCompositionState.b.key === key && ["ready", "empty"].includes(entityCompareCompositionState.b.status)) {
+    renderEntityCompareComposition();
+    return;
+  }
+  const seq = ++entityCompareCompositionSeq;
+  entityCompareCompositionState.b = { key, status: "pending", stats: {} };
+  renderEntityCompareComposition();
+  const data = await getEntityCompositionJson(`/api/brand-intelligence/${encodeURIComponent(brandBCode)}/customer-composition?month=${encodeURIComponent(month)}`);
+  if (seq !== entityCompareCompositionSeq) return;
+  entityCompareCompositionState.b = entityCompositionDataset(data, key);
+  renderEntityCompareComposition();
+}
+
+function entityCompositionAngleToType(ranges, event, donutEl) {
+  if (!ranges.length) return null;
+  const rect = donutEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const dx = event.clientX - cx;
+  const dy = event.clientY - cy;
+  const radius = Math.min(rect.width, rect.height) / 2;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist > radius || dist < radius * 0.3) return null;
+  let deg = Math.atan2(dx, -dy) * (180 / Math.PI);
+  if (deg < 0) deg += 360;
+  const pctPos = (deg / 360) * 100;
+  const found = ranges.find((row) => pctPos >= row.start && pctPos < row.end);
+  return found ? found.type : (ranges[ranges.length - 1]?.type || null);
+}
+
+function entityCompositionDonutTooltipHtml(type) {
+  const stats = entityCompositionTypeStats[type];
+  if (!stats) return "";
+  const ratio = entityCompositionRatios().find((row) => row.type === type);
+  return `<strong>${esc(entityCompositionTypeLabel[type])}</strong><br>비율 ${(ratio?.ratioPct || 0).toFixed(1)}% · 건수 ${apiNum(stats.count)}건 · 매출 ${apiWon(stats.sales)}`;
+}
+
+function sortedEntityCompositionRows() {
+  return [...entityCompositionRows]
+    .sort((a, b) => (entityCompositionMode === "count" ? b.count - a.count : b.sales - a.sales))
+    .slice(0, 5);
+}
+
+// STEP55-2: TOP5 hover를 기존 검은 tooltip 대신 Quick Profile Card로 보여준다. Pie/범례/
+// KPI/Score hover는 그대로 showEntityHeroTooltip*(검은 tooltip)을 쓰고, 이 카드는 TOP5
+// 전용 신규 컴포넌트다. 표시 위치는 anchor 오른쪽 우선, 공간 부족 시 왼쪽으로 뒤집는다.
+let entityCompositionProfileShowTimer = null;
+let entityCompositionProfileHideTimer = null;
+// STEP60-3: Client Workspace Foundation. 마지막으로 카드를 띄운 row를 기억해두었다가
+// "고객 분석 열기" 클릭 시 그대로 Workspace로 넘긴다 — 클릭 시점에 별도 조회 없이
+// 이미 hover 중이던 고객 데이터를 그대로 재사용한다.
+let entityCompositionProfileActiveRow = null;
+
+function cancelEntityCompositionProfileHide() {
+  clearTimeout(entityCompositionProfileHideTimer);
+  entityCompositionProfileHideTimer = null;
+}
+
+function scheduleEntityCompositionProfileHide() {
+  clearTimeout(entityCompositionProfileShowTimer);
+  cancelEntityCompositionProfileHide();
+  entityCompositionProfileHideTimer = setTimeout(() => {
+    const card = $("#entityCompositionProfileCard");
+    if (!card) return;
+    card.classList.remove("is-visible");
+    card.hidden = true;
+  }, 120);
+}
+
+function entityCompositionProfileNode() {
+  let card = $("#entityCompositionProfileCard");
+  if (!card) {
+    card = document.createElement("div");
+    card.id = "entityCompositionProfileCard";
+    card.className = "brand-customer-profile-card";
+    card.hidden = true;
+    // 카드 위로 커서가 이동해도 유지되고, 카드를 벗어나면 다시 사라지도록 자체 hover도 관리한다.
+    card.addEventListener("mouseenter", cancelEntityCompositionProfileHide);
+    card.addEventListener("mouseleave", scheduleEntityCompositionProfileHide);
+    document.body.appendChild(card);
+  }
+  return card;
+}
+
+function positionEntityCompositionProfileCard(anchor, card) {
+  const margin = 16;
+  const gap = 14;
+  const rect = anchor.getBoundingClientRect();
+  const width = card.offsetWidth || 345;
+  const height = card.offsetHeight || 300;
+  const fitsRight = rect.right + gap + width + margin <= window.innerWidth;
+  let left = fitsRight ? rect.right + gap : rect.left - gap - width;
+  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin));
+  let top = rect.top - (height - rect.height) / 2;
+  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin));
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
+}
+
+// STEP60-2B: Client Quick Profile. Header → KPI → 최근 Activity → Related → Explore
+// 패턴으로 재구성한다. 실제 고객별 구매 이력 계산은 하지 않고 entityClientRecentPurchases
+// (하드코딩 Placeholder, entityDrawerConfig.clientOrders와 동일한 소스)를 그대로
+// 재사용한다 — 어떤 고객 카드를 열어도 동일한 값이 보인다(기존 STEP60-1 원칙과 동일).
+function entityCompositionProfileHtml(row) {
+  const aov = row.count ? Math.round(row.sales / row.count) : 0;
+  return `
+    <div class="brand-customer-profile-head">
+      <div class="brand-customer-profile-heading">
+        <strong>${esc(row.name)}</strong>
+        <span class="clients-tooltip-badge brand-customer-type-badge" style="border-color:${entityCompositionColors[row.type]}22;color:${entityCompositionColors[row.type]}">${esc(entityCompositionTypeLabel[row.type] || "-")}</span>
+      </div>
+      <div class="brand-customer-profile-vip-ring" style="--score:0" aria-label="고객 등급 산식 연결 대기">
+        <div class="brand-customer-profile-vip-ring-inner">--</div>
+      </div>
+    </div>
+    <div class="brand-customer-profile-rows">
+      <div class="brand-customer-profile-row"><span>총매출</span><strong>${apiWon(row.sales)}</strong></div>
+      <div class="brand-customer-profile-row"><span>주문</span><strong>${apiNum(row.count)}건</strong></div>
+      <div class="brand-customer-profile-row"><span>객단가</span><strong>${apiWon(aov)}</strong></div>
+      <div class="brand-customer-profile-row"><span>최근 구매일</span><strong>${esc(row.lastPurchase || "데이터 없음")}</strong></div>
+    </div>
+    <p class="brand-customer-profile-section-title">최근 주문</p>
+    <div class="entity-detail-empty">
+      <p>상품 단위 주문 데이터가 연결되지 않았습니다.</p>
+    </div>
+    <button type="button" class="brand-customer-profile-orders-btn" data-entity-drawer-quick-orders>최근 주문 보기</button>
+    <div class="brand-customer-profile-mini-chips" aria-label="관련 상세 탐색">
+      <button type="button" data-entity-drawer-quick-jump="sku">SKU</button>
+      <button type="button" data-entity-drawer-quick-jump="order">Orders</button>
+    </div>
+    <button type="button" class="brand-customer-profile-footer-btn" data-entity-drawer-quick-client>고객 상세 Workspace 열기</button>
+  `;
+}
+
+function showEntityCompositionProfileCard(anchor, row) {
+  entityCompositionProfileActiveRow = row;
+  clearTimeout(entityCompositionProfileShowTimer);
+  entityCompositionProfileShowTimer = setTimeout(() => {
+    cancelEntityCompositionProfileHide();
+    const card = entityCompositionProfileNode();
+    card.innerHTML = entityCompositionProfileHtml(row);
+    card.hidden = false;
+    card.style.left = "0px";
+    card.style.top = "0px";
+    positionEntityCompositionProfileCard(anchor, card);
+    requestAnimationFrame(() => card.classList.add("is-visible"));
+  }, 180);
+}
+
+function hideEntityCompositionProfileCardSoon() {
+  scheduleEntityCompositionProfileHide();
+}
+
+// STEP60-3: Client Workspace Foundation. Quick Profile의 "고객 분석 열기"가 여는 첫 번째
+// Workspace다. Marketing OS 철학(질문→답→다음 질문→다음 Workspace)에 맞춰 Drawer(좁은
+// 슬라이드 패널)가 아니라 clientsDetailModal과 같은 중앙 정렬 오버레이 패턴(배경 스크림 +
+// 포커스 트랩, z-index 2050 — clients-detail-modal 2000과 entity-drawer-modal 2100 사이)을
+// 재사용해 "운영 공간"에 맞는 더 넓은 패널로 만든다. 실제 고객별 계산은 하지 않고 Quick
+// Profile Card와 동일한 entityCompositionRows row 객체를 그대로 재사용한다(새 데이터 없음).
+let clientWorkspaceRow = null;
+let clientWorkspacePreviousFocus = null;
+
+// STEP60-1 Entity Drawer의 전역 행 클릭 리스너는 ".entity-drawer-row" 클래스와
+// entityDrawerState.type만으로 동작을 결정한다(bind() 참고) — 같은 클래스를 여기서
+// 재사용하면 Workspace가 열려 있고 Drawer는 닫혀 있는 상태에서 클릭이 그 리스너에 잘못
+// 걸릴 수 있다. 시각 스타일(entity-drawer-rank/name/stat)은 그대로 재사용하되 바깥 li만
+// 별도 클래스(client-workspace-order-row, 리스너 없음)를 써서 그 결합을 피한다.
+function clientWorkspaceOrderRowHtml(row, index) {
+  return `
+    <li class="client-workspace-order-row">
+      <span class="entity-drawer-rank">${index + 1}</span>
+      <span class="entity-drawer-name">${esc(row.product)}<i class="entity-drawer-code">${esc(row.brand)}</i></span>
+      <span class="entity-drawer-stat"><span>주문일</span><strong>${esc(row.date)}</strong></span>
+      <span class="entity-drawer-stat"><span>옵션</span><strong>${esc(row.variant)}</strong></span>
+      <span class="entity-drawer-stat"><span>금액</span><strong>${apiWon(row.amount)}</strong></span>
+    </li>`;
+}
+
+function clientWorkspaceModalNode() {
+  let modal = $("#clientWorkspace");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "clientWorkspace";
+    modal.className = "client-workspace-modal";
+    modal.hidden = true;
+    modal.innerHTML = `
+      <div class="client-workspace-backdrop" data-client-workspace-close></div>
+      <div class="client-workspace-panel" role="dialog" aria-modal="true" aria-labelledby="clientWorkspaceTitle" tabindex="-1">
+        <button type="button" class="client-workspace-close-btn" data-client-workspace-close aria-label="닫기">×</button>
+        <div class="client-workspace-body" id="clientWorkspaceBody"></div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  return modal;
+}
+
+// Header(이름/Client Type/VIP) → Breadcrumb → Hero KPI → Brand → Category → 최근 주문 →
+// Insight → Related → Explore 순서(Marketing OS 철학의 질문→답→다음 질문 흐름). Header/
+// Related/Explore는 Quick Profile Card·Entity Drawer가 이미 쓰는 클래스(brand-customer-
+// profile-*/entity-drawer-related*)를 그대로 재사용하고, Hero KPI/Insight는 Brand
+// Dashboard의 기존 KPI 카드(.ad-core-kpi-card)를 재사용한다 — 새 카드 컴포넌트를 만들지
+// 않는다.
+function clientWorkspaceBodyHtml(row) {
+  const aov = row.count ? Math.round(row.sales / row.count) : 0;
+  return `
+    <div class="client-workspace-breadcrumb entity-drawer-breadcrumb">
+      <button type="button" class="entity-drawer-breadcrumb-crumb" data-client-workspace-breadcrumb-brand>${esc(entityCompareBrandA())}</button>
+      <span class="entity-drawer-breadcrumb-sep" aria-hidden="true">›</span>
+      <span class="entity-drawer-breadcrumb-current">${esc(row.name)}</span>
+    </div>
+    <div class="brand-customer-profile-head">
+      <div class="brand-customer-profile-heading">
+        <strong id="clientWorkspaceTitle">${esc(row.name)}</strong>
+        <span class="clients-tooltip-badge brand-customer-type-badge" style="border-color:${entityCompositionColors[row.type]}22;color:${entityCompositionColors[row.type]}">${esc(entityCompositionTypeLabel[row.type] || "-")}</span>
+      </div>
+      <div class="brand-customer-profile-vip-ring" style="--score:0" aria-label="고객 등급 산식 연결 대기"><div class="brand-customer-profile-vip-ring-inner">--</div></div>
+    </div>
+    <div class="client-workspace-section">
+      <p class="eyebrow">Customer</p>
+      <div class="cards brand-hero-kpi-grid">
+        <article class="action-item ad-summary-card ad-core-kpi-card"><span>총 구매금액</span><strong>${apiWon(row.sales)}</strong></article>
+        <article class="action-item ad-summary-card ad-core-kpi-card"><span>주문 수</span><strong>${apiNum(row.count)}건</strong></article>
+        <article class="action-item ad-summary-card ad-core-kpi-card"><span>객단가</span><strong>${apiWon(aov)}</strong></article>
+        <article class="action-item ad-summary-card ad-core-kpi-card"><span>최근 구매일</span><strong>${esc(row.lastPurchase)}</strong></article>
+      </div>
+    </div>
+    <div class="client-workspace-section">
+      <p class="eyebrow">Brand</p>
+      <div class="entity-detail-empty"><p>고객별 브랜드 구매 데이터 연결 대기</p></div>
+    </div>
+    <div class="client-workspace-section">
+      <p class="eyebrow">Category</p>
+      <div class="entity-detail-empty"><p>고객별 상품군 데이터 연결 대기</p></div>
+    </div>
+    <div class="client-workspace-section">
+      <p class="eyebrow">Recent Orders</p>
+      <div class="entity-detail-empty"><p>상품 단위 주문 데이터가 연결되지 않았습니다.</p></div>
+      <button type="button" class="entity-drawer-open-btn" data-client-workspace-related="clientOrders">최근 주문 Drawer 열기</button>
+    </div>
+    <article class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card">
+      <span>AI Insight</span>
+      <p>공식 고객 상세 분석 규칙 연결 대기</p>
+    </article>
+    <div class="entity-drawer-related">
+      <p class="entity-drawer-related-title">Related</p>
+      <div class="entity-drawer-related-chips">
+        <button type="button" class="entity-drawer-related-chip" data-client-workspace-related="sku">🧵 SKU</button>
+        <button type="button" class="entity-drawer-related-chip" data-client-workspace-related="order">🧾 Orders</button>
+      </div>
+    </div>
+    <div class="entity-drawer-related">
+      <p class="entity-drawer-related-title">Explore</p>
+      <div class="entity-drawer-related-chips">
+        <button type="button" class="entity-drawer-related-chip" data-client-workspace-workspace="inventory">📦 Inventory</button>
+        <button type="button" class="entity-drawer-related-chip" data-client-workspace-workspace="monthly">📅 Monthly</button>
+      </div>
+    </div>
+  `;
+}
+
+function clientWorkspaceFocusableEls(panel) {
+  return [...panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => !el.hasAttribute("disabled") && el.getClientRects().length > 0);
+}
+
+function openClientWorkspace(row) {
+  if (!row) return;
+  clientWorkspaceRow = row;
+  const modal = clientWorkspaceModalNode();
+  const body = $("#clientWorkspaceBody");
+  if (body) body.innerHTML = clientWorkspaceBodyHtml(row);
+  clientWorkspacePreviousFocus = document.activeElement;
+  modal.hidden = false;
+  document.body.classList.add("client-workspace-open");
+  requestAnimationFrame(() => {
+    modal.classList.add("is-visible");
+    modal.querySelector(".client-workspace-panel")?.focus();
+  });
+}
+
+function closeClientWorkspace() {
+  const modal = $("#clientWorkspace");
+  if (!modal || modal.hidden) return;
+  modal.classList.remove("is-visible");
+  modal.hidden = true;
+  document.body.classList.remove("client-workspace-open");
+  clientWorkspaceRow = null;
+  const toFocus = clientWorkspacePreviousFocus;
+  clientWorkspacePreviousFocus = null;
+  if (toFocus && typeof toFocus.focus === "function" && document.contains(toFocus)) toFocus.focus();
+}
+
+function setEntityCompositionActiveType(type) {
+  entityCompositionActiveType = type || null;
+  const donut = $("#entityCompositionDonut");
+  if (donut) donut.style.background = `conic-gradient(${entityCompositionGradient(entityCompositionActiveType)})`;
+  $$("#entityCompositionLegend li").forEach((li) => {
+    li.classList.toggle("is-active", Boolean(entityCompositionActiveType) && li.dataset.entityCompositionType === entityCompositionActiveType);
+  });
+}
+
+// STEP67-6: refreshEntityCustomerComposition()이 채운 실제 typeStats/topCustomers를 그대로
+// 그린다. rankChange는 기간 간 순위 비교 데이터가 없어 항상 "-"(실제 비교 데이터가 없으면
+// 표시하지 않는다는 원칙)다. 데이터가 아예 없을 때(브랜드는 선택됐지만 이 기간 해당 브랜드
+// 오프라인 구매 고객이 없는 경우)는 renderEntityCompositionEmpty()가 별도로 처리한다.
+function renderEntityCompositionSection() {
+  const donut = $("#entityCompositionDonut");
+  if (!donut) return;
+  const ratios = entityCompositionRatios();
+  if (!ratios.length) return;
+  donut.style.background = `conic-gradient(${entityCompositionGradient(entityCompositionActiveType)})`;
+  const totalCount = Object.values(entityCompositionTypeStats).reduce((sum, row) => sum + row.count, 0);
+  const centerLabel = donut.querySelector(".brand-customer-donut-center strong");
+  if (centerLabel) centerLabel.textContent = `${apiNum(totalCount)}건`;
+
+  const legend = $("#entityCompositionLegend");
+  if (legend) {
+    legend.innerHTML = ratios.map((row) => `
+      <li data-entity-composition-type="${esc(row.type)}" tabindex="0">
+        <i style="background:${entityCompositionColors[row.type]}"></i>
+        <span class="clients-legend-label">${esc(entityCompositionTypeLabel[row.type] || row.type)}</span>
+        <em>${row.ratioPct.toFixed(0)}%</em>
+      </li>`).join("");
+  }
+
+  const top5 = $("#entityCompositionTop5");
+  if (top5) {
+    const rows = sortedEntityCompositionRows();
+    const maxValue = Math.max(1, ...rows.map((row) => (entityCompositionMode === "count" ? row.count : row.sales)));
+    top5.innerHTML = rows.map((row, index) => {
+      const value = entityCompositionMode === "count" ? row.count : row.sales;
+      const barPct = Math.max(4, Math.round((value / maxValue) * 100));
+      return `
+      <li data-entity-composition-row="${index}" tabindex="0">
+        <div class="brand-customer-top5-row-head">
+          <span class="brand-customer-top5-rank">${index + 1}</span>
+          <span class="brand-customer-top5-name">${esc(row.name)}</span>
+          <span class="clients-tooltip-badge brand-customer-type-badge" style="border-color:${entityCompositionColors[row.type]}22;color:${entityCompositionColors[row.type]}">${esc(entityCompositionTypeLabel[row.type] || row.type)}</span>
+          <strong>${entityCompositionMode === "count" ? `${apiNum(row.count)}건` : apiWon(row.sales)}</strong>
+        </div>
+        <i class="brand-customer-top5-bar"><b style="width:${barPct}%;background:${entityCompositionColors[row.type]}"></b></i>
+      </li>`;
+    }).join("");
+  }
+
+  const insight = $("#entityCompositionInsight");
+  if (insight) {
+    const top = [...ratios].sort((a, b) => b.ratioPct - a.ratioPct)[0];
+    insight.innerHTML = `
+      <div class="brand-customer-insight-ratio">
+        <span>핵심 비율</span>
+        <strong>${top.ratioPct.toFixed(0)}%</strong>
+      </div>
+      <div class="brand-customer-insight-text">
+        <p class="brand-customer-insight-main">${esc(entityCompositionTypeLabel[top.type] || top.type)} 구매 비중이 가장 높습니다.</p>
+        <p class="brand-customer-insight-sub">오프라인 구매 고객(ECOUNT) 기준 · 온라인 개인결제창 주문은 제품 정보가 없어 브랜드별 집계에서 제외됩니다.</p>
+      </div>`;
+  }
+}
+
+// STEP67-6: 브랜드는 선택됐지만 이 기간 해당 브랜드로 식별 가능한 고객 구매가 없는 경우
+// (예: 이번 달 온라인에서만 팔렸거나 오프라인 판매가 전혀 없는 브랜드) 가짜 도넛 대신
+// Empty State로 되돌린다 — renderEntityHeroState()의 브랜드 선택 여부 토글과는 별개로,
+// "브랜드는 선택됐지만 이 데이터만 없음"을 구분해서 보여준다.
+function renderEntityCompositionEmpty() {
+  const empty = $("#entityCompositionEmpty");
+  const content = $("#entityCompositionContent");
+  // STEP67-9H-2: 비교 모드에서는 Brand A(Primary)에 이번 기간 데이터가 없어도 전체를
+  // 숨기지 않는다 — #entityCompositionCompareBlock이 Brand A/B 각자의 상태를 이미
+  // 독립적으로 정직하게 보여주므로(renderEntityCompareComposition, 이 함수보다 먼저
+  // 호출됨), 여기서 content 전체를 hidden 처리하면 Brand B의 유효한 데이터까지 함께
+  // 사라진다. 단일 브랜드 큰 도넛/TOP5/AI Insight는 비교 모드 CSS
+  // (body.entity-compare-on #entityCompositionContent > .brand-customer-grid 등)로
+  // 항상 숨겨지므로 content를 visible로 둬도 잘못 노출되지 않는다.
+  if (entityCompareState.enabled) {
+    if (empty) empty.hidden = true;
+    if (content) content.hidden = false;
+    return;
+  }
+  if (empty) empty.hidden = false;
+  if (content) content.hidden = true;
+}
+
+// STEP67-6: Customer Composition. 새 Customer Pipeline이 아니라 server.mjs의
+// buildBrandCustomerComposition()(Clients 화면이 이미 쓰는 classifyClientType/
+// classifyClientEntity/isGiftSalesLine + STEP67-3의 Unified Identity를 그대로 재사용,
+// intelligence-service.mjs 참고) 결과를 옮겨 그리기만 한다.
+async function refreshEntityCustomerComposition(brandCode, month) {
+  const seq = ++entityCompositionSeq;
+  const compareKey = `${brandCode || ""}|${month || ""}`;
+  entityCompareCompositionState.a = { key: compareKey, status: "pending", stats: {} };
+  renderEntityCompareComposition();
+  const data = await getEntityCompositionJson(`/api/brand-intelligence/${encodeURIComponent(brandCode)}/customer-composition?month=${encodeURIComponent(month)}`);
+  if (seq !== entityCompositionSeq) return; // 더 최근 브랜드/기간 변경이 이미 진행 중이면 이 결과는 버린다.
+  const compareDataset = entityCompositionDataset(data, compareKey);
+  entityCompareCompositionState.a = compareDataset;
+  renderEntityCompareComposition();
+  // STEP67-6: 오프라인 판매 상품 수는 Customer Composition과 같은 응답을 재사용한다(새 API 없음).
+  const skuOfflineEl = $("#entityHeroSkuOfflineValue");
+  if (skuOfflineEl) skuOfflineEl.textContent = data?.error ? "-" : `${apiNum(data.offlineProductCount || 0)}개`;
+  if (data?.error || !Array.isArray(data?.typeStats) || !data.typeStats.length) {
+    entityCompositionTypeStats = {};
+    entityCompositionRows = [];
+    renderEntityCompositionEmpty();
+    return;
+  }
+  entityCompositionTypeStats = compareDataset.stats;
+  entityCompositionRows = data.topCustomers.map((row) => ({
+    name: row.name,
+    type: row.type,
+    count: row.count,
+    sales: row.sales,
+    lastPurchase: row.lastPurchase || "-",
+    rankChange: "-"
+  }));
+  const empty = $("#entityCompositionEmpty");
+  const content = $("#entityCompositionContent");
+  if (empty) empty.hidden = true;
+  if (content) content.hidden = false;
+  renderEntityCompositionSection();
+}
+
+// STEP56-1: Entity Trend(Monthly Trend Intelligence). STEP58-3에서 Entity Intelligence
+// Framework 명명 규칙에 맞춰 brandMonthlyTrend* → entityTrend*로 리네임(UI/동작 동일).
+// 좌표 계산은 기존 brandTrendDetailPanelHtml(js:2494)의 SVG polyline+circle 기법을 그대로
+// 본떠 독립 구현했다.
+// STEP61-2: Monthly Intelligence Data Connection. 당시 주석대로 entityTrendMonths를 API
+// 응답으로 교체한다(좌표 계산/렌더/hover 등 나머지는 무변경) — refreshEntityTrendMonths()가
+// 채운다. 브랜드 미선택/Master Data 미확인 시에는 빈 배열이며, renderEntityTrendSection()이
+// 이 경우를 별도로 처리한다(Empty 배열에 대한 reduce 등 크래시 방지).
+let entityTrendMonths = [];
+
+// STEP67-10G-4: Partial-Period Consistency. entityTrendMonths 각 행의 archiveStatus
+// (위 refreshEntityTrendMonths가 서버 응답에서 그대로 옮긴 필드)로 "이번 달이 아직
+// 진행 중인가"를 판정하는 단일 지점. Hero KPI/AI Summary/Trend Summary가 전부 이
+// 함수 하나를 공유해, 화면 안에서 서로 다른 "진행 중" 정의가 생기지 않게 한다.
+function entityIsLiveMonthRow(row) {
+  return !!row && row.archiveStatus === "live";
+}
+
+// STEP61-2: 기존 /api/reports/monthly(getSharedJson 캐시)와 STEP61-1의 brandIdentityState
+// (brand_code)만 사용한다 — 새 API 없음. monthlyReportTrendMonths()는 Monthly Report가 이미
+// "그 해 1월~선택월" 구간을 만드는 데 쓰는 함수이며, 같은 구간 정의를 그대로 재사용해 Monthly
+// Report 화면과 Brand Dashboard가 같은 개월 수를 비교하게 한다. 브랜드 매출 금액은
+// canonicalPaidAmount()(Monthly Report의 브랜드 매출 TOP5/브랜드 매출 시그널이 이미 쓰는
+// 동일 함수)로 뽑아 두 화면의 숫자가 어긋나지 않게 한다.
+let entityTrendRefreshSeq = 0;
+let entityInventoryRefreshSeq = 0;
+// STEP61-3: Hero/KPI Data Binding. entityPeriodState(year/month)를 "YYYY-MM" 문자열로 바꾸는
+// 계산이 refreshEntityTrendMonths 안에 있던 것을 그대로 뽑아낸 것뿐이다(문자열 조합 방식은
+// 무변경) — Hero KPI 바인딩도 정확히 같은 월을 가리켜야 하므로 두 곳에서 같은 계산을 각자
+// 반복하지 않도록 이름 붙여 공유한다.
+function currentEntityPeriodMonthKey() {
+  return `${entityPeriodState.year}-${String(entityPeriodState.month).padStart(2, "0")}`;
+}
+
+async function refreshEntityTrendMonths() {
+  const seq = ++entityTrendRefreshSeq;
+  if (!brandIdentityState.brandCode) {
+    entityTrendMonths = [];
+    entityTrendCompareMonths = [];
+    renderEntityTrendSection();
+    renderEntityHeroKpiFromMonthlyState();
+    renderEntityCompositionEmpty();
+    return;
+  }
+  const periodMonth = currentEntityPeriodMonthKey();
+  const months = monthlyReportTrendMonths(periodMonth);
+  const brandCode = brandIdentityState.brandCode;
+  const compareBrandName = entityCompareState.enabled ? entityCompareBrandB() : "비교 브랜드 선택";
+  const compareBrandCode = compareBrandName === "비교 브랜드 선택" ? null : resolveBrandIdentity(compareBrandName).brandCode;
+  const archives = await Promise.all(months.map((month) => getSharedJson(`/api/reports/monthly?month=${month}`, 8000)));
+  if (seq !== entityTrendRefreshSeq) return; // 더 최근 브랜드/기간 변경이 이미 진행 중이면 이 결과는 버린다.
+  entityTrendMonths = months.map((month, index) => {
+    const archive = archives[index];
+    const brandSales = archive?.commerce?.brandSales || [];
+    const row = brandSales.find((item) => monthlyReportBrandCode(item) === brandCode);
+    const revenue = row ? canonicalPaidAmount(row) : 0;
+    const quantitySold = row ? Number(row.quantitySold || 0) : 0;
+    const orderCount = row ? Number(row.orderCount || 0) : 0;
+    // STEP67-4: Channel Sales Breakdown. row가 이미 갖고 있는 onlinePaidAmount/
+    // offlineSalesAmount를 그대로 옮긴다(새 계산 없음, mergeOfflineBrandSales가
+    // 이미 revenue = online + offline이 되도록 채워 넣은 값이다).
+    const online = row ? Number(row.onlinePaidAmount || 0) : 0;
+    const offline = row ? Number(row.offlineSalesAmount || 0) : 0;
+    // STEP67-6: SKU(이번 기간 판매 상품 수). archive.commerce.productSales는 이미 이 fetch로
+    // 받아온 데이터다(새 API 호출 없음) — 이 브랜드의 canonical brand_code와 일치하는 distinct
+    // product_no 개수만 센다. "전체 등록 SKU"가 아니라 "이번 기간 판매 상품 수"임을 명확히
+    // 구분한다(Report 9번 항목 참고, 전체 등록 SKU를 셀 수 있는 canonical source는 없음).
+    const productSales = Array.isArray(archive?.commerce?.productSales) ? archive.commerce.productSales : [];
+    const skuCount = new Set(
+      productSales
+        .filter((product) => String(product?.brand_code || "").trim() === brandCode)
+        .map((product) => String(product?.productNo || product?.product_no || product?.productCode || ""))
+        .filter(Boolean)
+    ).size;
+    // STEP67-10G-4: 서버가 이미 응답에 포함하는 archiveStatus(당월="live"/저장된 과거월=
+    // "saved"/즉석 빌드된 과거월="draft", server.mjs:390/400/403, STEP67-10G-3이 이미
+    // entityCompareTargetPeriodData에 같은 방식으로 옮긴 필드)를 그대로 옮긴다. 새 계산 없음
+    // — Hero KPI/AI Summary/Trend Summary가 모두 이 필드 하나로 "진행 중" 여부를 판정한다.
+    const archiveStatus = archive?.archiveStatus || null;
+    return {
+      key: month,
+      label: `${Number(month.slice(5, 7))}월`,
+      revenue,
+      quantitySold,
+      orderCount,
+      online,
+      offline,
+      skuCount,
+      aov: orderCount ? Math.round(revenue / orderCount) : 0,
+      memo: "",
+      archiveStatus
+    };
+  });
+  // Brand A와 같은 archive/identity/금액 함수를 그대로 사용한다. 월별 행이 없으면 null로
+  // 남겨 실제 0원으로 오해되지 않게 하고, 비교 OFF/미선택/미해결 상태에서는 비운다.
+  entityTrendCompareMonths = compareBrandCode ? months.map((month, index) => {
+    const row = (archives[index]?.commerce?.brandSales || [])
+      .find((item) => monthlyReportBrandCode(item) === compareBrandCode);
+    if (!row) return null;
+    const revenue = canonicalPaidAmount(row);
+    const orderCount = Number(row.orderCount || 0);
+    return {
+      key: month,
+      label: `${Number(month.slice(5, 7))}월`,
+      revenue,
+      orderCount,
+      aov: orderCount ? Math.round(revenue / orderCount) : 0
+    };
+  }) : [];
+  renderEntityTrendSection();
+  // STEP61-3: Hero/KPI Data Binding. Monthly State(entityTrendMonths)가 갱신될 때마다 Hero
+  // KPI도 같은 시점에 다시 읽는다 — Brand/Period 변경은 이미 이 함수 하나로 모이므로(applyBrandIdentity/
+  // bind()의 기간 핸들러 3곳) 별도 트리거를 새로 추가하지 않는다.
+  renderEntityHeroKpiFromMonthlyState();
+  // STEP67-6: Customer Composition도 같은 트리거(브랜드/기간 변경)에 묶는다 — 별도 호출부를
+  // 새로 추가하지 않는다. Trend fetch와 별개 네트워크 호출이라 fire-and-forget으로 둔다.
+  refreshEntityCustomerComposition(brandCode, periodMonth);
+  refreshEntityCompareCustomerComposition(periodMonth);
+  refreshEntityInventory(brandCode);
+  // STEP67-9E-1: Comparison Monthly Core KPI. 브랜드/기간이 바뀔 때도 이 트리거 하나로
+  // Compare KPI가 함께 갱신되도록 여기서 호출한다(별도 트리거 추가 없음).
+  refreshEntityCompareKpi();
+}
+
+// STEP67-9E-1: Comparison Monthly Core KPI. entityTrendMonths(브랜드 A, 이미 계산됨,
+// 새 fetch 없음)와 동일한 월의 /api/reports/monthly 응답(getSharedJson 캐시 — 이미
+// refreshEntityTrendMonths가 이 정확히 같은 월을 fetch했으므로 새 네트워크 요청 없이
+// 캐시를 재사용한다)에서 Brand B의 row만 같은 방식으로 추출한다. 새 계산식/새 resolver
+// 없음 — refreshEntityTrendMonths가 이미 쓰는 monthlyReportBrandCode()/canonicalPaidAmount()
+// 그대로 재사용.
+function entityCompareKpiRowFromArchive(archive, brandCode) {
+  if (!brandCode) return null;
+  const brandSales = archive?.commerce?.brandSales || [];
+  const row = brandSales.find((item) => monthlyReportBrandCode(item) === brandCode);
+  if (!row) return null;
+  const revenue = canonicalPaidAmount(row);
+  const quantitySold = Number(row.quantitySold || 0);
+  const orderCount = Number(row.orderCount || 0);
+  // STEP67-10G-3: Comparison Summary가 채널 비중을 쓰기 위해 row가 이미 갖고 있는
+  // onlinePaidAmount/offlineSalesAmount를 그대로 옮긴다(entityTrendMonths가 Brand A에
+  // 이미 하는 것과 동일한 필드, 새 계산/새 API 없음) — Brand A/B 둘 다 이 함수를 거치므로
+  // 별도 분기 없이 양쪽에 자동으로 채워진다.
+  const online = Number(row.onlinePaidAmount || 0);
+  const offline = Number(row.offlineSalesAmount || 0);
+  return { revenue, quantitySold, orderCount, aov: orderCount ? Math.round(revenue / orderCount) : 0, online, offline };
+}
+
+// STEP67-9E-2: Comparison Target Period Data. #entityCompareTarget는 실제 날짜 계산이
+// 없는 정적 select였다("prev"/"yoy"/"custom", 과거의 고정 월 표시 문구도
+// 하드코딩 텍스트일 뿐 계산값이 아님 — 코드 확인 결과, Architecture Review에 없던 사실).
+// 새 독립 기간 시스템을 만들지 않고, 기존 entityPeriodState(현재 기간)를 기준으로 그
+// select의 값만 실제 YYYY-MM으로 변환한다. "custom"은 실제 날짜 입력 UI가 없어 임의
+// 값을 만들지 않고 null(미확정)로 둔다.
+function entityComparePeriodKeyForMode(mode) {
+  if (entityPeriodState.mode !== "monthly") return null;
+  const year = entityPeriodState.year;
+  const month = entityPeriodState.month;
+  if (mode === "prev") {
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    return `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
+  }
+  if (mode === "yoy") return `${year - 1}-${String(month).padStart(2, "0")}`;
+  return null;
+}
+
+function entityCompareTargetPeriodKey() {
+  return entityComparePeriodKeyForMode($("#entityCompareTarget")?.value || "prev");
+}
+
+function entityCompareMonthKeyLabel(key) {
+  if (!/^\d{4}-\d{2}$/.test(key || "")) return "비교 대상 미확정";
+  return `${Number(key.slice(0, 4))}년 ${Number(key.slice(5, 7))}월`;
+}
+
+// STEP67 cross-brand-partial-period P2: 서버가 이미 계산한 cutoff 날짜 범위
+// ({startDate,endDate}, docs/reports/STEP67-cross-brand-partial-period-p1.md §6)를
+// "8/1~8/11" 형태로만 옮긴다 — 날짜 계산은 전혀 하지 않는다(문자열 절단뿐).
+function entityCompareCutoffRangeLabel(range) {
+  if (!range?.startDate || !range?.endDate) return "";
+  const startMonth = Number(range.startDate.slice(5, 7));
+  const startDay = Number(range.startDate.slice(8, 10));
+  const endMonth = Number(range.endDate.slice(5, 7));
+  const endDay = Number(range.endDate.slice(8, 10));
+  return `${startMonth}/${startDay}~${endMonth}/${endDay}`;
+}
+
+let entityCompareTargetPeriodRefreshSeq = 0;
+// STEP67-9E-2/3: A_current/A_target/B_current/B_target 4개 row를
+// entityCompareKpiRowFromArchive()(STEP67-9E-1, 재사용)로 채우고 같은 state를 렌더한다.
+// STEP67 cross-brand-partial-period P2: cutoff(동일 경과일 정규화 메타데이터, P1
+// resolveCrossBrandPeriodCutoff() 그대로) 필드 추가 — 정규화가 적용되지 않았으면 null.
+let entityCompareTargetPeriodData = {
+  currentKey: null, targetKey: null, currentStatus: "idle", targetStatus: "idle",
+  currentArchiveStatus: null, targetArchiveStatus: null, cutoff: null,
+  aCurrent: null, aTarget: null, bCurrent: null, bTarget: null
+};
+
+const ENTITY_COMPARE_ARCHIVE_TIMEOUT_MS = 8000;
+const ENTITY_COMPARE_ARCHIVE_RETRY_TIMEOUT_MS = 30000;
+
+async function getEntityCompareMonthlyArchive(month) {
+  const url = `/api/reports/monthly?month=${month}`;
+  const first = await getSharedJson(url, ENTITY_COMPARE_ARCHIVE_TIMEOUT_MS);
+  if (first?.error !== "응답 지연") return { archive: first, status: first?.error ? "error" : "success" };
+  const retry = await getSharedJson(url, ENTITY_COMPARE_ARCHIVE_RETRY_TIMEOUT_MS);
+  return {
+    archive: retry,
+    status: retry?.error === "응답 지연" ? "timeout" : retry?.error ? "error" : "success"
+  };
+}
+
+// STEP67 cross-brand-partial-period P2: base가 진행 중인 현재 월일 때만 쓰는 단일
+// endpoint 호출 — base/comparison 두 기간을 한 번의 응답으로 받는다(P1 §5). 기존
+// getEntityCompareMonthlyArchive()와 완전히 동일한 8초 실패 시 30초 1회 재시도
+// 구조를 재사용한다(STEP67-10G-1/Customer-Composition-retry-fix와 세 번째로 같은
+// 패턴 — 새로 발명하지 않음).
+async function getEntityCompareMonthlyArchiveCutoff(baseMonth, comparisonMonth) {
+  const url = `/api/reports/monthly-comparison-cutoff?base=${baseMonth}&compare=${comparisonMonth}`;
+  const first = await getSharedJson(url, ENTITY_COMPARE_ARCHIVE_TIMEOUT_MS);
+  if (first?.error !== "응답 지연") return { payload: first, status: first?.error ? "error" : "success" };
+  const retry = await getSharedJson(url, ENTITY_COMPARE_ARCHIVE_RETRY_TIMEOUT_MS);
+  return {
+    payload: retry,
+    status: retry?.error === "응답 지연" ? "timeout" : retry?.error ? "error" : "success"
+  };
+}
+
+// STEP67 cross-brand-partial-period P2: cutoff endpoint의 payload(P1 §6, 이미
+// {revenue,quantitySold,orderCount,aov,onlineRevenue,offlineRevenue}로 투영된 행)에서
+// 브랜드 하나를 뽑아 entityCompareKpiRowFromArchive()와 동일한 필드 이름(online/offline)
+// 으로 맞춘다 — 이후 렌더러/Comparison Summary 엔진은 이 함수가 아니라 저 함수가
+// 만든 row인지 전혀 구분할 필요가 없다(같은 shape, 새 계산 없음).
+function entityCompareKpiRowFromCutoffPayload(payload, periodKey, brandCode) {
+  if (!brandCode) return null;
+  const brandSales = payload?.[periodKey]?.brandSales || [];
+  const row = brandSales.find((item) => item.brand_code === brandCode);
+  if (!row) return null;
+  return {
+    revenue: Number(row.revenue || 0),
+    quantitySold: Number(row.quantitySold || 0),
+    orderCount: Number(row.orderCount || 0),
+    aov: Number(row.aov || 0),
+    online: Number(row.onlineRevenue || 0),
+    offline: Number(row.offlineRevenue || 0)
+  };
+}
+
+async function refreshEntityCompareTargetPeriodData() {
+  const seq = ++entityCompareTargetPeriodRefreshSeq;
+  const targetPeriodEl = $("#entityCompareHeaderTargetPeriod");
+  if (targetPeriodEl) targetPeriodEl.textContent = entityCompareTargetLabel();
+  const currentKey = entityPeriodState.mode === "monthly" ? currentEntityPeriodMonthKey() : null;
+  const targetKey = entityCompareTargetPeriodKey();
+  const brandACode = brandIdentityState.brandCode || null;
+  const brandBName = entityCompareBrandB();
+  const brandBCode = brandBName !== "비교 브랜드 선택" ? resolveBrandIdentity(brandBName).brandCode : null;
+
+  // STEP67 cross-brand-partial-period P2: currentKey가 실제 진행 중인(live) 월이면
+  // target도 같은 경과일로 정규화한 새 endpoint 하나로 두 기간을 한 번에 받는다
+  // (docs/reports/STEP67-cross-brand-partial-period-p1.md). entityTrendMonths는
+  // STEP67-10G-4부터 이미 각 행에 archiveStatus를 들고 있으므로 새 fetch 없이
+  // entityIsLiveMonthRow()로 판정한다 — 새 판정 로직을 또 만들지 않는다.
+  const currentTrendRow = currentKey ? entityTrendMonths.find((row) => row.key === currentKey) : null;
+  const useCutoff = Boolean(currentKey && targetKey && entityIsLiveMonthRow(currentTrendRow));
+
+  if (useCutoff) {
+    const cutoffResult = await getEntityCompareMonthlyArchiveCutoff(currentKey, targetKey);
+    if (seq !== entityCompareTargetPeriodRefreshSeq) return;
+    // 실패 시(timeout/error) payload가 없으므로 아래 네 row 전부 null이 된다 — 기존
+    // "데이터 연결 대기/지연/실패" 표시가 그대로 나온다. 절대로 전체월 fetch로
+    // 조용히 되돌아가지 않는다(요구사항: 잘못된 의미의 fallback 금지).
+    const payload = cutoffResult.status === "success" ? cutoffResult.payload : null;
+    entityCompareTargetPeriodData = {
+      currentKey,
+      targetKey,
+      currentStatus: cutoffResult.status,
+      targetStatus: cutoffResult.status,
+      currentArchiveStatus: "live",
+      targetArchiveStatus: payload ? "cutoff" : null,
+      cutoff: payload ? payload.cutoff : null,
+      aCurrent: payload ? entityCompareKpiRowFromCutoffPayload(payload, "base", brandACode) : null,
+      aTarget: payload ? entityCompareKpiRowFromCutoffPayload(payload, "comparison", brandACode) : null,
+      bCurrent: payload ? entityCompareKpiRowFromCutoffPayload(payload, "base", brandBCode) : null,
+      bTarget: payload ? entityCompareKpiRowFromCutoffPayload(payload, "comparison", brandBCode) : null
+    };
+  } else {
+    // 두 기간 모두 기존 getSharedJson 캐시를 그대로 쓴다 — currentKey는 refreshEntityTrendMonths/
+    // refreshEntityCompareKpi가 이미 fetch한 것과 정확히 같은 URL이라 새 요청이 없고,
+    // targetKey는 A/B 브랜드 조회에 archive를 한 번만 fetch해 공유한다(브랜드별로 두 번
+    // fetch하지 않음).
+    const [currentResult, targetResult] = await Promise.all([
+      currentKey ? getEntityCompareMonthlyArchive(currentKey) : Promise.resolve({ archive: null, status: "idle" }),
+      targetKey ? getEntityCompareMonthlyArchive(targetKey) : Promise.resolve({ archive: null, status: "idle" })
+    ]);
+    if (seq !== entityCompareTargetPeriodRefreshSeq) return;
+    // archive 자체가 없거나 error면(월 범위 밖 등) row를 만들지 않는다 — 실제 0과 "그 달
+    // 데이터를 아예 조회할 수 없음"을 구분한다(row가 있는데 값이 0인 경우는
+    // entityCompareKpiRowFromArchive 내부에서 이미 정직한 0으로 처리됨, STEP67-9E-1과 동일).
+    const usable = (archive) => (archive && !archive.error) ? archive : null;
+    const cur = usable(currentResult.archive);
+    const tgt = usable(targetResult.archive);
+    entityCompareTargetPeriodData = {
+      currentKey,
+      targetKey,
+      currentStatus: currentResult.status,
+      targetStatus: targetResult.status,
+      // STEP67-10G-3: Comparison Summary의 진행 중 기간(partial period) 가드에 필요한
+      // 신호. 서버가 이미 응답에 포함하는 필드를 그대로 옮길 뿐이다(server.mjs:390/400/403
+      // — 당월="live", 저장된 과거월="saved", 즉석 빌드된 과거월="draft"). 새 계산 없음.
+      currentArchiveStatus: cur ? (cur.archiveStatus || null) : null,
+      targetArchiveStatus: tgt ? (tgt.archiveStatus || null) : null,
+      cutoff: null,
+      aCurrent: cur ? entityCompareKpiRowFromArchive(cur, brandACode) : null,
+      aTarget: tgt ? entityCompareKpiRowFromArchive(tgt, brandACode) : null,
+      bCurrent: cur ? entityCompareKpiRowFromArchive(cur, brandBCode) : null,
+      bTarget: tgt ? entityCompareKpiRowFromArchive(tgt, brandBCode) : null
+    };
+  }
+
+  // STEP67 cross-brand-partial-period P2: cutoff가 실제 적용됐을 때만 기존 헤더
+  // 배지 2개(현재 기간/비교 대상, 새 DOM 없음)에 "동일 경과일" 범위를 덧붙인다.
+  // 완결 기간 비교(cutoffNormalized=false 또는 cutoff 자체가 없음)에서는 문구를
+  // 전혀 바꾸지 않는다(오해 소지 있는 부분기간 언어를 새로 만들지 않음).
+  const cutoff = entityCompareTargetPeriodData.cutoff;
+  const headerCurrentEl = $("#entityCompareHeaderCurrentPeriod");
+  const headerTargetEl = $("#entityCompareHeaderTargetPeriod");
+  if (cutoff?.cutoffNormalized) {
+    if (headerCurrentEl) headerCurrentEl.textContent = `${entityPeriodLabel()} · ${entityCompareCutoffRangeLabel(cutoff.base)}`;
+    if (headerTargetEl) headerTargetEl.textContent = `${entityCompareMonthKeyLabel(entityCompareTargetPeriodData.targetKey)} · 동일 경과일 기준 ${entityCompareCutoffRangeLabel(cutoff.comparison)}`;
+  } else if (headerTargetEl) {
+    headerTargetEl.textContent = entityCompareTargetLabel();
+  }
+
+  renderEntityCompareTargetPeriodKpis();
+  // STEP67-10G-3: KPI/채널/archiveStatus가 여기서 최종 확정되므로 Comparison Summary도
+  // 같은 시점에 다시 그린다(고객 구성은 renderEntityCompareComposition() 쪽에서 별도로
+  // 다시 그림 — 두 fetch가 서로 다른 타이밍에 끝나기 때문에 두 지점 모두에서 재렌더한다).
+  renderEntityCompareSummary();
+}
+
+function entityCompareDeltaTone(delta) {
+  return delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+}
+
+function entityCompareDeltaText(delta, formatMagnitude) {
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  return `${sign}${formatMagnitude(Math.abs(delta))}`;
+}
+
+// STEP67-9G-1: 기존 네 KPI 카드 안에서 행=canonical 브랜드, 열=current/target/delta인
+// 최종 Period Performance 표를 렌더한다. 데이터와 계산은 기존 state만 재사용한다.
+function renderEntityCompareKpiValue(tooltip, field, formatValue, formatDelta) {
+  const block = document.querySelector(`[data-entity-compare-kpi="${tooltip}"]`);
+  const body = block?.querySelector("tbody");
+  if (!block || !body) return;
+  const currentLabel = entityCompareMonthKeyLabel(entityCompareTargetPeriodData.currentKey);
+  const targetLabel = entityCompareMonthKeyLabel(entityCompareTargetPeriodData.targetKey);
+  block.querySelectorAll("[data-entity-compare-current-period]").forEach((el) => { el.textContent = currentLabel; });
+  block.querySelectorAll("[data-entity-compare-target-period]").forEach((el) => { el.textContent = targetLabel; });
+  const unavailableHtml = (status) => `<span class="brand-hero-delta flat">${status === "timeout" ? "Archive 생성 지연 · 다시 시도" : status === "error" ? "데이터 연결 실패" : "데이터 연결 대기"}</span>`;
+  const valueHtml = (row, status) => row ? esc(formatValue(row[field])) : unavailableHtml(status);
+  const deltaHtml = (current, target) => {
+    if (!current || !target) return unavailableHtml(entityCompareTargetPeriodData.targetStatus !== "success" ? entityCompareTargetPeriodData.targetStatus : entityCompareTargetPeriodData.currentStatus);
+    const delta = current[field] - target[field];
+    return `<span class="brand-hero-delta ${entityCompareDeltaTone(delta)}">${esc(entityCompareDeltaText(delta, formatDelta))}</span>`;
+  };
+  const rowHtml = (name, current, target) => `<tr>
+    <th scope="row" title="${esc(name)}">${esc(name)}</th>
+    <td>${valueHtml(current, entityCompareTargetPeriodData.currentStatus)}</td>
+    <td>${valueHtml(target, entityCompareTargetPeriodData.targetStatus)}</td>
+    <td>${deltaHtml(current, target)}</td>
+  </tr>`;
+  const rows = [];
+  const brandAName = entityCompareBrandA();
+  const brandBName = entityCompareBrandB();
+  if (brandAName !== "기준 브랜드 선택") rows.push(rowHtml(brandAName, entityCompareTargetPeriodData.aCurrent, entityCompareTargetPeriodData.aTarget));
+  if (brandBName !== "비교 브랜드 선택") rows.push(rowHtml(brandBName, entityCompareTargetPeriodData.bCurrent, entityCompareTargetPeriodData.bTarget));
+  else rows.push('<tr class="entity-compare-performance-empty"><td colspan="4">비교 브랜드를 선택하세요</td></tr>');
+  body.innerHTML = rows.join("");
+}
+
+function renderEntityCompareTargetPeriodKpis() {
+  renderEntityCompareKpiValue("sales", "revenue", apiWon, apiWon);
+  renderEntityCompareKpiValue("qty", "quantitySold", (value) => `${apiNum(value)}개`, (value) => `${apiNum(value)}개`);
+  renderEntityCompareKpiValue("orders", "orderCount", (value) => `${apiNum(value)}건`, (value) => `${apiNum(value)}건`);
+  renderEntityCompareKpiValue("aov", "aov", apiWon, apiWon);
+}
+
+function refreshEntityCompareKpi() {
+  return refreshEntityCompareTargetPeriodData();
+}
+
+// =============================================================================
+// STEP67-10G-3: Comparison Summary Deterministic Rule Engine
+// (work/reports/STEP67-10G-2-COMPARISON-SUMMARY-INTERPRETATION-ARCHITECTURE.md)
+//
+// buildComparisonSummaryFacts(input)는 순수 함수다 — 네트워크 호출, DOM 조회,
+// Date.now() 의존이 전혀 없다. 같은 input은 항상 같은 결과를 반환한다. LLM/AI
+// 없음, 새 지표 계산 없음(entityCompareTargetPeriodData/entityTrendMonths/
+// entityCompareCompositionState가 이미 계산해 둔 값만 읽는다).
+//
+// 인과 표현 금지(STEP67-10G-3 지시사항의 STEP67-10G-2 §13 정정 반영): 현재 AOV
+// 정의가 revenue/orderCount이지 revenue/quantitySold가 아니므로
+// revenue = quantitySold × AOV는 이 시스템에서 성립하는 항등식이 아니다.
+// "견인", "상쇄", "~로 인해", "~덕분에", "driven by", "because of" 등 인과적
+// 표현은 예외 없이 전부 금지 — 신호가 충돌해도 나열형 관찰 문장만 만든다.
+// =============================================================================
+
+// text는 순수 관찰 문장만 만들고 실제 숫자는 넣지 않는다(§15 wording contract가
+// 요구하는 "측정 가능한 차이 서술"에 이미 raw values가 fact.values로 별도 제공됨,
+// STEP67-10G-2 §23) — 그래서 여기 서식(format) 함수는 두지 않는다(unused 방지).
+const ENTITY_COMPARE_SUMMARY_METRICS = [
+  { key: "revenue", label: "매출", topic: "매출은", subject: "매출이", floor: 100000 },
+  { key: "quantitySold", label: "판매수량", topic: "판매수량은", subject: "판매수량이", floor: 2 },
+  { key: "orderCount", label: "주문수", topic: "주문수는", subject: "주문수가", floor: 2 },
+  { key: "aov", label: "객단가", topic: "객단가는", subject: "객단가가", floor: 10000 }
+];
+const ENTITY_COMPARE_SUMMARY_STABLE_PCT = 0.05;
+const ENTITY_COMPARE_SUMMARY_STRONG_PCT = 0.20;
+const ENTITY_COMPARE_SUMMARY_CROSS_BRAND_MATERIAL_PCT = 0.20;
+const ENTITY_COMPARE_SUMMARY_CHANNEL_DOMINANT_SHARE = 0.70;
+const ENTITY_COMPARE_SUMMARY_CHANNEL_MATERIAL_PP = 0.20;
+const ENTITY_COMPARE_SUMMARY_CUSTOMER_DOMINANT_SHARE = 0.60;
+const ENTITY_COMPARE_SUMMARY_CUSTOMER_MATERIAL_PP = 0.20;
+const ENTITY_COMPARE_SUMMARY_MAX_FACTS = 3;
+
+// 5단계 등급(§7): 절대값 바닥(floor) 미만이면 비율이 크더라도 STABLE로 강등한다
+// (초저모수 소수점 왜곡 방지). target이 0/null/undefined면 비율 계산 자체를
+// 하지 않는다(0으로 나누기 금지 — Infinity%를 만들지 않는다, §7/Phase E).
+function entityCompareSummaryPctTier(current, target, floor) {
+  if (target === null || target === undefined || target === 0) return null;
+  if (current === null || current === undefined) return null;
+  const diff = current - target;
+  if (Math.abs(diff) < floor) return "STABLE";
+  const pct = Math.abs(diff / target);
+  if (pct < ENTITY_COMPARE_SUMMARY_STABLE_PCT) return "STABLE";
+  if (pct < ENTITY_COMPARE_SUMMARY_STRONG_PCT) return diff > 0 ? "GROWTH" : "DECLINE";
+  return diff > 0 ? "STRONG_GROWTH" : "STRONG_DECLINE";
+}
+
+// LOW_BASE(§7): 비교 대상 기간의 표본이 너무 적으면(주문 3건 미만 또는 매출
+// 50만원 미만) 그 브랜드의 그 기간에 대한 퍼센트 기반 해석을 만들지 않는다.
+// 브랜드별로 독립 판정한다(한쪽만 저모수여도 다른 쪽 fact는 살린다).
+function entityCompareSummaryIsLowBase(row) {
+  if (!row) return false;
+  return row.orderCount < 3 || row.revenue < 500000;
+}
+
+function entityCompareSummaryDirectionBucket(tier) {
+  if (tier === "GROWTH" || tier === "STRONG_GROWTH") return "UP";
+  if (tier === "DECLINE" || tier === "STRONG_DECLINE") return "DOWN";
+  if (tier === "STABLE") return "STABLE";
+  return null;
+}
+
+function entityCompareSummaryPeriodChangeText(brandName, metric, tier) {
+  const strong = tier === "STRONG_GROWTH" || tier === "STRONG_DECLINE";
+  const dir = (tier === "GROWTH" || tier === "STRONG_GROWTH") ? "증가" : "감소";
+  return `${brandName}의 ${metric.topic} 비교 대상 기간 대비 ${strong ? "큰 폭으로 " : ""}${dir}했습니다.`;
+}
+
+// §13/정정: 인과 표현 없이 세 지표(매출/판매수량/객단가)를 나열만 한다. 신호가
+// 실제로 엇갈릴 때만 호출된다(전부 같은 방향이면 이 fact 자체를 만들지 않음).
+function entityCompareSummaryConflictingClause(bucket, position) {
+  const word = bucket === "UP" ? "증가" : bucket === "DOWN" ? "감소" : null;
+  if (!word) {
+    if (position === "end") return "큰 변화가 없었습니다";
+    if (position === "contrast") return "큰 변화가 없었지만";
+    return "큰 변화가 없었고";
+  }
+  if (position === "end") return `${word}했습니다`;
+  if (position === "contrast") return `${word}했지만`;
+  return `${word}했고`;
+}
+
+function entityCompareSummaryConflictingText(brandName, buckets) {
+  return `${brandName}의 매출은 ${entityCompareSummaryConflictingClause(buckets.revenue, "contrast")} `
+    + `판매수량은 ${entityCompareSummaryConflictingClause(buckets.quantitySold, "mid")} `
+    + `객단가는 ${entityCompareSummaryConflictingClause(buckets.aov, "end")}`;
+}
+
+// CROSS_BRAND(§9): brand_code가 이미 canonical하게 resolve된 두 값만 비교한다.
+// "우수/더 낫다" 같은 전체 우열 표현은 절대 만들지 않는다 — 측정된 지표 하나의
+// 높낮이만 서술한다. brand 이름 뒤에는 "의"/"보다"만 써서(둘 다 받침 유무와
+// 무관하게 항상 안전) 임의 브랜드명(영문/한글 혼용)에도 조사가 깨지지 않는다.
+function entityCompareSummaryCrossBrandFact(metric, aValue, bValue, brandAName, brandBName) {
+  if (aValue === null || aValue === undefined || bValue === null || bValue === undefined) return null;
+  if (aValue === 0 && bValue === 0) return null;
+  const base = Math.max(Math.abs(aValue), Math.abs(bValue));
+  if (base === 0) return null;
+  const diff = aValue - bValue;
+  const pct = Math.abs(diff) / base;
+  const materiality = pct >= ENTITY_COMPARE_SUMMARY_CROSS_BRAND_MATERIAL_PCT ? "MATERIAL" : "SIMILAR";
+  let direction;
+  let text;
+  if (materiality === "SIMILAR") {
+    direction = "SIMILAR";
+    text = `${brandAName}의 ${metric.topic} ${brandBName}의 ${metric.topic.replace(/은$|는$/, "")}와 유사합니다.`;
+  } else {
+    direction = diff > 0 ? "A_HIGHER" : "B_HIGHER";
+    text = direction === "A_HIGHER"
+      ? `${brandAName}의 ${metric.subject} ${brandBName}보다 높습니다.`
+      : `${brandBName}의 ${metric.subject} ${brandAName}보다 높습니다.`;
+  }
+  return {
+    type: `${metric.key.toUpperCase()}_LEADER`,
+    axis: "CROSS_BRAND",
+    metric: metric.key,
+    direction,
+    materiality,
+    values: { a: aValue, b: bValue },
+    text
+  };
+}
+
+function entityCompareSummaryChannelShare(row) {
+  if (!row) return null;
+  const total = Number(row.online || 0) + Number(row.offline || 0);
+  if (total <= 0) return null;
+  return Number(row.offline || 0) / total;
+}
+
+// CHANNEL_MIX(§10): 단일 브랜드 판정(오프라인/온라인 70% 이상)과 브랜드 간
+// 구조 차이(20%p 이상)만 서술한다. "왜"에 대한 인과 설명은 절대 만들지 않는다.
+function entityCompareSummaryChannelFact(aRow, bRow, brandAName, brandBName) {
+  const aShare = entityCompareSummaryChannelShare(aRow);
+  const bShare = entityCompareSummaryChannelShare(bRow);
+  if (aShare === null || bShare === null) return null;
+  const diffPp = Math.abs(aShare - bShare);
+  if (diffPp < ENTITY_COMPARE_SUMMARY_CHANNEL_MATERIAL_PP) return null;
+  const aHigherOffline = aShare > bShare;
+  const text = aHigherOffline
+    ? `${brandAName}의 오프라인 비중이 ${brandBName}의 오프라인 비중보다 높습니다.`
+    : `${brandBName}의 오프라인 비중이 ${brandAName}의 오프라인 비중보다 높습니다.`;
+  return {
+    type: "CHANNEL_STRUCTURE_DIFF",
+    axis: "CHANNEL_MIX",
+    metric: "offlineShare",
+    direction: aHigherOffline ? "A_HIGHER_OFFLINE" : "B_HIGHER_OFFLINE",
+    materiality: "MATERIAL",
+    values: { a: aShare, b: bShare },
+    text
+  };
+}
+
+// NEXT-CROSS-BRAND-FACT: 단일 브랜드 채널 dominance 분류(§10 원 설계,
+// STEP67-10G-2). 두 브랜드의 구조 차이(위 CHANNEL_STRUCTURE_DIFF)가 임계값
+// 미달이어도, 각 브랜드가 개별적으로는 70% 이상 한 채널에 쏠려 있을 수 있다
+// (실측: CARNET ARCHIVE 89.2%/TROUBLED WATERS 100% 오프라인 — 차이 10.8%p는
+// 미달이지만 둘 다 개별적으로 OFFLINE_DOMINANT). 인과 설명 없이 "비중이
+// 높습니다"만 재사용한다. 브랜드명 옆에는 "의"만 써서 조사 안전성을 유지한다.
+function entityCompareSummaryChannelDominance(share) {
+  if (share === null) return null;
+  if (share >= ENTITY_COMPARE_SUMMARY_CHANNEL_DOMINANT_SHARE) return "OFFLINE_DOMINANT";
+  if (share <= 1 - ENTITY_COMPARE_SUMMARY_CHANNEL_DOMINANT_SHARE) return "ONLINE_DOMINANT";
+  return "BALANCED_CHANNEL";
+}
+
+function entityCompareSummaryChannelDominantFact(aRow, bRow, brandAName, brandBName) {
+  const aShare = entityCompareSummaryChannelShare(aRow);
+  const bShare = entityCompareSummaryChannelShare(bRow);
+  const aClass = entityCompareSummaryChannelDominance(aShare);
+  const bClass = entityCompareSummaryChannelDominance(bShare);
+  const labelOf = (cls) => (cls === "OFFLINE_DOMINANT" ? "오프라인" : "온라인");
+  const aDominant = aClass && aClass !== "BALANCED_CHANNEL";
+  const bDominant = bClass && bClass !== "BALANCED_CHANNEL";
+  if (!aDominant && !bDominant) return null;
+  let text;
+  let direction;
+  if (aDominant && bDominant && aClass === bClass) {
+    text = `${brandAName}의 ${labelOf(aClass)} 비중이 높고, ${brandBName}의 ${labelOf(bClass)} 비중도 높습니다.`;
+    direction = "SAME_DOMINANT";
+  } else if (aDominant && bDominant) {
+    text = `${brandAName}의 ${labelOf(aClass)} 비중이 높고, ${brandBName}의 ${labelOf(bClass)} 비중이 높습니다.`;
+    direction = "DIFFERENT_DOMINANT";
+  } else if (aDominant) {
+    text = `${brandAName}의 ${labelOf(aClass)} 비중이 높습니다.`;
+    direction = "A_ONLY";
+  } else {
+    text = `${brandBName}의 ${labelOf(bClass)} 비중이 높습니다.`;
+    direction = "B_ONLY";
+  }
+  return {
+    type: "CHANNEL_DOMINANT",
+    axis: "CHANNEL_MIX",
+    metric: "offlineShare",
+    direction,
+    materiality: "MATERIAL",
+    values: { a: aShare, b: bShare, aClass, bClass },
+    text
+  };
+}
+
+// CUSTOMER_MIX(§11): entityCompositionTypeLabel(기존 canonical 라벨)만 쓴다.
+// 새 고객 유형을 만들지 않는다. 건수(count) 기준 비중만 쓴다(entityCompositionMode
+// 전역 상태에 의존하지 않는다 — 순수 함수 원칙 유지, count가 "고객 구성"의
+// 자연스러운 단위이기도 하다).
+function entityCompareSummaryCompositionRatios(stats) {
+  const total = Object.values(stats || {}).reduce((sum, row) => sum + Number(row?.count || 0), 0);
+  if (!total) return {};
+  const ratios = {};
+  for (const [type, row] of Object.entries(stats)) ratios[type] = Number(row?.count || 0) / total;
+  return ratios;
+}
+
+function entityCompareSummaryCustomerMixFact(compositionA, compositionB, brandAName, brandBName) {
+  if (!compositionA || compositionA.status !== "ready" || !compositionB || compositionB.status !== "ready") return null;
+  const ratiosA = entityCompareSummaryCompositionRatios(compositionA.stats);
+  const ratiosB = entityCompareSummaryCompositionRatios(compositionB.stats);
+  const types = new Set([...Object.keys(ratiosA), ...Object.keys(ratiosB)]);
+  let best = null;
+  for (const type of types) {
+    const a = ratiosA[type] || 0;
+    const b = ratiosB[type] || 0;
+    const diffPp = Math.abs(a - b);
+    if (diffPp >= ENTITY_COMPARE_SUMMARY_CUSTOMER_MATERIAL_PP && (!best || diffPp > best.diffPp)) {
+      best = { type, a, b, diffPp };
+    }
+  }
+  if (!best) return null;
+  const label = entityCompositionTypeLabel[best.type] || best.type;
+  const aHigher = best.a > best.b;
+  const text = aHigher
+    ? `${brandAName}의 ${label} 비중이 ${brandBName}의 ${label} 비중보다 높습니다.`
+    : `${brandBName}의 ${label} 비중이 ${brandAName}의 ${label} 비중보다 높습니다.`;
+  return {
+    type: "CUSTOMER_MIX_DIVERGENCE",
+    axis: "CUSTOMER_MIX",
+    metric: `customer_${best.type}`,
+    direction: aHigher ? "A_HIGHER" : "B_HIGHER",
+    materiality: "MATERIAL",
+    values: { a: best.a, b: best.b },
+    text
+  };
+}
+
+// TREND(§12): 완결된(진행 중이 아닌) 연속 3개월만 본다. 중간에 null이 있으면
+// 건너뛰어 잇지 않고(연속성을 억지로 만들지 않음) 그냥 판단하지 않는다.
+// Brand A(기준 브랜드) 매출만 대상으로 한다(§21 아키텍처 범위와 동일).
+function entityCompareSummaryTrendFact(trendA, currentArchiveStatus, brandAName) {
+  if (!Array.isArray(trendA) || trendA.length < 3) return null;
+  const series = currentArchiveStatus === "live" ? trendA.slice(0, -1) : trendA.slice();
+  if (series.length < 3) return null;
+  const lastThree = series.slice(-3);
+  if (lastThree.some((row) => !row || row.revenue === null || row.revenue === undefined)) return null;
+  const [m1, m2, m3] = lastThree;
+  if (m1.revenue === 0 || m2.revenue === 0) return null; // 0 분모 방지, Infinity% 금지
+  const change1 = (m2.revenue - m1.revenue) / Math.abs(m1.revenue);
+  const change2 = (m3.revenue - m2.revenue) / Math.abs(m2.revenue);
+  const isUp = (v) => v >= ENTITY_COMPARE_SUMMARY_STABLE_PCT;
+  const isDown = (v) => v <= -ENTITY_COMPARE_SUMMARY_STABLE_PCT;
+  const isFlat = (v) => !isUp(v) && !isDown(v);
+  let direction;
+  let label;
+  if (isUp(change1) && isUp(change2)) { direction = "UP"; label = "상승"; }
+  else if (isDown(change1) && isDown(change2)) { direction = "DOWN"; label = "하락"; }
+  else if (isFlat(change1) && isFlat(change2)) { direction = "FLAT"; label = "횡보"; }
+  else { direction = "MIXED"; label = "변동성 큰"; }
+  return {
+    type: "RECENT_TREND",
+    axis: "TREND",
+    metric: "revenue",
+    direction,
+    materiality: direction === "FLAT" ? "STABLE" : "MATERIAL",
+    values: { months: lastThree.map((row) => ({ key: row.key, revenue: row.revenue })) },
+    text: `${brandAName}의 최근 매출은 ${label} 흐름입니다.`
+  };
+}
+
+// 순수 오케스트레이터. input은 이미 fetch/계산된 상태 객체를 그대로 흉내낸
+// plain object다(네트워크/DOM 없음) — 그대로 테스트 fixture로 재사용 가능하다.
+function buildComparisonSummaryFacts(input) {
+  const {
+    brandAName, brandBName,
+    currentArchiveStatus,
+    currentStatus, targetStatus,
+    targetPeriodBasis,
+    aCurrent, aTarget, bCurrent, bTarget,
+    compositionA, compositionB,
+    trendA
+  } = input || {};
+
+  if (!brandAName || !brandBName) return { status: "insufficient_data", facts: [], caveats: [] };
+
+  const caveats = [];
+  const isLive = currentArchiveStatus === "live";
+  // STEP67 cross-brand-partial-period P2: 서버(P1)가 이미 base/comparison을 같은
+  // 경과일로 정규화했을 때만 true — 이 값은 renderEntityCompareSummary()가
+  // entityCompareTargetPeriodData.targetArchiveStatus === "cutoff"에서 그대로
+  // 옮겨 담을 뿐이다. 이 함수는 날짜 계산을 전혀 하지 않는다(순수 함수 원칙 유지).
+  const isCutoffNormalized = isLive && targetPeriodBasis === "cutoff";
+  const candidates = []; // { priority, fact }
+
+  // ---- PERIOD_CHANGE + CONFLICTING(§8/§13, Brand A만 — 기준 브랜드) ----
+  if (isLive && !isCutoffNormalized) {
+    caveats.push({ type: "PARTIAL_PERIOD", text: "이번 기간은 진행 중이라 완결된 기간과 직접 비교하지 않았습니다." });
+  } else if (!aCurrent || !aTarget) {
+    if (targetStatus === "timeout") caveats.push({ type: "MISSING_DATA", text: "비교 대상 기간 archive 생성이 지연되고 있습니다." });
+    else if (targetStatus === "error" || currentStatus === "error") caveats.push({ type: "MISSING_DATA", text: "비교 기간 데이터 연결에 실패했습니다." });
+    else if (!aTarget) caveats.push({ type: "MISSING_DATA", text: `${brandAName}의 비교 대상 기간 데이터가 없습니다.` });
+  } else if (entityCompareSummaryIsLowBase(aTarget)) {
+    caveats.push({ type: "LOW_BASE", text: `${brandAName}의 비교 대상 기간은 표본이 적어(주문 ${apiNum(aTarget.orderCount)}건) 비교 의미가 제한적입니다.` });
+  } else {
+    // STEP67 cross-brand-partial-period P2: cutoff 정규화가 실제로 적용됐을 때는
+    // "완결된 기간과 비교하지 않았습니다"가 더 이상 사실이 아니다 — 두 기간이 같은
+    // 경과일로 정규화돼 실제로 비교되기 때문이다(P1 §6). 이 caveat로 교체한다.
+    if (isCutoffNormalized) {
+      caveats.push({ type: "CUTOFF_NORMALIZED", text: "진행 중인 기간은 동일 경과일 기준으로 비교했습니다." });
+    }
+    const tiers = {};
+    for (const metric of ENTITY_COMPARE_SUMMARY_METRICS) {
+      tiers[metric.key] = entityCompareSummaryPctTier(aCurrent[metric.key], aTarget[metric.key], metric.floor);
+    }
+    const buckets = {
+      revenue: entityCompareSummaryDirectionBucket(tiers.revenue),
+      quantitySold: entityCompareSummaryDirectionBucket(tiers.quantitySold),
+      aov: entityCompareSummaryDirectionBucket(tiers.aov)
+    };
+    const directional = [buckets.revenue, buckets.quantitySold, buckets.aov].filter((b) => b === "UP" || b === "DOWN");
+    const conflicting = directional.length >= 2 && new Set(directional).size > 1;
+    if (conflicting) {
+      candidates.push({
+        priority: 1,
+        fact: {
+          type: "CONFLICTING_PERIOD_SIGNAL",
+          axis: "PERIOD_CHANGE",
+          metric: "revenue_units_aov",
+          direction: "MIXED",
+          materiality: "MATERIAL",
+          values: { current: aCurrent, target: aTarget },
+          text: entityCompareSummaryConflictingText(brandAName, buckets)
+        }
+      });
+    } else if (tiers.revenue && tiers.revenue !== "STABLE") {
+      candidates.push({
+        priority: 1,
+        fact: {
+          type: "REVENUE_PERIOD_CHANGE",
+          axis: "PERIOD_CHANGE",
+          metric: "revenue",
+          direction: entityCompareSummaryDirectionBucket(tiers.revenue),
+          materiality: tiers.revenue.startsWith("STRONG") ? "STRONG" : "MATERIAL",
+          values: { current: aCurrent.revenue, target: aTarget.revenue },
+          text: entityCompareSummaryPeriodChangeText(brandAName, ENTITY_COMPARE_SUMMARY_METRICS[0], tiers.revenue)
+        }
+      });
+    }
+  }
+
+  // ---- CROSS_BRAND(§9, 현재 기간 — live 여부와 무관하게 동일 시점이라 허용) ----
+  // entityCompareSummaryCrossBrandFact()는 4개 지표(매출/판매수량/주문수/객단가)
+  // 전부에 재사용 가능한 범용 함수다(Phase F) — 우선순위(§14)가 "매출 cross-brand"만
+  // 명시하므로 V1 후보 목록에는 매출만 넣는다(다른 지표는 함수 자체는 이미 준비됨).
+  // STEP67 cross-brand-partial-period P2: 진행 중인 현재 기간에서는 CROSS_BRAND
+  // 문장이 "동일 경과일 기준"임을 명시한다 — aCurrent/bCurrent는 항상 같은
+  // 기간(둘 다 같은 만큼만 누적)에서 나오므로 이 비교 자체는 cutoff 정규화
+  // 여부와 무관하게 이미 유효하다(§9 원 설계) — 문구만 명확히 한다. 다른
+  // 어떤 계산도 하지 않는다(entityCompareSummaryCrossBrandFact 무수정 재사용).
+  const withLivePrefix = (fact) => (fact && isLive) ? { ...fact, text: `동일 경과일 기준 ${fact.text}` } : fact;
+  if (aCurrent && bCurrent) {
+    const fact = withLivePrefix(entityCompareSummaryCrossBrandFact(ENTITY_COMPARE_SUMMARY_METRICS[0], aCurrent.revenue, bCurrent.revenue, brandAName, brandBName));
+    if (fact && fact.materiality === "MATERIAL") candidates.push({ priority: 2, fact });
+    // NEXT-CROSS-BRAND-FACT: 판매수량/주문수/AOV도 같은 CROSS_BRAND axis,
+    // 같은 범용 함수로 확장한다 — 우선순위를 revenue(2)보다 낮게(5~7) 둬서,
+    // 이미 3-fact 슬롯이 채워지는 기존 실측 케이스(예: STEP67-10G-3 §21의
+    // CARNET ARCHIVE vs TROUBLED WATERS)의 출력을 그대로 보존한다(회귀 없음).
+    const unitsFact = withLivePrefix(entityCompareSummaryCrossBrandFact(ENTITY_COMPARE_SUMMARY_METRICS[1], aCurrent.quantitySold, bCurrent.quantitySold, brandAName, brandBName));
+    if (unitsFact && unitsFact.materiality === "MATERIAL") candidates.push({ priority: 5, fact: unitsFact });
+    const ordersFact = withLivePrefix(entityCompareSummaryCrossBrandFact(ENTITY_COMPARE_SUMMARY_METRICS[2], aCurrent.orderCount, bCurrent.orderCount, brandAName, brandBName));
+    if (ordersFact && ordersFact.materiality === "MATERIAL") candidates.push({ priority: 6, fact: ordersFact });
+    const aovFact = withLivePrefix(entityCompareSummaryCrossBrandFact(ENTITY_COMPARE_SUMMARY_METRICS[3], aCurrent.aov, bCurrent.aov, brandAName, brandBName));
+    if (aovFact && aovFact.materiality === "MATERIAL") candidates.push({ priority: 7, fact: aovFact });
+  } else if (!bCurrent) {
+    caveats.push({ type: "MISSING_DATA", text: `${brandBName}의 현재 기간 데이터가 없습니다.` });
+  }
+
+  // ---- CHANNEL_MIX / CUSTOMER_MIX(§10/§11, 구조적 차이 — channel 우선) ----
+  const channelFact = entityCompareSummaryChannelFact(aCurrent, bCurrent, brandAName, brandBName);
+  if (channelFact) candidates.push({ priority: 3, fact: channelFact });
+  else {
+    const customerFact = entityCompareSummaryCustomerMixFact(compositionA, compositionB, brandAName, brandBName);
+    if (customerFact) candidates.push({ priority: 3, fact: customerFact });
+    // NEXT-CROSS-BRAND-FACT: 구조 차이(CHANNEL_STRUCTURE_DIFF)가 임계값
+    // 미달일 때만, 각 브랜드의 개별 채널 dominance를 가장 낮은 우선순위(8)
+    // 보조 fact로 추가한다(중복 방지 — 구조 차이가 이미 material하면 그것이
+    // 더 정보량이 크므로 그쪽만 노출).
+    const channelDominantFact = entityCompareSummaryChannelDominantFact(aCurrent, bCurrent, brandAName, brandBName);
+    if (channelDominantFact) candidates.push({ priority: 8, fact: channelDominantFact });
+  }
+
+  // ---- TREND(§12) ----
+  const trendFact = entityCompareSummaryTrendFact(trendA, currentArchiveStatus, brandAName);
+  if (trendFact && trendFact.direction !== "FLAT") candidates.push({ priority: 4, fact: trendFact });
+
+  // ---- 우선순위 절단(§14): 최대 3개, 빈 슬롯을 억지로 채우지 않는다 ----
+  candidates.sort((a, b) => a.priority - b.priority);
+  const facts = candidates.slice(0, ENTITY_COMPARE_SUMMARY_MAX_FACTS).map((c) => c.fact);
+
+  return {
+    status: facts.length || caveats.length ? "ready" : "insufficient_data",
+    facts,
+    caveats
+  };
+}
+
+// DOM/state 연결부(비순수) — 실제 브라우저 state를 순수 함수 input 모양으로
+// 옮겨 담기만 한다. 계산은 전혀 하지 않는다(위 buildComparisonSummaryFacts만
+// 계산을 수행).
+function renderEntityCompareSummary() {
+  const textEl = $("#entityCompareSummaryText");
+  if (!textEl) return;
+  if (!entityCompareState.enabled) return;
+  const brandAName = entityCompareBrandA();
+  const brandBName = entityCompareBrandB();
+  if (brandAName === "기준 브랜드 선택" || brandBName === "비교 브랜드 선택") {
+    textEl.textContent = "비교 브랜드를 선택하면 비교 요약을 확인할 수 있습니다.";
+    return;
+  }
+  const result = buildComparisonSummaryFacts({
+    brandAName,
+    brandBName,
+    currentArchiveStatus: entityCompareTargetPeriodData.currentArchiveStatus,
+    currentStatus: entityCompareTargetPeriodData.currentStatus,
+    targetStatus: entityCompareTargetPeriodData.targetStatus,
+    // STEP67 cross-brand-partial-period P2: targetArchiveStatus==="cutoff"는 P1
+    // endpoint가 base/comparison을 이미 같은 경과일로 정규화했다는 뜻이다(§6) —
+    // 이 값을 그대로 옮길 뿐, 엔진은 날짜 계산을 하지 않는다.
+    targetPeriodBasis: entityCompareTargetPeriodData.targetArchiveStatus === "cutoff" ? "cutoff" : "full_month",
+    aCurrent: entityCompareTargetPeriodData.aCurrent,
+    aTarget: entityCompareTargetPeriodData.aTarget,
+    bCurrent: entityCompareTargetPeriodData.bCurrent,
+    bTarget: entityCompareTargetPeriodData.bTarget,
+    compositionA: entityCompareCompositionState.a,
+    compositionB: entityCompareCompositionState.b,
+    trendA: entityTrendMonths
+  });
+  if (result.status === "insufficient_data" || (!result.facts.length && !result.caveats.length)) {
+    textEl.textContent = "비교 가능한 데이터가 아직 없습니다.";
+    return;
+  }
+  const sentences = [...result.facts.map((f) => f.text), ...result.caveats.map((c) => c.text)];
+  textEl.textContent = sentences.join(" ");
+}
+
+async function refreshEntityInventory(brandCode) {
+  const seq = ++entityInventoryRefreshSeq;
+  const valueEl = $("#entityHeroInventoryValue");
+  const noteEl = $("#entityHeroInventoryNote");
+  if (!valueEl || !noteEl) return;
+  valueEl.textContent = "불러오는 중";
+  noteEl.textContent = "ECOUNT 현재 재고 조회 중";
+  const data = await getJson(intelligenceUrl("/api/inventory/overview?limit=1"), 15000);
+  if (seq !== entityInventoryRefreshSeq) return;
+  const rows = Array.isArray(data?.brandRollup) ? data.brandRollup : [];
+  const exact = rows.find((item) => item.brandCanonical === true && item.brandKey === brandCode);
+  const rawMatches = rows.filter((item) => {
+    if (item.brandCanonical === true) return false;
+    const rawName = item.brandName || String(item.brandKey || "").replace(/^raw:/, "");
+    return resolveRawBrandCanonical(rawName) === brandIdentityState.name;
+  });
+  const row = exact || (rawMatches.length === 1 ? rawMatches[0] : null);
+  if (data?.error || data?.available === false || !row) {
+    valueEl.textContent = "데이터 없음";
+    noteEl.textContent = "canonical brand_code로 확인된 ECOUNT 재고 없음";
+    return;
+  }
+  valueEl.textContent = `${apiNum(row.knownStock || 0)}개`;
+  noteEl.textContent = `현재 재고 · ECOUNT · ${exact ? "canonical brand_code" : "exact canonical name"} · SKU ${apiNum(row.totalSku || 0)}개 · 확인 필요 ${apiNum(row.negativeReviewCount || 0)}개`;
+}
+
+// STEP61-3: Hero/KPI Data Binding. 새 계산 없이 entityTrendMonths(STEP61-2가 만든 Monthly
+// State)에서 현재 선택된 기간(currentEntityPeriodMonthKey)에 해당하는 한 행만 읽어 그대로
+// 표시한다. 매출 MoM만 기존 entityTrendMoMPct()를 재사용해 함께 보여주고(이미 있는 계산),
+// 판매수량/객단가/주문수는 대응하는 MoM 계산 함수가 없으므로 새로 만들지 않고 값만 표시한다.
+function renderEntityHeroKpiFromMonthlyState() {
+  const salesEl = $("#entityHeroKpiSales");
+  const salesMomEl = $("#entityHeroKpiSalesMom");
+  const qtyEl = $("#entityHeroKpiQty");
+  const aovEl = $("#entityHeroKpiAov");
+  const ordersEl = $("#entityHeroKpiOrders");
+  if (!salesEl || !qtyEl || !aovEl || !ordersEl) return;
+  const index = entityTrendMonths.findIndex((row) => row.key === currentEntityPeriodMonthKey());
+  const row = index >= 0 ? entityTrendMonths[index] : null;
+  if (!row) {
+    salesEl.textContent = "-";
+    qtyEl.textContent = "-";
+    aovEl.textContent = "-";
+    ordersEl.textContent = "-";
+    if (salesMomEl) { salesMomEl.textContent = ""; salesMomEl.className = "brand-hero-delta flat"; }
+    renderEntityHeroChannelSplit(null);
+    return;
+  }
+  salesEl.textContent = apiWon(row.revenue);
+  qtyEl.textContent = `${apiNum(row.quantitySold)}개`;
+  aovEl.textContent = apiWon(row.aov);
+  ordersEl.textContent = `${apiNum(row.orderCount)}건`;
+  if (salesMomEl) {
+    // STEP67-10G-4: 진행 중인(archiveStatus="live") 이번 달은 완결된 지난달과
+    // 직접 % 비교하지 않는다(Comparison Summary의 PARTIAL_PERIOD 가드와 동일한
+    // 원칙 — entityIsLiveMonthRow 하나로 판정 공유). "▼59% MoM" 같은 왜곡된
+    // 표시 대신 기존 flat 톤을 재사용해 "진행 중"만 표시한다(새 시각 언어 없음).
+    if (entityIsLiveMonthRow(row)) {
+      salesMomEl.textContent = "진행 중";
+      salesMomEl.className = "brand-hero-delta flat";
+    } else {
+    const momPct = entityTrendMoMPct(index);
+    if (momPct === null) {
+      salesMomEl.textContent = "";
+      salesMomEl.className = "brand-hero-delta flat";
+    } else {
+      const tone = momPct > 0 ? "up" : momPct < 0 ? "down" : "flat";
+      const arrow = momPct > 0 ? "▲" : momPct < 0 ? "▼" : "—";
+      salesMomEl.textContent = `${arrow} ${Math.abs(momPct).toFixed(0)}% MoM`;
+      salesMomEl.className = `brand-hero-delta ${tone}`;
+    }
+    }
+  }
+  renderEntityHeroChannelSplit(row);
+  renderEntityHeroSku(row, index);
+  renderEntityHeroInsight(row, index);
+}
+
+// STEP67-6: SKU(이번 기간 판매 상품 수) + 실제 MoM. entityTrendMonths가 이미 각 월의
+// skuCount를 갖고 있으므로(위 refreshEntityTrendMonths 참고) entityTrendMoMPct와 동일한
+// 방식으로 전월 대비 증감을 계산한다 — 새 API 호출 없음.
+function renderEntityHeroSku(row, index) {
+  const valueEl = $("#entityHeroSkuValue");
+  const momEl = $("#entityHeroSkuMom");
+  const offlineEl = $("#entityHeroSkuOfflineValue");
+  if (!valueEl) return;
+  if (!row) {
+    valueEl.textContent = "-";
+    if (momEl) { momEl.textContent = ""; momEl.className = "brand-hero-delta flat"; }
+    if (offlineEl) offlineEl.textContent = "-";
+    return;
+  }
+  valueEl.textContent = `${apiNum(row.skuCount)}개`;
+  if (momEl) {
+    // STEP67-10G-4: Sales MoM과 같은 위젯 계열(같은 Hero 카드, 같은 archiveStatus
+    // 신호) — 진행 중인 달을 완결된 지난달과 % MoM으로 비교하지 않는다.
+    if (entityIsLiveMonthRow(row)) {
+      momEl.textContent = "진행 중";
+      momEl.className = "brand-hero-delta flat";
+    } else {
+    const prev = index > 0 ? entityTrendMonths[index - 1].skuCount : null;
+    if (!index || prev === null || prev === undefined) {
+      momEl.textContent = "";
+      momEl.className = "brand-hero-delta flat";
+    } else {
+      const delta = row.skuCount - prev;
+      const tone = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+      const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "—";
+      momEl.textContent = delta === 0 ? "변동 없음" : `${arrow} ${Math.abs(delta)}개 MoM`;
+      momEl.className = `brand-hero-delta ${tone}`;
+    }
+    }
+  }
+}
+
+// STEP67-6: AI Insight & Recommended Action. 새 LLM 시스템이 아니라, 이미 연결된
+// 데이터(매출/MoM/Channel Mix/Trend)만으로 증명 가능한 문장을 조합한다 — 원인 추론
+// ("인기가 떨어지고 있다" 류) 없음. Recommended Action은 이 프로젝트에 매출 급감/온라인
+// 비중 관련 기존 threshold가 전혀 없어(재고 관련 threshold만 존재, Inventory는 SOURCE NOT
+// AVAILABLE) 새 threshold를 만드는 대신 정직하게 "추천 기준 미확정"을 표시한다.
+function renderEntityHeroInsight(row, index) {
+  const summaryEl = $("#entityHeroAiSummary");
+  const noteEl = $("#entityHeroAiSummaryNote");
+  const actionListEl = $("#entityHeroActionList");
+  if (!summaryEl) return;
+  if (!row) {
+    summaryEl.textContent = "-";
+    if (noteEl) noteEl.textContent = "";
+    if (actionListEl) actionListEl.innerHTML = "";
+    return;
+  }
+  const sentences = [];
+  const isLive = entityIsLiveMonthRow(row);
+  // STEP67-10G-4: 진행 중인 달은 완결된 지난달과의 MoM % 문장을 만들지 않는다(Comparison
+  // Summary의 PARTIAL_PERIOD 규칙과 동일). 대신 "현재까지 누적 매출" 같은, 완결 여부와
+  // 무관하게 참인 스냅샷 문장만 남긴다 — 억지 대체 문장을 새로 만들지 않는다.
+  if (isLive) {
+    sentences.push(`${row.label} 현재 누적 매출은 ${apiWon(row.revenue)}입니다.`);
+  } else {
+    const momPct = entityTrendMoMPct(index);
+    if (momPct !== null) {
+      const dir = momPct > 0 ? "증가" : momPct < 0 ? "감소" : "변동 없이 유지";
+      sentences.push(`${row.label} 매출은 전월 대비 ${Math.abs(momPct).toFixed(0)}% ${dir}했습니다.`);
+    }
+  }
+  const channelTotal = Number(row.online || 0) + Number(row.offline || 0);
+  if (channelTotal > 0) {
+    const offlinePct = (Number(row.offline || 0) / channelTotal) * 100;
+    const dominant = offlinePct >= 50 ? "오프라인" : "온라인";
+    const dominantPct = offlinePct >= 50 ? offlinePct : 100 - offlinePct;
+    sentences.push(`매출의 ${dominantPct.toFixed(1)}%가 ${dominant}에서 발생했습니다.`);
+  }
+  // STEP67-10G-4: 진행 중인 달 자신을 완결된 달들과 최저/최고로 순위 매기지 않는다 —
+  // 완결 월만 모은 배열로 판정한다(진행 중인 달이면 이 문장 자체를 만들지 않음, Rule 6).
+  if (!isLive) {
+    const completedRevenues = entityTrendMonths.filter((item) => !entityIsLiveMonthRow(item)).map((item) => item.revenue);
+    if (completedRevenues.length > 1 && row.revenue === Math.min(...completedRevenues)) {
+      sentences.push(`최근 ${completedRevenues.length}개월 중 이번 달 매출이 가장 낮습니다.`);
+    } else if (completedRevenues.length > 1 && row.revenue === Math.max(...completedRevenues)) {
+      sentences.push(`최근 ${completedRevenues.length}개월 중 이번 달 매출이 가장 높습니다.`);
+    }
+  }
+  summaryEl.textContent = sentences.length ? sentences.join(" ") : "이번 기간 판단 가능한 데이터가 부족합니다.";
+  if (noteEl) noteEl.textContent = "매출/Channel Mix/Monthly Trend 실데이터 기반";
+  if (actionListEl) {
+    actionListEl.innerHTML = `<li>공식 추천 규칙 미확정 — 현재 재고는 참고 정보이며 Sell-through 산식과 Action threshold가 확정되기 전에는 행동을 자동 추천하지 않습니다.</li>`;
+  }
+}
+
+// STEP67-4: Channel Sales Breakdown. entityTrendMonths 행의 online/offline(둘 다
+// /api/reports/monthly의 브랜드 행에서 이미 계산된 값을 그대로 옮긴 것, 새 계산 없음)로
+// 총매출 카드 안의 채널 구성(금액+비중+conic-gradient 도넛)을 채운다. 도넛은 이 프로젝트가
+// 이미 쓰는 단일 div conic-gradient 기법(.clients-donut/.brand-hero-score-ring과 동일
+// 패턴)만 재사용하고 새 차트 라이브러리는 쓰지 않는다.
+// STEP67-5: Final UX — Section 2 Channel Mix. 도넛 대신 가로 100% composition bar로
+// 바꿨다(같은 online/offline 값, 새 계산 없음). bar-fill의 width%만 online 비중으로
+// 채운다.
+function renderEntityHeroChannelSplit(row) {
+  const block = $("#entityHeroChannelSplit");
+  const bar = $("#entityHeroChannelOnlineBar");
+  const onlineAmountEl = $("#entityHeroChannelOnlineAmount");
+  const onlineShareEl = $("#entityHeroChannelOnlineShare");
+  const offlineAmountEl = $("#entityHeroChannelOfflineAmount");
+  const offlineShareEl = $("#entityHeroChannelOfflineShare");
+  if (!block || !bar || !onlineAmountEl || !onlineShareEl || !offlineAmountEl || !offlineShareEl) return;
+  const online = Number(row?.online || 0);
+  const offline = Number(row?.offline || 0);
+  const total = online + offline;
+  if (!row || total <= 0) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  const onlinePct = (online / total) * 100;
+  const offlinePct = 100 - onlinePct;
+  onlineAmountEl.textContent = apiWon(online);
+  offlineAmountEl.textContent = apiWon(offline);
+  onlineShareEl.textContent = `${onlinePct.toFixed(1)}%`;
+  offlineShareEl.textContent = `${offlinePct.toFixed(1)}%`;
+  bar.style.width = `${onlinePct}%`;
+}
+
+function entityTrendMoMPct(index) {
+  if (index <= 0) return null;
+  const prev = entityTrendMonths[index - 1].revenue;
+  if (!prev) return null;
+  return ((entityTrendMonths[index].revenue - prev) / prev) * 100;
+}
+
+let entityTrendCompareMonths = [];
+
+function entityTrendCompactWon(value) {
+  const millions = value / 1000000;
+  return `${millions >= 100 ? Math.round(millions) : millions.toFixed(1)}M`;
+}
+
+function entityTrendPointTooltipHtml(index) {
+  const row = entityTrendMonths[index];
+  const momPct = entityTrendMoMPct(index);
+  const momText = momPct === null ? "-" : `${momPct > 0 ? "+" : momPct < 0 ? "" : "±"}${momPct.toFixed(0)}%`;
+  let html = `<strong>${esc(row.label)}</strong> ${entityTrendCompactWon(row.revenue)} <span style="color:${momPct === null ? "inherit" : momPct >= 0 ? "#8ed8b2" : "#ff9d9d"}">${esc(momText)}</span><br>AOV ${Math.round(row.aov / 1000)}k`;
+  if (row.memo) html += `<br>Memo: ${esc(row.memo)}`;
+  if (entityCompareState.enabled) {
+    const compareRow = entityTrendCompareMonths[index];
+    html += compareRow
+      ? `<br><br><strong>${esc(entityCompareBrandB())}</strong> ${entityTrendCompactWon(compareRow.revenue)}<br>AOV ${Math.round(compareRow.aov / 1000)}k`
+      : `<br><br><strong>${esc(entityCompareBrandB())}</strong> · 해당 월 데이터 없음`;
+  }
+  return html;
+}
+
+function entityTrendChartSvg() {
+  const width = 560;
+  const height = 170;
+  const values = [
+    ...entityTrendMonths.map((row) => row.revenue),
+    ...entityTrendCompareMonths.filter(Boolean).map((row) => row.revenue)
+  ];
+  const max = Math.max(1, ...values);
+  const min = Math.min(...values);
+  const span = Math.max(1, max - min);
+  const step = entityTrendMonths.length > 1 ? width / (entityTrendMonths.length - 1) : width;
+  const coordinates = entityTrendMonths.map((row, index) => {
+    const x = entityTrendMonths.length > 1 ? index * step : width / 2;
+    // 최소~최댓값 구간을 차트 높이에 꽉 채워 월별 굴곡이 잘 보이게 한다(에디토리얼 느낌).
+    const y = height - ((row.revenue - min) / span) * (height - 28) - 14;
+    return { ...row, x, y, index };
+  });
+  const path = coordinates.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+  // STEP59-3: Compare Mode UI. 기존 min/max/span/step을 그대로 재사용해 두 번째(비교)
+  // 선의 좌표만 추가 계산한다(축 재계산 없음 — 원래 선의 좌표/모양은 완전히 그대로).
+  const compareCoordinates = entityTrendCompareMonths.map((row, index) => {
+    if (!row) return null;
+    const x = entityTrendMonths.length > 1 ? index * step : width / 2;
+    const y = height - ((row.revenue - min) / span) * (height - 28) - 14;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const comparePaths = [];
+  let compareSegment = [];
+  compareCoordinates.forEach((point) => {
+    if (point) compareSegment.push(point);
+    else if (compareSegment.length) {
+      comparePaths.push(compareSegment.join(" "));
+      compareSegment = [];
+    }
+  });
+  if (compareSegment.length) comparePaths.push(compareSegment.join(" "));
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="최근 7개월 매출 추세" class="brand-monthly-trend-svg">
+    <line x1="0" y1="${height - 14}" x2="${width}" y2="${height - 14}" class="brand-monthly-trend-baseline"></line>
+    ${comparePaths.map((points) => `<polyline points="${esc(points)}" fill="none" class="entity-trend-compare-polyline entity-compare-only"></polyline>`).join("")}
+    <polyline points="${esc(path)}" fill="none" class="brand-monthly-trend-line"></polyline>
+    ${coordinates.map((point) => `<circle data-entity-trend-point="${point.index}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4" class="brand-monthly-trend-point" tabindex="0"></circle>`).join("")}
+    ${coordinates.map((point) => `<text x="${point.x.toFixed(1)}" y="${height - 1}" class="brand-monthly-trend-axis-label">${esc(point.label)}</text>`).join("")}
+  </svg>`;
+}
+
+function entityTrendIndicatorHtml(label, direction) {
+  const tone = direction > 0 ? "up" : direction < 0 ? "down" : "flat";
+  const arrow = direction > 0 ? "▲" : direction < 0 ? "▼" : "—";
+  return `<span class="brand-monthly-trend-indicator ${tone}"><i></i>${esc(label)} ${arrow}</span>`;
+}
+
+function renderEntityTrendSection() {
+  const chart = $("#entityTrendChart");
+  if (!chart) return;
+  // STEP61-2: 브랜드 미선택/Master Data 미확인 시 entityTrendMonths가 빈 배열이다 —
+  // renderEntityHeroState()가 이 경우 #entityTrendContent 자체를 숨기지만, 숨김은 CSS일
+  // 뿐 이 함수는 여전히 호출될 수 있으므로 reduce(초깃값 없음)/인덱스 접근이 빈 배열에서
+  // 터지지 않도록 여기서 먼저 처리한다.
+  const rangeLabel = $("#entityTrendRangeLabel");
+  if (!entityTrendMonths.length) {
+    chart.innerHTML = "";
+    if (rangeLabel) rangeLabel.textContent = "-";
+    // 이전 브랜드/기간의 값이 화면에 그대로 남아있으면 다른 브랜드의 숫자처럼 보일 수
+    // 있다(실측으로 발견) — Trend Summary 쪽도 함께 비워 낸다.
+    const recentLabelEl = $("#entityTrendRecentLabel");
+    if (recentLabelEl) { recentLabelEl.textContent = "-"; recentLabelEl.className = ""; }
+    if ($("#entityTrendAvgAov")) $("#entityTrendAvgAov").textContent = "-";
+    if ($("#entityTrendMax")) $("#entityTrendMax").innerHTML = "-";
+    if ($("#entityTrendMin")) $("#entityTrendMin").innerHTML = "-";
+    if ($("#entityTrendState")) $("#entityTrendState").textContent = "-";
+    if ($("#entityTrendIndicators")) $("#entityTrendIndicators").innerHTML = "";
+    if ($("#entityTrendInsight")) $("#entityTrendInsight").textContent = "";
+    return;
+  }
+  if (rangeLabel) rangeLabel.textContent = `${entityTrendMonths[0].key} ~ ${entityTrendMonths[entityTrendMonths.length - 1].key}`;
+  // STEP67-10G-4: 차트는 진행 중인 달을 그대로 시각적으로 포함한다(Rule 5, 팩트 정보라
+  // 유용함) — 여기 통계(Max/Min/평균 AOV/최근 추세)만 완결 월 기준으로 분리한다.
+  chart.innerHTML = entityTrendChartSvg();
+  requestAnimationFrame(() => chart.querySelector(".brand-monthly-trend-svg")?.classList.add("is-visible"));
+
+  // STEP67-10G-4: Max/Min/평균 AOV/최근 3개월 추세/Revenue·Units·AOV 인디케이터는 전부
+  // "완결된 기간" 통계다 — 진행 중인 달(archiveStatus="live")이 최저/최고로 뽑히거나
+  // 추세 방향 계산에 섞이면 §12(STEP67-10G-2)와 같은 왜곡이 재현된다. entityTrendMonths는
+  // (있다면) 진행 중인 달이 항상 마지막 한 개뿐이므로 필터링해도 나머지 달의 순서/인접
+  // 관계는 그대로 유지된다.
+  const completedMonths = entityTrendMonths.filter((row) => !entityIsLiveMonthRow(row));
+  const insight = $("#entityTrendInsight");
+  if (!completedMonths.length) {
+    // 완결된 달이 하나도 없음(신규 브랜드의 첫 달이 마침 진행 중인 경우 등) — 억지로
+    // 판단하지 않는다(Comparison Summary의 "데이터가 부족해 판단하지 않습니다"와 같은 원칙).
+    const recentLabelEl = $("#entityTrendRecentLabel");
+    if (recentLabelEl) { recentLabelEl.textContent = "판단 보류"; recentLabelEl.className = ""; }
+    if ($("#entityTrendAvgAov")) $("#entityTrendAvgAov").textContent = "-";
+    if ($("#entityTrendMax")) $("#entityTrendMax").innerHTML = "-";
+    if ($("#entityTrendMin")) $("#entityTrendMin").innerHTML = "-";
+    if ($("#entityTrendState")) $("#entityTrendState").textContent = "진행 중";
+    if ($("#entityTrendIndicators")) $("#entityTrendIndicators").innerHTML = "";
+    if (insight) insight.textContent = "완결된 월 데이터가 부족해 최근 추세를 판단하지 않습니다.";
+    return;
+  }
+
+  const maxRow = completedMonths.reduce((best, row) => (row.revenue > best.revenue ? row : best));
+  const minRow = completedMonths.reduce((worst, row) => (row.revenue < worst.revenue ? row : worst));
+  const avgAov = Math.round(completedMonths.reduce((sum, row) => sum + row.aov, 0) / completedMonths.length);
+  const completedMoMPct = (index) => {
+    if (index <= 0) return null;
+    const prev = completedMonths[index - 1].revenue;
+    if (!prev) return null;
+    return ((completedMonths[index].revenue - prev) / prev) * 100;
+  };
+  const last3 = completedMonths.slice(-3);
+  const last3AvgMoM = last3
+    .map((_, offset) => completedMoMPct(completedMonths.length - last3.length + offset))
+    .filter((value) => value !== null)
+    .reduce((sum, value, _, arr) => sum + value / arr.length, 0);
+  const trendState = last3AvgMoM > 3 ? { label: "▲ 성장", tone: "up" } : last3AvgMoM < -3 ? { label: "▼ 하락", tone: "down" } : { label: "Stable", tone: "flat" };
+
+  $("#entityTrendRecentLabel").textContent = trendState.label;
+  $("#entityTrendRecentLabel").className = `brand-monthly-trend-tone-${trendState.tone}`;
+  $("#entityTrendAvgAov").textContent = apiWon(avgAov);
+  $("#entityTrendMax").innerHTML = `${apiWon(maxRow.revenue)} <small>${esc(maxRow.key)}</small>`;
+  $("#entityTrendMin").innerHTML = `${apiWon(minRow.revenue)} <small>${esc(minRow.key)}</small>`;
+  $("#entityTrendState").textContent = trendState.label === "Stable" ? "Stable" : trendState.label;
+
+  // STEP61-2: monthlyReportTrendMonths()가 반환하는 개월 수는 선택 기간에 따라 1~12개로
+  // 달라진다(1월 선택 시 1개월치뿐). 직전 달이 없는 경우(lastIndex가 0) 증감 계산을 건너뛴다.
+  const lastCompletedIndex = completedMonths.length - 1;
+  const hasPrevCompletedMonth = lastCompletedIndex > 0;
+  const revenueDir = hasPrevCompletedMonth ? Math.sign(completedMoMPct(lastCompletedIndex) || 0) : 0;
+  const unitsDir = hasPrevCompletedMonth ? Math.sign(completedMonths[lastCompletedIndex].quantitySold - completedMonths[lastCompletedIndex - 1].quantitySold) : 0;
+  const aovDir = hasPrevCompletedMonth ? Math.sign(completedMonths[lastCompletedIndex].aov - completedMonths[lastCompletedIndex - 1].aov) : 0;
+  $("#entityTrendIndicators").innerHTML = [
+    entityTrendIndicatorHtml("Revenue", revenueDir),
+    entityTrendIndicatorHtml("Units", unitsDir),
+    entityTrendIndicatorHtml("AOV", aovDir)
+  ].join("");
+
+  if (insight) {
+    const lastRow = entityTrendMonths[entityTrendMonths.length - 1];
+    // STEP67-10G-4: 마지막 달이 진행 중이면(archiveStatus="live") "회복 시도/상승세"처럼
+    // 그 달의 흐름을 서술하는 절을 만들지 않는다(Phase H) — 완결 월 기준 최고점 문장만
+    // 남긴다. 마지막 달이 완결 상태면 기존 문장을 그대로 유지한다(회귀 없음).
+    insight.textContent = entityIsLiveMonthRow(lastRow)
+      ? `최근 3개월은 ${trendState.tone === "up" ? "안정적인 성장세" : trendState.tone === "down" ? "조정 국면" : "안정적인 흐름"}입니다. ${maxRow.label}이 최고점입니다.`
+      : `최근 3개월은 ${trendState.tone === "up" ? "안정적인 성장세" : trendState.tone === "down" ? "조정 국면" : "안정적인 흐름"}입니다. ${maxRow.label}이 최고점이며 ${lastRow.label}도 ${revenueDir >= 0 ? "상승세" : "회복 시도"}를 유지하고 있습니다.`;
+  }
+}
+
+// STEP57-4C: Entity Category(Category Intelligence). STEP58-3에서 Entity Intelligence
+// Framework 명명 규칙에 맞춰 brandCategory* → entityCategory*로 리네임(UI/동작 동일).
+// STEP57-4B-A 진단에서 확정된 ECOUNT 카테고리
+// 코드(BG=Bag/OT=Outer/ST=Top/BT=Bottom/AC=Accessory)만 사용한다 — 실제 상품분류 API는
+// 연결하지 않고, Hero KPI 카드의 매출(34,466,777원)/판매수량(592개)/재고(1,204개) 합계와
+// 정확히 일치하도록 카테고리별로 분해한 placeholder 값이다(실데이터 연결 시 이 배열만
+// API 응답으로 교체). 대표 SKU는 실제 상품명을 지어내지 않고 "대표 SKU" 고정 텍스트만 쓴다.
+const entityCategoryRows = [];
+const entityCategoryColors = { BG: "#171717", OT: "#6d6a62", ST: "#c76a35", BT: "#4fb082", AC: "#8d6ecf" };
+let entityCategoryMode = "revenue";
+
+// STEP59-4: Compare Mode UX Refinement. entityTrendCompareMonths와 동일한 패턴 —
+// entityCategoryRows와 같은 code 폭에 맞춘 순수 하드코딩 Placeholder 매출(계산/API
+// 연결 없음). 카테고리별 기준/비교 값을 코드별로 매칭하기 위한 용도로만 쓴다.
+const entityCategoryCompareRevenue = {};
+
+function entityCategoryStockStatus(stock) {
+  if (stock < 150) return { label: "Critical", color: "#a9423d" };
+  if (stock < 200) return { label: "Low", color: "#d7a642" };
+  if (stock < 260) return { label: "Healthy", color: "#206f54" };
+  return { label: "Watch", color: "#d7a642" };
+}
+
+function entityCategoryRevenueSharePct(code) {
+  const total = entityCategoryRows.reduce((sum, row) => sum + row.revenue, 0);
+  const row = entityCategoryRows.find((r) => r.code === code);
+  return total && row ? (row.revenue / total) * 100 : 0;
+}
+
+function entityCategoryShares() {
+  const key = entityCategoryMode === "revenue" ? "revenue" : "quantitySold";
+  const total = entityCategoryRows.reduce((sum, row) => sum + row[key], 0);
+  const maxValue = Math.max(1, ...entityCategoryRows.map((row) => row[key]));
+  return entityCategoryRows.map((row) => ({
+    ...row,
+    sharePct: total ? (row[key] / total) * 100 : 0,
+    barPct: (row[key] / maxValue) * 100
+  }));
+}
+
+function entityCategoryGradient() {
+  let cursor = 0;
+  return entityCategoryShares().map((row) => {
+    const start = cursor;
+    cursor += row.sharePct;
+    return `${entityCategoryColors[row.code]} ${start}% ${cursor}%`;
+  }).join(", ");
+}
+
+function entityCategoryProfileHtml(row) {
+  if (!row) return `
+    <div class="brand-customer-profile-head">
+      <div class="brand-customer-profile-heading"><strong>상품군 상세</strong><span class="clients-tooltip-badge brand-customer-type-badge">연결 대기</span></div>
+    </div>
+    <div class="entity-detail-empty"><p>공식 상품군 매핑이 연결되면 상세 지표를 표시합니다.</p></div>`;
+  const aov = row.quantitySold ? Math.round(row.revenue / row.quantitySold) : 0;
+  const stockStatus = entityCategoryStockStatus(row.stock);
+  const revenueSharePct = entityCategoryRevenueSharePct(row.code);
+  const momTone = row.mom > 0 ? "up" : row.mom < 0 ? "down" : "flat";
+  const momArrow = row.mom > 0 ? "▲" : row.mom < 0 ? "▼" : "—";
+  return `
+    <div class="brand-customer-profile-head">
+      <div class="brand-customer-profile-heading">
+        <strong>${esc(row.name)}</strong>
+        <span class="clients-tooltip-badge brand-customer-type-badge">${esc(row.code)}</span>
+      </div>
+    </div>
+    <div class="brand-customer-profile-rows">
+      <div class="brand-customer-profile-row"><span>매출</span><strong>${apiWon(row.revenue)}</strong></div>
+      <div class="brand-customer-profile-row"><span>매출 비중</span><strong>${revenueSharePct.toFixed(0)}%</strong></div>
+      <div class="brand-customer-profile-row"><span>판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></div>
+      <div class="brand-customer-profile-row"><span>객단가</span><strong>${apiWon(aov)}</strong></div>
+      <div class="brand-customer-profile-row"><span>대표 SKU</span><strong>대표 SKU</strong></div>
+    </div>
+    <div class="brand-customer-profile-rows">
+      <div class="brand-customer-profile-row"><span>재고 상태</span><strong style="color:${stockStatus.color}">${esc(stockStatus.label)}</strong></div>
+      <div class="brand-customer-profile-row"><span>전월</span><strong class="brand-hero-delta ${momTone}">${momArrow} ${Math.abs(row.mom)}%</strong></div>
+    </div>
+    <div class="brand-customer-profile-rows brand-mix-profile-ai-summary">
+      <p><span>AI Summary</span> ${esc(stockStatus.label)} 재고로 ${momTone === "up" ? "안정적인 성장세" : momTone === "down" ? "주의가 필요한 흐름" : "보합 흐름"}입니다. (Placeholder)</p>
+    </div>
+  `;
+}
+
+let entityCategoryProfileShowTimer = null;
+let entityCategoryProfileHideTimer = null;
+
+function cancelEntityCategoryProfileHide() {
+  clearTimeout(entityCategoryProfileHideTimer);
+  entityCategoryProfileHideTimer = null;
+}
+
+function scheduleEntityCategoryProfileHide() {
+  clearTimeout(entityCategoryProfileShowTimer);
+  cancelEntityCategoryProfileHide();
+  entityCategoryProfileHideTimer = setTimeout(() => {
+    const card = $("#entityCategoryProfileCard");
+    if (!card) return;
+    card.classList.remove("is-visible");
+    card.hidden = true;
+  }, 120);
+}
+
+function entityCategoryProfileNode() {
+  let card = $("#entityCategoryProfileCard");
+  if (!card) {
+    card = document.createElement("div");
+    card.id = "entityCategoryProfileCard";
+    card.className = "brand-customer-profile-card";
+    card.hidden = true;
+    card.addEventListener("mouseenter", cancelEntityCategoryProfileHide);
+    card.addEventListener("mouseleave", scheduleEntityCategoryProfileHide);
+    document.body.appendChild(card);
+  }
+  return card;
+}
+
+function positionEntityCategoryProfileCard(anchor, card) {
+  const margin = 16;
+  const gap = 14;
+  const rect = anchor.getBoundingClientRect();
+  const width = card.offsetWidth || 345;
+  const height = card.offsetHeight || 300;
+  const fitsRight = rect.right + gap + width + margin <= window.innerWidth;
+  let left = fitsRight ? rect.right + gap : rect.left - gap - width;
+  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin));
+  let top = rect.top - (height - rect.height) / 2;
+  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin));
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
+}
+
+function showEntityCategoryProfileCard(anchor, row) {
+  clearTimeout(entityCategoryProfileShowTimer);
+  entityCategoryProfileShowTimer = setTimeout(() => {
+    cancelEntityCategoryProfileHide();
+    const card = entityCategoryProfileNode();
+    card.innerHTML = entityCategoryProfileHtml(row);
+    card.hidden = false;
+    card.style.left = "0px";
+    card.style.top = "0px";
+    positionEntityCategoryProfileCard(anchor, card);
+    requestAnimationFrame(() => card.classList.add("is-visible"));
+  }, 180);
+}
+
+function hideEntityCategoryProfileCardSoon() {
+  scheduleEntityCategoryProfileHide();
+}
+
+function renderEntityCategorySection() {
+  const donut = $("#entityCategoryDonut");
+  if (!donut) return;
+  if (!entityCategoryRows.length) {
+    $("#entityCategoryEmpty")?.toggleAttribute("hidden", false);
+    $("#entityCategoryContent")?.toggleAttribute("hidden", false);
+    $("#entityCategoryToggle")?.toggleAttribute("hidden", false);
+    donut.style.background = "none";
+    if ($("#entityCategoryDonutCenter")) $("#entityCategoryDonutCenter").textContent = "--";
+    if ($("#entityCategoryList")) $("#entityCategoryList").innerHTML = `
+      <li data-category-unavailable tabindex="0">
+        <div class="brand-mix-row-head">
+          <span class="brand-mix-name">상품군 상세</span>
+          <strong>데이터 연결 대기</strong>
+        </div>
+      </li>`;
+    if ($("#entityCategoryCompareTopA")) $("#entityCategoryCompareTopA").textContent = "데이터 연결 대기";
+    if ($("#entityCategoryCompareTopB")) $("#entityCategoryCompareTopB").textContent = "데이터 연결 대기";
+    if ($("#entityCategoryInsight")) $("#entityCategoryInsight").innerHTML = `<p class="brand-customer-insight-main">공식 상품군 매핑 연결 대기</p><p class="brand-customer-insight-sub">UI와 상세 탐색 구조는 유지됩니다.</p>`;
+    return;
+  }
+  donut.style.background = `conic-gradient(${entityCategoryGradient()})`;
+
+  const centerLabel = $("#entityCategoryDonutCenter");
+  if (centerLabel) {
+    centerLabel.textContent = entityCategoryMode === "revenue"
+      ? apiWon(entityCategoryRows.reduce((sum, row) => sum + row.revenue, 0))
+      : `${apiNum(entityCategoryRows.reduce((sum, row) => sum + row.quantitySold, 0))}개`;
+  }
+
+  const shares = entityCategoryShares();
+  const list = $("#entityCategoryList");
+  if (list) {
+    list.innerHTML = shares.map((row) => {
+      const momTone = row.mom > 0 ? "up" : row.mom < 0 ? "down" : "flat";
+      const momArrow = row.mom > 0 ? "▲" : row.mom < 0 ? "▼" : "—";
+      // STEP59-4: Compare Mode UX Refinement. entityCategoryCompareRevenue(하드코딩
+      // Placeholder)를 code로 매칭해 기준/비교/차이를 한 줄에 함께 보여준다 — 기존
+      // TOP5 행 구조·클릭 단서(brand-mix-row-head)는 그대로 유지하고 아래에 한 줄만
+      // 추가한다.
+      const compareRevenue = entityCategoryCompareRevenue[row.code] || 0;
+      const revenueDiff = row.revenue - compareRevenue;
+      const diffTone = revenueDiff > 0 ? "up" : revenueDiff < 0 ? "down" : "flat";
+      const diffArrow = revenueDiff > 0 ? "▲" : revenueDiff < 0 ? "▼" : "—";
+      return `
+      <li data-category-code="${esc(row.code)}" tabindex="0">
+        <div class="brand-mix-row-head">
+          <span class="brand-mix-name">${esc(row.name)}</span>
+          <span class="brand-mix-pct">${row.sharePct.toFixed(0)}%</span>
+          <strong>${entityCategoryMode === "revenue" ? apiWon(row.revenue) : `${apiNum(row.quantitySold)}개`}</strong>
+          <span class="entity-compare-chip entity-compare-only brand-hero-delta ${momTone}">${momArrow} ${Math.abs(row.mom)}%</span>
+        </div>
+        <i class="brand-mix-bar"><b style="width:${Math.max(4, row.barPct)}%;background:${entityCategoryColors[row.code]}"></b></i>
+        <div class="entity-compare-category-row entity-compare-only">
+          <span class="entity-compare-mini-tag a">기준 ${apiWon(row.revenue)}</span>
+          <span class="entity-compare-mini-tag b">비교 ${apiWon(compareRevenue)}</span>
+          <span class="entity-compare-mini-tag diff ${diffTone}">차이 ${diffArrow} ${apiWon(Math.abs(revenueDiff))}</span>
+        </div>
+      </li>`;
+    }).join("");
+  }
+
+  // STEP59-4: Compare Mode UX Refinement. entityCategoryRows(기준)/entityCategoryCompareRevenue
+  // (비교, 하드코딩 Placeholder)에서 각각 1위만 뽑아 보여준다 — 실제 데이터 연결/새 계산
+  // 로직 없이 이미 있는 두 배열을 정렬해서 읽는 것뿐이다.
+  const topA = [...entityCategoryRows].sort((a, b) => b.revenue - a.revenue)[0];
+  const topBCode = Object.keys(entityCategoryCompareRevenue).sort((a, b) => entityCategoryCompareRevenue[b] - entityCategoryCompareRevenue[a])[0];
+  const topBRow = entityCategoryRows.find((row) => row.code === topBCode);
+  const topAEl = $("#entityCategoryCompareTopA");
+  if (topAEl && topA) topAEl.textContent = `${topA.name} ${apiWon(topA.revenue)}`;
+  const topBEl = $("#entityCategoryCompareTopB");
+  if (topBEl && topBRow) topBEl.textContent = `${topBRow.name} ${apiWon(entityCategoryCompareRevenue[topBCode])}`;
+
+  const insight = $("#entityCategoryInsight");
+  if (insight) {
+    const topRevenue = [...entityCategoryRows].sort((a, b) => b.revenue - a.revenue)[0];
+    const topRevenueSharePct = entityCategoryRevenueSharePct(topRevenue.code);
+    const worstMom = [...entityCategoryRows].sort((a, b) => a.mom - b.mom)[0];
+    insight.innerHTML = `
+      <p class="brand-customer-insight-main">${esc(topRevenue.name)} 비중이 브랜드 매출의 ${topRevenueSharePct.toFixed(0)}%입니다.</p>
+      <p class="brand-customer-insight-sub">${esc(worstMom.name)}은 전월대비 ${worstMom.mom < 0 ? "감소" : "증가"}했습니다. (Placeholder)</p>`;
+  }
+}
+
+// STEP59-1: Entity Full List Drawer. Customer/Category TOP5의 "전체 보기" 공용 Drawer —
+// 새 상태 변수를 최소화해 단일 객체(entityDrawerState)만 쓰고, Customer/Category 전용
+// open/close/render 함수를 따로 만들지 않는다(entityDrawerConfig로 타입별 차이만 분리).
+// 기존 clientsDetailModal(고객 상세 모달)과 동일한 fixed 오버레이/backdrop/포커스 트랩/
+// body 스크롤 잠금 패턴을 그대로 재사용하되, 위치만 중앙이 아니라 오른쪽 슬라이드로 바꿨다.
+// Drawer 내부에서는 기존 Quick Profile Card(hover)를 띄우지 않고 행 자체의 hover 강조만
+// 쓴다(요구사항 — Drawer 밖 hover 로직은 전혀 수정하지 않았으니 충돌하지 않는다). 실제
+// Client/Category Intelligence 상세 화면은 만들지 않고 기존 toast() 안내만 표시한다
+// (data-entity-type/data-entity-id 속성만 부여). Category 전체 목록은 STEP57-4B-A에서
+// 확정된 코드만 추가로 사용(entityCategoryRows 자체는 수정하지 않고 별도 배열로 확장 —
+// 기존 TOP5/Hero KPI 합계와 연동된 placeholder 숫자를 건드리지 않는다).
+const entityCategoryDrawerRows = [];
+
+let entityDrawerState = { type: null, open: false, query: "", sort: "" };
+// STEP60-1: Entity Navigation Foundation. Drawer가 "한 번 열리고 끝나는" 목록이 아니라
+// Brand→Category→SKU→Order→Client로 계속 이동할 수 있도록 방문 경로만 배열로 쌓는다.
+// entityDrawerState는 여전히 "현재 레벨"만 담당하고(기존 검색/정렬 로직 무변경), 이
+// 배열은 Breadcrumb 표시/뒤로가기 전용이다 — 새 렌더러를 타입별로 만들지 않는다.
+let entityDrawerStack = [];
+let entityDrawerPreviousFocus = null;
+
+function entityDrawerCustomerRowHtml(row, index) {
+  const aov = row.count ? Math.round(row.sales / row.count) : 0;
+  return `
+    <li class="entity-drawer-row" data-entity-type="client" data-entity-id="placeholder" tabindex="0">
+      <span class="entity-drawer-rank">${index + 1}</span>
+      <span class="entity-drawer-name">${esc(row.name)}</span>
+      <span class="clients-tooltip-badge brand-customer-type-badge" style="border-color:${entityCompositionColors[row.type]}22;color:${entityCompositionColors[row.type]}">${esc(entityCompositionTypeLabel[row.type] || "-")}</span>
+      <span class="entity-drawer-stat"><span>구매건수</span><strong>${apiNum(row.count)}건</strong></span>
+      <span class="entity-drawer-stat"><span>총매출</span><strong>${apiWon(row.sales)}</strong></span>
+      <span class="entity-drawer-stat"><span>객단가</span><strong>${apiWon(aov)}</strong></span>
+      <span class="entity-drawer-stat"><span>최근구매일</span><strong>${esc(row.lastPurchase)}</strong></span>
+    </li>`;
+}
+
+function entityDrawerCategoryRowHtml(row, index) {
+  const aov = row.quantitySold ? Math.round(row.revenue / row.quantitySold) : 0;
+  const stockStatus = entityCategoryStockStatus(row.stock);
+  const momTone = row.mom > 0 ? "up" : row.mom < 0 ? "down" : "flat";
+  const momArrow = row.mom > 0 ? "▲" : row.mom < 0 ? "▼" : "—";
+  return `
+    <li class="entity-drawer-row" data-entity-type="category" data-entity-id="${esc(row.code)}" data-entity-label="${esc(row.name)}" tabindex="0">
+      <span class="entity-drawer-rank">${index + 1}</span>
+      <span class="entity-drawer-name">${esc(row.name)}<i class="entity-drawer-code">${esc(row.code)}</i></span>
+      <span class="entity-drawer-stat"><span>매출</span><strong>${apiWon(row.revenue)}</strong></span>
+      <span class="entity-drawer-stat"><span>판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></span>
+      <span class="entity-drawer-stat"><span>객단가</span><strong>${apiWon(aov)}</strong></span>
+      <span class="entity-drawer-stat"><span>재고상태</span><strong style="color:${stockStatus.color}">${esc(stockStatus.label)}</strong></span>
+      <span class="entity-drawer-stat"><span>전월</span><strong class="brand-hero-delta ${momTone}">${momArrow} ${Math.abs(row.mom)}%</strong></span>
+    </li>`;
+}
+
+// STEP60-1: Entity Navigation Foundation. Category → SKU → Order → Client 탐색 체인의
+// SKU/Order 단계만 새로 추가한다(Client은 기존 'customer' 타입을 터미널 노드로 그대로
+// 재사용 — 새 데이터 구조를 만들지 않는다). 실제 카테고리별 상품 데이터 연결이 없으므로
+// 어떤 Category에서 진입해도 동일한 Placeholder SKU 3개를 보여준다(계산/실데이터 없음,
+// UI 흐름 검증이 목적).
+const entitySkuRows = [];
+
+function entityDrawerSkuRowHtml(row, index) {
+  const aov = row.quantitySold ? Math.round(row.revenue / row.quantitySold) : 0;
+  const momTone = row.mom > 0 ? "up" : row.mom < 0 ? "down" : "flat";
+  const momArrow = row.mom > 0 ? "▲" : row.mom < 0 ? "▼" : "—";
+  return `
+    <li class="entity-drawer-row" data-entity-type="sku" data-entity-id="${esc(row.id)}" data-entity-label="${esc(row.name)}" tabindex="0">
+      <span class="entity-drawer-rank">${index + 1}</span>
+      <span class="entity-drawer-name">${esc(row.name)}<i class="entity-drawer-code">${esc(row.id)}</i></span>
+      <span class="entity-drawer-stat"><span>매출</span><strong>${apiWon(row.revenue)}</strong></span>
+      <span class="entity-drawer-stat"><span>판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></span>
+      <span class="entity-drawer-stat"><span>객단가</span><strong>${apiWon(aov)}</strong></span>
+      <span class="entity-drawer-stat"><span>재고</span><strong>${apiNum(row.stock)}개</strong></span>
+      <span class="entity-drawer-stat"><span>전월</span><strong class="brand-hero-delta ${momTone}">${momArrow} ${Math.abs(row.mom)}%</strong></span>
+    </li>`;
+}
+
+// 어떤 SKU에서 진입해도 동일한 Placeholder 주문 3건(#24015/#24018/#24103)을 보여준다.
+// 고객명은 entityCompositionRows에 이미 존재하는 이름만 재사용해(새 인물 발명 금지)
+// Order → Client 진입 시 'customer' 타입(entityCompositionRows)과 자연스럽게 연결되게
+// 했다.
+const entityOrderRows = [];
+
+function entityDrawerOrderRowHtml(row, index) {
+  return `
+    <li class="entity-drawer-row" data-entity-type="order" data-entity-id="${esc(row.id)}" data-entity-label="${esc(row.clientName)}" tabindex="0">
+      <span class="entity-drawer-rank">${index + 1}</span>
+      <span class="entity-drawer-name">#${esc(row.id)}<i class="entity-drawer-code">${esc(row.date)}</i></span>
+      <span class="entity-drawer-stat"><span>고객</span><strong>${esc(row.clientName)}</strong></span>
+      <span class="clients-tooltip-badge brand-customer-type-badge" style="border-color:${entityCompositionColors[row.clientType]}22;color:${entityCompositionColors[row.clientType]}">${esc(entityCompositionTypeLabel[row.clientType] || "-")}</span>
+      <span class="entity-drawer-stat"><span>수량</span><strong>${apiNum(row.quantity)}개</strong></span>
+      <span class="entity-drawer-stat"><span>금액</span><strong>${apiWon(row.amount)}</strong></span>
+      <span class="entity-drawer-stat"><span>상태</span><strong>${esc(row.status)}</strong></span>
+    </li>`;
+}
+
+// STEP60-2B: Client Quick Profile. entityOrderRows(SKU 기준 "누가 샀나")와 반대 방향인
+// "이 고객이 최근 무엇을 샀나"용 Placeholder 3건 — 특정 고객별로 다르게 만들지 않고
+// 어떤 고객 카드를 열어도 동일한 값을 보여준다(STEP60-1의 "어떤 Category에서 진입해도
+// 동일한 SKU" 원칙과 동일). 브랜드명은 이미 쓰인 BONNAE/KIMYO/AAH MIDNIGHT만 재사용한다.
+const entityClientRecentPurchases = [];
+
+// STEP60-3: Client Workspace Foundation. 최근 주문 5건 — 위 3건을 그대로 펼치고, 이미
+// entityOverviewRows에 존재하는 브랜드명(SUNDAY OFF CLUB/CLUB CULTURE)만 재사용해 2건을
+// 더해 5건을 채운다 — 새 브랜드명을 지어내지 않는다.
+const entityClientWorkspaceOrders = [];
+
+function entityDrawerClientOrderRowHtml(row, index) {
+  return `
+    <li class="entity-drawer-row" data-entity-type="clientOrders" data-entity-id="${esc(row.product)}" data-entity-label="${esc(row.product)}" tabindex="0">
+      <span class="entity-drawer-rank">${index + 1}</span>
+      <span class="entity-drawer-name">${esc(row.product)}<i class="entity-drawer-code">${esc(row.brand)}</i></span>
+      <span class="entity-drawer-stat"><span>주문일</span><strong>${esc(row.date)}</strong></span>
+      <span class="entity-drawer-stat"><span>옵션</span><strong>${esc(row.variant)}</strong></span>
+      <span class="entity-drawer-stat"><span>수량</span><strong>${apiNum(row.quantity)}개</strong></span>
+      <span class="entity-drawer-stat"><span>금액</span><strong>${apiWon(row.amount)}</strong></span>
+    </li>`;
+}
+
+// STEP59-2: Brand Overview Full List Drawer. entityOverviewRows/entityOverviewShares/
+// entityOverviewHealthGrade/entityOverviewStockStatus는 파일 뒤쪽(STEP57-1/57-2)에 정의된
+// 함수 선언이라 호이스팅되므로 여기서 화살표 함수로 참조해도 안전하다(Drawer가 실제로 열릴
+// 때만 호출됨). "Brand E~F~G~H" 같은 임시 이름은 Drawer 목록에서 제외한다(실제 확인된
+// 브랜드만 표시 — 가짜 이름으로 행 수를 채우지 않는다). 매출 비중은 기존 entityOverviewShares()
+// 계산을 그대로 재사용해(전체 8개 기준 분모) 필터링 후에도 값이 왜곡되지 않게 한다.
+function entityDrawerOverviewRowHtml(row, index) {
+  const grade = entityOverviewHealthGrade(row.health);
+  const stockStatus = entityOverviewStockStatus(row.stock);
+  const momTone = row.mom > 0 ? "up" : row.mom < 0 ? "down" : "flat";
+  const momArrow = row.mom > 0 ? "▲" : row.mom < 0 ? "▼" : "—";
+  return `
+    <li class="entity-drawer-row" data-entity-type="brand" data-entity-id="${esc(row.name)}" tabindex="0">
+      <span class="entity-drawer-rank">${index + 1}</span>
+      <span class="entity-drawer-name">${esc(row.name)}<i class="entity-drawer-code" style="color:${grade.color}">${esc(grade.label)}</i></span>
+      <span class="entity-drawer-stat"><span>Health</span><strong>${esc(String(row.health))}</strong></span>
+      <span class="entity-drawer-stat"><span>매출</span><strong>${apiWon(row.revenue)}</strong></span>
+      <span class="entity-drawer-stat"><span>매출비중</span><strong>${row.sharePct.toFixed(0)}%</strong></span>
+      <span class="entity-drawer-stat"><span>판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></span>
+      <span class="entity-drawer-stat"><span>객단가</span><strong>${apiWon(row.aov)}</strong></span>
+      <span class="entity-drawer-stat"><span>재고상태</span><strong style="color:${stockStatus.color}">${esc(stockStatus.label)}</strong></span>
+      <span class="entity-drawer-stat"><span>Sell-through</span><strong>${row.sellThrough}%</strong></span>
+      <span class="entity-drawer-stat"><span>전월</span><strong class="brand-hero-delta ${momTone}">${momArrow} ${Math.abs(row.mom)}%</strong></span>
+    </li>`;
+}
+
+const entityDrawerConfig = {
+  customer: {
+    title: "전체 고객",
+    description: "선택한 브랜드를 구매한 고객 전체 목록",
+    searchPlaceholder: "고객명 검색",
+    sortOptions: [
+      { value: "count_desc", label: "구매 건수 높은 순" },
+      { value: "sales_desc", label: "매출 높은 순" },
+      { value: "aov_desc", label: "객단가 높은 순" },
+      { value: "recent_desc", label: "최근 구매일 순" }
+    ],
+    rows: () => entityCompositionRows,
+    matchesQuery: (row, query) => row.name.toLowerCase().includes(query),
+    sortFns: {
+      count_desc: (a, b) => b.count - a.count,
+      sales_desc: (a, b) => b.sales - a.sales,
+      aov_desc: (a, b) => (b.sales / (b.count || 1)) - (a.sales / (a.count || 1)),
+      recent_desc: (a, b) => (b.lastPurchase || "").localeCompare(a.lastPurchase || "")
+    },
+    rowHtml: entityDrawerCustomerRowHtml,
+    clickToast: "Client Intelligence 연결 예정"
+  },
+  category: {
+    title: "전체 상품군",
+    description: "선택한 브랜드의 상품군 전체 목록",
+    searchPlaceholder: "상품군명 또는 코드 검색",
+    sortOptions: [
+      { value: "revenue_desc", label: "매출 높은 순" },
+      { value: "qty_desc", label: "판매수량 높은 순" },
+      { value: "aov_desc", label: "객단가 높은 순" },
+      { value: "stock_desc", label: "재고 많은 순" },
+      { value: "mom_desc", label: "전월 증감 높은 순" }
+    ],
+    rows: () => entityCategoryDrawerRows,
+    matchesQuery: (row, query) => row.name.toLowerCase().includes(query) || row.code.toLowerCase().includes(query),
+    sortFns: {
+      revenue_desc: (a, b) => b.revenue - a.revenue,
+      qty_desc: (a, b) => b.quantitySold - a.quantitySold,
+      aov_desc: (a, b) => (b.revenue / (b.quantitySold || 1)) - (a.revenue / (a.quantitySold || 1)),
+      stock_desc: (a, b) => b.stock - a.stock,
+      mom_desc: (a, b) => b.mom - a.mom
+    },
+    rowHtml: entityDrawerCategoryRowHtml,
+    clickToast: "Category Intelligence 연결 예정",
+    // STEP60-1: Entity Navigation Foundation. next가 있으면 행 클릭 시 toast 대신
+    // 다음 Entity 레벨로 이동한다(pushEntityDrawerLevel). overview/customer처럼 next가
+    // 없는 타입은 기존 clickToast 동작을 그대로 유지한다(회귀 없음).
+    next: "sku"
+  },
+  sku: {
+    title: "SKU",
+    description: "선택한 상품군의 SKU 목록",
+    searchPlaceholder: "SKU명 검색",
+    sortOptions: [
+      { value: "revenue_desc", label: "매출 높은 순" },
+      { value: "qty_desc", label: "판매수량 높은 순" },
+      { value: "aov_desc", label: "객단가 높은 순" },
+      { value: "stock_desc", label: "재고 많은 순" },
+      { value: "mom_desc", label: "전월 증감 높은 순" }
+    ],
+    rows: () => entitySkuRows,
+    matchesQuery: (row, query) => row.name.toLowerCase().includes(query) || row.id.toLowerCase().includes(query),
+    sortFns: {
+      revenue_desc: (a, b) => b.revenue - a.revenue,
+      qty_desc: (a, b) => b.quantitySold - a.quantitySold,
+      aov_desc: (a, b) => (b.revenue / (b.quantitySold || 1)) - (a.revenue / (a.quantitySold || 1)),
+      stock_desc: (a, b) => b.stock - a.stock,
+      mom_desc: (a, b) => b.mom - a.mom
+    },
+    rowHtml: entityDrawerSkuRowHtml,
+    clickToast: "SKU Intelligence 연결 예정",
+    next: "order"
+  },
+  order: {
+    title: "Orders",
+    description: "선택한 SKU의 최근 주문 목록",
+    searchPlaceholder: "주문번호 또는 고객명 검색",
+    sortOptions: [
+      { value: "date_desc", label: "최근 주문일 순" },
+      { value: "amount_desc", label: "금액 높은 순" },
+      { value: "quantity_desc", label: "수량 높은 순" }
+    ],
+    rows: () => entityOrderRows,
+    matchesQuery: (row, query) => row.id.toLowerCase().includes(query) || row.clientName.toLowerCase().includes(query),
+    sortFns: {
+      date_desc: (a, b) => (b.date || "").localeCompare(a.date || ""),
+      amount_desc: (a, b) => b.amount - a.amount,
+      quantity_desc: (a, b) => b.quantity - a.quantity
+    },
+    rowHtml: entityDrawerOrderRowHtml,
+    clickToast: "Order Intelligence 연결 예정",
+    // Order → Client은 새 타입을 만들지 않고 기존 'customer'(entityCompositionRows)를
+    // 터미널 노드로 그대로 재사용한다.
+    next: "customer"
+  },
+  // STEP60-2B: Client Quick Profile의 "최근 주문 보기" 버튼이 여는 Recent Order Drawer.
+  // 기존 Entity Drawer 컴포넌트(같은 CSS/열기·닫기·포커스 트랩)를 그대로 재사용하고
+  // config 타입 하나만 추가한다 — 새 Drawer를 만들지 않는다. 상품명 클릭 시 next:"sku"로
+  // 기존 SKU Drawer로 그대로 이동한다("SKU Navigation" 요구사항).
+  clientOrders: {
+    title: "최근 주문",
+    description: "선택한 고객의 최근 주문 목록",
+    searchPlaceholder: "상품명 또는 브랜드 검색",
+    sortOptions: [
+      { value: "date_desc", label: "최근 주문일 순" },
+      { value: "amount_desc", label: "금액 높은 순" }
+    ],
+    rows: () => entityClientRecentPurchases,
+    matchesQuery: (row, query) => row.product.toLowerCase().includes(query) || row.brand.toLowerCase().includes(query),
+    sortFns: {
+      date_desc: (a, b) => (b.date || "").localeCompare(a.date || ""),
+      amount_desc: (a, b) => b.amount - a.amount
+    },
+    rowHtml: entityDrawerClientOrderRowHtml,
+    clickToast: "SKU Intelligence 연결 예정",
+    next: "sku"
+  },
+  overview: {
+    title: "전체 브랜드",
+    description: "전체 브랜드의 매출과 운영 상태를 비교합니다.",
+    searchPlaceholder: "브랜드명 검색",
+    sortOptions: [
+      { value: "revenue_desc", label: "매출 높은 순" },
+      { value: "share_desc", label: "매출 비중 높은 순" },
+      { value: "qty_desc", label: "판매수량 높은 순" },
+      { value: "aov_desc", label: "객단가 높은 순" },
+      { value: "sellthrough_desc", label: "Sell-through 높은 순" },
+      { value: "stock_desc", label: "재고 많은 순" },
+      { value: "mom_desc", label: "전월 성장률 높은 순" },
+      { value: "health_desc", label: "Health Score 높은 순" }
+    ],
+    rows: () => entityOverviewShares().filter((row) => !/^Brand [A-Z]$/.test(row.name)),
+    matchesQuery: (row, query) => row.name.toLowerCase().includes(query),
+    sortFns: {
+      revenue_desc: (a, b) => b.revenue - a.revenue,
+      share_desc: (a, b) => b.sharePct - a.sharePct,
+      qty_desc: (a, b) => b.quantitySold - a.quantitySold,
+      aov_desc: (a, b) => b.aov - a.aov,
+      sellthrough_desc: (a, b) => b.sellThrough - a.sellThrough,
+      stock_desc: (a, b) => b.stock - a.stock,
+      mom_desc: (a, b) => b.mom - a.mom,
+      health_desc: (a, b) => b.health - a.health
+    },
+    rowHtml: entityDrawerOverviewRowHtml,
+    clickToast: "Brand Intelligence 연결 예정"
+  }
+};
+
+function entityDrawerFocusableEls(panel) {
+  return [...panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => !el.hasAttribute("disabled") && el.getClientRects().length > 0);
+}
+
+function entityDrawerNode() {
+  let el = $("#entityDrawer");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "entityDrawer";
+    el.className = "entity-drawer-modal";
+    el.hidden = true;
+    el.innerHTML = `
+      <div class="entity-drawer-backdrop" data-entity-drawer-close></div>
+      <div class="entity-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="entityDrawerTitle" tabindex="-1">
+        <div class="entity-drawer-header">
+          <div>
+            <!-- STEP60-1: Entity Navigation Foundation. Breadcrumb는 Header 최상단에
+                 항상 노출한다(현재 Entity/기간/Compare 상태와 함께). 새 상태를 만들지
+                 않고 entityDrawerStack만 읽어서 그린다. -->
+            <div id="entityDrawerBreadcrumb" class="entity-drawer-breadcrumb"></div>
+            <strong id="entityDrawerTitle" class="entity-drawer-title"></strong>
+            <p id="entityDrawerDescription" class="entity-drawer-description"></p>
+            <p id="entityDrawerComparePeriod" class="entity-drawer-description entity-compare-only entity-drawer-compare-line"></p>
+          </div>
+          <button type="button" id="entityDrawerBackBtn" class="entity-drawer-back-btn" aria-label="이전 단계로">← 뒤로</button>
+          <button type="button" class="entity-drawer-close-btn" data-entity-drawer-close aria-label="닫기">×</button>
+        </div>
+        <div class="entity-drawer-toolbar">
+          <input id="entityDrawerSearch" type="search" class="entity-drawer-search" placeholder="검색">
+          <select id="entityDrawerSort" class="entity-drawer-sort"></select>
+        </div>
+        <ul id="entityDrawerBody" class="entity-drawer-body"></ul>
+        <div class="entity-drawer-footer" id="entityDrawerFooter"></div>
+        <!-- STEP60-2B: Related + Explore. 실제 연관 데이터 계산 없이 같은 Entity Drawer
+             체인(Related)과 실제 Workspace(Explore, Inventory/Monthly/Health)로 이동하는
+             탐색 단축키만 제공한다(Placeholder, 아이콘 + 짧은 텍스트, "Open" 문구 없음).
+             STEP60-1의 Next Question과 STEP60-2의 Workspace 5항목 섹션은 이 두 블록으로
+             통합/정리했다. -->
+        <div id="entityDrawerRelated" class="entity-drawer-related"></div>
+        <div id="entityDrawerExplore" class="entity-drawer-related"></div>
+      </div>`;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function entityDrawerFilteredSortedRows() {
+  const config = entityDrawerConfig[entityDrawerState.type];
+  if (!config) return [];
+  const query = entityDrawerState.query.trim().toLowerCase();
+  let rows = config.rows();
+  if (query) rows = rows.filter((row) => config.matchesQuery(row, query));
+  const sortFn = config.sortFns[entityDrawerState.sort];
+  if (sortFn) rows = [...rows].sort(sortFn);
+  return rows;
+}
+
+function renderEntityDrawerBody() {
+  const config = entityDrawerConfig[entityDrawerState.type];
+  const body = $("#entityDrawerBody");
+  const footer = $("#entityDrawerFooter");
+  if (!config || !body) return;
+  const rows = entityDrawerFilteredSortedRows();
+  const context = entityDrawerState.context || { sourceType: entityDrawerState.type, label: `${config.title} 데이터 연결 대기` };
+  body.innerHTML = rows.length
+    ? rows.map((row, index) => config.rowHtml(row, index)).join("")
+    : `<li class="entity-drawer-empty">데이터 연결 대기${config.next ? `<br><button type="button" class="entity-drawer-related-chip" data-entity-drawer-jump="${esc(config.next)}">${esc(entityDrawerConfig[config.next].title)} 구조 보기</button>` : ""}</li>`;
+  if (footer) footer.textContent = `${rows.length}건 표시 중`;
+}
+
+// STEP60-1: Entity Navigation Foundation. openEntityDrawer(첫 진입)/pushEntityDrawerLevel
+// (다음 Entity로 이동)/popEntityDrawerTo(Breadcrumb·뒤로가기)가 전부 이 함수 하나만
+// 공유한다 — "현재 레벨을 화면에 그린다"는 로직을 세 번 복제하지 않는다. 모달을
+// 열고/닫는 것과는 분리되어 있어 이미 열려 있는 Drawer 안에서 레벨만 바꿀 때도 그대로
+// 재사용된다.
+function applyEntityDrawerLevel() {
+  const config = entityDrawerConfig[entityDrawerState.type];
+  if (!config) return;
+  $("#entityDrawerTitle").textContent = config.title;
+  // STEP59-2: Drawer 전용 기간 state를 새로 만들지 않고 entityPeriodState를 그대로 읽어
+  // Header 설명에 기준 기간을 덧붙인다(Customer/Category/Overview 공통, 타입별 분기 없음).
+  $("#entityDrawerDescription").textContent = `${config.description} · 기준 기간: ${entityPeriodLabel()}`;
+  // STEP59-3/STEP59-4: Drawer 전용 비교 state를 새로 만들지 않고 entityCompareState/
+  // entityPeriodState/entityCompareTargetLabel()/entityCompareBrandA()·B()를 그대로
+  // 읽는다 — 표시 여부는 CSS(entity-compare-only)가 담당하므로 여기서는 텍스트만 채운다.
+  // 기준/비교 브랜드명을 함께 표시해 Compare Header와 동일한 표현 규칙을 유지한다.
+  const comparePeriodEl = $("#entityDrawerComparePeriod");
+  if (comparePeriodEl) {
+    comparePeriodEl.textContent = `기준: ${entityCompareBrandA()} · 비교: ${entityCompareBrandB()} · 현재 기간: ${entityPeriodLabel()} · 비교 대상 기간: ${entityCompareTargetLabel()}`;
+  }
+  const searchInput = $("#entityDrawerSearch");
+  if (searchInput) {
+    searchInput.value = "";
+    searchInput.placeholder = config.searchPlaceholder;
+  }
+  const sortSelect = $("#entityDrawerSort");
+  if (sortSelect) {
+    sortSelect.innerHTML = config.sortOptions.map((opt) => `<option value="${esc(opt.value)}">${esc(opt.label)}</option>`).join("");
+    sortSelect.value = entityDrawerState.sort;
+  }
+  renderEntityDrawerBody();
+  renderEntityDrawerBreadcrumb();
+  renderEntityDrawerRelated();
+  renderEntityDrawerExplore();
+  const backBtn = $("#entityDrawerBackBtn");
+  if (backBtn) backBtn.hidden = entityDrawerStack.length <= 1;
+  return searchInput;
+}
+
+// Breadcrumb 첫 칸은 이미 선택되어 있는 브랜드(entityCompareBrandA() — 새 state 없이
+// 재사용)이고, 그 뒤로 entityDrawerStack이 지나온 Entity 이름을 그대로 이어붙인다.
+// 마지막 칸(현재 위치)만 클릭 불가 텍스트이고, 나머지는 popEntityDrawerTo로 그 위치까지
+// 되돌아간다.
+function renderEntityDrawerBreadcrumb() {
+  const el = $("#entityDrawerBreadcrumb");
+  if (!el) return;
+  const crumbs = [{ label: entityCompareBrandA(), index: -1 }, ...entityDrawerStack.map((item, index) => ({ label: item.label, index }))];
+  el.innerHTML = crumbs.map((crumb, position) => {
+    const isLast = position === crumbs.length - 1;
+    const separator = position === 0 ? "" : `<span class="entity-drawer-breadcrumb-sep" aria-hidden="true">›</span>`;
+    const crumbHtml = isLast
+      ? `<span class="entity-drawer-breadcrumb-current">${esc(crumb.label)}</span>`
+      : `<button type="button" class="entity-drawer-breadcrumb-crumb" data-entity-drawer-breadcrumb-index="${crumb.index}">${esc(crumb.label)}</button>`;
+    return `${separator}${crumbHtml}`;
+  }).join("");
+}
+
+// STEP60-1/STEP60-2B: Related Entity. 실제 연관 계산 없이 같은 체인의 다른 타입으로
+// 바로 이동하는 탐색 단축키만 제공한다(Placeholder). STEP60-2B에서 목록을 SKU/Client/
+// Orders 3개로 좁히고(Category 제외) 아이콘 + 짧은 텍스트만 쓰도록 정리했다 — 어떤
+// 레벨에 있든 현재 타입만 제외하고 노출된다.
+const entityDrawerRelatedLabels = {
+  sku: { icon: "🧵", label: "SKU" },
+  customer: { icon: "👤", label: "Client" },
+  order: { icon: "🧾", label: "Orders" }
+};
+function renderEntityDrawerRelated() {
+  const el = $("#entityDrawerRelated");
+  if (!el) return;
+  const currentType = entityDrawerState.type;
+  const chips = Object.keys(entityDrawerRelatedLabels)
+    .filter((type) => type !== currentType)
+    .map((type) => `<button type="button" class="entity-drawer-related-chip" data-entity-drawer-jump="${type}">${entityDrawerRelatedLabels[type].icon} ${esc(entityDrawerRelatedLabels[type].label)}</button>`)
+    .join("");
+  el.innerHTML = chips ? `<p class="entity-drawer-related-title">Related</p><div class="entity-drawer-related-chips">${chips}</div>` : "";
+}
+
+// STEP60-2B: Explore. STEP60-2의 "Workspace"(Open Brand/Inventory/Monthly/Clients/Health,
+// Preview 문구 포함) 섹션과 STEP60-1의 "Next Question" 섹션을 이 하나로 통합/정리했다 —
+// Brand/Clients는 Related의 Client 칩과 중복이라 제거하고, 남은 Inventory/Monthly/Health만
+// 아이콘 + 짧은 텍스트로 보여준다("Open" 문구 금지). 이동 로직은 새로 만들지 않고 기존
+// openEntityWorkspace()/setActiveView()를 그대로 재사용한다.
+const entityWorkspaceRoutes = {
+  inventory: { icon: "📦", label: "Inventory", view: "InventoryOverview", routeHash: "inventory-overview" },
+  monthly: { icon: "📅", label: "Monthly", view: "Reports", routeHash: "monthly-report" },
+  health: { icon: "💚", label: "Health", view: null, routeHash: null }
+};
+
+function renderEntityDrawerExplore() {
+  const el = $("#entityDrawerExplore");
+  if (!el) return;
+  const chips = Object.entries(entityWorkspaceRoutes)
+    .map(([key, route]) => `<button type="button" class="entity-drawer-related-chip" data-entity-drawer-workspace="${key}">${route.icon} ${esc(route.label)}</button>`)
+    .join("");
+  el.innerHTML = `<p class="entity-drawer-related-title">Explore</p><div class="entity-drawer-related-chips">${chips}</div>`;
+}
+
+// Drawer를 닫고 실제 Workspace로 전환한다(기존 사이드바 nav 버튼과 동일하게
+// setActiveView()만 호출 — 새 라우팅 로직 없음). "health"는 라우트가 없으므로 Brand
+// Dashboard로 이동한 뒤 기존 Health Score 카드로 스크롤만 한다.
+function openEntityWorkspace(key, context = null) {
+  const route = entityWorkspaceRoutes[key];
+  if (!route) return;
+  closeEntityDrawer();
+  if (route.view) {
+    setActiveView(route.view, { routeHash: route.routeHash, entityContext: context });
+    return;
+  }
+  setActiveView("BrandDashboard", { routeHash: "brand-dashboard" });
+  requestAnimationFrame(() => {
+    $("[data-entity-hero-tooltip=\"score\"]")?.closest(".brand-hero-score-block")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
+
+function openEntityDrawer(type, context = null) {
+  const config = entityDrawerConfig[type];
+  if (!config) return;
+  entityDrawerState = { type, open: true, query: "", sort: config.sortOptions[0].value, context };
+  entityDrawerStack = [{ type, label: context?.label || config.title, context }];
+  const el = entityDrawerNode();
+  const searchInput = applyEntityDrawerLevel();
+  entityDrawerPreviousFocus = document.activeElement;
+  el.hidden = false;
+  document.body.classList.add("entity-drawer-open");
+  requestAnimationFrame(() => {
+    el.classList.add("is-visible");
+    searchInput?.focus();
+  });
+}
+
+// STEP60-1: 이미 열려 있는 Drawer 안에서 다음 Entity 레벨로 이동한다(새로고침 없음,
+// 모달을 다시 열지 않음). config.next가 없는 타입(예: customer)에서는 호출되지 않는다
+// (행 클릭 핸들러가 next 유무로 이미 분기함).
+function pushEntityDrawerLevel(type, label, context = null) {
+  const config = entityDrawerConfig[type];
+  if (!config) return;
+  const nextContext = context || entityDrawerState.context || { sourceType: entityDrawerState.type, label: label || config.title };
+  entityDrawerStack.push({ type, label: label || config.title, context: nextContext });
+  entityDrawerState = { type, open: true, query: "", sort: config.sortOptions[0].value, context: nextContext };
+  const searchInput = applyEntityDrawerLevel();
+  searchInput?.focus();
+}
+
+// Breadcrumb 클릭 시 그 위치까지 스택을 되돌린다(-1은 Brand 루트 — Drawer를 닫고 상단
+// Brand Selector로 포커스를 돌려준다. 실제로는 이미 선택된 브랜드이므로 별도 이동
+// 로직 없이 Drawer만 닫는다).
+function popEntityDrawerTo(index) {
+  if (index < 0) {
+    closeEntityDrawer();
+    return;
+  }
+  entityDrawerStack = entityDrawerStack.slice(0, index + 1);
+  const top = entityDrawerStack[entityDrawerStack.length - 1];
+  const config = entityDrawerConfig[top.type];
+  if (!config) return;
+  entityDrawerState = { type: top.type, open: true, query: "", sort: config.sortOptions[0].value, context: top.context || null };
+  const searchInput = applyEntityDrawerLevel();
+  searchInput?.focus();
+}
+
+// 닫힌 뒤에는 원래 "전체 보기" 버튼으로 포커스를 되돌린다(요구사항 — 포커스 복귀). 검색어/
+// 정렬은 entityDrawerState 자체를 리셋하고, 다음에 열 때 openEntityDrawer()가 입력값을
+// 새로 채워 넣으므로 DOM을 별도로 지우지 않아도 된다. entityDrawerStack도 함께 비워
+// 다음 Drawer가 항상 새 Breadcrumb으로 시작하게 한다.
+function closeEntityDrawer() {
+  const el = $("#entityDrawer");
+  if (!el || el.hidden) return;
+  el.classList.remove("is-visible");
+  el.hidden = true;
+  document.body.classList.remove("entity-drawer-open");
+  entityDrawerState = { type: null, open: false, query: "", sort: "" };
+  entityDrawerStack = [];
+  const toFocus = entityDrawerPreviousFocus;
+  entityDrawerPreviousFocus = null;
+  if (toFocus && typeof toFocus.focus === "function" && document.contains(toFocus)) toFocus.focus();
+}
+
+// STEP57-1: Entity Overview(Brand Mix Analysis). STEP58-3에서 Entity Intelligence
+// Framework 명명 규칙에 맞춰 brandMix* → entityOverview*로 리네임(UI/동작 동일).
+// 실제 co-purchase 집계 API 없이 상위 8개 브랜드
+// placeholder로 좌측 progress list + 우측 Summary/AI Insight를 구현한다. Brand Master
+// 미등록 브랜드명을 지어내지 않기 위해, 이미 이 대시보드(Entity Composition recentBrand)
+// 에서 사용해 온 BONNAE/SUNDAY OFF CLUB/AAH MIDNIGHT/CLUB CULTURE 4개와 이번 STEP
+// 프롬프트가 직접 준 이름만 쓰고, 나머지는 "Brand E~H" 같은 명백한 자리표시자로 채운다
+// (실존 여부를 알 수 없는 브랜드명을 새로 만들어내지 않는다).
+const entityOverviewRows = [
+  { name: "BONNAE", revenue: 42000000, quantitySold: 720, aov: 58300, stock: 340, sellThrough: 68, mom: 9, health: 82, rotation: 3.2 },
+  { name: "SUNDAY OFF CLUB", revenue: 34000000, quantitySold: 610, aov: 55700, stock: 210, sellThrough: 74, mom: 14, health: 88, rotation: 3.8 },
+  { name: "AAH MIDNIGHT", revenue: 28000000, quantitySold: 480, aov: 58900, stock: 410, sellThrough: 52, mom: -4, health: 61, rotation: 1.9 },
+  { name: "CLUB CULTURE", revenue: 22000000, quantitySold: 390, aov: 56400, stock: 280, sellThrough: 65, mom: 6, health: 75, rotation: 2.7 },
+  { name: "Brand E", revenue: 17000000, quantitySold: 300, aov: 56700, stock: 190, sellThrough: 60, mom: 2, health: 70, rotation: 2.4 },
+  { name: "Brand F", revenue: 13000000, quantitySold: 240, aov: 54200, stock: 260, sellThrough: 45, mom: -8, health: 42, rotation: 1.6 },
+  { name: "Brand G", revenue: 9000000, quantitySold: 160, aov: 56300, stock: 130, sellThrough: 58, mom: 3, health: 66, rotation: 2.1 },
+  { name: "Brand H", revenue: 7000000, quantitySold: 125, aov: 56000, stock: 95, sellThrough: 71, mom: 18, health: 79, rotation: 3.1 }
+];
+
+function entityOverviewShares() {
+  const total = entityOverviewRows.reduce((sum, row) => sum + row.revenue, 0);
+  const maxRevenue = Math.max(...entityOverviewRows.map((row) => row.revenue));
+  return entityOverviewRows.map((row) => ({
+    ...row,
+    sharePct: total ? (row.revenue / total) * 100 : 0,
+    barPct: maxRevenue ? (row.revenue / maxRevenue) * 100 : 0
+  }));
+}
+
+// STEP57-2: Health Score(0~100)를 5단계 등급으로, 재고 수량을 4단계 상태로 요약한다.
+// 둘 다 화면 표시용 분류일 뿐 재고/건강도 산식 자체(Business Logic)를 새로 만드는 것이
+// 아니다 — placeholder 필드(health/stock)에 대한 단순 구간 매핑이다.
+function entityOverviewHealthGrade(score) {
+  if (score >= 85) return { label: "Excellent", color: "#206f54" };
+  if (score >= 70) return { label: "Strong", color: "#4fb082" };
+  if (score >= 55) return { label: "Healthy", color: "#6d6a62" };
+  if (score >= 40) return { label: "Watch", color: "#d7a642" };
+  return { label: "Risk", color: "#a9423d" };
+}
+
+function entityOverviewStockStatus(stock) {
+  if (stock < 100) return { label: "Critical", color: "#a9423d" };
+  if (stock < 150) return { label: "Low", color: "#d7a642" };
+  if (stock < 300) return { label: "Healthy", color: "#206f54" };
+  return { label: "Watch", color: "#d7a642" };
+}
+
+function entityOverviewProfileHtml(row) {
+  const grade = entityOverviewHealthGrade(row.health);
+  const stockStatus = entityOverviewStockStatus(row.stock);
+  const momTone = row.mom > 0 ? "up" : row.mom < 0 ? "down" : "flat";
+  const momArrow = row.mom > 0 ? "▲" : row.mom < 0 ? "▼" : "—";
+  return `
+    <div class="brand-customer-profile-head">
+      <div class="brand-customer-profile-heading">
+        <strong>${esc(row.name)}</strong>
+        <span class="clients-tooltip-badge brand-customer-type-badge" style="border-color:${grade.color}22;color:${grade.color}">${esc(grade.label)}</span>
+      </div>
+      <div class="brand-customer-profile-vip-ring" style="--score:${Number(row.health) || 0}" aria-label="Health Score ${esc(String(row.health))}, ${esc(grade.label)}">
+        <div class="brand-customer-profile-vip-ring-inner">${esc(String(row.health))}</div>
+      </div>
+    </div>
+    <div class="brand-customer-profile-rows">
+      <div class="brand-customer-profile-row"><span>매출</span><strong>${apiWon(row.revenue)}</strong></div>
+      <div class="brand-customer-profile-row"><span>매출 비중</span><strong>${row.sharePct.toFixed(0)}%</strong></div>
+      <div class="brand-customer-profile-row"><span>판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></div>
+      <div class="brand-customer-profile-row"><span>객단가</span><strong>${apiWon(row.aov)}</strong></div>
+    </div>
+    <div class="brand-customer-profile-rows">
+      <div class="brand-customer-profile-row"><span>재고 상태</span><strong style="color:${stockStatus.color}">${esc(stockStatus.label)}</strong></div>
+      <div class="brand-customer-profile-row"><span>Sell-through</span><strong>${row.sellThrough}%</strong></div>
+      <div class="brand-customer-profile-row"><span>전월</span><strong class="brand-hero-delta ${momTone}">${momArrow} ${Math.abs(row.mom)}%</strong></div>
+    </div>
+    <div class="brand-customer-profile-rows brand-mix-profile-ai-summary">
+      <p><span>AI Summary</span> ${esc(grade.label)} 등급 · ${esc(stockStatus.label)} 재고로 ${momTone === "up" ? "안정적인 성장세" : momTone === "down" ? "주의가 필요한 흐름" : "보합 흐름"}입니다. (Placeholder)</p>
+    </div>
+  `;
+}
+
+let entityOverviewProfileShowTimer = null;
+let entityOverviewProfileHideTimer = null;
+
+function cancelEntityOverviewProfileHide() {
+  clearTimeout(entityOverviewProfileHideTimer);
+  entityOverviewProfileHideTimer = null;
+}
+
+function scheduleEntityOverviewProfileHide() {
+  clearTimeout(entityOverviewProfileShowTimer);
+  cancelEntityOverviewProfileHide();
+  entityOverviewProfileHideTimer = setTimeout(() => {
+    const card = $("#entityOverviewProfileCard");
+    if (!card) return;
+    card.classList.remove("is-visible");
+    card.hidden = true;
+  }, 120);
+}
+
+function entityOverviewProfileNode() {
+  let card = $("#entityOverviewProfileCard");
+  if (!card) {
+    card = document.createElement("div");
+    card.id = "entityOverviewProfileCard";
+    card.className = "brand-customer-profile-card brand-mix-profile-card";
+    card.hidden = true;
+    card.addEventListener("mouseenter", cancelEntityOverviewProfileHide);
+    card.addEventListener("mouseleave", scheduleEntityOverviewProfileHide);
+    document.body.appendChild(card);
+  }
+  return card;
+}
+
+function positionEntityOverviewProfileCard(anchor, card) {
+  const margin = 16;
+  const gap = 14;
+  const rect = anchor.getBoundingClientRect();
+  const width = card.offsetWidth || 400;
+  const height = card.offsetHeight || 320;
+  const fitsRight = rect.right + gap + width + margin <= window.innerWidth;
+  let left = fitsRight ? rect.right + gap : rect.left - gap - width;
+  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin));
+  let top = rect.top - (height - rect.height) / 2;
+  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin));
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
+}
+
+function showEntityOverviewProfileCard(anchor, row) {
+  clearTimeout(entityOverviewProfileShowTimer);
+  entityOverviewProfileShowTimer = setTimeout(() => {
+    cancelEntityOverviewProfileHide();
+    const card = entityOverviewProfileNode();
+    card.innerHTML = entityOverviewProfileHtml(row);
+    card.hidden = false;
+    card.style.left = "0px";
+    card.style.top = "0px";
+    positionEntityOverviewProfileCard(anchor, card);
+    requestAnimationFrame(() => card.classList.add("is-visible"));
+  }, 180);
+}
+
+function hideEntityOverviewProfileCardSoon() {
+  scheduleEntityOverviewProfileHide();
+}
+
+function renderEntityOverviewSection() {
+  const list = $("#entityOverviewList");
+  if (!list) return;
+  const rows = entityOverviewShares();
+  list.innerHTML = rows.map((row, index) => `
+    <li data-entity-overview-row="${index}" tabindex="0">
+      <div class="brand-mix-row-head">
+        <span class="brand-mix-name">${esc(row.name)}</span>
+        <span class="brand-mix-pct">${row.sharePct.toFixed(0)}%</span>
+        <strong>${apiWon(row.revenue)}</strong>
+      </div>
+      <i class="brand-mix-bar"><b style="width:${Math.max(4, row.barPct)}%"></b></i>
+    </li>`).join("");
+
+  const byHighest = (key) => [...rows].sort((a, b) => b[key] - a[key])[0];
+  const topGrowth = byHighest("mom");
+  const topRevenue = byHighest("revenue");
+  const topAov = byHighest("aov");
+  const topRotation = byHighest("rotation");
+  const topSellThrough = byHighest("sellThrough");
+
+  const summary = $("#entityOverviewSummary");
+  if (summary) {
+    summary.innerHTML = [
+      ["Top Growth", topGrowth.name, `▲ ${topGrowth.mom}%`],
+      ["Highest Revenue", topRevenue.name, apiWon(topRevenue.revenue)],
+      ["Highest AOV", topAov.name, apiWon(topAov.aov)],
+      ["Highest Rotation", topRotation.name, `${topRotation.rotation.toFixed(1)}회전`],
+      ["Highest Sell-through", topSellThrough.name, `${topSellThrough.sellThrough}%`]
+    ].map(([label, name, value]) => `
+      <div class="brand-monthly-trend-summary-row">
+        <span>${esc(label)}</span>
+        <strong>${esc(name)}<small>${esc(value)}</small></strong>
+      </div>`).join("");
+  }
+
+  const insight = $("#entityOverviewInsight");
+  if (insight) {
+    insight.textContent = `${topRevenue.name}이 매출 1위, ${topSellThrough.name}이 재고 회전과 판매 전환 모두 가장 우수합니다. (Placeholder)`;
+  }
+}
+
 function bind() {
   $("#instagramRefreshBtn")?.addEventListener("click", refreshInstagramMonthlyData);
+  $$("[data-refresh]").forEach((button) => {
+    button.addEventListener("click", () => refreshDataCenterCard(button.dataset.refresh));
+  });
+  $("[data-ecount-wizard-open]")?.addEventListener("click", openEcountWizard);
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-ecount-wizard-close]")) closeEcountWizard();
+  });
+  document.addEventListener("change", (event) => {
+    if (event.target.id === "ecountWizardFile") ecountWizardHandleFileChange(event);
+  });
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("#ecountWizardApplyBtn")) ecountWizardHandleApplyClick();
+  });
+  document.addEventListener("keydown", (event) => {
+    const modal = $("#ecountWizardModal");
+    if (!modal || modal.hidden || event.key !== "Escape") return;
+    event.preventDefault();
+    closeEcountWizard();
+  });
+  $$("[data-entity-hero-tooltip]").forEach((el) => {
+    el.addEventListener("mouseenter", () => showEntityHeroTooltip(el));
+    el.addEventListener("mouseleave", hideEntityHeroTooltip);
+    el.addEventListener("focus", () => showEntityHeroTooltip(el));
+    el.addEventListener("blur", hideEntityHeroTooltip);
+  });
+  $$("[data-entity-composition-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (entityCompositionMode === button.dataset.entityCompositionMode) return;
+      entityCompositionMode = button.dataset.entityCompositionMode;
+      $$("[data-entity-composition-mode]").forEach((btn) => btn.classList.toggle("active", btn === button));
+      // 값이 순간적으로 바뀌는 느낌을 줄이기 위한 짧은 opacity crossfade(200ms)만 적용한다 —
+      // conic-gradient 자체를 애니메이션하지 않는다(브라우저 간 보간이 불안정함).
+      const grid = $(".brand-customer-grid");
+      grid?.classList.add("is-updating");
+      renderEntityCompositionSection();
+      renderEntityCompareComposition();
+      requestAnimationFrame(() => grid?.classList.remove("is-updating"));
+    });
+  });
+  const entityCompositionDonutEl = $("#entityCompositionDonut");
+  entityCompositionDonutEl?.addEventListener("mousemove", (event) => {
+    const type = entityCompositionAngleToType(entityCompositionRanges(), event, entityCompositionDonutEl);
+    if (type !== entityCompositionActiveType) setEntityCompositionActiveType(type);
+    if (type) showEntityHeroTooltipContent(entityCompositionDonutEl, entityCompositionDonutTooltipHtml(type));
+    else hideEntityHeroTooltip();
+  });
+  entityCompositionDonutEl?.addEventListener("mouseleave", () => {
+    setEntityCompositionActiveType(null);
+    hideEntityHeroTooltip();
+  });
+  $("#entityCompositionLegend")?.addEventListener("mouseover", (event) => {
+    const li = event.target.closest("[data-entity-composition-type]");
+    if (!li) return;
+    setEntityCompositionActiveType(li.dataset.entityCompositionType);
+    showEntityHeroTooltipContent(li, entityCompositionDonutTooltipHtml(li.dataset.entityCompositionType));
+  });
+  $("#entityCompositionLegend")?.addEventListener("mouseout", (event) => {
+    if (!event.target.closest("[data-entity-composition-type]")) return;
+    setEntityCompositionActiveType(null);
+    hideEntityHeroTooltip();
+  });
+  $("#entityCompositionTop5")?.addEventListener("mouseover", (event) => {
+    const li = event.target.closest("[data-entity-composition-row]");
+    if (!li) return;
+    const row = sortedEntityCompositionRows()[Number(li.dataset.entityCompositionRow)];
+    if (row) showEntityCompositionProfileCard(li, row);
+  });
+  $("#entityCompositionTop5")?.addEventListener("mouseout", (event) => {
+    const li = event.target.closest("[data-entity-composition-row]");
+    if (!li) return;
+    if (event.relatedTarget?.closest?.("#entityCompositionProfileCard")) return;
+    hideEntityCompositionProfileCardSoon();
+  });
+  $("#entityCompositionTop5")?.addEventListener("focusin", (event) => {
+    const li = event.target.closest("[data-entity-composition-row]");
+    if (!li) return;
+    const row = sortedEntityCompositionRows()[Number(li.dataset.entityCompositionRow)];
+    if (row) showEntityCompositionProfileCard(li, row);
+  });
+  $("#entityCompositionTop5")?.addEventListener("focusout", (event) => {
+    if (!event.target.closest("[data-entity-composition-row]")) return;
+    hideEntityCompositionProfileCardSoon();
+  });
+  // STEP60-2B: Client Quick Profile. 카드 안의 모든 액션 버튼이 기존 함수(openEntityDrawer/
+  // openEntityWorkspace/toast)만 호출한다 — 전용 이동 로직을 새로 만들지 않는다. 액션을
+  // 누르면 hover 카드는 즉시 숨긴다(호버 아티팩트가 다른 화면 위에 남아있지 않도록).
+  document.addEventListener("click", (event) => {
+    const card = event.target.closest("#entityCompositionProfileCard");
+    if (!card) return;
+    const hideCard = () => {
+      card.classList.remove("is-visible");
+      card.hidden = true;
+    };
+    if (event.target.closest("[data-entity-drawer-quick-sku]")) {
+      hideCard();
+      openEntityDrawer("sku");
+      return;
+    }
+    if (event.target.closest("[data-entity-drawer-quick-orders]")) {
+      hideCard();
+      openEntityDrawer("clientOrders");
+      return;
+    }
+    const jumpBtn = event.target.closest("[data-entity-drawer-quick-jump]");
+    if (jumpBtn) {
+      hideCard();
+      openEntityDrawer(jumpBtn.dataset.entityDrawerQuickJump);
+      return;
+    }
+    const workspaceBtn = event.target.closest("[data-entity-drawer-quick-workspace]");
+    if (workspaceBtn) {
+      hideCard();
+      openEntityWorkspace(workspaceBtn.dataset.entityDrawerQuickWorkspace);
+      return;
+    }
+    if (event.target.closest("[data-entity-drawer-quick-client]")) {
+      hideCard();
+      openClientWorkspace(entityCompositionProfileActiveRow);
+    }
+  });
+  // STEP60-3: Client Workspace Foundation. Related는 같은 Entity Drawer 체인을 그대로
+  // 여는 것뿐이라(openEntityDrawer) Workspace는 닫지 않는다 — Drawer가 위에 겹쳐 열리고,
+  // Drawer를 닫으면 Workspace가 그대로 남아있다. Explore는 실제 페이지 전환이라 Workspace도
+  // 함께 닫는다(Entity Drawer의 Explore가 closeEntityDrawer()로 자기 자신을 닫는 것과 동일한
+  // 원칙). Breadcrumb의 Brand 칸과 닫기 버튼/배경 클릭은 전부 closeClientWorkspace() 하나만
+  // 호출한다.
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#clientWorkspace")) return;
+    if (event.target.closest("[data-client-workspace-close]") || event.target.closest("[data-client-workspace-breadcrumb-brand]")) {
+      closeClientWorkspace();
+      return;
+    }
+    const relatedBtn = event.target.closest("[data-client-workspace-related]");
+    if (relatedBtn) {
+      openEntityDrawer(relatedBtn.dataset.clientWorkspaceRelated);
+      return;
+    }
+    const workspaceBtn = event.target.closest("[data-client-workspace-workspace]");
+    if (workspaceBtn) {
+      closeClientWorkspace();
+      openEntityWorkspace(workspaceBtn.dataset.clientWorkspaceWorkspace);
+    }
+  });
+  // 닫기(ESC)/포커스 트랩은 clientsDetailModal/entityDrawer와 동일한 패턴을 그대로 따른다.
+  // Related에서 연 Entity Drawer가 Workspace 위에 겹쳐 있을 때는(§7 참고) 그 Drawer가
+  // "가장 위" 레이어이므로 ESC/Tab을 넘겨준다 — 이 리스너가 함께 반응하면 ESC 한 번에
+  // Drawer와 Workspace가 동시에 닫혀버린다(실측으로 발견, 의도한 "한 겹씩 닫힘"이 아님).
+  document.addEventListener("keydown", (event) => {
+    const modal = $("#clientWorkspace");
+    if (!modal || modal.hidden) return;
+    const drawerEl = $("#entityDrawer");
+    if (drawerEl && !drawerEl.hidden) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeClientWorkspace();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const panel = modal.querySelector(".client-workspace-panel");
+    if (!panel) return;
+    const focusable = clientWorkspaceFocusableEls(panel);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  renderEntityCompositionSection();
+  // STEP59-4C: Unified Entity Selector. 기존 Brand Selector 전용 리스너(트리거/바깥
+  // 클릭/ESC/검색/목록 클릭·키보드)를 instance 루프 하나로 승격한다 — primary/compare
+  // 둘 다 같은 코드 경로를 타므로 Selector 상호작용 로직이 두 벌 존재하지 않는다.
+  $("#brandSelectorTrigger")?.addEventListener("click", () => {
+    toggleEntitySelectorDropdown("primary");
+  });
+  $("#brandSelectorClearBtn")?.addEventListener("click", () => {
+    clearBrandSelectorSelection();
+  });
+  document.addEventListener("click", (event) => {
+    Object.entries(entitySelectorInstances).forEach(([key, inst]) => {
+      if (!entitySelectorState[key].open) return;
+      if (event.target.closest(inst.dom.wrapper)) return;
+      closeEntitySelectorDropdown(key);
+    });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    Object.entries(entitySelectorInstances).forEach(([key, inst]) => {
+      if (!entitySelectorState[key].open) return;
+      closeEntitySelectorDropdown(key);
+      $(inst.dom.trigger)?.focus();
+    });
+  });
+  Object.entries(entitySelectorInstances).forEach(([key, inst]) => {
+    $(inst.dom.search)?.addEventListener("input", (event) => {
+      entitySelectorState[key].query = event.target.value || "";
+      renderEntitySelectorAll(key);
+    });
+    [inst.dom.recent, inst.dom.all].forEach((listSelector) => {
+      $(listSelector)?.addEventListener("click", (event) => {
+        const li = event.target.closest("[data-entity-selector-name]");
+        if (li && !li.classList.contains("is-disabled")) inst.onSelect(li.dataset.entitySelectorName);
+      });
+      $(listSelector)?.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const li = event.target.closest("[data-entity-selector-name]");
+        if (!li || li.classList.contains("is-disabled")) return;
+        event.preventDefault();
+        inst.onSelect(li.dataset.entitySelectorName);
+      });
+    });
+  });
+  initBrandSelector();
+  refreshEntitySystemStatus();
+  initPromotionSelector();
+  renderEntityHeroState();
+  // STEP59-2: Entity Period Control Foundation. 브랜드 선택 상태와 무관하게 항상 동작
+  // 가능해야 하므로 renderEntityHeroState()와는 독립적으로 초기화한다.
+  $$("[data-entity-period-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (entityPeriodState.mode === btn.dataset.entityPeriodMode) return;
+      entityPeriodState.mode = btn.dataset.entityPeriodMode;
+      renderEntityPeriodControl();
+      // STEP61-2: "Period 변경 → Monthly 값 변경" — entityPeriodState를 바꾸는 세 지점
+      // (모드/연도/월) 모두에서 동일하게 재조회한다(브랜드 미선택이면 refreshEntityTrendMonths
+      // 내부에서 조용히 빈 배열로 정리됨).
+      refreshEntityTrendMonths();
+    });
+  });
+  document.addEventListener("change", (event) => {
+    if (event.target.id === "entityPeriodYear") {
+      entityPeriodState.year = Number(event.target.value);
+      renderEntityPeriodControl();
+      refreshEntityTrendMonths();
+    }
+    if (event.target.id === "entityPeriodMonth") {
+      entityPeriodState.month = Number(event.target.value);
+      renderEntityPeriodControl();
+      refreshEntityTrendMonths();
+    }
+  });
+  renderEntityPeriodControl();
+  // STEP59-3: Compare Mode UI. Period Control과 마찬가지로 브랜드 선택 상태와 무관하게
+  // 항상 동작한다. 토글 클릭은 entityCompareState.enabled만 뒤집고 renderEntityCompareUI()
+  // 하나만 호출한다(실데이터/증감 계산 없음).
+  $("#entityCompareToggle")?.addEventListener("click", () => {
+    entityCompareState.enabled = !entityCompareState.enabled;
+    renderEntityCompareUI();
+    refreshEntityTrendMonths();
+  });
+  // STEP59-4: Compare Header의 종료 버튼도 같은 state/같은 render 함수만 사용한다(종료
+  // 전용 로직을 따로 만들지 않음 — 토글 클릭과 완전히 동일한 2줄).
+  $("#entityCompareHeaderCloseBtn")?.addEventListener("click", () => {
+    entityCompareState.enabled = false;
+    renderEntityCompareUI();
+    refreshEntityTrendMonths();
+  });
+  $("#entityCompareTarget")?.addEventListener("change", renderEntityCompareUI);
+  // STEP67-8D: Comparison Brand A Local Selector. 기존에는 이 트리거가 상단 Primary
+  // Selector로 스크롤 후 그 드롭다운을 여는 방식이었다(STEP59-4B~STEP67-8D 중간
+  // 수정까지) — 사용자 Chrome QA에서 "버튼 바로 아래가 아니라 엉뚱한 곳이 열린다"는
+  // 문제로 반려됐다. "비교 브랜드" 트리거와 동일하게 자기 자신의 인스턴스
+  // (compareA)만 토글한다(별도 열기/닫기 로직 없음, 선택 시 실제 반영은 여전히
+  // compareA.onSelect → selectBrandSelectorName() 한 곳에서만 일어난다).
+  $("#entityCompareBrandATrigger")?.addEventListener("click", () => {
+    toggleEntitySelectorDropdown("compareA");
+  });
+  $("#entityCompareBrandBTrigger")?.addEventListener("click", () => {
+    toggleEntitySelectorDropdown("compare");
+  });
+  renderEntityCompareUI();
+  // STEP59-1: Entity Full List Drawer. 검색/정렬 input은 entityDrawerNode()가 처음 열릴
+  // 때만 DOM에 생성되므로(지연 생성) bind() 시점에 직접 addEventListener하면 리스너가
+  // 붙지 않는다 — ecountWizardFile과 동일하게 document 위임(id 매칭)으로 처리한다.
+  $("#entityCompositionDrawerBtn")?.addEventListener("click", () => openEntityDrawer("customer"));
+  $("#entityCategoryDrawerBtn")?.addEventListener("click", () => openEntityDrawer("category"));
+  $("#entityOverviewDrawerBtn")?.addEventListener("click", () => openEntityDrawer("overview"));
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-entity-drawer-close]")) closeEntityDrawer();
+  });
+  // STEP60-1: Entity Navigation Foundation. config.next가 있으면(category/sku/order)
+  // 행 클릭이 다음 Entity 레벨로 이동한다 — 없으면(customer/overview) 기존 toast
+  // 그대로다(회귀 없음). 새 클릭 핸들러를 타입별로 만들지 않고 한 곳에서 분기한다.
+  document.addEventListener("click", (event) => {
+    const row = event.target.closest(".entity-drawer-row");
+    if (!row) return;
+    const config = entityDrawerConfig[entityDrawerState.type];
+    if (!config) return;
+    if (config.next) pushEntityDrawerLevel(config.next, row.dataset.entityLabel, {
+      sourceType: row.dataset.entityContextSource || entityDrawerState.type,
+      label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title
+    });
+    else toast(config.clickToast);
+  });
+  // Breadcrumb 크럼(뒤로가기 포함) + Related Entity/Next Question 단축 이동은 전부
+  // popEntityDrawerTo/pushEntityDrawerLevel 두 함수만 호출한다(전용 로직 없음).
+  document.addEventListener("click", (event) => {
+    const crumb = event.target.closest("[data-entity-drawer-breadcrumb-index]");
+    if (crumb) {
+      popEntityDrawerTo(Number(crumb.dataset.entityDrawerBreadcrumbIndex));
+      return;
+    }
+    if (event.target.closest("#entityDrawerBackBtn")) {
+      popEntityDrawerTo(entityDrawerStack.length - 2);
+      return;
+    }
+    const jumpBtn = event.target.closest("[data-entity-drawer-jump]");
+    if (jumpBtn) {
+      const type = jumpBtn.dataset.entityDrawerJump;
+      if (type === entityDrawerState.type) {
+        toast("이미 보고 있는 화면입니다.");
+      } else if (entityDrawerConfig[type]) {
+        pushEntityDrawerLevel(type, jumpBtn.dataset.entityContextLabel || entityDrawerConfig[type].title, {
+          sourceType: jumpBtn.dataset.entityContextSource || entityDrawerState.type,
+          label: jumpBtn.dataset.entityContextLabel || entityDrawerState.context?.label || entityDrawerConfig[type].title
+        });
+      }
+      return;
+    }
+    // STEP60-2: Cross Entity Navigation. Next Question의 Inventory/Monthly 버튼과
+    // Workspace Navigation 섹션의 5개 버튼이 전부 이 한 줄(openEntityWorkspace)만
+    // 호출한다 — Workspace 전환 로직을 두 곳에 나눠 만들지 않는다.
+    const workspaceBtn = event.target.closest("[data-entity-drawer-workspace]");
+    if (workspaceBtn) {
+      openEntityWorkspace(workspaceBtn.dataset.entityDrawerWorkspace, {
+        sourceType: workspaceBtn.dataset.entityContextSource || entityDrawerState.type,
+        label: workspaceBtn.dataset.entityContextLabel || entityDrawerState.context?.label || entityDrawerConfig[entityDrawerState.type]?.title
+      });
+    }
+  });
+  document.addEventListener("input", (event) => {
+    if (event.target.id !== "entityDrawerSearch") return;
+    entityDrawerState.query = event.target.value || "";
+    renderEntityDrawerBody();
+  });
+  document.addEventListener("change", (event) => {
+    if (event.target.id !== "entityDrawerSort") return;
+    entityDrawerState.sort = event.target.value;
+    renderEntityDrawerBody();
+  });
+  // 닫기(ESC)/포커스 트랩은 clientsDetailModal과 동일한 패턴을 그대로 따른다.
+  document.addEventListener("keydown", (event) => {
+    const row = event.target.closest?.(".entity-drawer-row");
+    if (row && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      const config = entityDrawerConfig[entityDrawerState.type];
+      if (!config) return;
+      if (config.next) pushEntityDrawerLevel(config.next, row.dataset.entityLabel, {
+        sourceType: row.dataset.entityContextSource || entityDrawerState.type,
+        label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title
+      });
+      else toast(config.clickToast);
+      return;
+    }
+    const el = $("#entityDrawer");
+    if (!el || el.hidden) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeEntityDrawer();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const panel = el.querySelector(".entity-drawer-panel");
+    if (!panel) return;
+    const focusable = entityDrawerFocusableEls(panel);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  $("#entityTrendChart")?.addEventListener("mouseover", (event) => {
+    const point = event.target.closest("[data-entity-trend-point]");
+    if (!point) return;
+    point.classList.add("is-active");
+    showEntityHeroTooltipContent(point, entityTrendPointTooltipHtml(Number(point.dataset.entityTrendPoint)));
+  });
+  $("#entityTrendChart")?.addEventListener("mouseout", (event) => {
+    const point = event.target.closest("[data-entity-trend-point]");
+    if (!point) return;
+    point.classList.remove("is-active");
+    hideEntityHeroTooltip();
+  });
+  $("#entityTrendChart")?.addEventListener("focusin", (event) => {
+    const point = event.target.closest("[data-entity-trend-point]");
+    if (!point) return;
+    point.classList.add("is-active");
+    showEntityHeroTooltipContent(point, entityTrendPointTooltipHtml(Number(point.dataset.entityTrendPoint)));
+  });
+  $("#entityTrendChart")?.addEventListener("focusout", (event) => {
+    const point = event.target.closest("[data-entity-trend-point]");
+    if (!point) return;
+    point.classList.remove("is-active");
+    hideEntityHeroTooltip();
+  });
+  renderEntityTrendSection();
+  $$("[data-entity-category-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (entityCategoryMode === button.dataset.entityCategoryMode) return;
+      entityCategoryMode = button.dataset.entityCategoryMode;
+      $$("[data-entity-category-mode]").forEach((btn) => btn.classList.toggle("active", btn === button));
+      const grid = $(".brand-category-grid");
+      grid?.classList.add("is-updating");
+      renderEntityCategorySection();
+      requestAnimationFrame(() => grid?.classList.remove("is-updating"));
+    });
+  });
+  $("#entityCategoryList")?.addEventListener("mouseover", (event) => {
+    const li = event.target.closest("[data-category-code]");
+    const unavailable = event.target.closest("[data-category-unavailable]");
+    if (unavailable) return showEntityCategoryProfileCard(unavailable, null);
+    if (!li) return;
+    const row = entityCategoryRows.find((r) => r.code === li.dataset.categoryCode);
+    if (row) showEntityCategoryProfileCard(li, row);
+  });
+  $("#entityCategoryList")?.addEventListener("mouseout", (event) => {
+    const li = event.target.closest("[data-category-code], [data-category-unavailable]");
+    if (!li) return;
+    if (event.relatedTarget?.closest?.("#entityCategoryProfileCard")) return;
+    hideEntityCategoryProfileCardSoon();
+  });
+  $("#entityCategoryList")?.addEventListener("focusin", (event) => {
+    const li = event.target.closest("[data-category-code]");
+    const unavailable = event.target.closest("[data-category-unavailable]");
+    if (unavailable) return showEntityCategoryProfileCard(unavailable, null);
+    if (!li) return;
+    const row = entityCategoryRows.find((r) => r.code === li.dataset.categoryCode);
+    if (row) showEntityCategoryProfileCard(li, row);
+  });
+  $("#entityCategoryList")?.addEventListener("focusout", (event) => {
+    if (!event.target.closest("[data-category-code], [data-category-unavailable]")) return;
+    hideEntityCategoryProfileCardSoon();
+  });
+  renderEntityCategorySection();
+  $("#entityOverviewList")?.addEventListener("mouseover", (event) => {
+    const li = event.target.closest("[data-entity-overview-row]");
+    if (!li) return;
+    const row = entityOverviewShares()[Number(li.dataset.entityOverviewRow)];
+    if (row) showEntityOverviewProfileCard(li, row);
+  });
+  $("#entityOverviewList")?.addEventListener("mouseout", (event) => {
+    const li = event.target.closest("[data-entity-overview-row]");
+    if (!li) return;
+    if (event.relatedTarget?.closest?.("#entityOverviewProfileCard")) return;
+    hideEntityOverviewProfileCardSoon();
+  });
+  $("#entityOverviewList")?.addEventListener("focusin", (event) => {
+    const li = event.target.closest("[data-entity-overview-row]");
+    if (!li) return;
+    const row = entityOverviewShares()[Number(li.dataset.entityOverviewRow)];
+    if (row) showEntityOverviewProfileCard(li, row);
+  });
+  $("#entityOverviewList")?.addEventListener("focusout", (event) => {
+    if (!event.target.closest("[data-entity-overview-row]")) return;
+    hideEntityOverviewProfileCardSoon();
+  });
+  renderEntityOverviewSection();
   $("#refreshStoriesBtn")?.addEventListener("click", renderStoryInsights);
   // 같은 탭에서 이동한다 — Cafe24 로그인/동의 후 서버가 "/"로 리다이렉트하므로 그대로
   // 이 탭으로 돌아온다. (2026-07-08 Cafe24 재인증 흐름 개선)
@@ -11079,9 +16021,38 @@ function bind() {
       rerenderClientsDetailModalBody();
     }
   });
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-clients-detail-more-timeline]")) {
+      clientsDetailShowAllTimeline = true;
+      rerenderClientsDetailModalBody();
+    }
+  });
+  // STEP62-2: Purchase Timeline 항목 클릭 → 공용 Order Detail Drawer를 연다. dataset에 이미
+  // 담아 둔 값만 읽어 순수 데이터 객체를 만들고, Clients 상태(clientsDetailStore 등)는 전혀
+  // 참조하지 않는다(Drawer가 어느 화면에서 열렸는지 몰라도 되도록).
+  document.addEventListener("click", (event) => {
+    const item = event.target.closest("[data-clients-timeline-item]");
+    if (!item) return;
+    openOrderDetailDrawer(orderFromTimelineItemDataset(item.dataset));
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const item = event.target.closest("[data-clients-timeline-item]");
+    if (!item) return;
+    event.preventDefault();
+    openOrderDetailDrawer(orderFromTimelineItemDataset(item.dataset));
+  });
+  // STEP62-2: Order Detail Drawer가 clients-detail-modal 위에 열려 있으면 ESC는 Drawer가 먼저
+  // 처리해야 한다(STEP60-3 ESC 레이어링 가드와 동일한 원칙). 이 가드는 반드시 Order Detail
+  // Drawer 자신의 ESC-close 핸들러보다 먼저 등록해야 한다 — keydown 리스너는 등록 순서대로
+  // 실행되는데, Drawer가 먼저 스스로를 닫아 hidden을 true로 바꿔버리면 이 가드가 나중에 실행될
+  // 때는 이미 "닫혀 있음"으로 보여 가드가 무력화된다(실제로 이 순서로 두었다가 한 번의 ESC로
+  // 두 레이어가 함께 닫히는 버그를 발견해 순서를 바로잡았다).
   document.addEventListener("keydown", (event) => {
     const modal = $("#clientsDetailModal");
     if (!modal || modal.hidden) return;
+    const orderDrawerEl = $("#orderDetailDrawer");
+    if (orderDrawerEl && !orderDrawerEl.hidden) return;
     if (event.key === "Escape") {
       event.preventDefault();
       closeClientsDetailModal();
@@ -11089,6 +16060,34 @@ function bind() {
     }
     if (event.key !== "Tab") return;
     const panel = modal.querySelector(".clients-detail-panel");
+    if (!panel) return;
+    const focusable = clientsDetailFocusableEls(panel);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  // Order Detail Drawer 자신의 닫기(버튼/배경 클릭/ESC)와 Tab 포커스 트랩 — 위 가드보다 반드시
+  // 뒤에 등록해야 레이어링이 올바르게 동작한다(바로 위 주석 참고).
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-order-detail-drawer-close]")) closeOrderDetailDrawer();
+  });
+  document.addEventListener("keydown", (event) => {
+    const drawer = $("#orderDetailDrawer");
+    if (!drawer || drawer.hidden) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeOrderDetailDrawer();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const panel = drawer.querySelector(".entity-drawer-panel");
     if (!panel) return;
     const focusable = clientsDetailFocusableEls(panel);
     if (!focusable.length) return;
@@ -12333,6 +17332,10 @@ async function renderProductRegistryView() {
       status.className = "ad-status-banner good";
       status.textContent = `Read-only · Review Queue ${apiNum(productRegistryState.items.length)}개`;
     }
+    renderBetaFreshnessBadge("productRegistryFreshnessHeader", {
+      lastUpdated: registryResp.registry?.generatedAt,
+      note: "Phase 1 진단 전용 화면입니다. 승인/저장 기능이 없어 운영 데이터로 사용하지 않습니다."
+    });
     renderProductRegistrySummary(registryResp.registry, queueResp.reviewQueue);
     renderProductRegistryTabs(productRegistryState.items);
     renderProductRegistryFilterOptions(productRegistryState.items);
@@ -12748,6 +17751,10 @@ async function renderInventoryIntelligenceView() {
       status.className = "ad-status-banner good";
       status.textContent = itemCount ? `Read-only · 비교 대상 ${apiNum(itemCount)}개` : "비교 가능한 상품이 아직 없습니다.";
     }
+    renderBetaFreshnessBadge("inventoryIntelFreshnessHeader", {
+      lastUpdated: resp.generatedAt,
+      note: "Diagnostic Only 화면입니다. 재고를 직접 수정하지 않으며 운영 판단의 최종 근거로 사용하지 않습니다."
+    });
     const metaTarget = $("#inventoryIntelMeta");
     if (metaTarget) {
       const cafe24Source = resp.meta?.cafe24Source?.primary?.file || "-";

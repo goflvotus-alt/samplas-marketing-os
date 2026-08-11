@@ -1,12 +1,19 @@
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir, readdir as fsReaddir, rename, link, unlink } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir as fsReaddir, rename, link, unlink, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, extname, join, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { URL, fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
+import { refreshMonthlySales } from "./scripts/refresh-monthly-sales.mjs";
 import { enrichMetaProductBreakdown, applyRuntimeAutoEnrichment } from "./scripts/meta-product-registry-link.mjs";
-import { buildClientsOverview, handleIntelligenceRequest } from "./intelligence-service.mjs";
+import {
+  buildClientsOverview,
+  handleIntelligenceRequest,
+  classifyClientType,
+  classifyClientEntity,
+  isGiftSalesLine
+} from "./intelligence-service.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
 import {
@@ -41,6 +48,15 @@ import {
 } from "./scripts/cafe24-order-amount.mjs";
 import { normalizeBrandCode, normalizeBrandName, parseBrandAliases } from "./scripts/brand-engine.mjs";
 import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
+// STEP63-4: Brand Dashboard가 이미 갖고 있는 Cafe24 brand_code 직접 매칭(productBrandCode/
+// productBrandMapCode)은 절대 재해석하지 않는다 — 그 두 경로가 모두 실패해 "UNASSIGNED"로
+// 떨어진 상품에 한해서만 STEP63-2B Integrated Pipeline을 보조 조회로 사용한다(새 Resolver
+// 작성 금지, 기존 자산 재사용).
+import { resolveIdentity, loadResolverContext } from "./scripts/unified-identity-resolver.mjs";
+// STEP67 cross-brand-partial-period P1: 진행 중인 base 기간과 완결된 comparison 기간을
+// "같은 경과일"로 정규화하는 순수 날짜 계산만 담당(판매 계산 로직 없음, docs/reports/
+// NEXT-CROSS-BRAND-PARTIAL-PERIOD-plan.md §6 그대로 구현).
+import { resolveCrossBrandPeriodCutoff } from "./scripts/cross-brand-period-cutoff.mjs";
 
 const root = resolve(".");
 const outputDir = join(root, "outputs");
@@ -188,6 +204,27 @@ const server = isMainModule ? createServer(async (req, res) => {
         return json(res, { error: safeErrorMessage(error) }, error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
       }
     }
+    // STEP64-6: /api/cafe24/brands와 완전히 동일한 패턴(인증/에러 처리)으로 추가.
+    // 이 인스턴스가 Proxy(local_oauth 모드)로 배포되면 fetchCafe24CategoryList()/
+    // fetchCafe24BenefitList()가 자신의 direct-mode 분기를 타면서 이 경로를 실제로 서빙한다.
+    if (url.pathname === "/api/cafe24/categories") {
+      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      try {
+        const categories = await fetchCafe24CategoryList();
+        return json(res, { categories });
+      } catch (error) {
+        return json(res, { error: safeErrorMessage(error) }, error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
+      }
+    }
+    if (url.pathname === "/api/cafe24/benefits") {
+      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      try {
+        const benefits = await fetchCafe24BenefitList();
+        return json(res, { benefits });
+      } catch (error) {
+        return json(res, { error: safeErrorMessage(error) }, error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
+      }
+    }
     if (url.pathname === "/api/products/dashboard") {
       const since = url.searchParams.get("since") || `${currentMonth()}-01`;
       const until = url.searchParams.get("until") || todayKey();
@@ -206,6 +243,11 @@ const server = isMainModule ? createServer(async (req, res) => {
         return json(res, data);
       }
       const data = await readBrandMasterWithSeed();
+      const sourcing = await readBrandSourcingMaster();
+      data.brands = data.brands.map((brand) => ({
+        ...brand,
+        sourcing_type: sourcing.get(brand.brand_code) || null
+      }));
       return json(res, data);
     }
     if (url.pathname === "/api/diagnostics/brand-sales") {
@@ -364,6 +406,28 @@ const server = isMainModule ? createServer(async (req, res) => {
       const archive = await buildMonthlyArchive(month);
       return json(res, { ...archive, archiveStatus: "draft" });
     }
+    if (url.pathname === "/api/reports/monthly-comparison-cutoff") {
+      // STEP67 cross-brand-partial-period P1: base가 진행 중인 현재 월이면 comparison도
+      // 같은 경과일로 clamp해서 반환한다(docs/reports/NEXT-CROSS-BRAND-PARTIAL-PERIOD-plan.md).
+      // 이 endpoint는 아직 어떤 화면에도 배선되지 않는다(P2에서 진행) — 이번 STEP은 서버
+      // 계약만 구현하고 자체 테스트/직접 호출로만 검증한다.
+      if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
+      const baseMonth = url.searchParams.get("base");
+      const comparisonMonth = url.searchParams.get("compare");
+      if (!isValidMonthKey(baseMonth) || !isValidMonthKey(comparisonMonth)) {
+        return json(res, { error: "base and compare must be YYYY-MM" }, 400);
+      }
+      try {
+        const payload = await buildCrossBrandComparisonPeriodPayload({
+          baseMonth,
+          comparisonMonth,
+          referenceDate: todayKey()
+        });
+        return json(res, payload);
+      } catch (error) {
+        return json(res, { error: safeErrorMessage(error) }, 500);
+      }
+    }
     if (url.pathname === "/api/reports/monthly/archive") {
       if (req.method !== "POST") return json(res, { error: "POST만 지원합니다." }, 405);
       if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
@@ -387,6 +451,33 @@ const server = isMainModule ? createServer(async (req, res) => {
         const message = safeErrorMessage(error);
         const status = message.includes("Expected YYYY-MM") ? 400 : 500;
         return json(res, { error: message }, status);
+      }
+    }
+    const brandCustomerCompositionMatch = url.pathname.match(/^\/api\/brand-intelligence\/([^/]+)\/customer-composition$/);
+    if (brandCustomerCompositionMatch) {
+      if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
+      const brandCode = decodeURIComponent(brandCustomerCompositionMatch[1]);
+      const month = url.searchParams.get("month") || currentMonth();
+      if (!isValidMonthKey(month)) return json(res, { error: "Invalid month" }, 400);
+      try {
+        const monthStart = `${month}-01`;
+        const monthEnd = monthEndKey(month);
+        const commerceSource = await buildBrandSalesDiagnostics(monthStart, monthEnd);
+        const composition = await buildBrandCustomerComposition(brandCode, month, commerceSource);
+        return json(res, { ok: true, brandCode, month, ...composition });
+      } catch (error) {
+        return json(res, { ok: false, error: safeErrorMessage(error) }, 500);
+      }
+    }
+    if (url.pathname === "/api/ecount-sales/import") {
+      if (req.method !== "POST") return json(res, { error: "POST만 지원합니다." }, 405);
+      if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      try {
+        const data = await importEcountOfflineSalesUpload(req);
+        return json(res, data);
+      } catch (error) {
+        const message = safeErrorMessage(error);
+        return json(res, { error: message }, error.status || 400);
       }
     }
     if (url.pathname === "/api/diagnostics/product-join-report") {
@@ -486,6 +577,24 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (url.pathname === "/api/diagnostics/cafe24-product-check") {
       const data = await diagnoseCafe24ProductAccess();
       return json(res, data);
+    }
+    if (url.pathname === "/api/diagnostics/cafe24-promotion-source") {
+      const data = await diagnoseCafe24PromotionSourceAccess();
+      return json(res, data);
+    }
+    if (url.pathname.startsWith("/api/promotion/") && url.pathname.endsWith("/summary")) {
+      const prefix = "/api/promotion/";
+      const suffix = "/summary";
+      const categoryNo = decodeURIComponent(url.pathname.slice(prefix.length, url.pathname.length - suffix.length)).trim();
+      if (!/^\d+$/.test(categoryNo)) return json(res, { ok: false, error: "Invalid categoryNo" }, 400);
+      const since = url.searchParams.get("since") || `${currentMonth()}-01`;
+      const until = url.searchParams.get("until") || todayKey();
+      try {
+        const data = await buildPromotionSummary(categoryNo, since, until);
+        return json(res, { ok: true, ...data });
+      } catch (error) {
+        return json(res, { ok: false, error: safeErrorMessage(error) }, error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
+      }
     }
     if (url.pathname === "/api/intelligence/clients") {
       const since = url.searchParams.get("since") || `${currentMonth()}-01`;
@@ -1322,6 +1431,73 @@ async function readJsonBody(req) {
   return JSON.parse(text);
 }
 
+// STEP67-2B: ECOUNT Offline Refresh Wizard의 Data Apply를 실제로 구현한다. 새 XLSX
+// parser/장부 파이프라인을 만들지 않고, scripts/refresh-monthly-sales.mjs의 기존 정책
+// (당월=Snapshot만/과거월=Archive까지 재생성, FRESH/STALE 판정, lock)을 그대로 재사용한다.
+// 전송 방식은 multipart 대신 원본 바이트를 그대로 body로 받고 파일명은 헤더로 받는
+// 방식(기존 서버 구조와 가장 단순하게 맞음, 새 파서/의존성 불필요).
+const ECOUNT_UPLOAD_MAX_BYTES = 30 * 1024 * 1024;
+
+async function importEcountOfflineSalesUpload(req) {
+  const rawName = req.headers["x-ecount-file-name"];
+  let fileName = "";
+  try {
+    fileName = rawName ? decodeURIComponent(String(rawName)) : "";
+  } catch {
+    throw Object.assign(new Error("파일명을 읽을 수 없습니다."), { status: 400 });
+  }
+  if (!fileName) throw Object.assign(new Error("파일명이 필요합니다 (X-Ecount-File-Name 헤더)."), { status: 400 });
+  if (!/\.xlsx$/i.test(fileName)) throw Object.assign(new Error("XLSX 파일만 업로드할 수 있습니다."), { status: 400 });
+
+  const chunks = [];
+  let receivedBytes = 0;
+  for await (const chunk of req) {
+    receivedBytes += chunk.length;
+    if (receivedBytes > ECOUNT_UPLOAD_MAX_BYTES) {
+      throw Object.assign(new Error("파일이 너무 큽니다 (최대 30MB)."), { status: 400 });
+    }
+    chunks.push(chunk);
+  }
+  const buffer = Buffer.concat(chunks);
+  if (!buffer.length) throw Object.assign(new Error("빈 파일입니다."), { status: 400 });
+
+  const tempDir = join(workDir, ".ecount-upload-tmp", randomUUID());
+  await mkdir(tempDir, { recursive: true });
+  try {
+    const tempFile = join(tempDir, basename(fileName));
+    await writeFile(tempFile, buffer);
+    const results = await refreshMonthlySales(tempDir, {
+      workDir,
+      buildArchive: buildMonthlyArchive,
+      writeArchive: writeMonthlyArchive
+    });
+    const result = results[0];
+    if (!result) {
+      throw Object.assign(
+        new Error(`파일명에서 대상 월을 인식할 수 없습니다: ${fileName} (예: YYYY-MM.xlsx)`),
+        { status: 400 }
+      );
+    }
+    if (result.snapshot === "FAIL" || result.archive === "FAIL") {
+      throw Object.assign(new Error(result.reason || "XLSX 처리에 실패했습니다."), { status: 400 });
+    }
+    const snapshot = await readEcountOfflineSalesSnapshot(result.month, { workDir });
+    return {
+      month: result.month,
+      snapshotStatus: result.snapshot,
+      archiveStatus: result.archive,
+      reason: result.reason || null,
+      periodStart: snapshot?.periodStart || null,
+      periodEnd: snapshot?.periodEnd || null,
+      totalOfflineSales: snapshot?.totalOfflineSales ?? null,
+      totalLineCount: snapshot?.totalLineCount ?? null,
+      importedAt: snapshot?.importedAt || null
+    };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 async function readCafe24TokenRecord() {
   try {
     const text = await readFile(cafe24TokenStoreFile, "utf8");
@@ -1840,6 +2016,132 @@ async function fetchCafe24BrandList() {
   return brands;
 }
 
+// STEP64-5: Promotion Intelligence Source Integration. fetchCafe24BrandList()와 완전히
+// 동일한 이중 경로 패턴(Proxy 우선, 없으면 direct mode)을 그대로 따른다 — 별도 credential
+// 체계를 만들지 않고 기존 cafe24ProxyHeaders()/cafe24FetchJson()/ensureCafe24AccessToken()을
+// 재사용한다. Proxy 쪽에 /api/cafe24/categories, /api/cafe24/benefits 라우트가 아직 없으면
+// (이번 STEP 실측 결과 404) 이 함수는 그대로 에러를 던진다 — Proxy 배포 전까지는 정상이다.
+async function fetchCafe24CategoryList() {
+  if (env.CAFE24_PROXY_BASE_URL) {
+    const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
+    const url = new URL(`${base}/api/cafe24/categories`);
+    const response = await fetch(url, { headers: cafe24ProxyHeaders() });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      const error = new Error(`Cafe24 categories proxy가 JSON이 아닌 응답을 보냈습니다: ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    if (!response.ok || body.error) {
+      const error = new Error(body.error || body.message || `Cafe24 categories proxy error ${response.status}`);
+      error.status = response.status;
+      error.body = body;
+      throw error;
+    }
+    return body.categories || [];
+  }
+
+  const categories = [];
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/categories`);
+    url.searchParams.set("limit", String(pageSize));
+    url.searchParams.set("offset", String(offset));
+    const body = await cafe24FetchJson(url);
+    if (body.error) throw body.error;
+    const page = body.categories || [];
+    categories.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return categories;
+}
+
+// PART B 지시대로 필드명을 추측해 normalization하지 않는다 — Cafe24가 실제로 반환하는
+// body.benefits 원본 배열을 그대로 반환한다(가공은 diagnoseCafe24PromotionSourceAccess에서
+// 원본 필드를 그대로 노출하는 방식으로만 수행).
+async function fetchCafe24BenefitList() {
+  if (env.CAFE24_PROXY_BASE_URL) {
+    const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
+    const url = new URL(`${base}/api/cafe24/benefits`);
+    const response = await fetch(url, { headers: cafe24ProxyHeaders() });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      const error = new Error(`Cafe24 benefits proxy가 JSON이 아닌 응답을 보냈습니다: ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    if (!response.ok || body.error) {
+      const error = new Error(body.error || body.message || `Cafe24 benefits proxy error ${response.status}`);
+      error.status = response.status;
+      error.body = body;
+      throw error;
+    }
+    return body.benefits || [];
+  }
+
+  const benefits = [];
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/benefits`);
+    url.searchParams.set("limit", String(pageSize));
+    url.searchParams.set("offset", String(offset));
+    const body = await cafe24FetchJson(url);
+    if (body.error) throw body.error;
+    const page = body.benefits || [];
+    benefits.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return benefits;
+}
+
+// Category/Benefits Source가 실제로 연결됐는지 진단하는 읽기 전용 함수. Promotion UI/Master는
+// 만들지 않고, 원본 Cafe24 응답을 그대로 노출하는 runtime derived 진단 결과만 반환한다.
+async function diagnoseCafe24PromotionSourceAccess() {
+  const result = {
+    mode: env.CAFE24_PROXY_BASE_URL ? "proxy" : "direct",
+    category: { ok: false, count: 0, error: null, onlineGarage: null },
+    benefit: { ok: false, count: 0, error: null, namedMatches: [] }
+  };
+
+  try {
+    const categories = await fetchCafe24CategoryList();
+    result.category.ok = true;
+    result.category.count = categories.length;
+    const onlineGarage = categories.find((c) => {
+      const name = String(c.category_name || c.name || "").toUpperCase();
+      return name.includes("ONLINE GARAGE") || name.includes("ONLINE") && name.includes("GARAGE");
+    });
+    result.category.onlineGarage = onlineGarage
+      ? { category_no: onlineGarage.category_no ?? null, category_name: onlineGarage.category_name || onlineGarage.name || null }
+      : null;
+  } catch (error) {
+    result.category.error = { status: error.status || null, message: safeErrorMessage(error) };
+  }
+
+  try {
+    const benefits = await fetchCafe24BenefitList();
+    result.benefit.ok = true;
+    result.benefit.count = benefits.length;
+    const wanted = ["REMAGINE", "SANKUANZ", "TOGA", "YORI", "SRVC", "IYM"];
+    result.benefit.namedMatches = benefits
+      .filter((b) => {
+        const name = String(b.benefit_name || b.name || "").toUpperCase();
+        return wanted.some((w) => name.includes(w));
+      })
+      .map((b) => b);
+  } catch (error) {
+    result.benefit.error = { status: error.status || null, message: safeErrorMessage(error) };
+  }
+
+  return result;
+}
+
 async function fetchCafe24ManufacturerList() {
   const manufacturers = [];
   const pageSize = 100;
@@ -1945,6 +2247,7 @@ const CAFE24_PRODUCT_FETCH_CONCURRENCY = 3;
 const cafe24ProductCatalogFile = () => join(workDir, "cafe24-product-catalog.json");
 const productSalesHistoryFile = () => join(workDir, "product-sales-history.json");
 const brandMasterFile = () => join(workDir, "brand-master.json");
+const brandSourcingMasterFile = () => join(workDir, "brand-sourcing-master.json");
 const productBrandMapFile = () => join(workDir, "product-brand-map.json");
 const workDataUploadPaths = new Set([
   "brand-master.json",
@@ -2077,6 +2380,15 @@ async function readBrandMasterFile() {
     };
   } catch {
     return { updatedAt: null, brands: [] };
+  }
+}
+
+async function readBrandSourcingMaster() {
+  try {
+    const parsed = JSON.parse(await readFile(brandSourcingMasterFile(), "utf8"));
+    return new Map((parsed.brands || []).map((brand) => [brand.brand_code, brand.sourcing_type]));
+  } catch {
+    return new Map();
   }
 }
 
@@ -2795,7 +3107,29 @@ function matchCafe24OrdersToProducts(orders = [], catalog = [], context = {}) {
   };
 }
 
-function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new Map(), brandMasterResult = {}, productBrandMap = {}, manufacturerNameByCode = new Map()) {
+// STEP63-4: Cafe24 brand_code(및 productBrandMap 백필)가 모두 실패했을 때만 호출되는
+// 보조 조회다 — 이미 확정된 두 경로는 절대 재해석하지 않는다("기존 정확한 경로보다 새
+// Pipeline이 우선하여 데이터를 악화시키면 안 된다"). Priority 1(work/product-registry.json
+// verified:true+confirmed, cafe24ProductNo 매칭)만 채택한다: Priority 2(productName 기반)는
+// STEP63-1 Confidence Contract상 항상 CANDIDATE이고, 여기서의 brand_code는 매출을 특정
+// 브랜드 버킷에 귀속시키는 결정적 값이므로 사람 검토 없는 CANDIDATE로 새로 귀속시키지
+// 않는다(STEP63-3의 Clients 적용과 동일 원칙 — Identity Resolution ≠ Revenue Calculation,
+// 여기서도 매출 합산 로직 자체는 건드리지 않고 brand_code만 채운다).
+function resolveOnlineProductBrandCode(product, productNo, productBrandMap, identityResolverContext) {
+  const directCode = productBrandCode(product) || productBrandMapCode(productBrandMap, productNo);
+  if (directCode) return directCode;
+  if (!identityResolverContext) return "UNASSIGNED";
+  const identity = resolveIdentity(
+    { productName: productDisplayName(product), cafe24ProductNo: productNo },
+    identityResolverContext
+  );
+  if (identity.resolved && identity.brand?.confidence === "VERIFIED") {
+    return identity.brand.brandCode;
+  }
+  return "UNASSIGNED";
+}
+
+function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new Map(), brandMasterResult = {}, productBrandMap = {}, manufacturerNameByCode = new Map(), identityResolverContext = null) {
   const masterMap = brandMasterEntriesToMap(brandMasterResult.brands || []);
   const brandBuckets = new Map();
 
@@ -2811,7 +3145,7 @@ function aggregateCafe24BrandSalesByBrandCode(catalog = [], salesByProduct = new
     const hasSales = quantitySold > 0 || salesAmount > 0 || orderIds.size > 0;
     if (!hasSales) continue;
 
-    const brand_code = productBrandCode(product) || productBrandMapCode(productBrandMap, productNo) || "UNASSIGNED";
+    const brand_code = resolveOnlineProductBrandCode(product, productNo, productBrandMap, identityResolverContext);
     const master = masterMap.get(brand_code);
     const bucket = brandBuckets.get(brand_code) || {
       brand_code,
@@ -3082,6 +3416,12 @@ async function buildBrandSalesDiagnostics(since, until) {
     await logApiError("cafe24_manufacturer_seed", error, { stage: "manufacturer_list" });
     manufacturerNameByCode = new Map();
   }
+  // STEP63-4: work/brand-master.json, work/product-registry.json은 로컬 파일이라 새 API
+  // 호출 없이 읽을 수 있다. 이 요청 안에서 한 번만 로딩해 재사용한다(브랜드마다/상품마다
+  // 다시 읽지 않음). 온라인 카탈로그 2차 조회(Priority 2b)는 여기서는 필요 없다 — Brand
+  // Dashboard 자신이 이미 그 기간의 온라인 카탈로그이므로, UNASSIGNED로 남은 상품은
+  // Priority 1(Product Registry verified, cafe24ProductNo 매칭)만으로 충분하다.
+  const identityResolverContext = await loadResolverContext();
 
   if (env.CAFE24_PROXY_BASE_URL) {
     const [dashboard, ordersResult, brandMaster] = await Promise.all([
@@ -3099,14 +3439,14 @@ async function buildBrandSalesDiagnostics(since, until) {
     }
     const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
     const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
-    const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode)
+    const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode, identityResolverContext)
       .map((brand) => ({ ...brand, orderHistory: brandSalesInput.brandOrderHistory?.[brand.brand_code] || [] }));
     const brandNameByCode = new Map(brands.map((brand) => [brand.brand_code, brand.brand_name]));
     const soldProducts = brandSalesInput.catalog.map((product) => {
       const productNo = product.productNo === undefined || product.productNo === null ? "" : String(product.productNo);
       const sales = brandSalesInput.salesByProduct.get(product.productNo) || brandSalesInput.salesByProduct.get(productNo);
       if (!sales || Number(sales.quantity || 0) <= 0) return null;
-      const brand_code = productBrandCode(product) || productBrandMapCode(productBrandMap, productNo) || "UNASSIGNED";
+      const brand_code = resolveOnlineProductBrandCode(product, productNo, productBrandMap, identityResolverContext);
       return {
         productNo,
         productCode: product.productCode || product.product_code || "",
@@ -3190,14 +3530,14 @@ async function buildBrandSalesDiagnostics(since, until) {
   const catalog = catalogResult.products || [];
   const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
   const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
-  const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode)
+  const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode, identityResolverContext)
     .map((brand) => ({ ...brand, orderHistory: brandSalesInput.brandOrderHistory?.[brand.brand_code] || [] }));
   const brandNameByCode = new Map(brands.map((brand) => [brand.brand_code, brand.brand_name]));
   const soldProducts = brandSalesInput.catalog.map((product) => {
     const productNo = product.productNo === undefined || product.productNo === null ? "" : String(product.productNo);
     const sales = brandSalesInput.salesByProduct.get(product.productNo) || brandSalesInput.salesByProduct.get(productNo);
     if (!sales || Number(sales.quantity || 0) <= 0) return null;
-    const brand_code = productBrandCode(product) || productBrandMapCode(productBrandMap, productNo) || "UNASSIGNED";
+    const brand_code = resolveOnlineProductBrandCode(product, productNo, productBrandMap, identityResolverContext);
     return {
       productNo,
       productCode: product.productCode || product.product_code || "",
@@ -3264,6 +3604,109 @@ async function buildBrandSalesDiagnostics(since, until) {
     productBrandBackfill,
     brands,
     products: soldProducts
+  };
+}
+
+// STEP65-2: Promotion Summary API. buildBrandSalesDiagnostics와 동일한 재사용 체인
+// (buildProductDashboardWithCache -> buildBrandSalesInputsFromOrders ->
+// aggregateCafe24BrandSalesByBrandCode -> computeCafe24OrderTotals)을 그대로 쓰되, catalog를
+// categoryNo 멤버십으로 먼저 좁혀서 넘긴다. buildBrandSalesInputsFromOrders는 넘긴 catalog에
+// 없는 productNo도 "unassigned"로 salesByProduct에 합쳐 넣으므로, 이후 단계(brands/topProducts
+// 계산)에는 반드시 이 좁혀진 promotionCatalog만 다시 넘겨 promotion 범위 밖 매출이 섞이지
+// 않게 한다. Promotion은 저장하지 않는다 — 매 호출마다 다시 계산하는 순수 Derived Object
+// (STEP65-1 설계 그대로).
+async function buildPromotionSummary(categoryNo, since, until) {
+  const categoryNoStr = String(categoryNo);
+  const [dashboard, ordersResult, brandMaster] = await Promise.all([
+    buildProductDashboardWithCache(since, until, {}).catch((error) => ({ error: error.message, products: [] })),
+    fetchCafe24Orders(since, until, { limit: 500 }).catch((error) => ({ error: error.message, orders: [], totals: {} })),
+    readBrandMasterWithSeed()
+  ]);
+  const identityResolverContext = await loadResolverContext();
+  const catalog = dashboard.products || [];
+  const promotionCatalog = catalog.filter((product) => (product.categoryNos || []).map(String).includes(categoryNoStr));
+
+  let orders = ordersResult.orders || ordersResult.data || [];
+  if (!orders.length) {
+    const cachedOrders = await readCachedCafe24Orders(since, until);
+    orders = cachedOrders?.orders || cachedOrders?.data || [];
+  }
+
+  const { productBrandMap } = await backfillProductBrandMap(orders, catalog);
+  const brandSalesInput = buildBrandSalesInputsFromOrders(orders, promotionCatalog);
+
+  const brands = aggregateCafe24BrandSalesByBrandCode(promotionCatalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, new Map(), identityResolverContext);
+  const brandNameByCode = new Map(brands.map((brand) => [brand.brand_code, brand.brand_name]));
+
+  const soldProducts = promotionCatalog.map((product) => {
+    const productNo = product.productNo === undefined || product.productNo === null ? "" : String(product.productNo);
+    const sales = brandSalesInput.salesByProduct.get(product.productNo) || brandSalesInput.salesByProduct.get(productNo);
+    if (!sales || Number(sales.quantity || 0) <= 0) return null;
+    const brand_code = resolveOnlineProductBrandCode(product, productNo, productBrandMap, identityResolverContext);
+    return {
+      productNo,
+      productCode: product.productCode || product.product_code || "",
+      productName: product.productName || product.product_name || "상품명 없음",
+      brand_code,
+      brand_name: brandNameByCode.get(brand_code) || brand_code,
+      quantitySold: Number(sales.quantity || 0),
+      salesAmount: Number(sales.amount || 0),
+      sales: canonicalSalesObject(sales.canonicalGrossAmount, sales.canonicalPaidAmount, 0)
+    };
+  }).filter(Boolean).sort((left, right) => Number(right.salesAmount || 0) - Number(left.salesAmount || 0));
+
+  // brandSalesInput.salesByProduct에는 promotionCatalog 밖 상품(주문엔 있지만 카테고리 밖인
+  // "unassigned")도 섞여 있으므로, orderId는 반드시 promotionCatalog 상품의 sales에서만
+  // 모아야 한다 — 그래야 Revenue/OrderCount/AOV가 카테고리 범위를 벗어나지 않는다.
+  const matchedOrderIds = new Set();
+  for (const product of promotionCatalog) {
+    const productNo = product.productNo === undefined || product.productNo === null ? "" : String(product.productNo);
+    const sales = brandSalesInput.salesByProduct.get(product.productNo) || brandSalesInput.salesByProduct.get(productNo);
+    if (sales?.orderIds instanceof Set) {
+      for (const orderId of sales.orderIds) matchedOrderIds.add(orderId);
+    }
+  }
+  const canonicalOrders = orders.filter((order) => matchedOrderIds.has(String(order.order_id || order.orderId || order.order_no || order.id || "")));
+  const commerceTotals = computeCafe24OrderTotals(canonicalOrders);
+  const quantity = brands.reduce((sum, brand) => sum + Number(brand.quantitySold || 0), 0);
+  const revenue = commerceTotals.paidAmount || 0;
+  const orderCount = matchedOrderIds.size;
+  const averageOrderValue = orderCount ? revenue / orderCount : 0;
+
+  // promotionName은 Category Metadata(fetchCafe24CategoryList, STEP64-5/64-6)가 아직
+  // Proxy에 배포되지 않아 404일 수 있다 — 그 경우 null로 degrade한다(지시사항 그대로).
+  let promotionName = null;
+  try {
+    const categories = await fetchCafe24CategoryList();
+    const matched = categories.find((category) => String(category.category_no) === categoryNoStr);
+    if (matched) promotionName = matched.category_name || matched.name || null;
+  } catch (_error) {
+    promotionName = null;
+  }
+
+  return {
+    categoryNo: Number(categoryNo),
+    promotionName,
+    status: "UNKNOWN",
+    // since/until은 이미 이 함수의 입력 파라미터다 — 새 계산이 아니라 UI가 실제 조회
+    // 기간을 "기간 확인 중" 대신 정직하게 표시할 수 있도록 그대로 노출한다(STEP65-4).
+    since,
+    until,
+    productCount: promotionCatalog.length,
+    brandCount: brands.length,
+    revenue,
+    orderCount,
+    quantity,
+    averageOrderValue,
+    topBrands: brands.slice(0, 10).map((brand) => ({
+      brand_code: brand.brand_code,
+      brand_name: brand.brand_name,
+      salesAmount: brand.salesAmount,
+      quantitySold: brand.quantitySold,
+      orderCount: brand.orderCount,
+      soldProductCount: brand.soldProductCount
+    })),
+    topProducts: soldProducts.slice(0, 10)
   };
 }
 
@@ -3499,6 +3942,11 @@ export async function buildMonthlyArchive(month) {
   };
 }
 
+// STEP67-3: 오프라인 브랜드 귀속을 Resolver F 대신 공식 Unified Identity Pipeline으로
+// 일원화한다. identityContext는 요청마다 loadResolverContext()로 로딩하고, 2차(온라인
+// 카탈로그) 조회원은 Resolver F가 쓰던 것과 동일한 brandSales/productSales를 그대로
+// 재사용한다(새 데이터 소스 없음 — buildOnlineCatalogRegistry가 Brand Master에 실재하는
+// brand_code만 등록하므로 임의 canonical을 새로 만들지 않는다).
 async function buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSource) {
   const snapshot = await readEcountOfflineSalesSnapshot(monthStart.slice(0, 7), { workDir });
   const offlineLines = Array.isArray(snapshot?.salesLines)
@@ -3506,14 +3954,65 @@ async function buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSourc
     : Array.isArray(snapshot?.rows)
       ? snapshot.rows
       : [];
+  const identityContext = await loadResolverContext({
+    onlineCatalog: { brands: commerceSource?.brands || [], products: commerceSource?.products || [] }
+  });
   return mergeOfflineBrandSales({
     brandSales: commerceSource?.brands || [],
-    productSales: commerceSource?.products || [],
     onlinePaidAmount: Number(commerceSource?.totals?.paidAmount || 0),
     offlineLines,
     since: monthStart,
-    until: monthEnd
+    until: monthEnd,
+    identityContext
   });
+}
+
+// STEP67 cross-brand-partial-period P1: 정규화된(day-cutoff 포함 가능) 기간 하나에
+// 대해 브랜드별 매출/수량/주문 집계 하나를 만든다. buildMonthlyArchive()가 쓰는 무거운
+// Meta Ads/Instagram 계산은 전혀 포함하지 않는다 — Brand Comparison에 필요한 commerce
+// 집계만 buildBrandSalesDiagnostics()/buildMonthlyArchiveBrandSales()(둘 다 기존 함수,
+// 이미 임의 since/until을 지원함, 새 계산 로직 없음)로 재사용한다. 응답에는 raw
+// orderHistory 등 불필요한 원본 거래 데이터를 포함하지 않고, 이 endpoint가 실제로
+// 필요로 하는 6개 필드만 투영(project)한다(docs/reports/NEXT-CROSS-BRAND-PARTIAL-
+// PERIOD-plan.md §16 "Do NOT expose raw unnecessary transaction data").
+function crossBrandPeriodBrandRow(row) {
+  const revenue = Number(row.canonicalPaidAmount ?? row.salesAmount ?? 0);
+  const orderCount = Number(row.orderCount || 0);
+  return {
+    brand_code: row.brand_code,
+    brand_name: row.brand_name || row.brand_code,
+    revenue,
+    quantitySold: Number(row.quantitySold || 0),
+    orderCount,
+    aov: orderCount ? Math.round(revenue / orderCount) : 0,
+    onlineRevenue: Number(row.onlinePaidAmount || 0),
+    offlineRevenue: Number(row.offlineSalesAmount || 0)
+  };
+}
+
+async function buildCrossBrandPeriodWindow(range) {
+  const commerceSource = await buildBrandSalesDiagnostics(range.startDate, range.endDate);
+  const brandSales = await buildMonthlyArchiveBrandSales(range.startDate, range.endDate, commerceSource);
+  return brandSales.map(crossBrandPeriodBrandRow);
+}
+
+// STEP67 cross-brand-partial-period P1: base/comparison 두 기간을 한 번의 요청으로
+// 정규화해 반환한다. Brand A/B 필터링은 서버에서 하지 않는다(기존 /api/reports/monthly와
+// 동일하게 전체 브랜드 행을 반환 — 새 브랜드별 shortcut을 만들지 않는다, plan §9).
+// work/monthly/*.json 캐시를 전혀 읽거나 쓰지 않는다 — 직전 진단이 발견한 stale-cache
+// 문제(§13)를 구조적으로 회피한다. 이 STEP은 endpoint만 구현하며, 실제 Brand Intelligence
+// UI 배선은 P2에서 진행한다.
+async function buildCrossBrandComparisonPeriodPayload({ baseMonth, comparisonMonth, referenceDate }) {
+  const cutoff = resolveCrossBrandPeriodCutoff({ baseMonth, comparisonMonth, referenceDate });
+  const [base, comparison] = await Promise.all([
+    buildCrossBrandPeriodWindow(cutoff.base),
+    buildCrossBrandPeriodWindow(cutoff.comparison)
+  ]);
+  return {
+    cutoff,
+    base: { brandSales: base },
+    comparison: { brandSales: comparison }
+  };
 }
 
 async function enrichMonthlyArchiveBrandSales(archive, month) {
@@ -3526,20 +4025,94 @@ async function enrichMonthlyArchiveBrandSales(archive, month) {
     : Array.isArray(snapshot?.rows)
       ? snapshot.rows
       : [];
+  const identityContext = await loadResolverContext({
+    onlineCatalog: {
+      brands: archive?.commerce?.brandSales || [],
+      products: archive?.commerce?.productSales || []
+    }
+  });
   return {
     ...archive,
     commerce: {
       ...(archive.commerce || {}),
       brandSales: mergeOfflineBrandSales({
         brandSales: archive?.commerce?.brandSales || [],
-        productSales: archive?.commerce?.productSales || [],
         onlinePaidAmount: Number(archive?.commerce?.paidAmount || archive?.sales?.onlineSales?.paidAmount || 0),
         offlineLines,
         since: monthStart,
-        until: monthEnd
+        until: monthEnd,
+        identityContext
       }),
       brandSalesBasis: "online_offline"
     }
+  };
+}
+
+// STEP67-6: Brand Intelligence Customer Composition. 새 Customer Pipeline을 만들지 않고
+// 기존 자산만 조합한다 — 오프라인 판매 라인은 STEP67-3와 동일한 readEcountOfflineSalesSnapshot
+// + resolveIdentity(onlineCatalog 포함)로 canonical brand_code를 얻고, 고객 유형은 Clients
+// 화면이 이미 쓰는 classifyClientEntity/classifyClientType/isGiftSalesLine을 그대로
+// import해서 쓴다(로직 재구현 없음, export만 추가됨). intelligence-service.mjs의
+// buildClientsOverview()는 loadResolverContext()를 onlineCatalog 없이 호출해(1차 Brand
+// Master 직접 일치만 시도) 영문 alias가 없는 브랜드(Brand Master 이름이 한글뿐인 경우,
+// 예: CARNET ARCHIVE)를 놓친다는 것을 실측으로 확인했다 — Clients 화면 자체는 건드리지
+// 않고, 여기서는 STEP67-3가 이미 검증한 2차 온라인 카탈로그 조회까지 포함한 동일 패턴을
+// 별도로 적용한다.
+async function buildBrandCustomerComposition(brandCode, month, commerceSource) {
+  const monthStart = `${month}-01`;
+  const monthEnd = monthEndKey(month);
+  const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+  const lines = Array.isArray(snapshot?.salesLines)
+    ? snapshot.salesLines
+    : Array.isArray(snapshot?.rows)
+      ? snapshot.rows
+      : [];
+  const identityContext = await loadResolverContext({
+    onlineCatalog: { brands: commerceSource?.brands || [], products: commerceSource?.products || [] }
+  });
+  const typeBuckets = new Map();
+  const customerBuckets = new Map();
+  // STEP67-6: SKU(판매 상품 수)는 온라인(Cafe24 productSales, entityTrendMonths가 이미 센다)만으로는
+  // 불완전하다 — 오프라인 전용 브랜드는 온라인 판매 상품이 0개라 "0개"로 잘못 보일 수 있다.
+  // 여기서 이미 브랜드/기간을 필터링해 순회하는 김에 오프라인 distinct productName도 함께 센다
+  // (고객 식별 여부와 무관하게, 매장방문고객 등 포함 — 새 API 호출 없음).
+  const offlineProductNames = new Set();
+  for (const line of lines) {
+    const date = String(line?.date || "");
+    if (line?.isOfflineRevenue !== true || date < monthStart || date > monthEnd) continue;
+    if (isGiftSalesLine(line)) continue;
+    const identity = resolveIdentity({ productName: line.productName, brandGroup: line.brandGroup }, identityContext);
+    if (!identity.resolved || identity.brand.brandCode !== brandCode) continue;
+    const amount = Number(line.salesAmount);
+    if (!Number.isFinite(amount) || amount <= 0) continue; // Clients와 동일 정책: 환불/0원 라인은 "구매 건수"로 세지 않음
+    const productName = String(line.productName || "").trim();
+    if (productName) offlineProductNames.add(productName);
+    const rawName = String(line.customerName || "").trim();
+    if (!rawName) continue;
+    if (classifyClientEntity(rawName).entityType !== "client") continue;
+    const classification = classifyClientType(rawName);
+
+    const typeBucket = typeBuckets.get(classification.type) || { type: classification.type, count: 0, sales: 0 };
+    typeBucket.count += 1;
+    typeBucket.sales += amount;
+    typeBuckets.set(classification.type, typeBucket);
+
+    const customerBucket = customerBuckets.get(rawName) || {
+      name: rawName,
+      type: classification.type,
+      count: 0,
+      sales: 0,
+      lastPurchase: null
+    };
+    customerBucket.count += 1;
+    customerBucket.sales += amount;
+    if (!customerBucket.lastPurchase || date > customerBucket.lastPurchase) customerBucket.lastPurchase = date;
+    customerBuckets.set(rawName, customerBucket);
+  }
+  return {
+    typeStats: [...typeBuckets.values()].sort((a, b) => b.sales - a.sales),
+    topCustomers: [...customerBuckets.values()].sort((a, b) => b.sales - a.sales).slice(0, 10),
+    offlineProductCount: offlineProductNames.size
   };
 }
 
