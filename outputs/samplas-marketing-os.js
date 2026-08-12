@@ -13307,12 +13307,17 @@ async function refreshEntityTrendMonths() {
   // 이전 브랜드 내용을 그대로 보여주는 것보다 명시적으로 닫는 편이 안전하다.
   if (clientWorkspaceRow) closeClientWorkspace();
   if (entityDrawerState.open && entityDrawerState.type === "clientOrders") closeEntityDrawer();
+  // BATCH B: SKU Drawer가 열려 있는 상태로 브랜드/기간이 바뀌면 이전 브랜드의 SKU 목록이
+  // 그대로 보이지 않도록 닫는다(entitySkuRows는 rebuildEntitySkuRows가 곧 다시 채운다).
+  if (entityDrawerState.open && entityDrawerState.type === "sku") closeEntityDrawer();
   if (!brandIdentityState.brandCode) {
     entityTrendMonths = [];
     entityTrendCompareMonths = [];
     renderEntityTrendSection();
     renderEntityHeroKpiFromMonthlyState();
     renderEntityCompositionEmpty();
+    entitySkuSalesState = { brandCode: null, periodMonth: null, rows: [], fetchFailed: false };
+    rebuildEntitySkuRows();
     return;
   }
   const periodMonth = currentEntityPeriodMonthKey();
@@ -13400,6 +13405,12 @@ async function refreshEntityTrendMonths() {
   refreshEntityCustomerComposition(brandCode, periodMonth);
   refreshEntityCompareCustomerComposition(periodMonth);
   refreshEntityInventory(brandCode);
+  // BATCH B: SKU Sales. archive.commerce.productSales는 이미 위 archives 배열에 들어있다
+  // (새 fetch 없음) — 선택된 기간(periodMonth)의 archive 하나만 골라 브랜드로 필터링한다.
+  const periodIndex = months.indexOf(periodMonth);
+  const periodArchive = archives[periodIndex];
+  const periodProductSales = Array.isArray(periodArchive?.commerce?.productSales) ? periodArchive.commerce.productSales : [];
+  refreshEntitySkuSales(brandCode, periodMonth, periodProductSales, Boolean(periodArchive?.error));
   // BATCH A: Customer Purchase Detail. 브랜드와 무관하게 기간 단위로만 fetch하고(Phase 4),
   // 브랜드 필터링은 읽는 시점(entityClientPurchaseLinesFor)에 수행한다 — 여기서는 다른
   // 보조 fetch들과 동일하게 트리거만 공유한다(별도 트리거 추가 없음).
@@ -14150,10 +14161,27 @@ async function refreshEntityInventory(brandCode) {
   if (data?.error || data?.available === false || !row) {
     valueEl.textContent = "데이터 없음";
     noteEl.textContent = "canonical brand_code로 확인된 ECOUNT 재고 없음";
+    // BATCH B: brandKey를 못 찾았으면 SKU Stock도 알 수 없다 — 이전 브랜드 items가
+    // 남아있지 않도록 명시적으로 비운다(0 재고로 오해되지 않게 null 유지, Phase 9).
+    entityInventoryItemsState = { brandCode, brandKey: null, items: [], fetchFailed: Boolean(data?.error), ready: true };
+    rebuildEntitySkuRows();
     return;
   }
   valueEl.textContent = `${apiNum(row.knownStock || 0)}개`;
   noteEl.textContent = `현재 재고 · ECOUNT · ${exact ? "canonical brand_code" : "exact canonical name"} · SKU ${apiNum(row.totalSku || 0)}개 · 확인 필요 ${apiNum(row.negativeReviewCount || 0)}개`;
+  // BATCH B: 이 브랜드의 SKU별 재고 items를 받아온다. row.brandKey는 위에서 이미 정확히
+  // resolve된 ECOUNT 키(canonical brand_code 또는 "raw:..." 형태)이므로 같은 brandKey에
+  // 대해 rollup fetch와 별개로 딱 한 번만 더 요청한다(동일 brand 중복 요청 금지, Phase 10).
+  const itemsData = await getJson(intelligenceUrl(`/api/inventory/overview?brand=${encodeURIComponent(row.brandKey)}&limit=5000`), 15000);
+  if (seq !== entityInventoryRefreshSeq) return;
+  entityInventoryItemsState = {
+    brandCode,
+    brandKey: row.brandKey,
+    items: Array.isArray(itemsData?.items) ? itemsData.items : [],
+    fetchFailed: Boolean(itemsData?.error),
+    ready: true
+  };
+  rebuildEntitySkuRows();
 }
 
 // STEP61-3: Hero/KPI Data Binding. 새 계산 없이 entityTrendMonths(STEP61-2가 만든 Monthly
@@ -14831,24 +14859,173 @@ function entityDrawerCategoryRowHtml(row, index) {
 
 // STEP60-1: Entity Navigation Foundation. Category → SKU → Order → Client 탐색 체인의
 // SKU/Order 단계만 새로 추가한다(Client은 기존 'customer' 타입을 터미널 노드로 그대로
-// 재사용 — 새 데이터 구조를 만들지 않는다). 실제 카테고리별 상품 데이터 연결이 없으므로
-// 어떤 Category에서 진입해도 동일한 Placeholder SKU 3개를 보여준다(계산/실데이터 없음,
-// UI 흐름 검증이 목적).
+// 재사용 — 새 데이터 구조를 만들지 않는다). Category 자체는 여전히 source가 없으므로
+// 어떤 Category에서 진입해도 같은 (브랜드 전체) SKU 목록을 보여준다 — Category별 분리는
+// 하지 않는다(out of scope).
+//
+// BATCH B: entitySkuRows는 더 이상 Placeholder가 아니다. Sales는
+// archive.commerce.productSales(refreshEntityTrendMonths가 이미 받아온 Monthly 응답, 새
+// fetch 없음)를 brand_code로 필터링한 것이고, Stock은 refreshEntityInventory가 이미
+// resolve한 ECOUNT brandKey로 브랜드 전용 items를 받아온 것이다(역시 새 rollup fetch
+// 없음 — 같은 brandKey를 두 번 요청하지 않는다). 두 소스를 잇는 join key는 Product
+// Registry의 verified===true && status==="confirmed" 항목(cafe24.productNo →
+// ecount.matchedProducts[].prodCd)뿐이다 — productName 텍스트 매칭은 primary/fallback
+// 어느 쪽으로도 쓰지 않는다(join 실패 시 재고는 그냥 "-"로 남긴다, Phase 5 Case D).
+let entitySkuSalesState = { brandCode: null, periodMonth: null, rows: [], fetchFailed: false };
+let entityInventoryItemsState = { brandCode: null, brandKey: null, items: [], fetchFailed: false, ready: false };
+let entityProductRegistryEntriesPromise = null;
+let entitySkuJoinDiagnostics = { matchedStock: 0, unmatchedStock: 0, salesRows: 0 };
 const entitySkuRows = [];
+
+// Product Registry는 initBrandSelector()가 페이지 로드 시 이미 한 번 받아오지만 entries
+// 전체를 버린다(canonical name만 등록) — getSharedJson의 URL 캐시를 그대로 재사용하므로
+// 여기서 다시 호출해도 새 네트워크 요청은 발생하지 않는다.
+function loadEntityProductRegistryEntries() {
+  if (!entityProductRegistryEntriesPromise) {
+    entityProductRegistryEntriesPromise = getSharedJson("/api/intelligence/product-registry", 12000).then((data) => (
+      Array.isArray(data?.registry?.entries) ? data.registry.entries : Array.isArray(data?.entries) ? data.entries : []
+    ));
+  }
+  return entityProductRegistryEntriesPromise;
+}
+
+// BATCH B — Phase 5 join: verified+confirmed 항목의 cafe24.productNo가 정확히 일치할
+// 때만 그 항목의 ecount.matchedProducts[].prodCd로 현재 브랜드 재고 items를 찾는다.
+// 일치하는 registry 항목이 없거나, 있어도 그 prodCd가 이 브랜드 재고 items에 없으면
+// (Case D) 재고를 알 수 없는 것으로 남긴다 — 0으로 합성하지 않는다.
+function entitySkuStockFor(productNo, registryEntries, inventoryItems) {
+  const entry = registryEntries.find((item) => (
+    item?.verified === true && item?.status === "confirmed" && String(item?.cafe24?.productNo || "") === String(productNo || "")
+  ));
+  if (!entry) return { stock: null, matched: false };
+  const codes = new Set((entry.ecount?.matchedProducts || []).map((p) => p?.prodCd).filter(Boolean));
+  if (!codes.size) return { stock: null, matched: false };
+  const matchedItems = inventoryItems.filter((item) => codes.has(item?.prodCd));
+  if (!matchedItems.length) return { stock: null, matched: false };
+  return { stock: matchedItems.reduce((sum, item) => sum + Number(item?.stockQuantity || 0), 0), matched: true };
+}
+
+// Case C 전용 역인덱스: verified+confirmed 항목의 ecount.matchedProducts[].prodCd →
+// registry 항목. 이 브랜드 재고 items 중 이 브랜드의 이번 기간 온라인 판매 목록에는
+// 없지만 registry로 confirmed 연결된 것이 있으면(재고는 있는데 이번 기간 온라인 판매가
+// 없는 SKU) 그 항목도 행으로 보여준다 — productName 매칭이 아니라 여전히 같은
+// verified+confirmed prodCd 연결만 사용한다.
+function entityRegistryEntryByProdCd(registryEntries) {
+  const map = new Map();
+  registryEntries.forEach((entry) => {
+    if (entry?.verified !== true || entry?.status !== "confirmed") return;
+    (entry.ecount?.matchedProducts || []).forEach((p) => { if (p?.prodCd) map.set(p.prodCd, entry); });
+  });
+  return map;
+}
+
+// Sales(refreshEntityTrendMonths)와 Stock(refreshEntityInventory)은 서로 다른 비동기
+// 흐름이라 각자 끝나는 시점에 이 함수를 호출해 entitySkuRows를 다시 만든다 — 브랜드가
+// 아직 두 상태 모두에서 같은 값으로 안 맞춰졌으면(예: 방금 브랜드를 바꿔 Sales만 먼저
+// 도착) Stock은 "조회 중" 취급(Case B와 동일하게 "-")하고 Sales가 도착하지 않았으면
+// 목록 자체를 비운다 — 이전 브랜드 SKU가 남아 있지 않게 한다(Phase 9 stale guard).
+async function rebuildEntitySkuRows() {
+  const brandCode = brandIdentityState.brandCode;
+  entitySkuRows.length = 0;
+  if (!brandCode || entitySkuSalesState.brandCode !== brandCode || entitySkuSalesState.fetchFailed) {
+    entitySkuJoinDiagnostics = { matchedStock: 0, unmatchedStock: 0, salesRows: 0 };
+    refreshOpenEntitySkuDrawer();
+    return;
+  }
+  const stockReady = entityInventoryItemsState.ready && entityInventoryItemsState.brandCode === brandCode;
+  const inventoryItems = stockReady ? entityInventoryItemsState.items : [];
+  const registryEntries = stockReady ? await loadEntityProductRegistryEntries() : [];
+  if (brandIdentityState.brandCode !== brandCode || entitySkuSalesState.brandCode !== brandCode) return; // 대기 중 브랜드가 또 바뀌었으면 이 결과는 버린다.
+  let matchedStock = 0;
+  let unmatchedStock = 0;
+  const rows = entitySkuSalesState.rows.map((p) => {
+    let stock = null;
+    let stockMatched = false;
+    if (stockReady) {
+      const result = entitySkuStockFor(p.productNo, registryEntries, inventoryItems);
+      stock = result.stock;
+      stockMatched = result.matched;
+      if (stockMatched) matchedStock += 1; else unmatchedStock += 1;
+    }
+    return {
+      productNo: p.productNo,
+      productCode: p.productCode || p.productNo,
+      productName: p.productName || "-",
+      revenue: canonicalPaidAmount(p),
+      quantitySold: Number(p.quantitySold || 0),
+      orderCount: Number(p.orderCount || 0),
+      salesVelocityPerDay: Number(p.salesVelocityPerDay || 0),
+      stock,
+      stockMatched,
+      stockUnavailable: !stockReady || entityInventoryItemsState.fetchFailed
+    };
+  });
+  // Case C: 재고는 있지만 이번 기간 온라인 판매가 없는(=productSales에 없는) SKU.
+  // 이번 기간 온라인 판매가 0건이라는 것은 실제로 확인된 사실(그 기간 productSales
+  // 응답에 이 productNo가 없음)이므로 null이 아니라 real 0으로 표시한다 — fetch 실패와
+  // 다르다(Phase 9: 확인된 진짜 0은 그대로 0).
+  const salesProductNos = new Set(entitySkuSalesState.rows.map((p) => String(p?.productNo || "")));
+  const caseCRows = [];
+  if (stockReady) {
+    const byProdCd = entityRegistryEntryByProdCd(registryEntries);
+    const seen = new Set();
+    inventoryItems.forEach((item) => {
+      const entry = byProdCd.get(item?.prodCd);
+      if (!entry) return;
+      const productNo = String(entry.cafe24?.productNo || "");
+      if (!productNo || salesProductNos.has(productNo) || seen.has(productNo)) return;
+      seen.add(productNo);
+      const result = entitySkuStockFor(productNo, registryEntries, inventoryItems);
+      if (result.matched) matchedStock += 1;
+      caseCRows.push({
+        productNo,
+        productCode: entry.cafe24?.productCode || productNo,
+        productName: entry.cafe24?.productName || item.productName || "-",
+        revenue: 0,
+        quantitySold: 0,
+        orderCount: 0,
+        salesVelocityPerDay: 0,
+        stock: result.stock,
+        stockMatched: result.matched,
+        stockUnavailable: false,
+        stockOnly: true
+      });
+    });
+  }
+  entitySkuJoinDiagnostics = { matchedStock, unmatchedStock, salesRows: rows.length, stockOnlyRows: caseCRows.length };
+  entitySkuRows.push(...rows, ...caseCRows);
+  refreshOpenEntitySkuDrawer();
+}
+
+// BATCH B: Sales(archive.commerce.productSales, 이미 fetch됨)만 이 브랜드/기간으로
+// 필터링해 저장한다 — Stock 조인은 rebuildEntitySkuRows()가 별도로 수행한다.
+function refreshEntitySkuSales(brandCode, periodMonth, productSales, fetchFailed) {
+  entitySkuSalesState = {
+    brandCode,
+    periodMonth,
+    fetchFailed,
+    rows: fetchFailed ? [] : productSales.filter((p) => String(p?.brand_code || "").trim() === brandCode)
+  };
+  return rebuildEntitySkuRows();
+}
+
+// fetch가 끝났을 때 이미 열려 있는 SKU Drawer가 있으면 최신 데이터로 다시 그린다
+// (refreshOpenEntityCustomerDetailViews와 동일한 stale-data 방지 패턴).
+function refreshOpenEntitySkuDrawer() {
+  if (entityDrawerState.open && entityDrawerState.type === "sku") renderEntityDrawerBody();
+}
 
 function entityDrawerSkuRowHtml(row, index) {
   const aov = row.quantitySold ? Math.round(row.revenue / row.quantitySold) : 0;
-  const momTone = row.mom > 0 ? "up" : row.mom < 0 ? "down" : "flat";
-  const momArrow = row.mom > 0 ? "▲" : row.mom < 0 ? "▼" : "—";
+  const stockText = row.stock == null ? "-" : `${apiNum(row.stock)}개`;
   return `
-    <li class="entity-drawer-row" data-entity-type="sku" data-entity-id="${esc(row.id)}" data-entity-label="${esc(row.name)}" tabindex="0">
+    <li class="entity-drawer-row" data-entity-type="sku" data-entity-id="${esc(row.productNo)}" data-entity-label="${esc(row.productName)}" tabindex="0">
       <span class="entity-drawer-rank">${index + 1}</span>
-      <span class="entity-drawer-name">${esc(row.name)}<i class="entity-drawer-code">${esc(row.id)}</i></span>
-      <span class="entity-drawer-stat"><span>매출</span><strong>${apiWon(row.revenue)}</strong></span>
-      <span class="entity-drawer-stat"><span>판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></span>
-      <span class="entity-drawer-stat"><span>객단가</span><strong>${apiWon(aov)}</strong></span>
-      <span class="entity-drawer-stat"><span>재고</span><strong>${apiNum(row.stock)}개</strong></span>
-      <span class="entity-drawer-stat"><span>전월</span><strong class="brand-hero-delta ${momTone}">${momArrow} ${Math.abs(row.mom)}%</strong></span>
+      <span class="entity-drawer-name">${esc(row.productName)}<i class="entity-drawer-code">${esc(row.productCode)}</i></span>
+      <span class="entity-drawer-stat"><span>온라인 매출</span><strong>${apiWon(row.revenue)}</strong></span>
+      <span class="entity-drawer-stat"><span>온라인 판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></span>
+      <span class="entity-drawer-stat"><span>온라인 객단가</span><strong>${apiWon(aov)}</strong></span>
+      <span class="entity-drawer-stat"><span>현재 재고</span><strong>${stockText}</strong></span>
     </li>`;
 }
 
@@ -15056,23 +15233,21 @@ const entityDrawerConfig = {
   },
   sku: {
     title: "SKU",
-    description: "선택한 상품군의 SKU 목록",
-    searchPlaceholder: "SKU명 검색",
+    description: "선택한 브랜드의 온라인 판매 SKU 목록 (매출/수량/주문 · 재고는 항상 현재 시점 스냅샷)",
+    searchPlaceholder: "상품명 또는 상품코드 검색",
     sortOptions: [
-      { value: "revenue_desc", label: "매출 높은 순" },
-      { value: "qty_desc", label: "판매수량 높은 순" },
-      { value: "aov_desc", label: "객단가 높은 순" },
-      { value: "stock_desc", label: "재고 많은 순" },
-      { value: "mom_desc", label: "전월 증감 높은 순" }
+      { value: "revenue_desc", label: "온라인 매출 높은 순" },
+      { value: "qty_desc", label: "온라인 판매수량 높은 순" },
+      { value: "orders_desc", label: "온라인 주문수 높은 순" },
+      { value: "stock_desc", label: "재고 많은 순" }
     ],
     rows: () => entitySkuRows,
-    matchesQuery: (row, query) => row.name.toLowerCase().includes(query) || row.id.toLowerCase().includes(query),
+    matchesQuery: (row, query) => row.productName.toLowerCase().includes(query) || String(row.productCode || "").toLowerCase().includes(query),
     sortFns: {
       revenue_desc: (a, b) => b.revenue - a.revenue,
       qty_desc: (a, b) => b.quantitySold - a.quantitySold,
-      aov_desc: (a, b) => (b.revenue / (b.quantitySold || 1)) - (a.revenue / (a.quantitySold || 1)),
-      stock_desc: (a, b) => b.stock - a.stock,
-      mom_desc: (a, b) => b.mom - a.mom
+      orders_desc: (a, b) => b.orderCount - a.orderCount,
+      stock_desc: (a, b) => (b.stock ?? -1) - (a.stock ?? -1)
     },
     rowHtml: entityDrawerSkuRowHtml,
     clickToast: "SKU Intelligence 연결 예정",
