@@ -171,7 +171,8 @@ function findSuggestions(brand, sourceRows) {
 
 const csvCell = (value) => {
   const raw = String(value ?? "");
-  return /[",\r\n]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+  const safe = typeof value !== "number" && !raw.startsWith("'") && /^\s*[=+\-@]/.test(raw) ? `'${raw}` : raw;
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 const markdownCell = (value) => String(value ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 

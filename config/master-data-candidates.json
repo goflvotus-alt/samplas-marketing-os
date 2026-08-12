@@ -1,0 +1,143 @@
+{
+  "identity_master": [
+    {
+      "id": "client_8d6b48aaa789",
+      "canonical_name": "김대훈",
+      "aliases": ["김대훈 실장님 (제이통)", "김대훈님"],
+      "client_type": "stylist",
+      "status": "review"
+    },
+    {
+      "id": "client_1dcba58c5a8b",
+      "canonical_name": "장희준",
+      "aliases": ["장희준 실장님", "장희준님"],
+      "client_type": "stylist",
+      "status": "review"
+    },
+    {
+      "id": "client_f0b9ca3422c1",
+      "canonical_name": "이보람",
+      "aliases": ["이보람 이사님", "이보람"],
+      "client_type": "stylist",
+      "status": "review"
+    }
+  ],
+  "brand_master": [
+    {
+      "brand_id": "B00000DC",
+      "canonical_name": "BALMAIN",
+      "brand_codes": ["B00000DC", "B00000FG"],
+      "aliases": ["BALMAIN", "Balmain"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000DD",
+      "canonical_name": "BLACK SCALE",
+      "brand_codes": ["B00000DD", "B00000DS", "B00000ES"],
+      "aliases": ["BLACK SCALE", "BLACKSCALE"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000DF",
+      "canonical_name": "BYHOT",
+      "brand_codes": ["B00000DF", "B00000DL", "B00000EV"],
+      "aliases": ["BYHOT", "By hot", "ByHOT"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000DK",
+      "canonical_name": "MONCLER GAMME BLUE",
+      "brand_codes": ["B00000DK", "B00000EO"],
+      "aliases": ["Moncler Gamme Blue", "MONCLER GAMME BLUE"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000DN",
+      "canonical_name": "CARVEN",
+      "brand_codes": ["B00000DN", "B00000EM"],
+      "aliases": ["Carven", "CARVEN"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000DP",
+      "canonical_name": "THOM BROWNE",
+      "brand_codes": ["B00000DP", "B00000DR"],
+      "aliases": ["THOM BROWNE"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000DQ",
+      "canonical_name": "FEAR OF GOD",
+      "brand_codes": ["B00000DQ", "B00000FM"],
+      "aliases": ["Fear of God", "FEAR OF GOD"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000DV",
+      "canonical_name": "ZADIG & VOLTAIRE",
+      "brand_codes": ["B00000DV", "B00000FY"],
+      "aliases": ["ZADIG & VOLTAIRE"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000DZ",
+      "canonical_name": "MAISON MARTIN MARGIELA",
+      "brand_codes": ["B00000DZ", "B00000EI"],
+      "aliases": ["Maison Martin Margiela"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000EB",
+      "canonical_name": "MARC JACOBS",
+      "brand_codes": ["B00000EB", "B00000EX"],
+      "aliases": ["Marc Jacobs", "MARC JACOBS"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000EG",
+      "canonical_name": "PATRICIA FIELD",
+      "brand_codes": ["B00000EG", "B00000ER", "B00000FX"],
+      "aliases": ["PATRICIAFIELD", "PATRICIA FIELD"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000EP",
+      "canonical_name": "LES ARTISTS",
+      "brand_codes": ["B00000EP", "B00000FW"],
+      "aliases": ["LES (ART)ISTS", "LES ARTISTS"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000HM",
+      "canonical_name": "Meantime",
+      "brand_codes": ["B00000HM", "B00000KS"],
+      "aliases": ["Meantime"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000HO",
+      "canonical_name": "MODITEC",
+      "brand_codes": ["B00000HO", "B00000HP"],
+      "aliases": ["MODITEC"],
+      "status": "review"
+    },
+    {
+      "brand_id": "B00000JF",
+      "canonical_name": "AJOBYAJO",
+      "brand_codes": ["B00000JF", "B00000JG", "B00000JH"],
+      "aliases": ["AJOBYAJO"],
+      "status": "review"
+    }
+  ],
+  "product_master": [
+    {
+      "product_id": "CP-C24-14597",
+      "canonical_name": "TUXEDO BUTTON SET",
+      "brand_id": "B00000RO",
+      "cafe24_product_ids": ["14597", "14598"],
+      "ecount_codes": [],
+      "status": "review"
+    }
+  ],
+  "merge_history": []
+}

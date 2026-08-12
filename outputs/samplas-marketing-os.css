@@ -41,6 +41,8 @@ textarea {
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 22px;
   background: #111;
   color: #fff;
@@ -245,6 +247,320 @@ textarea {
   display: none;
 }
 
+/* Data Refresh Center (STEP53-1: UI-only redesign of the former Data Sync
+   panel). Uses the same dark-sidebar tokens as .sync-panel/.sync-row so the
+   visual language stays consistent; no fetch/refresh logic lives here. */
+.refresh-center {
+  margin-top: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.refresh-card {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px;
+  display: grid;
+  gap: 9px;
+}
+
+.refresh-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.refresh-card-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.refresh-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+
+.refresh-badge i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.refresh-badge.good {
+  border-color: rgba(79, 176, 130, 0.42);
+  color: #8ed8b2;
+}
+
+.refresh-badge.good i {
+  background: #4fb082;
+}
+
+.refresh-badge.warn {
+  border-color: rgba(239, 191, 79, 0.45);
+  color: #f3d38a;
+}
+
+.refresh-badge.warn i {
+  background: #efbf4f;
+}
+
+.refresh-badge.error {
+  border-color: rgba(239, 92, 92, 0.45);
+  color: #ff9d9d;
+}
+
+.refresh-badge.error i {
+  background: #ef5c5c;
+}
+
+.refresh-badge.unknown {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.refresh-badge.unknown i {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.refresh-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.refresh-card-time {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 11px;
+}
+
+.refresh-card-btn {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.88);
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.refresh-card-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.refresh-activity {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.refresh-activity-title {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.refresh-activity-item {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+}
+
+.refresh-activity-item:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.refresh-activity-time {
+  color: rgba(255, 255, 255, 0.44);
+}
+
+.refresh-activity-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.refresh-activity-result {
+  color: #8ed8b2;
+  font-weight: 700;
+}
+
+.refresh-activity-result.failed {
+  color: #ff9d9d;
+}
+
+.refresh-activity-empty {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 11px;
+}
+
+/* ECOUNT Offline Refresh Wizard (STEP53-4) — UI/연결 구조만, 실제 처리 없음.
+   .clients-detail-modal과 동일한 fixed 오버레이 패턴을 별도 클래스로 재구성했다. */
+.ecount-wizard-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.ecount-wizard-modal[hidden] {
+  display: none;
+}
+
+.ecount-wizard-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 19, 15, 0.5);
+}
+
+.ecount-wizard-panel {
+  position: relative;
+  z-index: 1;
+  width: 420px;
+  max-width: min(420px, 100%);
+  max-height: min(600px, calc(100vh - 48px));
+  overflow-y: auto;
+  padding: 24px 24px 20px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 30px 70px rgba(20, 19, 15, 0.28);
+}
+
+.ecount-wizard-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ecount-wizard-close-btn:hover {
+  background: #171717;
+  border-color: #171717;
+  color: #fff;
+}
+
+.ecount-wizard-title {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.ecount-wizard-desc {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ecount-wizard-step label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.ecount-wizard-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.ecount-wizard-row:first-of-type {
+  border-top: 0;
+}
+
+.ecount-wizard-note {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(215, 166, 66, 0.14);
+  color: #8a6416;
+  font-size: 12px;
+}
+
+.ecount-wizard-apply-btn {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.ecount-wizard-apply-status {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.refresh-footer {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 2px;
+}
+
+.refresh-footer-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.refresh-footer-value {
+  color: #fff;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.refresh-footer-coverage {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+}
+
 .main {
   min-width: 0;
   padding: 28px;
@@ -310,8 +626,20 @@ select,
   display: none;
 }
 
+/* STEP60-2: Cross Entity Navigation. Workspace 전환이 완전히 새 페이지처럼 느껴지지
+   않도록 짧은 fade-in만 추가한다(레이아웃/타이밍 로직 변경 없음, 순수 시각 효과). */
 .view.active {
   display: block;
+  animation: entityWorkspaceFadeIn 0.18s ease;
+}
+
+@keyframes entityWorkspaceFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .section-title,
@@ -3627,7 +3955,10 @@ td {
   transition: 180ms ease;
   pointer-events: none;
   max-width: min(360px, calc(100vw - 40px));
-  z-index: 1300;
+  /* STEP59-1: Entity Drawer(z-index 2100)에서도 toast()가 가려지지 않도록 전역 알림은
+     항상 최상단에 뜨게 한다(기존 Clients Detail Modal z-index 2000도 이미 이 문제가
+     있었던 것을 이번에 함께 바로잡음). */
+  z-index: 2200;
 }
 
 .toast.show {
@@ -3659,6 +3990,10 @@ td {
   }
 
   .sync-panel {
+    margin-top: 0;
+  }
+
+  .refresh-center {
     margin-top: 0;
   }
 
@@ -7162,4 +7497,2951 @@ body.clients-detail-modal-open {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+/* STEP48 — Data Freshness Header: Today/Commerce/Clients/Monthly가 공유하는 컴포넌트.
+   화면마다 별도 스타일을 만들지 않고 이 블록 하나만 재사용한다. 기존 선택자와 이름이
+   겹치지 않도록 새 클래스만 추가했으며, 다른 규칙은 건드리지 않았다. */
+.freshness-header-slot:empty {
+  display: none;
+}
+
+.freshness-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 8px 14px;
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: 12px;
+}
+
+.freshness-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #fff;
+}
+
+.freshness-badge-live {
+  background: var(--green);
+}
+
+.freshness-badge-cache {
+  background: var(--blue);
+}
+
+.freshness-badge-archive {
+  background: var(--muted);
+}
+
+.freshness-badge-mixed {
+  background: var(--red);
+}
+
+.freshness-badge-beta {
+  background: var(--yellow);
+  color: var(--black);
+}
+
+.freshness-badge-unknown {
+  background: var(--muted);
+}
+
+.freshness-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.freshness-item strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.freshness-item em {
+  font-style: normal;
+}
+
+.freshness-note {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.freshness-header-beta {
+  border-color: var(--yellow);
+  background: #fdf7e8;
+}
+
+/* STEP54-2A/2B: Brand Intelligence Dashboard — Hero Section (UI/레이아웃/Hover only,
+   placeholder 데이터). 기존 .action-item/.ad-core-kpi-card/.sales-list-card/
+   .intelligence-action-summary/.clients-tooltip-badge/.today-progress-card의 bar
+   기법을 카드·칩·프로그레스바 외형으로 그대로 재사용하고, 여기서는 Hero 전용 레이아웃과
+   Health Score 원형 게이지, System Status 배지, 그리고 hover tooltip만 새로 추가한다. */
+.brand-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.brand-hero {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 16px 0 18px;
+}
+
+/* STEP58-4: Entity Hero + Brand Empty State. .brand-hero/.brand-hero-meta/.cards가 각각
+   display:flex/grid를 선언하고 있어 [hidden] 속성만으로는(UA stylesheet가 author 규칙에
+   밀림) 실제로 숨겨지지 않는다 — id 결합 선택자로 명시적으로 display:none을 강제한다. */
+#entityHeroEmptyPanel[hidden],
+#entityHeroContent[hidden],
+#entityHeroEmptyKpi[hidden],
+#entityHeroKpiGrid[hidden],
+#entityHeroMeta[hidden] {
+  display: none;
+}
+
+/* STEP65-4: 같은 이유(.brand-hero-meta/.intelligence-action-summary/.ad-status-banner가
+   각각 display:flex/grid를 선언)로 Promotion Intelligence의 재사용 요소도 id 결합
+   선택자가 필요하다. */
+#promotionSummaryMeta[hidden],
+#promotionSummaryInsight[hidden],
+#promotionSummaryStatusBanner[hidden] {
+  display: none;
+}
+
+/* STEP66-1: SECTION 1 Hero card. .action-item의 기본 grid-template-columns(28px 1fr
+   auto, 아이콘+텍스트+액션용)는 Promotion Hero(제목+상태뱃지+메타 뱃지)에 맞지 않아
+   레이아웃만 오버라이드한다 — border/radius/shadow/background는 .action-item 그대로
+   상속한다(새 카드 시스템 아님). */
+.promotion-hero-card {
+  display: block;
+  padding: 16px;
+}
+
+.promotion-hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.promotion-hero-head h3 {
+  margin: 0;
+}
+
+/* STEP58-4B: Entity Detail Empty States. 같은 이유로 .product-action-filters(display:flex)
+   와 신규 .entity-detail-empty(display:grid) 카드도 id 결합 선택자로 강제 숨김 처리한다.
+   *Content 래퍼는 별도 CSS가 없는 순수 div라 [hidden] 기본 동작(display:none)이 그대로
+   먹히므로 규칙을 추가하지 않는다. */
+#entityCompositionToggle[hidden],
+#entityCategoryToggle[hidden],
+#entityCompositionEmpty[hidden],
+#entityTrendEmpty[hidden],
+#entityCategoryEmpty[hidden] {
+  display: none;
+}
+
+.entity-detail-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 28px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.entity-detail-empty-icon {
+  font-size: 22px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.entity-detail-empty h4 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.entity-detail-empty p {
+  margin: 0;
+  max-width: 360px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.brand-hero-score-block {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 180px;
+}
+
+/* STEP67-5: Final UX. display:flex가 native [hidden]을 무력화하는 기존 패턴(STEP58-4
+   주석 참고) — Brand Score를 숨기려면 명시적으로 다시 강제해야 한다. */
+.brand-hero-score-block[hidden] {
+  display: none;
+}
+
+.brand-hero-score-metrics {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.brand-hero-score-metrics li {
+  display: grid;
+  grid-template-columns: 66px 1fr 22px;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+}
+
+.brand-hero-score-metrics span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.brand-hero-score-metrics em {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 900;
+  font-style: normal;
+  text-align: right;
+}
+
+.brand-hero-score-bar {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8e5dc;
+}
+
+.brand-hero-score-bar b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), #87a889);
+}
+
+.brand-hero-cards {
+  flex: 1;
+  min-width: 260px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.brand-hero-action-box {
+  margin: 0;
+}
+
+.brand-hero-status-row {
+  margin: 0 0 18px;
+}
+
+.brand-hero-status-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.brand-hero-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.brand-hero-status-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.brand-hero-status-item em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.brand-hero-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.brand-hero-status-badge i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.brand-hero-status-badge.good {
+  color: var(--green);
+}
+
+.brand-hero-status-badge.good i {
+  background: var(--green);
+}
+
+.brand-hero-status-badge.warn {
+  color: #8a650f;
+}
+
+.brand-hero-status-badge.warn i {
+  background: var(--yellow);
+}
+
+.brand-hero-status-badge.error {
+  color: var(--red);
+}
+
+.brand-hero-status-badge.error i {
+  background: var(--red);
+}
+
+.brand-hero-delta {
+  font-weight: 900;
+}
+
+.brand-hero-delta.up {
+  color: var(--green);
+}
+
+.brand-hero-delta.down {
+  color: var(--red);
+}
+
+.brand-hero-delta.flat {
+  color: var(--muted);
+}
+
+.brand-hero-kpi-grid {
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+}
+
+@media (max-width: 900px) {
+  .brand-hero-kpi-grid {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-hero-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.brand-hero-score {
+  flex: none;
+  cursor: default;
+  border-radius: 50%;
+}
+
+.brand-hero-score:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.brand-hero-score-ring {
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--score-color, var(--green)) calc(var(--score, 0) * 1%), var(--line) 0);
+}
+
+.brand-hero-score-inner {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--panel);
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.brand-hero-score-value {
+  display: block;
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.brand-hero-score-tier {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+[data-brand-hero-tooltip] {
+  cursor: default;
+}
+
+.brand-hero-hover-tooltip {
+  position: fixed;
+  z-index: 2100;
+  max-width: 260px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #171717;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 18px 40px rgba(20, 19, 15, 0.28);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
+}
+
+.brand-hero-hover-tooltip.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 640px) {
+  .brand-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .brand-hero-score-block {
+    width: 100%;
+    align-items: flex-start;
+  }
+}
+
+/* STEP55/55-3: Brand Customer Composition — Clients 탭의 .clients-donut* 시각 언어를 그대로
+   재사용하되(사이즈/센터홀/범례 규칙 복제) 독립 클래스로 분리해 Clients 상태/스토어와
+   결합되지 않게 했다. TOP5/AI Insight는 각각 기존 리스트 카드와 .intelligence-action-summary
+   재사용. */
+.brand-customer-section {
+  margin: 24px 0;
+}
+
+.brand-customer-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(220px, 1fr);
+  gap: 16px;
+  margin-bottom: 12px;
+  transition: opacity 0.2s ease;
+}
+
+.brand-customer-grid.is-updating {
+  opacity: 0.45;
+}
+
+.brand-customer-donut-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+/* 도넛 10~15% 확대(132px → 150px) */
+.brand-customer-donut {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  min-width: 150px;
+  border-radius: 50%;
+  align-self: center;
+  box-shadow: 0 0 0 1px rgba(23, 23, 23, 0.06);
+}
+
+.brand-customer-donut-center {
+  inset: 20px;
+}
+
+.brand-customer-donut-center strong {
+  font-size: 24px;
+}
+
+.brand-customer-donut-center span {
+  font-size: 11px;
+}
+
+.brand-customer-legend {
+  gap: 4px;
+}
+
+.brand-customer-legend li.is-active {
+  background: #f2f1ec;
+}
+
+.brand-customer-top5 {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.brand-customer-top5-title {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* STEP59-1: Entity Full List Drawer. TOP5/TOP 카드 헤더에 "전체 보기" 버튼을 나란히
+   두기 위한 최소 래퍼 — title 자체 스타일은 그대로 상속된다. */
+.brand-customer-top5-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* STEP59-1/59-2: Entity Drawer 진입 버튼. 처음엔 .clients-detail-more-dates-btn을
+   재사용했으나, index.html 상단의 "critical CSS" 인라인 <style>이 그 클래스를
+   width:100%로 다시 선언하고 있어(Clients 상세 모달 안의 단일 컬럼 "더보기" 버튼 전용
+   의도) flex 헤더에서 버튼이 컨테이너 전체 폭으로 늘어나며 제목이 줄바꿈되는 기존
+   버그를 발견했다. 클래스를 공유하지 않는 전용 클래스로 분리해 해결한다. */
+.entity-drawer-open-btn {
+  flex: none;
+  width: auto;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.entity-drawer-open-btn:hover,
+.entity-drawer-open-btn:focus-visible {
+  background: #171717;
+  border-color: #171717;
+  color: #fff;
+  outline: none;
+}
+
+.brand-customer-top5-head .brand-customer-top5-title {
+  margin: 0 0 10px;
+}
+
+.brand-customer-top5-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+/* 행이 과도하게 높아지지 않도록 head(순위/이름/배지/변동/값) + 얇은 progress bar 2줄만 */
+.brand-customer-top5-list li {
+  display: grid;
+  gap: 5px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: default;
+}
+
+.brand-customer-top5-list li:hover,
+.brand-customer-top5-list li:focus-visible {
+  background: #f2f1ec;
+  outline: none;
+}
+
+.brand-customer-top5-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-customer-top5-rank {
+  flex: none;
+  width: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.brand-customer-top5-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.brand-customer-type-badge {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 7px;
+  background: rgba(23, 23, 23, 0.03);
+}
+
+.brand-customer-top5-rank-change {
+  flex: none;
+  min-width: 22px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.brand-customer-top5-rank-change.up {
+  color: var(--green);
+}
+
+.brand-customer-top5-rank-change.down {
+  color: var(--red);
+}
+
+.brand-customer-top5-row-head strong {
+  margin-left: auto;
+  flex: none;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.brand-customer-top5-bar {
+  display: block;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ebe8de;
+}
+
+.brand-customer-top5-bar b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+/* 건수/매출 토글: 클릭 영역 확대 + 활성 상태 명확화(채움) + focus-visible 유지.
+   .product-action-filter 기본 규칙은 그대로 두고 이 섹션 안에서만 오버라이드한다. */
+.brand-customer-section .product-action-filters {
+  gap: 6px;
+}
+
+.brand-customer-section .product-action-filter {
+  padding: 9px 16px;
+  font-size: 13px;
+  border-radius: 999px;
+}
+
+.brand-customer-section .product-action-filter.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+  outline: none;
+}
+
+.brand-customer-section .product-action-filter:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* AI Insight: bullet 목록 대신 "핵심 비율" 강조 + 해석/보조 문장 2줄 구조 */
+.brand-customer-insight-card {
+  padding: 16px 18px;
+}
+
+.brand-customer-insight-body {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.brand-customer-insight-ratio {
+  flex: none;
+  text-align: center;
+}
+
+.brand-customer-insight-ratio span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.brand-customer-insight-ratio strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--green);
+}
+
+.brand-customer-insight-text {
+  min-width: 0;
+  padding-left: 18px;
+  border-left: 1px solid var(--line);
+}
+
+.brand-customer-insight-main {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.brand-customer-insight-sub {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .brand-customer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-customer-insight-body {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .brand-customer-insight-text {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+/* STEP55-2/55-3: Customer Quick Profile Card — TOP5 hover 전용. Hero Card와 같은 톤(흰
+   배경, 기존 line 토큰, 기존 카드 radius)이지만 그림자는 var(--shadow)로 기존 카드보다
+   약하게, divider도 더 옅게 조정했다. Pie/범례/KPI/Score hover는 그대로
+   .brand-hero-hover-tooltip을 쓴다. */
+.brand-customer-profile-card {
+  position: fixed;
+  z-index: 2200;
+  width: 345px;
+  max-width: min(360px, calc(100vw - 32px));
+  min-width: 330px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.brand-customer-profile-card[hidden] {
+  display: none;
+}
+
+.brand-customer-profile-card.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.brand-customer-profile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.brand-customer-profile-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.brand-customer-profile-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.brand-customer-profile-vip-ring {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--green) calc(var(--score, 0) * 1%), var(--line) 0);
+}
+
+.brand-customer-profile-vip-ring-inner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.brand-customer-profile-top-pct {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.brand-customer-profile-rows {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(23, 23, 23, 0.06);
+}
+
+.brand-customer-profile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand-customer-profile-row span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.brand-customer-profile-row strong {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+/* STEP60-2B: Client Quick Profile. Header→KPI(brand-customer-profile-rows, 위 3개 규칙
+   그대로 재사용)→최근 Activity→Related→Explore 패턴. 섹션 제목 스타일 하나를 공유하고
+   Related/Explore 미니 칩은 Entity Drawer의 칩과 같은 느낌(아이콘 + 짧은 텍스트)으로
+   맞추되 카드 폭에 맞게 더 작게 만든다. */
+.brand-customer-profile-section-title {
+  margin: 14px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(23, 23, 23, 0.06);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.brand-customer-profile-recent-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.brand-customer-profile-recent-date {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.brand-customer-profile-recent-product {
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.brand-customer-profile-recent-product:hover,
+.brand-customer-profile-recent-product:focus-visible {
+  color: var(--green);
+  outline: none;
+}
+
+.brand-customer-profile-recent-variant {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.brand-customer-profile-recent-preview {
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.brand-customer-profile-orders-btn {
+  width: 100%;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.brand-customer-profile-orders-btn:hover,
+.brand-customer-profile-orders-btn:focus-visible {
+  border-color: rgba(23, 23, 23, 0.3);
+  outline: none;
+}
+
+.brand-customer-profile-mini-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.brand-customer-profile-mini-chips button {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.brand-customer-profile-mini-chips button:hover,
+.brand-customer-profile-mini-chips button:focus-visible {
+  border-color: rgba(23, 23, 23, 0.3);
+  outline: none;
+}
+
+.brand-customer-profile-footer-btn {
+  width: 100%;
+  margin: 14px 0 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #171717;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.brand-customer-profile-footer-btn:hover,
+.brand-customer-profile-footer-btn:focus-visible {
+  background: #000;
+  outline: none;
+}
+
+/* STEP56-1: Monthly Trend Intelligence. 좌 70 : 우 30 레이아웃, 에디토리얼한 미니멀 라인
+   차트(그리드 최소화, baseline 1개만) + Trend Summary/Indicator/AI Insight. Point hover는
+   기존 .brand-hero-hover-tooltip(작은 검은 tooltip)을 그대로 재사용해 Quick Profile
+   Card보다 훨씬 작게 유지한다. */
+.brand-monthly-trend-section {
+  margin: 24px 0;
+}
+
+.brand-monthly-trend-main {
+  display: grid;
+  grid-template-columns: 7fr 3fr;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.brand-monthly-trend-chart-card,
+.brand-monthly-trend-summary-card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.brand-monthly-trend-chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.brand-monthly-trend-chart-head span {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.brand-monthly-trend-chart-head em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.brand-monthly-trend-chart {
+  width: 100%;
+}
+
+.brand-monthly-trend-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.brand-monthly-trend-svg.is-visible {
+  opacity: 1;
+}
+
+.brand-monthly-trend-baseline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.brand-monthly-trend-line {
+  stroke: var(--green);
+  stroke-width: 2.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.brand-monthly-trend-point {
+  fill: #fff;
+  stroke: var(--green);
+  stroke-width: 2;
+  cursor: pointer;
+  transition: r 0.15s ease;
+}
+
+.brand-monthly-trend-point.is-active,
+.brand-monthly-trend-point:focus-visible {
+  r: 6;
+  fill: var(--green);
+  outline: none;
+}
+
+.brand-monthly-trend-axis-label {
+  fill: var(--muted);
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+.brand-monthly-trend-summary-title {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.brand-monthly-trend-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid rgba(23, 23, 23, 0.06);
+}
+
+.brand-monthly-trend-summary-row:first-of-type {
+  border-top: 0;
+}
+
+.brand-monthly-trend-summary-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.brand-monthly-trend-summary-row strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.brand-monthly-trend-summary-row strong small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.brand-monthly-trend-tone-up {
+  color: var(--green) !important;
+}
+
+.brand-monthly-trend-tone-down {
+  color: var(--red) !important;
+}
+
+.brand-monthly-trend-tone-flat {
+  color: var(--muted) !important;
+}
+
+.brand-monthly-trend-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(23, 23, 23, 0.06);
+}
+
+.brand-monthly-trend-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.brand-monthly-trend-indicator i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.brand-monthly-trend-indicator.up {
+  color: var(--green);
+}
+
+.brand-monthly-trend-indicator.up i {
+  background: var(--green);
+}
+
+.brand-monthly-trend-indicator.down {
+  color: var(--red);
+}
+
+.brand-monthly-trend-indicator.down i {
+  background: var(--red);
+}
+
+.brand-monthly-trend-indicator.flat {
+  color: var(--muted);
+}
+
+.brand-monthly-trend-indicator.flat i {
+  background: var(--muted);
+}
+
+.brand-monthly-trend-insight-text {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .brand-monthly-trend-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* STEP57-1: Brand Mix Analysis (UI only). 카드 외형은 .brand-monthly-trend-chart-card/
+   -summary-card/-summary-title/-summary-row를 그대로 재사용하고, 여기서는 브랜드
+   progress list 내부 요소와 hover 카드(폭만 넓힌 .brand-customer-profile-card 변형)만
+   추가한다. */
+.brand-mix-section {
+  margin: 24px 0;
+}
+
+.brand-mix-main {
+  display: grid;
+  grid-template-columns: 7fr 3fr;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.brand-mix-list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.brand-mix-list-head span {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.brand-mix-list-head em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.brand-mix-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.brand-mix-list li {
+  display: grid;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: default;
+}
+
+.brand-mix-list li:hover,
+.brand-mix-list li:focus-visible {
+  background: #f2f1ec;
+  outline: none;
+}
+
+.brand-mix-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-mix-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.brand-mix-pct {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.brand-mix-row-head strong {
+  flex: none;
+  min-width: 96px;
+  text-align: right;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.brand-mix-bar {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ebe8de;
+}
+
+.brand-mix-bar b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), #87a889);
+}
+
+/* Customer Hover(.brand-customer-profile-card, 330~360px)보다 조금 넓게 */
+.brand-mix-profile-card {
+  width: 400px;
+  min-width: 390px;
+  max-width: min(410px, calc(100vw - 32px));
+}
+
+@media (max-width: 900px) {
+  .brand-mix-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* STEP57-2: Brand Mix Hover를 Brand Intelligence 스타일로(Health Grade 배지 + AI Summary
+   줄) 재구성. 기존 .brand-customer-profile-rows/-row 그리드/구분선을 그대로 재사용하고,
+   AI Summary 블록만 텍스트 전용으로 소폭 오버라이드한다. */
+.brand-mix-profile-ai-summary p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.brand-mix-profile-ai-summary span {
+  margin-right: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* STEP58-1/58-2: Brand Selector (Real Brand List UI, Compact UX). 평소에는 선택된 브랜드
+   이름 + 화살표만 보이는 트리거 버튼이고, 클릭하면 absolute overlay Dropdown이 열린다
+   (레이아웃을 밀지 않음). Dropdown 안의 검색창 + Recent/All Brands 2열 패널은 STEP58-1과
+   동일한 구조를 그대로 재사용한다. All Brands는 /api/brand-master(canonical Brand Master)
+   만 사용한다. */
+.brand-selector {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.brand-selector-eyebrow {
+  margin: 0 0 6px;
+}
+
+.brand-selector-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  min-width: 206.5625px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.brand-selector-trigger:hover,
+.brand-selector-trigger:focus-visible {
+  border-color: rgba(23, 23, 23, 0.3);
+  outline: none;
+}
+
+.brand-selector-trigger[aria-expanded="true"] {
+  border-color: #171717;
+  box-shadow: 0 0 0 3px rgba(23, 23, 23, 0.08);
+}
+
+.brand-selector-trigger-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.brand-selector-trigger[aria-expanded="true"] .brand-selector-trigger-chevron {
+  transform: rotate(225deg);
+}
+
+.brand-selector-dropdown {
+  position: absolute;
+  z-index: 500;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 460px;
+  max-width: min(460px, calc(100vw - 64px));
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.brand-selector-dropdown[hidden] {
+  display: none;
+}
+
+.brand-selector-dropdown.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.brand-selector-search {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.brand-selector-panel {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) minmax(180px, 1fr);
+  gap: 14px;
+  margin-top: 10px;
+}
+
+/* STEP58-4C: Entity Selection Reset. 선택된 브랜드가 있을 때만 노출되는 Dropdown 최상단
+   항목 — 검색창 아래, Recent 목록 위. border-bottom으로 목록과 구분선을 만든다. */
+.brand-selector-clear {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 6px 12px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+.brand-selector-clear:hover,
+.brand-selector-clear:focus-visible {
+  color: #171717;
+  outline: none;
+}
+
+.brand-selector-clear[hidden] {
+  display: none;
+}
+
+.brand-selector-group-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.brand-selector-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+
+.brand-selector-list-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.brand-selector-list li {
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.brand-selector-list li:hover,
+.brand-selector-list li:focus-visible {
+  background: #f2f1ec;
+  outline: none;
+}
+
+.brand-selector-list li.active {
+  background: #171717;
+  color: #fff;
+}
+
+/* STEP59-4C: Unified Entity Selector. 비교 브랜드 목록에서 기준 브랜드와 같은 이름의
+   행만 선택 불가로 표시한다(색상만이 아니라 cursor/투명도로도 구분). */
+.brand-selector-list li.is-disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.brand-selector-list li.is-disabled:hover {
+  background: transparent;
+}
+
+.brand-selector-empty {
+  padding: 7px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: default;
+}
+
+@media (max-width: 900px) {
+  .brand-selector-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* STEP59-1: Entity Full List Drawer. .clients-detail-modal(고객 상세 모달)과 동일한
+   fixed 오버레이 + 형제 backdrop + 포커스 트랩 + body 스크롤 잠금 패턴을 그대로 따르되,
+   중앙이 아니라 오른쪽에서 슬라이드로 열리는 Drawer로 배치만 다르게 구성한다. 새 디자인
+   토큰을 만들지 않고 기존 var(--line)/var(--panel)/var(--shadow)/var(--ink)/var(--muted)만
+   사용한다. */
+.entity-drawer-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.entity-drawer-modal[hidden] {
+  display: none;
+}
+
+.entity-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 19, 15, 0.5);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.entity-drawer-modal.is-visible .entity-drawer-backdrop {
+  opacity: 1;
+}
+
+.entity-drawer-panel {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 480px;
+  max-width: min(480px, 100vw);
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 22px 16px;
+  background: #fff;
+  box-shadow: -30px 0 70px rgba(20, 19, 15, 0.18);
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+}
+
+.entity-drawer-modal.is-visible .entity-drawer-panel {
+  transform: translateX(0);
+}
+
+.entity-drawer-panel:focus {
+  outline: none;
+}
+
+.entity-drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* STEP60-1: Entity Navigation Foundation. Breadcrumb는 Drawer Header 최상단, 제목 위에
+   항상 노출된다. 마지막(현재) 칸만 텍스트, 나머지는 클릭 가능한 버튼이다. */
+.entity-drawer-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.entity-drawer-breadcrumb-crumb {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.entity-drawer-breadcrumb-crumb:hover,
+.entity-drawer-breadcrumb-crumb:focus-visible {
+  color: var(--ink);
+  outline: none;
+}
+
+.entity-drawer-breadcrumb-current {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.entity-drawer-breadcrumb-sep {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.entity-drawer-title {
+  display: block;
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.entity-drawer-description {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.entity-drawer-close-btn {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.entity-drawer-close-btn:hover,
+.entity-drawer-close-btn:focus-visible {
+  background: #171717;
+  border-color: #171717;
+  color: #fff;
+  outline: none;
+}
+
+/* STEP60-1: 뒤로 버튼은 스택 깊이가 1(최초 진입 레벨) 이하일 때 JS가 hidden을 붙인다 —
+   CSS는 표시만 담당한다. */
+.entity-drawer-back-btn {
+  flex: none;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.entity-drawer-back-btn:hover,
+.entity-drawer-back-btn:focus-visible {
+  border-color: rgba(23, 23, 23, 0.3);
+  outline: none;
+}
+
+.entity-drawer-back-btn[hidden] {
+  display: none;
+}
+
+.entity-drawer-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.entity-drawer-search {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.entity-drawer-sort {
+  flex: none;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.entity-drawer-body {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+/* "테이블과 카드의 중간" 요구사항 — 순위+이름은 고정, 나머지 지표는 label/value 쌍으로
+   촘촘하게 나열해 Quick Profile Card보다 정보 밀도를 높인다. */
+.entity-drawer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.entity-drawer-row:hover,
+.entity-drawer-row:focus-visible {
+  background: #f2f1ec;
+  outline: none;
+}
+
+.entity-drawer-rank {
+  flex: none;
+  width: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.entity-drawer-name {
+  flex: 1 1 90px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entity-drawer-code {
+  margin-left: 6px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.entity-drawer-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 62px;
+}
+
+.entity-drawer-stat span {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.entity-drawer-stat strong {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.entity-drawer-empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.entity-drawer-footer {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* STEP60-1/STEP60-2B: Related + Explore. 실제 연관 데이터 계산 없이 같은 Entity Drawer
+   체인(Related)과 실제 Workspace(Explore)로 이동하는 탐색 단축키만 제공하는 정적
+   Placeholder 블록이다. 두 섹션이 완전히 같은 모양(아이콘 + 짧은 텍스트 칩)이라 클래스를
+   공유한다 — STEP60-2B에서 Next Question/Workspace(Preview 포함) 두 섹션을 이 하나의
+   재사용 가능한 스타일로 정리했다. */
+.entity-drawer-related {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.entity-drawer-related-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.entity-drawer-related-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.entity-drawer-related-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.entity-drawer-related-chip:hover,
+.entity-drawer-related-chip:focus-visible {
+  border-color: rgba(23, 23, 23, 0.3);
+  outline: none;
+}
+
+/* STEP60-2: Workspace Context Bar. 어떤 .view가 활성화되어 있든 항상 보이도록
+   document.body 직속으로 고정 배치한다(브랜드 미선택 시 JS가 hidden 처리). */
+.workspace-context-bar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  font-size: 12px;
+}
+
+.workspace-context-bar[hidden] {
+  display: none;
+}
+
+.workspace-context-bar-label {
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.workspace-context-bar-brand {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.workspace-context-bar-period {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.workspace-context-bar-compare {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 11px;
+}
+
+.workspace-context-bar-compare.on {
+  background: var(--green);
+  color: #fff;
+}
+
+.workspace-context-bar-compare.off {
+  background: #f2f1ec;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  /* 모바일에서는 사이드바가 콘텐츠 위에 전체 폭으로 쌓이는 레이아웃이라, 화면 전체
+     폭으로 펼치면 사이드바 맨 아래 메뉴 버튼을 가릴 수 있다(실측 확인). 우측 하단
+     코너에 작게만 유지해 겹침 영역을 최소화한다. */
+  .workspace-context-bar {
+    right: 10px;
+    bottom: 10px;
+    padding: 6px 10px;
+    font-size: 11px;
+    flex-wrap: wrap;
+    max-width: calc(100vw - 20px);
+  }
+}
+
+body.entity-drawer-open {
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .entity-drawer-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* STEP60-1: 뒤로/닫기 버튼이 좁은 화면에서 제목과 겹치지 않도록 헤더를 세로로 쌓는다. */
+  .entity-drawer-header {
+    flex-wrap: wrap;
+  }
+
+  .entity-drawer-back-btn {
+    order: 1;
+  }
+
+  .entity-drawer-close-btn {
+    order: 2;
+  }
+}
+
+/* STEP60-3: Client Workspace Foundation. clients-detail-modal(중앙 정렬 오버레이 + 배경
+   스크림 + 포커스 트랩)과 동일한 패턴을 재사용하되, "상세 화면이 아니라 운영 공간"이라는
+   요구사항에 맞게 폭을 훨씬 넓게 잡는다. z-index는 clients-detail-modal(2000)보다 위,
+   entity-drawer-modal(2100)보다 아래(2050) — Related에서 여는 SKU 등 Entity Drawer가
+   Workspace 위에 겹쳐 열려야 하기 때문이다. */
+.client-workspace-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.client-workspace-modal[hidden] {
+  display: none;
+}
+
+.client-workspace-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 19, 15, 0.5);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.client-workspace-modal.is-visible .client-workspace-backdrop {
+  opacity: 1;
+}
+
+.client-workspace-panel {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 880px;
+  max-width: min(880px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow-y: auto;
+  padding: 28px 28px 24px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 30px 70px rgba(20, 19, 15, 0.28);
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.client-workspace-modal.is-visible .client-workspace-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.client-workspace-panel:focus {
+  outline: none;
+}
+
+.client-workspace-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.client-workspace-close-btn:hover,
+.client-workspace-close-btn:focus-visible {
+  background: #171717;
+  border-color: #171717;
+  color: #fff;
+}
+
+.client-workspace-body {
+  padding-right: 28px;
+}
+
+body.client-workspace-open {
+  overflow: hidden;
+}
+
+.client-workspace-breadcrumb {
+  padding-right: 32px;
+}
+
+.client-workspace-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(23, 23, 23, 0.06);
+}
+
+.client-workspace-static-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.client-workspace-static-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f7f5ef;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.client-workspace-orders-list {
+  max-height: none;
+  overflow: visible;
+}
+
+.client-workspace-order-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+@media (max-width: 900px) {
+  .client-workspace-panel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .client-workspace-panel {
+    padding: 22px 18px 18px;
+  }
+
+  .client-workspace-body {
+    padding-right: 0;
+  }
+}
+
+/* STEP59-2: Entity Period Control Foundation. Hero보다 작고 보조적인 툴바로 보이도록
+   흰 배경+얇은 border만 사용(그림자 없음). 활성 기간 모드만 accent(var(--green))를 쓰고
+   나머지는 중립색. */
+.entity-period-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.entity-period-modes {
+  display: flex;
+  gap: 4px;
+}
+
+.entity-period-mode-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.entity-period-mode-btn:hover,
+.entity-period-mode-btn:focus-visible {
+  border-color: rgba(23, 23, 23, 0.3);
+  outline: none;
+}
+
+.entity-period-mode-btn.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+.entity-period-select {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.entity-period-select[hidden] {
+  display: none;
+}
+
+.entity-period-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.entity-compare-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f2f1ec;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.entity-period-note {
+  margin-top: -4px;
+}
+
+@media (max-width: 640px) {
+  .entity-period-toolbar {
+    gap: 6px;
+  }
+
+  .entity-compare-toggle {
+    margin-left: 0;
+  }
+}
+
+/* STEP59-3: Compare Mode UI. entity-compare-only가 붙은 모든 요소는 기본적으로
+   숨겨두고, body.entity-compare-on일 때만 각 요소에 맞는 display 값으로 되돌린다 —
+   섹션마다 개별 CSS 분기를 만들지 않고 이 블록 하나로 Hero 증감 Chip/Customer·Category
+   TOP5 증감 Chip/Trend 두 번째 선/Comparison Summary 카드/Drawer 비교 기간 줄을
+   전부 제어한다. */
+.entity-compare-only {
+  display: none;
+}
+
+.entity-compare-toggle {
+  cursor: pointer;
+}
+
+.entity-compare-toggle[aria-pressed="true"] {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+body.entity-compare-on .entity-compare-target-select {
+  display: inline-block;
+}
+
+body.entity-compare-on .entity-compare-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f2f1ec;
+  font-size: 11px;
+}
+
+body.entity-compare-on #entityCompareSummaryCard {
+  display: block;
+}
+
+.entity-compare-summary-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+body.entity-compare-on .entity-drawer-compare-line {
+  display: block;
+}
+
+body.entity-compare-on .entity-trend-compare-polyline {
+  display: inline;
+}
+
+.entity-trend-compare-polyline {
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+
+/* STEP59-4: Compare Mode UX Refinement. 새 렌더 함수/새 상태 없이 STEP59-3의
+   entity-compare-only + body.entity-compare-on 표시 전환 패턴을 그대로 확장한다.
+   색상만으로 기준/비교를 구분하지 않도록 모든 새 요소에 "기준"/"비교" 텍스트를
+   함께 둔다(a=기준, b=비교 접미사 클래스는 스타일 구분용일 뿐 텍스트는 항상 별도 존재). */
+
+body.entity-compare-on #entityCompareHeader {
+  display: block;
+}
+
+.entity-compare-header {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.entity-compare-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.entity-compare-header-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.entity-compare-header-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f2f1ec;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.entity-compare-header-close {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.entity-compare-header-close:hover,
+.entity-compare-header-close:focus-visible {
+  border-color: rgba(23, 23, 23, 0.3);
+  outline: none;
+}
+
+.entity-compare-header-brands {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.entity-compare-header-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 260px;
+}
+
+.entity-compare-header-role {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+/* STEP59-4C: Unified Entity Selector. 기준/비교 브랜드 트리거는 둘 다 기존
+   .brand-selector-trigger/.brand-selector-trigger-chevron을 그대로 재사용한다(전용
+   버튼 스타일을 새로 만들지 않음 — "동일한 Selector/동일한 Width" 요구사항). 비교
+   브랜드 Popup만 이 wrapper를 기준으로 absolute 위치를 잡는다(.brand-selector와
+   동일한 position:relative 앵커 패턴). */
+.entity-compare-brand-selector {
+  position: relative;
+  display: inline-block;
+}
+
+/* STEP59-4C 반응형 수정: .brand-selector-dropdown의 기본 left:0 앵커는 페이지 왼쪽 끝에
+   붙는 primary(.brand-selector)에서는 맞지만, Compare Header 중앙에 위치한 compare
+   wrapper에서 그대로 쓰면 좁은 화면에서 Popup이 오른쪽 밖으로 넘친다(실측: 500px 폭에서
+   92px 오버플로). right:0으로 바꿔도 이번엔 왼쪽으로 넘쳐 텍스트가 잘린다(실측 재확인).
+   트리거 중앙에 맞춰 좌우로 균등하게 걸치도록 X축만 중앙 정렬로 바꾼다(기존 Y축
+   fade-up 애니메이션은 그대로 유지) — Popup 자체의 크기/디자인은 변경하지 않는다. */
+.entity-compare-brand-selector .brand-selector-dropdown {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%) translateY(4px);
+}
+
+.entity-compare-brand-selector .brand-selector-dropdown.is-visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+.entity-compare-header-vs {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--muted);
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  flex: none;
+}
+
+.entity-compare-header-periods {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.entity-compare-header-periods strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+/* Hero KPI: 기존 MoM 줄은 지우지 않고 Compare ON일 때만 우선순위를 낮춘다. */
+body.entity-compare-on .entity-hero-mom-line {
+  opacity: 0.55;
+  font-size: 11px;
+}
+
+body.entity-compare-on .entity-compare-kpi-block {
+  display: block;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+}
+
+body.entity-compare-on #entityHeroKpiGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* STEP67-5: Final UX — Section 2 Channel Mix. STEP67-4가 만든 online/offline 값은
+   그대로 두고, 도넛 대신 가로 100% composition bar를 주 시각화로 쓴다("3초 안에 채널
+   성격을 읽을 수 있는가" 기준 — bar 하나로 충분해 도넛은 제거했다). */
+.entity-channel-mix-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.entity-channel-mix-bar-label {
+  flex: none;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.entity-channel-mix-bar-label strong {
+  color: var(--ink);
+  font-size: 13px;
+  margin-left: 4px;
+}
+
+.entity-channel-mix-bar-label.online {
+  color: var(--blue);
+}
+
+.entity-channel-mix-bar-label.offline {
+  color: var(--green);
+}
+
+.entity-channel-mix-bar {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--green);
+  overflow: hidden;
+}
+
+.entity-channel-mix-bar-fill.online {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: var(--blue);
+}
+
+.entity-channel-mix-amounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.entity-channel-mix-amount-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.entity-hero-channel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.entity-hero-channel-dot.online {
+  background: var(--blue);
+}
+
+.entity-hero-channel-dot.offline {
+  background: var(--green);
+}
+
+.entity-hero-channel-label {
+  color: var(--muted);
+}
+
+.entity-channel-mix-amount-row strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+/* STEP67-5: Final UX. SKU를 핵심 KPI 첫 줄에서 뺀 보조 한 줄. */
+.entity-hero-sku-line {
+  margin: -4px 0 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.entity-hero-sku-line strong {
+  color: var(--ink);
+  font-weight: 700;
+  margin: 0 6px;
+}
+
+#entityHeroSkuLine[hidden] {
+  display: none;
+}
+
+/* STEP67-6: Sell-through/재고 SOURCE NOT AVAILABLE 표기. 가짜 값 대신 상태를 정직하게
+   드러내되, 에러처럼 보이지 않도록 muted 톤을 유지한다. */
+.entity-hero-source-note {
+  font-size: 10px !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* STEP67-5: Final UX. 브랜드 metadata 태그는 유지하되 시각적 비중만 낮춘다(내용 변경 없음). */
+#entityHeroMeta {
+  opacity: 0.7;
+}
+
+#entityHeroMeta .clients-tooltip-badge {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+/* STEP67-5: Final UX. System Status는 Hero 분석 흐름을 끊지 않도록 페이지 맨 아래
+   보조 영역으로 내리고 타이포그래피 비중도 낮춘다(기능/데이터 삭제 없음, order로 위치만
+   이동 — 아래 #BrandDashboard 순서 시스템 참고). */
+.brand-hero-status-row {
+  margin: 32px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.brand-hero-status-title {
+  font-size: 10px;
+}
+
+.brand-hero-status-item {
+  padding: 8px 10px;
+}
+
+.brand-hero-status-badge {
+  font-size: 11px;
+}
+
+/* STEP67-5: Final UX — 확정된 정보 위계(핵심 성과 → Channel Mix → Monthly Trend →
+   AI Insight & Action → Customer Composition)로 화면을 재배치한다. 모든 섹션이 이미
+   #BrandDashboard의 직계 자식이라 DOM 순서를 옮기지 않고 flex order만으로 재배치한다
+   (id/class/JS 바인딩 전부 그대로 — renderEntityHeroState() 등은 DOM 위치를 참조하지
+   않는다). Monthly Trend와 AI Insight & Action만 넓은 화면에서 좌우 2-column으로
+   나란히 놓이도록 flex-basis를 준다(미디어 쿼리 없이 자연스러운 wrap으로 처리). */
+#BrandDashboard.view.active {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0;
+}
+
+#BrandDashboard.view.active > * {
+  flex: 1 1 100%;
+  max-width: 100%;
+}
+
+#BrandDashboard > .brand-selector { order: 1; }
+#BrandDashboard > .entity-period-toolbar { order: 2; }
+#BrandDashboard > #entityCompareHeader { order: 3; }
+#BrandDashboard > .section-title.home-hero { order: 4; }
+#BrandDashboard > #entityHeroEmptyKpi,
+#BrandDashboard > #entityHeroKpiGrid,
+#BrandDashboard > #entityComparePerformanceSection { order: 5; }
+#BrandDashboard > #entityHeroSkuLine { order: 6; }
+#BrandDashboard > #entityHeroChannelSplit { order: 7; }
+#BrandDashboard > .brand-monthly-trend-section,
+#BrandDashboard > #entityHeroEmptyPanel,
+#BrandDashboard > #entityHeroContent {
+  order: 8;
+}
+/* .view.active를 함께 명시해 위 #BrandDashboard.view.active > * 규칙(더 높은 우선순위)을
+   확실히 덮어쓴다 — 이 두 항목만 좌우 2-column 폭을 갖는다. */
+#BrandDashboard.view.active > .brand-monthly-trend-section,
+#BrandDashboard.view.active > #entityHeroEmptyPanel,
+#BrandDashboard.view.active > #entityHeroContent {
+  flex: 1 1 460px;
+  max-width: 100%;
+}
+#BrandDashboard > .brand-monthly-trend-section { margin-right: 20px; }
+#BrandDashboard > .brand-customer-section { order: 9; }
+#BrandDashboard > .brand-category-section { order: 10; }
+#BrandDashboard > .brand-hero-status-row { order: 11; }
+
+/* STEP67-9G-1B: Period Performance Independent Section. STEP67-9G-1A가 실측한
+   충돌(592px 2-column 카드 vs 960px 4-column 표)을 해결하기 위해 #entityHeroKpiGrid
+   밖의 독립 full-width 영역으로 분리한다. #BrandDashboard.view.active > *가 기본
+   flex:1 1 100%/max-width:100%를 이미 주므로 폭 자체는 별도 규칙 없이 전체 폭을 쓴다 —
+   여기서는 표시 전환(.entity-compare-only 기본 display:none을 compare 모드에서만
+   덮어씀, 다른 .entity-compare-only 요소들과 동일 패턴)과 카드 세로 배치, 그리고
+   future content overflow에 대비한 min-width:0 안전망만 추가한다(overflow:hidden으로
+   자르지 않음 — 카드/표 모두 overflow:visible 유지, 폭 자체를 항상 충분히 확보하는
+   방향).*/
+body.entity-compare-on .entity-compare-performance-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.entity-compare-performance-eyebrow {
+  margin: 0;
+}
+
+.entity-compare-performance-card {
+  min-width: 0;
+}
+
+.entity-compare-performance-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.entity-compare-performance-table th,
+.entity-compare-performance-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  vertical-align: middle;
+}
+
+.entity-compare-performance-table th:first-child {
+  width: 31%;
+  text-align: left;
+}
+
+.entity-compare-performance-table thead strong,
+.entity-compare-performance-table thead small {
+  display: block;
+}
+
+.entity-compare-performance-table thead strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.entity-compare-performance-table thead small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.entity-compare-performance-table tbody th {
+  color: var(--ink);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.entity-compare-performance-table tbody td {
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.entity-compare-performance-empty td {
+  color: var(--muted);
+  text-align: left;
+  white-space: normal;
+}
+
+@media (max-width: 900px) {
+  body.entity-compare-on #entityHeroKpiGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* STEP67-9H-2: Customer Composition compare — Brand A/B를 완전히 동등한 50:50 column
+   으로 보여준다(기존 좌우 나열 mini donut row에서 grid 2열로 변경). 카드 chrome은
+   .brand-customer-donut-card(단일 브랜드 도넛 카드와 동일 클래스)를 그대로 재사용한다. */
+body.entity-compare-on .entity-compare-composition {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.entity-compare-composition-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.entity-compare-composition-col .clients-donut-legend {
+  align-self: stretch;
+  width: 100%;
+}
+
+/* Category Intelligence 비교 상단("기준 · 브랜드명 1위" 등)이 여전히 이 클래스를
+   쓴다 — STEP67-9H-2에서 Customer Composition의 브랜드 헤더는
+   .entity-compare-composition-brand-name으로 분리했지만, 이 기본 클래스 자체는
+   Category와 공유되므로 삭제하지 않는다. */
+.entity-compare-mini-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.entity-compare-mini-label span {
+  color: var(--ink);
+}
+
+/* 브랜드명이 곧 column header다 — "기준"/"비교"/A·B 같은 별도 라벨을 붙이지 않는다. */
+.entity-compare-composition-brand-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+  text-align: center;
+}
+
+/* 상단 KPI 카드용 mini donut(72px)보다 충분히 크게 — 단일 브랜드 큰 도넛(.brand-customer-donut,
+   150px)과 동일 크기로 맞춰 두 맥락에서 같은 시각적 비중을 갖게 한다. */
+.entity-compare-mini-donut {
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+}
+
+.entity-compare-mini-donut > span {
+  display: grid;
+  place-items: center;
+  width: 110px;
+  height: 110px;
+  padding: 8px;
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.entity-compare-mini-donut.is-unavailable {
+  width: 100%;
+  height: auto;
+  min-height: 150px;
+  border-radius: 12px;
+}
+
+.entity-compare-mini-donut.is-unavailable > span {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* STEP67-9H-2: Comparison ON에서는 단일 브랜드용 큰 도넛+TOP5+AI Insight가 위 50:50
+   비교 영역과 중복 노출되므로 숨긴다(Category Intelligence의 동일 클래스 재사용 grid는
+   #entityCompositionContent 밖에 있어 영향받지 않음 — .brand-customer-grid 클래스는
+   Category와 공유되므로 반드시 #entityCompositionContent로 범위를 좁혀야 한다). */
+body.entity-compare-on #entityCompositionContent > .brand-customer-grid,
+body.entity-compare-on #entityCompositionInsightCard {
+  display: none;
+}
+
+.entity-compare-mini-legend {
+  display: grid;
+  grid-template-columns: repeat(3, 18px);
+  gap: 4px;
+}
+
+.entity-compare-mini-legend i {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.entity-compare-mini-top {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.entity-compare-mini-top strong {
+  color: var(--ink);
+}
+
+.entity-compare-composition-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.entity-compare-composition-diff span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.entity-compare-composition-diff strong {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+/* Category Intelligence compare */
+body.entity-compare-on .entity-compare-category-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.entity-compare-category-top-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.entity-compare-category-top-col strong {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+body.entity-compare-on .entity-compare-category-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.entity-compare-mini-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #f2f1ec;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.entity-compare-mini-tag.diff.up {
+  color: var(--green);
+}
+
+.entity-compare-mini-tag.diff.down {
+  color: var(--red);
+}
+
+/* Monthly Trend legend */
+body.entity-compare-on .entity-compare-trend-legend {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.entity-compare-trend-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.entity-compare-trend-legend-item span {
+  color: var(--ink);
+}
+
+.entity-compare-trend-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  border-top: 2px solid var(--ink);
+}
+
+.entity-compare-trend-swatch.dashed {
+  border-top-style: dashed;
+  border-top-color: var(--muted);
+}
+
+/* Comparison Summary refinement */
+.entity-compare-summary-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.entity-compare-summary-metric {
+  font-weight: 800;
+  color: var(--ink);
+  margin-right: 4px;
+}
+
+/* Drawer compare line: 브랜드/기간 텍스트가 길어져도 줄바꿈만 허용하고 폭을 넘기지 않는다. */
+.entity-drawer-compare-line {
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 900px) {
+  .entity-compare-header-vs {
+    padding: 3px 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .entity-compare-header-brands {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .entity-compare-header-brand {
+    max-width: 100%;
+  }
+
+  .entity-compare-header-periods {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .entity-compare-composition {
+    grid-template-columns: 1fr;
+  }
+
+  .entity-compare-composition-diff {
+    margin-left: 0;
+  }
+
+  .entity-compare-category-top {
+    flex-direction: column;
+  }
 }

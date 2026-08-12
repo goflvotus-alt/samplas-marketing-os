@@ -1,8 +1,4 @@
-import {
-  extractBracketBrandCandidate,
-  extractSlashBrandCandidate,
-  normalizeBrandKey
-} from "./brand-engine.mjs";
+import { resolveIdentity } from "./unified-identity-resolver.mjs";
 
 function amountOf(brand = {}) {
   const values = [
@@ -17,62 +13,6 @@ function amountOf(brand = {}) {
     if (Number.isFinite(amount)) return amount;
   }
   return 0;
-}
-
-function matchKey(value) {
-  return normalizeBrandKey(value).replace(/\s+/g, "");
-}
-
-function candidateFromProductName(productName) {
-  const bracket = extractBracketBrandCandidate(productName);
-  if (bracket?.type === "single") return bracket.candidate;
-  return extractSlashBrandCandidate(productName)?.candidate || "";
-}
-
-function buildResolver(brands, products) {
-  const matches = new Map();
-  const conflicts = new Set();
-  const productMatches = new Map();
-  const productConflicts = new Set();
-  const register = (value, code) => {
-    const key = matchKey(value);
-    if (!key) return;
-    const previous = matches.get(key);
-    if (previous && previous !== code) conflicts.add(key);
-    else matches.set(key, code);
-  };
-  const registerProduct = (value, code) => {
-    const key = normalizeBrandKey(value);
-    if (!key) return;
-    const previous = productMatches.get(key);
-    if (previous && previous !== code) productConflicts.add(key);
-    else productMatches.set(key, code);
-  };
-  for (const brand of brands) {
-    const code = String(brand.brand_code || brand.brandCode || "").trim();
-    if (!code || code === "UNASSIGNED") continue;
-    const values = [
-      code,
-      brand.brand_name,
-      brand.brandName,
-      brand.manufacturer_name,
-      ...(Array.isArray(brand.name_aliases) ? brand.name_aliases : [])
-    ];
-    for (const value of values) register(value, code);
-  }
-  for (const product of products) {
-    const code = String(product.brand_code || product.brandCode || "").trim();
-    const productName = product.productName || product.product_name;
-    const candidate = extractBracketBrandCandidate(productName);
-    if (code && code !== "UNASSIGNED") registerProduct(productName, code);
-    if (code && code !== "UNASSIGNED" && candidate?.type === "single") register(candidate.candidate, code);
-  }
-  return (productName) => {
-    const candidateKey = matchKey(candidateFromProductName(productName));
-    if (candidateKey && !conflicts.has(candidateKey) && matches.has(candidateKey)) return matches.get(candidateKey);
-    const productKey = normalizeBrandKey(productName);
-    return productKey && !productConflicts.has(productKey) ? productMatches.get(productKey) || null : null;
-  };
 }
 
 function cloneBrand(brand = {}) {
@@ -92,10 +32,15 @@ function cloneBrand(brand = {}) {
   };
 }
 
-function unassignedBrand() {
+// 온라인 매출이 이달 0건이라 brandSales에 미리 seed되지 않은 브랜드(예: 오프라인
+// 전용 브랜드)도 새 code로 정확히 bucket을 만들어야 한다 — unassignedBrand()의
+// brand_code:"UNASSIGNED" 하드코딩을 재사용하면 실제 code로 저장은 되지만 데이터
+// 필드는 "UNASSIGNED"로 잘못 남는다(STEP67-3에서 발견, Unified Identity가 온라인
+// 미판매 브랜드까지 해석할 수 있게 되면서 처음 드러난 버그).
+function emptyBucket(code, name) {
   return cloneBrand({
-    brand_code: "UNASSIGNED",
-    brand_name: "UNASSIGNED",
+    brand_code: code,
+    brand_name: name || code,
     quantitySold: 0,
     orderCount: 0,
     soldProductCount: 0,
@@ -103,15 +48,26 @@ function unassignedBrand() {
   });
 }
 
+function unassignedBrand() {
+  return emptyBucket("UNASSIGNED", "UNASSIGNED");
+}
+
+// STEP67-3: 오프라인 브랜드 귀속은 이 파일이 자체 파싱/매칭 로직(옛 buildResolver)을
+// 갖지 않고, 프로젝트의 공식 Unified Identity Pipeline(scripts/unified-identity-
+// resolver.mjs의 resolveIdentity)에만 위임한다. identityContext는 호출자가
+// loadResolverContext()로 미리 로딩해 넘긴다(이 함수 자체는 여전히 파일 I/O를 하지
+// 않는 순수 함수로 유지).
 export function mergeOfflineBrandSales({
   brandSales = [],
-  productSales = [],
   onlinePaidAmount = 0,
   offlineLines = [],
   since = "",
-  until = ""
+  until = "",
+  identityContext = null
 } = {}) {
-  const resolveBrand = buildResolver(brandSales, productSales);
+  if (!identityContext) {
+    throw new Error("mergeOfflineBrandSales requires identityContext (scripts/unified-identity-resolver.mjs loadResolverContext() result)");
+  }
   const buckets = new Map(brandSales.map((brand) => {
     const cloned = cloneBrand(brand);
     return [String(cloned.brand_code || cloned.brandCode || "").trim(), cloned];
@@ -122,8 +78,9 @@ export function mergeOfflineBrandSales({
     const date = String(line?.date || "");
     const amount = Number(line?.salesAmount);
     if (line?.isOfflineRevenue !== true || !Number.isFinite(amount) || (since && date < since) || (until && date > until)) continue;
-    const code = resolveBrand(line.productName) || "UNASSIGNED";
-    const brand = buckets.get(code) || unassignedBrand();
+    const identity = resolveIdentity({ productName: line.productName, brandGroup: line.brandGroup }, identityContext);
+    const code = identity.resolved ? identity.brand.brandCode : "UNASSIGNED";
+    const brand = buckets.get(code) || emptyBucket(code, identity.resolved ? identity.brand.canonicalName : "UNASSIGNED");
     brand.offlineSalesAmount += amount;
     brand.salesAmount += amount;
     brand.canonicalPaidAmount += amount;

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "code-review-graph": {
+      "command": "/Users/binggu/Library/Application Support/pipx/venvs/code-review-graph/bin/python",
+      "args": [
+        "-m",
+        "code_review_graph",
+        "serve"
+      ],
+      "cwd": "/Users/binggu/Documents/Codex/2026-06-28/samplas-os-https-www-instagram-com",
+      "type": "stdio"
+    }
+  }
+}

@@ -19,7 +19,16 @@ const paths = {
 };
 const text = (value) => String(value ?? "").trim();
 const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
+const readOptionalJson = async (path) => {
+  try { return await readJson(path); }
+  catch (error) { if (error?.code === "ENOENT") return null; throw error; }
+};
 const list = (value, keys) => Array.isArray(value) ? value : keys.map((key) => value?.[key]).find(Array.isArray) || [];
+const planKey = (item) => [...new Set((item?.candidate_records || []).map((brand) => String(brand?.brand_code ?? "").trim()).filter(Boolean))].sort().join("|");
+const preserveMergeStatuses = (plans, previousPlans) => {
+  const statuses = new Map(previousPlans.map((item) => [planKey(item), text(item?.merge_status)]).filter(([key, status]) => key && status));
+  for (const item of plans) item.merge_status = statuses.get(planKey(item)) || "PENDING";
+};
 const countByCode = (items, codeOf) => {
   const counts = new Map();
   for (const item of items) {
@@ -39,9 +48,9 @@ if (!nodeModules) throw new Error("CODEX_NODE_MODULES is required");
 const require = createRequire(join(nodeModules, "package.json"));
 const { FileBlob, SpreadsheetFile } = require("@oai/artifact-tool");
 
-const [masterFile, productFile, universeFile, audit, reviewQueueFile, candidateFile] = await Promise.all([
+const [masterFile, productFile, universeFile, audit, reviewQueueFile, candidateFile, previousPlanFile] = await Promise.all([
   readJson(paths.master), readJson(paths.products), readJson(paths.universe), readJson(paths.audit),
-  readJson(paths.reviewQueue), readJson(paths.candidates)
+  readJson(paths.reviewQueue), readJson(paths.candidates), readOptionalJson(paths.json)
 ]);
 const brands = list(masterFile, ["brands"]);
 const products = list(productFile, ["entries", "products"]);
@@ -164,6 +173,7 @@ for (const [index, issue] of inactiveIssues.entries()) {
     sourceIssue: issue.type
   }));
 }
+preserveMergeStatuses(plans, list(previousPlanFile, ["plans"]));
 
 const report = {
   generated_at: new Date().toISOString(),

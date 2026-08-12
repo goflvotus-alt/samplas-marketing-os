@@ -18,6 +18,11 @@ import {
   normalizeBrandKey,
   resolveBrand as resolveBrandFromEngine
 } from "./scripts/brand-engine.mjs";
+// STEP63-3: Clients purchaseDetails에 canonical brand identity를 "추가 필드"로만 붙이기
+// 위해 STEP63-2/62-2B의 Integrated Identity Pipeline을 그대로 재사용한다(새 Resolver
+// 작성 금지). 이 모듈은 work/brand-master.json, work/product-registry.json을 읽기만
+// 하고 절대 쓰지 않는다.
+import { resolveIdentity, loadResolverContext } from "./scripts/unified-identity-resolver.mjs";
 import {
   cafe24OrderAmount,
   cafe24OrderItems,
@@ -59,6 +64,11 @@ const marketingOsTimeoutMs = 12000;
 const missionCacheTtlMs = 30000;
 const missionResultCache = new Map();
 const missionRefreshPromises = new Map();
+// STEP 47A — Intelligence Service Dependency Hardening: 이 값은 프런트엔드가 이미 사용 중인
+// 가장 긴 클라이언트 타임아웃(brief/missions = 40000ms, samplas-marketing-os.js getJson 호출부
+// 참고)보다 반드시 커야 한다. 정상적으로 느린 응답을 여기서 먼저 끊어버리면 안 되고, 이 값은
+// "정상적으로는 절대 도달하지 않아야 하는" 최후 안전장치(무한 대기 방지)로만 동작해야 한다.
+const intelligenceRequestTimeoutMs = Number(env.INTELLIGENCE_REQUEST_TIMEOUT_MS || 45000);
 
 await bootstrapProductRegistryFiles({ projectRoot: root, workDir: workRoot });
 await mkdir(intelligenceWorkDir, { recursive: true });
@@ -69,14 +79,59 @@ await ensureDecisionHistoryFile();
 await ensureLearningDbFile();
 await ensureMissionCacheFile();
 
+// STEP 47A — Intelligence Service Dependency Hardening.
+// 기존에는 이 함수 하나가 전체 라우팅과 에러 처리를 함께 했고, 내부 로직이 멈춰버리면(예:
+// 파일 I/O가 끝나지 않는 경우) 응답이 영원히 지연되어 프런트엔드가 무한 skeleton 상태로 남는
+// 위험이 있었다(클라이언트 쪽 getJson()의 AbortController 타임아웃은 이미 있었지만, 서버 쪽에는
+// 요청을 강제로 마무리하는 장치가 없었다). 아래처럼 라우팅 본문을 routeIntelligenceRequest로
+// 분리하고, handleIntelligenceRequest는 그 위에 "최후 타임아웃 안전장치"만 추가한다.
+// - API 경로/응답 스키마는 변경하지 않는다(라우팅 분기 내용은 그대로 이동만 함).
+// - 정상 응답 흐름은 전혀 바뀌지 않는다(타임아웃보다 먼저 끝나면 그대로 반환).
+// - 타임아웃이 실제로 발생하면(비정상 상황에서만) 클라이언트에는 "Intelligence Service
+//   연결 안 됨"에 해당하는 오류 응답을 보내고, 서버 로그에 원인을 남긴다.
 export async function handleIntelligenceRequest(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || `${host}:${port}`}`);
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, corsHeaders());
+    res.end();
+    return;
+  }
+  let timer;
+  let timedOut = false;
+  const timeoutPromise = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      resolve("timeout");
+    }, intelligenceRequestTimeoutMs);
+  });
+  const routePromise = routeIntelligenceRequest(url, req, res).then(() => "done");
+  let outcome;
   try {
-    const url = new URL(req.url, `http://${req.headers.host || `${host}:${port}`}`);
-    if (req.method === "OPTIONS") {
-      res.writeHead(204, corsHeaders());
-      res.end();
-      return;
-    }
+    outcome = await Promise.race([routePromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
+  if (outcome === "timeout") {
+    console.error(
+      `[intelligence] TIMEOUT ${req.method} ${url.pathname} — ${intelligenceRequestTimeoutMs}ms 초과. ` +
+      `클라이언트에는 "Intelligence Service 연결 안 됨"으로 응답합니다.`
+    );
+    json(res, {
+      ok: false,
+      error: "Intelligence Service Timeout",
+      message: `${intelligenceRequestTimeoutMs}ms 내에 응답하지 못했습니다. Intelligence Service 상태를 확인해주세요.`
+    }, 504);
+    // 뒤늦게 원래 요청이 끝나더라도(성공/실패 무관) 이미 위에서 응답을 보냈으므로,
+    // json()의 res.headersSent 가드 덕분에 이중 응답으로 서버가 죽지 않는다. 다만 원인
+    // 파악을 위해 지연 이후 발생한 오류는 로그로만 남긴다.
+    routePromise.catch((error) => {
+      console.error(`[intelligence] TIMEOUT-AFTER ${url.pathname} 지연 이후 추가 오류: ${safeErrorMessage(error)}`);
+    });
+  }
+}
+
+async function routeIntelligenceRequest(url, req, res) {
+  try {
     if (url.pathname === "/api/intelligence/health") {
       return json(res, {
         ok: true,
@@ -181,6 +236,10 @@ export async function handleIntelligenceRequest(req, res) {
       error: "Not Found"
     }, 404);
   } catch (error) {
+    // STEP 47A — 실패 원인을 서버 로그에 남긴다(이전에는 클라이언트 응답만 있었고 서버
+    // 콘솔에는 아무 기록도 남지 않았다).
+    console.error(`[intelligence] ERROR ${req.method} ${url.pathname}: ${safeErrorMessage(error)}`);
+    if (error?.stack) console.error(error.stack);
     return json(res, {
       ok: false,
       error: "Internal Server Error",
@@ -208,6 +267,10 @@ if (isDirectRun) {
 }
 
 function json(res, payload, status = 200) {
+  // STEP 47A — 타임아웃 응답을 먼저 보낸 뒤 원래 처리가 뒤늦게 끝나 다시 json()을 호출해도
+  // 안전하도록 가드한다. 이 가드가 없으면 "Cannot set headers after they are sent" 오류로
+  // 요청이 죽고, 최악의 경우 다른 요청 처리에도 영향을 줄 수 있다.
+  if (res.headersSent || res.writableEnded) return;
   res.writeHead(status, {
     ...corsHeaders(),
     "Content-Type": "application/json; charset=utf-8",
@@ -2414,7 +2477,9 @@ function isOnlineFirstSignupRawName(rawName) {
 // 자체가 존재하지 않는다. 따라서 이 판매행 자신의 customerName에 "기프트"가 포함된 경우에만 그
 // 판매행 1건을 제외하고, 같은 mergeKey/같은 사람의 다른 정상 판매행(다른 customerName)에는
 // 전혀 영향을 주지 않는다 — 거래처/고객/주문 전체를 지우는 것이 아니라 판매행 단위 필터다.
-function isGiftSalesLine(line) {
+// STEP67-6: Brand Intelligence Customer Composition이 이 판정을 그대로 재사용한다
+// (export만 추가, 판정 로직 변경 없음 — 새 Customer Pipeline을 만들지 않기 위함).
+export function isGiftSalesLine(line) {
   return String(line?.customerName || "").includes("기프트");
 }
 
@@ -2444,7 +2509,9 @@ function stripStylistTitleSuffix(rawName) {
 //   "건수"는 salesAmount > 0인 라인만 센다(반품 라인 자체를 하나의 "구매"로 세지 않기 위함).
 // 기간 내 purchaseCount가 0인 고객(즉 이 기간에 실제 거래가 없는 고객)은 요약/목록에서 제외한다 —
 // "전체 고객 수"가 "현재 기간 내 고객 식별 가능한 고유 고객 수"이기 때문에 이 필터와 일치해야 한다.
-const CLIENT_TYPE_LABELS = {
+// STEP67-6: Brand Intelligence Customer Composition이 Clients 화면과 동일한 라벨을
+// 그대로 쓰도록 export한다(값 변경 없음, 새 라벨 발명 금지).
+export const CLIENT_TYPE_LABELS = {
   stylist: "스타일리스트",
   samplas_press: "프레스",
   customer: "일반 손님",
@@ -2504,6 +2571,14 @@ export async function buildClientsOverview(options = {}) {
   const until = isDateKey(options.until) ? options.until : todayKey();
   const now = options.now ? new Date(options.now) : new Date();
   const currentMonth = options.currentMonth || clientsIntelligenceMonthKey(now);
+
+  // STEP63-3: Brand Master/Product Registry는 로컬 파일이라 새 API 호출 없이 읽을 수 있다
+  // (work/brand-master.json, work/product-registry.json). 온라인 Cafe24 카탈로그 기반
+  // 2차 조회(STEP63-2B의 onlineCatalog 옵션)는 이번 STEP에서 의도적으로 연결하지 않았다 —
+  // 그 값을 얻으려면 buildBrandSalesDiagnostics()를 추가로 호출해야 하는데, 이는 Clients
+  // 요청마다 새로운 Cafe24 상품 카탈로그 조회를 발생시켜 "불필요한 새 API 반복 호출 금지"
+  // 지시사항과 충돌한다(work/reports/STEP63-3.md 4번 항목에 이 판단 근거를 상세히 기록).
+  const identityResolverContext = await loadResolverContext();
 
   const ecountClients = await loadEcountClientLines();
   // STEP49-2A-2: 주입 경로도 canonicalizeCafe24ClientOrders()로 기존 캐시 경로와 동일한
@@ -2631,18 +2706,41 @@ export async function buildClientsOverview(options = {}) {
       : buildClientDisplayName(representativeRawName, classification);
 
     const purchaseDetails = [
-      ...offlinePositiveLines.map((line) => ({
-        date: line.date || null,
-        orderId: line.slipNo || line.documentNo || null,
-        productName: line.productName || null,
-        quantity: Number.isFinite(line.quantity) ? line.quantity : null,
-        salesAmount: Number.isFinite(Number(line.salesAmount)) ? Number(line.salesAmount) : 0,
-        source: "offline",
-        // TASK5(2026-07-17 최종 정정): aliasStats(원본 판매명별 건수/매출/최근구매일) 계산을 위해
-        // 이 판매행 자신의 실제 원본 거래처명(ECOUNT customerName)을 그대로 보존한다 — 추측하지
-        // 않고 실제 필드값만 사용한다는 요구사항에 따름.
-        rawName: line.customerName || null
-      })),
+      ...offlinePositiveLines.map((line) => {
+        // STEP63-3: 원본 brand(ECOUNT brandGroup, operational metadata)는 절대 덮어쓰지
+        // 않는다 — STEP63-2/62-2B의 Integrated Identity Pipeline을 productName 기준으로만
+        // 돌려서 canonical 필드를 "추가"한다. Priority 3(Reviewed Brand Alias)는 아직 승인된
+        // alias가 없어 사실상 항상 통과하지 못하고, Priority 2(Product Name Resolver)는
+        // 온라인 카탈로그 2차 조회 없이 Brand Master 직접 일치만 시도한다(불필요한 Cafe24
+        // API 재호출을 피하기 위한 의도적 축소 — work/reports/STEP63-3.md 4번 항목 참고).
+        // 그 결과 confidence는 대부분 "CANDIDATE"이며, STEP63-1 Confidence Contract에 따라
+        // 프론트엔드는 VERIFIED/REVIEWED가 아니면 이 canonical 값을 화면에 표시하지 않는다
+        // (표시 여부 판단은 UI 책임 — 여기서는 판정 결과를 있는 그대로 전달만 한다).
+        const identity = resolveIdentity(
+          { productName: line.productName, brandGroup: line.brandGroup || null },
+          identityResolverContext
+        );
+        return {
+          date: line.date || null,
+          orderId: line.slipNo || line.documentNo || null,
+          productName: line.productName || null,
+          // STEP62-1: ECOUNT 판매 라인이 이미 갖고 있는 brandGroup 필드를 그대로 노출한다(새 계산/
+          // 추론 없음 — line.productName을 파싱해 브랜드를 추측하지 않는다). STEP63-3에서도 이
+          // 필드는 원본 그대로 유지한다(canonical 값으로 덮어쓰지 않음).
+          brand: line.brandGroup || null,
+          canonicalBrandCode: identity.resolved ? identity.brand.brandCode : null,
+          canonicalBrandName: identity.resolved ? identity.brand.canonicalName : null,
+          brandConfidence: identity.resolved ? identity.brand.confidence : null,
+          operationalBrandGroup: identity.operational.brandGroup,
+          quantity: Number.isFinite(line.quantity) ? line.quantity : null,
+          salesAmount: Number.isFinite(Number(line.salesAmount)) ? Number(line.salesAmount) : 0,
+          source: "offline",
+          // TASK5(2026-07-17 최종 정정): aliasStats(원본 판매명별 건수/매출/최근구매일) 계산을 위해
+          // 이 판매행 자신의 실제 원본 거래처명(ECOUNT customerName)을 그대로 보존한다 — 추측하지
+          // 않고 실제 필드값만 사용한다는 요구사항에 따름.
+          rawName: line.customerName || null
+        };
+      }),
       ...onlineOrdersInPeriod.map((order) => ({
         date: order.orderDate || null,
         orderId: order.orderId || null,
@@ -2651,6 +2749,15 @@ export async function buildClientsOverview(options = {}) {
         // 없는 거래이므로 추측하지 않고 productName은 null로 두고(화면에서 "제품 정보 없음" 표시),
         // 거래 자체는 버리지 않는다.
         productName: null,
+        // Cafe24 개인결제창 주문 원본에는 브랜드 필드가 없다(정규화 함수 normalizeCafe24ProxyOrder/
+        // normalizeCafe24CsvOrder 확인) — 추측하지 않고 null로 둔다(화면 "브랜드 정보 없음" 표시).
+        brand: null,
+        // STEP63-3: 온라인(개인결제창) 주문은 실제 물리 상품 정보 자체가 없어(Cafe24 placeholder
+        // 상품, STEP62-3에서 이미 확인) canonical 조회를 시도하지 않는다 — 새 추론 금지.
+        canonicalBrandCode: null,
+        canonicalBrandName: null,
+        brandConfidence: null,
+        operationalBrandGroup: null,
         quantity: Number.isFinite(order.quantity) ? order.quantity : null,
         salesAmount: Number.isFinite(order.paidAmount) ? order.paidAmount : 0,
         source: "online",
@@ -2927,7 +3034,9 @@ function summarizePurchaseDateCounts(purchaseDetails = []) {
   return [...map.entries()].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function classifyClientEntity(rawName) {
+// STEP67-6: Brand Intelligence Customer Composition이 이 두 분류 함수를 그대로 재사용한다
+// (export만 추가, 분류 규칙 변경 없음 — Clients 화면과 동일한 canonical classification).
+export function classifyClientEntity(rawName) {
   const text = String(rawName || "").trim();
   if (CLIENT_LOGISTICS_NAMES.has(text)) return { entityType: "logistics" };
   return { entityType: "client" };
@@ -2950,7 +3059,7 @@ function classifyClientEntity(rawName) {
 //    리스트가 같은 9개 문자열을 먼저 가로채므로 RULE3 목록의 "OO님 판매" 항목들은 사실상 도달하지
 //    않는다 — 죽은 코드지만 안전을 위해 그대로 남겨둔다)
 // 9) 그 외 -> samplas_press (fallback, 화이트리스트에 없는 새 "OO님 판매"도 여기로 떨어짐)
-function classifyClientType(rawName) {
+export function classifyClientType(rawName) {
   const text = String(rawName || "");
   const explicit = explicitClientTypeOverride(text);
   if (explicit) return explicit;

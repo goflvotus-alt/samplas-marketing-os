@@ -62,12 +62,66 @@
         </div>
       </div>
       <nav id="nav" class="nav"></nav>
-      <div class="sync-panel">
-        <p class="eyebrow">Data Sync</p>
-        <div id="instagramSyncRow" class="sync-row loading"><span></span><strong>Instagram</strong><em>확인 중</em></div>
-        <div id="metaAdsSyncRow" class="sync-row loading"><span></span><strong>Meta Ads</strong><em>확인 중</em></div>
-        <div id="cafe24SyncRow" class="sync-row loading"><span></span><strong>Cafe24</strong><em>확인 중</em></div>
-        <button id="syncFixBtn" class="sync-fix-button hidden" type="button">오류 해결하기</button>
+      <div class="refresh-center">
+        <p class="eyebrow">Data Refresh Center</p>
+
+        <div class="refresh-card">
+          <div class="refresh-card-top">
+            <strong class="refresh-card-name">Cafe24</strong>
+            <span class="refresh-badge good"><i></i>Healthy</span>
+          </div>
+          <div class="refresh-card-meta">
+            <span class="refresh-card-time">15:07</span>
+            <button class="refresh-card-btn" type="button" data-refresh="cafe24">Refresh</button>
+          </div>
+          <button id="syncFixBtn" class="sync-fix-button hidden" type="button">오류 해결하기</button>
+        </div>
+
+        <div class="refresh-card">
+          <div class="refresh-card-top">
+            <strong class="refresh-card-name">Meta Ads</strong>
+            <span class="refresh-badge good"><i></i>Healthy</span>
+          </div>
+          <div class="refresh-card-meta">
+            <span class="refresh-card-time">2 min ago</span>
+            <button class="refresh-card-btn" type="button" data-refresh="meta">Refresh</button>
+          </div>
+        </div>
+
+        <div class="refresh-card">
+          <div class="refresh-card-top">
+            <strong class="refresh-card-name">Instagram</strong>
+            <span class="refresh-badge good"><i></i>Healthy</span>
+          </div>
+          <div class="refresh-card-meta">
+            <span class="refresh-card-time">15:05</span>
+            <button class="refresh-card-btn" type="button" data-refresh="instagram">Refresh</button>
+          </div>
+        </div>
+
+        <div class="refresh-card" id="ecountOfflineRefreshCard">
+          <div class="refresh-card-top">
+            <strong class="refresh-card-name">ECOUNT Offline</strong>
+            <span class="refresh-badge warn"><i></i>Partial</span>
+          </div>
+          <div class="refresh-card-meta">
+            <span class="refresh-card-time">2026-08</span>
+            <button class="refresh-card-btn" type="button" data-ecount-wizard-open>Upload</button>
+          </div>
+        </div>
+
+        <div class="refresh-activity">
+          <p class="refresh-activity-title">Recent Activity</p>
+          <div id="refreshActivityList">
+            <p class="refresh-activity-empty">아직 이 세션에서 실행된 갱신이 없습니다.</p>
+          </div>
+        </div>
+
+        <div class="refresh-footer">
+          <span class="refresh-footer-label">Marketing OS Data Health</span>
+          <span class="refresh-footer-value">96%</span>
+          <span class="refresh-footer-coverage">Coverage · Partial</span>
+        </div>
       </div>
     </aside>
 
@@ -100,6 +154,7 @@
             <h3>오늘 운영 홈</h3>
           </div>
         </div>
+        <div id="todayFreshnessHeader" class="freshness-header-slot"></div>
         <div class="section-block">
           <div class="section-title compact">
             <div>
@@ -574,36 +629,72 @@
         </details>
       </section>
 
+      <!-- STEP66-2: Commerce UI/UX Rebuild. docs/DESIGN_SYSTEM.md(STEP66-0)/
+           Promotion Intelligence(STEP66-1)와 동일한 컴포넌트만 재사용해 SECTION
+           1~6(Hero/Primary KPI/Secondary KPI/Sales Summary/Channel/Detail) 순서로
+           재배치했다. 기존 render 함수(renderFreshnessHeader/renderAdComparison/
+           renderCommerceSummary/renderTodayOverviewCards/renderCampaignPeriodComparison)
+           는 전부 무수정 — id를 그대로 둔 채 컨테이너 위치만 옮겼다. 새로 추가한
+           건 이미 존재하는 값(totalSales/cafeTotals)을 다시 읽어 카드로만 보여주는
+           renderCommercePrimaryKpi/renderCommerceSecondaryKpi/renderCommerceSalesSummary/
+           renderCommerceChannelCards 4개 함수뿐 — 새 API 호출도, 새 계산식도 없다. -->
       <section id="Sales" class="view">
-        <div class="section-title">
-          <div>
-            <p class="eyebrow">Sales</p>
+        <div class="section-title home-hero">
+          <div><p class="eyebrow">COMMERCE</p></div>
+        </div>
+
+        <!-- SECTION 1: Hero. Commerce/기간(Data As Of)/Health Status를 한 카드에서. -->
+        <article id="commerceHeroCard" class="action-item promotion-hero-card">
+          <div class="promotion-hero-head">
             <h3>Revenue Decision Console</h3>
           </div>
-        </div>
-
-        <div class="section-block">
+          <div id="commerceFreshnessHeader" class="freshness-header-slot"></div>
           <div id="salesHealthBanner" class="ad-status-banner loading"></div>
+        </article>
+
+        <!-- SECTION 2: Primary KPI(총매출/온라인/오프라인) -->
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">핵심 지표</p></div></div>
+          <div id="commercePrimaryKpi" class="cards brand-hero-kpi-grid"></div>
         </div>
 
-        <div id="commerceDestinationLayout" class="section-block">
-          <div class="section-title compact">
-            <div><p class="eyebrow">Commerce Operations</p><h3>기간별 매출 운영</h3></div>
-          </div>
-          <div class="destination-layout">
-            <div id="commercePeriodKpiSlot" class="destination-slot">
-              <div class="section-title compact">
-                <div><p id="overviewRangeEyebrow" class="eyebrow">선택 기간</p><h3 id="overviewRangeTitle">선택 기간 KPI</h3></div>
+        <!-- SECTION 3: Secondary KPI(주문수/객단가/온라인 비중/오프라인 비중) -->
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">판매 지표</p></div></div>
+          <div id="commerceSecondaryKpi" class="kpi-grid"></div>
+        </div>
+
+        <!-- SECTION 4: Sales Summary. 표보다 먼저 읽히는 한 줄 요약 + 대표 이슈. -->
+        <article id="commerceSalesSummary" class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card" hidden>
+          <span>Sales Summary</span>
+          <p id="commerceSalesSummaryText" class="brand-monthly-trend-insight-text"></p>
+        </article>
+
+        <!-- SECTION 5: Channel(Online vs Offline, Brand Intelligence 스타일 카드) -->
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Channel</p><h3>Online vs Offline</h3></div></div>
+          <div id="commerceChannelCards" class="cards"></div>
+        </div>
+
+        <!-- SECTION 6: Detail. 기존 표/그래프/계산 무수정 — 순서만 뒤로 이동. -->
+        <div class="section-block">
+          <div class="section-title compact"><div><p class="eyebrow">Detail</p><h3>기간별 매출 운영</h3></div></div>
+          <div id="commerceDestinationLayout">
+            <div class="destination-layout">
+              <div id="commercePeriodKpiSlot" class="destination-slot">
+                <div class="section-title compact">
+                  <div><p id="overviewRangeEyebrow" class="eyebrow">선택 기간</p><h3 id="overviewRangeTitle">선택 기간 KPI</h3></div>
+                </div>
+                <div id="kpiGrid" class="kpi-grid"></div>
               </div>
-              <div id="kpiGrid" class="kpi-grid"></div>
-            </div>
-            <div id="commerceRevenueSummarySlot" class="destination-slot">
-              <div class="section-title compact"><div><p class="eyebrow">Revenue Summary</p><h3>매출 요약</h3></div></div>
-              <div id="overviewLiveData" class="cards ad-core-kpi-grid"></div>
-            </div>
-            <div id="commerceOrderSummarySlot" class="destination-slot">
-              <div class="section-title compact"><div><p class="eyebrow">Order KPI</p><h3>주문 보조 지표</h3></div></div>
-              <div id="overviewLiveSupport" class="report-support-row"></div>
+              <div id="commerceRevenueSummarySlot" class="destination-slot">
+                <div class="section-title compact"><div><p class="eyebrow">Revenue Summary</p><h3>매출 요약</h3></div></div>
+                <div id="overviewLiveData" class="cards ad-core-kpi-grid"></div>
+              </div>
+              <div id="commerceOrderSummarySlot" class="destination-slot">
+                <div class="section-title compact"><div><p class="eyebrow">Order KPI</p><h3>주문 보조 지표</h3></div></div>
+                <div id="overviewLiveSupport" class="report-support-row"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -654,6 +745,7 @@
             </div>
           </div>
         </div>
+        <div id="monthlyFreshnessHeader" class="freshness-header-slot"></div>
         <div id="monthlyArchiveReport" class="monthly-archive-report"></div>
         <div id="annualArchiveFlow" class="monthly-archive-report"></div>
         <textarea id="reportText" class="report-box collapsed" hidden readonly></textarea>
@@ -674,7 +766,6 @@
           <div class="destination-layout">
             <div id="intelligenceBrandSlot" class="destination-slot"><strong>Brand Intelligence</strong><span>이동 준비 영역</span></div>
             <div id="intelligenceMarketingSlot" class="destination-slot"><strong>Marketing Intelligence</strong><span>이동 준비 영역</span></div>
-            <div id="intelligenceContentSlot" class="destination-slot"><strong>Content Intelligence</strong><span>이동 준비 영역</span></div>
             <div id="intelligenceAiRecommendationSlot" class="destination-slot"><strong>AI Recommendation</strong><span>이동 준비 영역</span></div>
           </div>
         </div>
@@ -761,6 +852,7 @@
           </div>
         </div>
         <p class="hint-text">ECOUNT 오프라인 판매와 Cafe24 개인결제창 온라인 매출을 통합한 고객 현황입니다. 상단의 기간 선택을 그대로 사용합니다.</p>
+        <div id="clientsFreshnessHeader" class="freshness-header-slot"></div>
 
         <div class="section-block">
           <div id="clientsStatus" class="ad-status-banner loading"></div>
@@ -839,6 +931,7 @@
           </div>
         </div>
         <p class="hint-text">Cafe24 상품과 ECOUNT 품목의 연결 후보를 검수하는 화면입니다. Phase 2A에서는 승인/저장 없이 read-only 비교만 제공합니다.</p>
+        <div id="productRegistryFreshnessHeader" class="freshness-header-slot"></div>
 
         <div class="section-block">
           <div id="productRegistryStatus" class="ad-status-banner loading">Product Registry 로딩 중...</div>
@@ -1015,6 +1108,7 @@
           </div>
         </div>
         <p class="hint-text">Cafe24와 ECOUNT의 재고 정합성 및 데이터 품질을 확인합니다. 이 화면은 재고를 직접 수정하지 않는 완전한 Read Only 화면입니다.</p>
+        <div id="inventoryIntelFreshnessHeader" class="freshness-header-slot"></div>
 
         <div class="section-block">
           <div id="inventoryIntelStatus" class="ad-status-banner loading">Inventory Intelligence 로딩 중...</div>
@@ -1161,10 +1255,790 @@
           <div id="scoreWeightsForm" class="score-weights-form"></div>
         </div>
       </section>
+
+      <!-- STEP54-2A/2B: Brand Intelligence Dashboard Hero Section. UI/레이아웃/Hover만
+           구현되어 있고 값은 전부 placeholder다 — 실데이터 연결은 이후 STEP에서 진행한다.
+           현재 nav에는 노출되지 않으며 #brand-dashboard 해시로만 접근 가능하다. -->
+      <section id="BrandDashboard" class="view">
+        <!-- STEP58-1/58-2: Brand Selector (Real Brand List UI, Compact UX). 실제 canonical
+             Brand Master(/api/brand-master — renderBrandMasterSettings/Annual·Monthly
+             Report와 동일한 엔드포인트+공유 캐시)만 사용하고 Placeholder 브랜드명은 만들지
+             않는다. 선택 시 Hero 제목(#entityHeroName)만 바꾸고 나머지 카드는 그대로 둔다.
+             Dropdown은 absolute overlay라 열려도 아래 레이아웃을 밀지 않는다. -->
+        <div class="brand-selector">
+          <p class="eyebrow brand-selector-eyebrow">Brand Intelligence</p>
+          <button type="button" id="brandSelectorTrigger" class="brand-selector-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="brandSelectorDropdown">
+            <span id="brandSelectorTriggerLabel">브랜드 선택</span>
+            <i class="brand-selector-trigger-chevron" aria-hidden="true"></i>
+          </button>
+          <div id="brandSelectorDropdown" class="brand-selector-dropdown" hidden>
+            <input id="brandSelectorSearch" type="search" class="brand-selector-search" placeholder="브랜드 검색" aria-label="브랜드 검색">
+            <!-- STEP58-4C: Entity Selection Reset. 선택된 브랜드가 있을 때만 노출되고, 클릭 시
+                 brandSelectorActiveName을 비우고 renderEntityHeroState()를 재사용해 Empty
+                 State로 되돌린다(새 상태 변수 없음). -->
+            <button type="button" id="brandSelectorClearBtn" class="brand-selector-clear" hidden>← 전체 브랜드 보기</button>
+            <div class="brand-selector-panel">
+              <div class="brand-selector-group">
+                <p class="brand-selector-group-title">Recent</p>
+                <ul id="brandSelectorRecent" class="brand-selector-list"></ul>
+              </div>
+              <div class="brand-selector-group">
+                <p class="brand-selector-group-title">All Brands</p>
+                <ul id="brandSelectorAll" class="brand-selector-list brand-selector-list-scroll"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP59-2: Entity Period Control Foundation. 화면 전체가 바라보는 기간을
+             명확히 하는 상태 기반만 만든다(entityPeriodState, 실데이터/계산/비교 로직
+             없음). Brand Selector state와 결합하지 않는다 — 브랜드를 선택/해제해도 기간은
+             그대로 유지된다(renderEntityPeriodControl/entityPeriodLabel/
+             applyEntityPeriodContext 공용 함수만 사용, 섹션별 개별 로직 없음). -->
+        <div class="entity-period-toolbar" role="group" aria-label="기간 선택">
+          <div class="entity-period-modes" role="group" aria-label="기간 모드">
+            <button type="button" class="entity-period-mode-btn" data-entity-period-mode="monthly" aria-pressed="false">월간</button>
+            <button type="button" class="entity-period-mode-btn" data-entity-period-mode="annual" aria-pressed="false">연간</button>
+            <button type="button" class="entity-period-mode-btn" data-entity-period-mode="all" aria-pressed="false">전체</button>
+          </div>
+          <select id="entityPeriodYear" class="entity-period-select" aria-label="연도 선택">
+            <option value="2024">2024년</option>
+            <option value="2025">2025년</option>
+            <option value="2026">2026년</option>
+          </select>
+          <select id="entityPeriodMonth" class="entity-period-select" aria-label="월 선택">
+            <option value="1">1월</option>
+            <option value="2">2월</option>
+            <option value="3">3월</option>
+            <option value="4">4월</option>
+            <option value="5">5월</option>
+            <option value="6">6월</option>
+            <option value="7">7월</option>
+            <option value="8">8월</option>
+            <option value="9">9월</option>
+            <option value="10">10월</option>
+            <option value="11">11월</option>
+            <option value="12">12월</option>
+          </select>
+          <span id="entityPeriodLabel" class="entity-period-label"></span>
+          <!-- STEP59-3: Compare Mode UI. entityCompareState.enabled를 토글하는 유일한
+               컨트롤 — 실데이터/증감 계산 없이 화면 표시만 전환한다(renderEntityCompareUI
+               공용 함수 1개만 사용, 섹션별 개별 토글 로직 없음). -->
+          <button type="button" id="entityCompareToggle" class="entity-compare-toggle" aria-pressed="false" title="비교 데이터가 없는 항목은 연결 대기로 표시됩니다.">
+            <span id="entityCompareToggleLabel">비교 모드 OFF</span>
+          </button>
+          <select id="entityCompareTarget" class="entity-period-select entity-compare-only entity-compare-target-select" aria-label="비교 대상 선택">
+            <option value="prev">이전 달</option>
+            <option value="yoy">전년 동월</option>
+            <option value="custom">사용자 지정</option>
+          </select>
+        </div>
+
+        <!-- STEP59-4/STEP59-4B/STEP59-4C: Compare Mode UX Refinement + Unified Entity
+             Selector. 실제 비교 계산/API 연결 없이 기존 entityCompareState/
+             entityPeriodState/brandSelectorActiveName만 읽는 Placeholder Header. 기준
+             브랜드는 STEP59-4B의 동작(스크롤 후 기존 상단 Brand Selector 드롭다운을
+             그대로 열기)을 전혀 바꾸지 않고, 트리거 버튼의 디자인만 .brand-selector-trigger
+             재사용으로 비교 브랜드와 통일했다. 비교 브랜드는 기존 HTML select를 제거하고
+             같은 Entity Selector 컴포넌트(entitySelectorInstances.compare, JS)의 새
+             DOM 인스턴스로 재사용한다 — Selector 마크업/CSS를 복사 생성하지 않고
+             .brand-selector-dropdown 등 기존 클래스를 그대로 쓴다. -->
+        <div id="entityCompareHeader" class="entity-compare-header entity-compare-only" role="region" aria-label="브랜드 비교 요약">
+          <div class="entity-compare-header-top">
+            <p class="entity-compare-header-eyebrow">BRAND COMPARISON</p>
+            <button type="button" id="entityCompareHeaderCloseBtn" class="entity-compare-header-close" aria-label="비교 모드 종료">비교 종료</button>
+          </div>
+          <div class="entity-compare-header-brands">
+            <div class="entity-compare-header-brand">
+              <span class="entity-compare-header-role">기준 브랜드</span>
+              <div class="entity-compare-brand-selector">
+                <button type="button" id="entityCompareBrandATrigger" class="brand-selector-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="entityCompareBrandADropdown" aria-label="기준 브랜드 변경">
+                  <span id="entityCompareBrandAName">-</span>
+                  <i class="brand-selector-trigger-chevron" aria-hidden="true"></i>
+                </button>
+                <div id="entityCompareBrandADropdown" class="brand-selector-dropdown" hidden>
+                  <input id="entityCompareBrandASearch" type="search" class="brand-selector-search" placeholder="브랜드 검색" aria-label="기준 브랜드 검색">
+                  <div class="brand-selector-panel">
+                    <div class="brand-selector-group">
+                      <p class="brand-selector-group-title">Recent</p>
+                      <ul id="entityCompareBrandARecent" class="brand-selector-list"></ul>
+                    </div>
+                    <div class="brand-selector-group">
+                      <p class="brand-selector-group-title">All Brands</p>
+                      <ul id="entityCompareBrandAAll" class="brand-selector-list brand-selector-list-scroll"></ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <span class="entity-compare-header-vs" aria-hidden="true">VS</span>
+            <div class="entity-compare-header-brand">
+              <span class="entity-compare-header-role">비교 브랜드</span>
+              <div class="entity-compare-brand-selector">
+                <button type="button" id="entityCompareBrandBTrigger" class="brand-selector-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="entityCompareBrandBDropdown" aria-label="비교 브랜드 선택">
+                  <span id="entityCompareBrandBTriggerLabel">-</span>
+                  <i class="brand-selector-trigger-chevron" aria-hidden="true"></i>
+                </button>
+                <div id="entityCompareBrandBDropdown" class="brand-selector-dropdown" hidden>
+                  <input id="entityCompareBrandBSearch" type="search" class="brand-selector-search" placeholder="브랜드 검색" aria-label="비교 브랜드 검색">
+                  <div class="brand-selector-panel">
+                    <div class="brand-selector-group">
+                      <p class="brand-selector-group-title">Recent</p>
+                      <ul id="entityCompareBrandBRecent" class="brand-selector-list"></ul>
+                    </div>
+                    <div class="brand-selector-group">
+                      <p class="brand-selector-group-title">All Brands</p>
+                      <ul id="entityCompareBrandBAll" class="brand-selector-list brand-selector-list-scroll"></ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="entity-compare-header-periods">
+            <span>현재 기간 <strong id="entityCompareHeaderCurrentPeriod">-</strong></span>
+            <span>비교 대상 <strong id="entityCompareHeaderTargetPeriod">-</strong></span>
+          </div>
+        </div>
+
+        <!-- STEP58-4: Entity Hero + Brand Empty State. 브랜드 미선택 시 Health Score/AI
+             Summary/추천 Action/KPI를 실제 수치처럼 보여주지 않는다. 계산 로직은 추가하지
+             않고, 기존 placeholder 콘텐츠(entityHeroContent/entityHeroKpiGrid)와 신규 빈
+             상태 블록(entityHeroEmptyPanel/entityHeroEmptyKpi)을 hidden 속성으로만 토글한다
+             (renderEntityHeroState, brandSelectorActiveName 존재 여부만 참조). -->
+        <div class="section-title home-hero">
+          <div>
+            <p class="eyebrow">Brand Intelligence</p>
+            <h3 id="entityHeroName">브랜드를 선택하세요</h3>
+            <div id="entityHeroMeta" class="brand-hero-meta" hidden>
+              <span class="clients-tooltip-badge">지역 · 데이터 연결 대기</span>
+              <span id="entityHeroSourcingBadge" class="clients-tooltip-badge">운영 방식 · 데이터 연결 대기</span>
+              <span class="clients-tooltip-badge">카테고리 · 데이터 연결 대기</span>
+              <span class="clients-tooltip-badge">업데이트 · 데이터 연결 대기</span>
+              <span id="entityHeroPeriodBadge" class="clients-tooltip-badge"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="entityHeroEmptyPanel" class="brand-hero">
+          <!-- STEP67-5: Final UX. Brand Score는 실제 계산 근거가 아직 없어 숨긴다(삭제
+               아님 — hidden만 추가, 계산이 완성되면 이 한 줄만 되돌리면 된다). -->
+          <div class="brand-hero-score-block">
+            <div class="brand-hero-score" aria-label="Health Score 미측정 · 브랜드 미선택">
+              <div class="brand-hero-score-ring" style="--score: 0; --score-color: var(--muted);">
+                <div class="brand-hero-score-inner">
+                  <strong class="brand-hero-score-value">--</strong>
+                  <span class="brand-hero-score-tier">브랜드 미선택</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="brand-hero-cards">
+            <article class="action-item sales-list-card">
+              <span>AI Summary</span>
+              <strong>브랜드를 선택하면 분석이 표시됩니다.</strong>
+              <p>브랜드를 선택하면 매출·고객·월별 추이·상품군 분석을 확인할 수 있습니다.</p>
+            </article>
+          </div>
+        </div>
+
+        <div id="entityHeroContent" class="brand-hero" hidden>
+          <!-- STEP67-5: Final UX. Brand Score는 실제 계산 근거가 아직 없어 숨긴다(삭제
+               아님 — hidden만 추가, 계산이 완성되면 이 한 줄만 되돌리면 된다). -->
+          <div class="brand-hero-score-block">
+            <div class="brand-hero-score" data-entity-hero-tooltip="score" tabindex="0" role="img" aria-label="Health Score 산식 연결 대기">
+              <div class="brand-hero-score-ring" style="--score: 0; --score-color: var(--muted);">
+                <div class="brand-hero-score-inner">
+                  <strong class="brand-hero-score-value">--</strong>
+                  <span class="brand-hero-score-tier">산식 연결 대기</span>
+                </div>
+              </div>
+            </div>
+            <ul class="brand-hero-score-metrics">
+              <li data-entity-hero-tooltip="score-sales" tabindex="0">
+                <span>매출 성장</span>
+                <i class="brand-hero-score-bar"><b style="width:0%"></b></i>
+                <em>--</em>
+              </li>
+              <li data-entity-hero-tooltip="score-inventory" tabindex="0">
+                <span>재고 건전성</span>
+                <i class="brand-hero-score-bar"><b style="width:0%"></b></i>
+                <em>--</em>
+              </li>
+              <li data-entity-hero-tooltip="score-turnover" tabindex="0">
+                <span>판매 회전율</span>
+                <i class="brand-hero-score-bar"><b style="width:0%"></b></i>
+                <em>--</em>
+              </li>
+              <li data-entity-hero-tooltip="score-customer" tabindex="0">
+                <span>고객 성장</span>
+                <i class="brand-hero-score-bar"><b style="width:0%"></b></i>
+                <em>--</em>
+              </li>
+            </ul>
+          </div>
+
+          <div class="brand-hero-cards">
+            <!-- STEP67-6: AI Insight/Action. 실제 연결된 KPI(매출/MoM/Channel Mix/Trend)에서만
+                 결정론적으로(원인 추론 없이) 생성한다 — renderEntityHeroInsight()가 이 두 노드만
+                 채운다. -->
+            <article class="action-item sales-list-card">
+              <span>AI Summary</span>
+              <strong id="entityHeroAiSummary">-</strong>
+              <p id="entityHeroAiSummaryNote"></p>
+            </article>
+            <article class="intelligence-action-summary brand-hero-action-box">
+              <span>추천 Action</span>
+              <ul id="entityHeroActionList"></ul>
+            </article>
+          </div>
+        </div>
+
+        <div class="brand-hero-status-row">
+          <p class="brand-hero-status-title">System Status</p>
+          <div class="brand-hero-status-grid">
+            <div id="entitySystemStatusCafe24" class="brand-hero-status-item">
+              <span class="brand-hero-status-badge"><i></i>Cafe24 · 확인 중</span>
+              <em>상태 확인 중</em>
+            </div>
+            <div id="entitySystemStatusMeta" class="brand-hero-status-item">
+              <span class="brand-hero-status-badge"><i></i>Meta Ads · 확인 중</span>
+              <em>상태 확인 중</em>
+            </div>
+            <div id="entitySystemStatusInstagram" class="brand-hero-status-item">
+              <span class="brand-hero-status-badge"><i></i>Instagram · 확인 중</span>
+              <em>상태 확인 중</em>
+            </div>
+            <div id="entitySystemStatusEcount" class="brand-hero-status-item">
+              <span class="brand-hero-status-badge"><i></i>ECOUNT · 확인 중</span>
+              <em>상태 확인 중</em>
+            </div>
+          </div>
+        </div>
+
+        <div id="entityHeroEmptyKpi" class="cards brand-hero-kpi-grid">
+          <article class="action-item ad-summary-card ad-core-kpi-card">
+            <span>매출</span>
+            <strong>--</strong>
+            <p>데이터 준비 중</p>
+          </article>
+          <article class="action-item ad-summary-card ad-core-kpi-card">
+            <span>판매수량</span>
+            <strong>--</strong>
+            <p>데이터 준비 중</p>
+          </article>
+          <article class="action-item ad-summary-card ad-core-kpi-card">
+            <span>객단가</span>
+            <strong>--</strong>
+            <p>데이터 준비 중</p>
+          </article>
+          <article class="action-item ad-summary-card ad-core-kpi-card">
+            <span>Sell-through</span>
+            <strong>--</strong>
+            <p>데이터 준비 중</p>
+          </article>
+          <article class="action-item ad-summary-card ad-core-kpi-card">
+            <span>재고</span>
+            <strong>--</strong>
+            <p>데이터 준비 중</p>
+          </article>
+        </div>
+
+        <!-- STEP59-4: Compare Mode UX Refinement. STEP59-3의 entity-compare-delta 칩(값
+             옆에 증감만 덧붙이는 방식)을 entity-compare-kpi-block(기준/비교/차이가 먼저
+             읽히는 세로 구조, Chrome에서 가로 2열 후보도 검토했으나 원화 표기가 긴 이
+             카드 폭에서는 줄바꿈 없이 읽히는 세로형이 더 안전해 채택)으로 교체한다.
+             기존 MoM 줄은 지우지 않고 entity-hero-mom-line 클래스로 시각적 우선순위만
+             낮춘다(Compare OFF에서는 기존 그대로 최우선 정보). 전부 하드코딩 Placeholder
+             — 실제 비교 계산 없음. -->
+        <div id="entityHeroKpiGrid" class="cards brand-hero-kpi-grid" hidden>
+          <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="sales" tabindex="0">
+            <span>매출</span>
+            <strong id="entityHeroKpiSales">-</strong>
+            <p class="entity-hero-mom-line"><span id="entityHeroKpiSalesMom" class="brand-hero-delta flat"></span></p>
+          </article>
+          <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="qty" tabindex="0">
+            <span>판매수량</span>
+            <strong id="entityHeroKpiQty">-</strong>
+          </article>
+          <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="aov" tabindex="0">
+            <span>객단가</span>
+            <strong id="entityHeroKpiAov">-</strong>
+          </article>
+          <!-- STEP61-3: Hero/KPI Data Binding. 주문수는 기존 6개 KPI 카드에 없던 항목이라
+               새로 추가한다(계산은 없음 — STEP61-2의 entityTrendMonths 행이 이미 갖고 있는
+               orderCount를 그대로 표시). -->
+          <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="orders" tabindex="0">
+            <span>주문수</span>
+            <strong id="entityHeroKpiOrders">-</strong>
+          </article>
+          <!-- STEP67-6: Sell-through/재고는 canonical brand_code 기준 source가 없다(Inventory
+               브랜드 집계가 레거시 brand-master-list.json 기준이라 291개 canonical 브랜드와
+               52%가 불일치 — BACKLOG-001에서 이미 진단됨, 이번 STEP에서 새로 마이그레이션하지
+               않음). 가짜 값 대신 SOURCE NOT AVAILABLE을 정직하게 표시한다. STEP67-9G-1B:
+               Comparison Mode에서도 이 두 카드는 Period Performance(아래 독립 섹션)와
+               분리된 Current Status로 그대로 이 그리드에 남는다(구조 변경 없음). -->
+          <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="sellthrough" tabindex="0">
+            <span>Sell-through</span>
+            <strong>정의 미확정</strong>
+            <p class="entity-hero-source-note">BLOCKED · 공식 산식 필요</p>
+          </article>
+          <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="stock" tabindex="0">
+            <span>현재 재고</span>
+            <strong id="entityHeroInventoryValue">-</strong>
+            <p id="entityHeroInventoryNote" class="entity-hero-source-note">ECOUNT 현재 재고</p>
+          </article>
+        </div>
+
+        <!-- STEP67-9G-1B: Period Performance Independent Section. STEP67-9G-1A 진단 결과
+             (592px 2-column 카드 vs 960px 4-column 표 충돌, 카드 겹침)에 따라 매출/판매수량/
+             주문수/객단가 4개 Comparison 표를 #entityHeroKpiGrid 밖의 독립 full-width
+             섹션으로 옮긴다. 카드 chrome(.action-item)/표 마크업/data-entity-compare-kpi
+             속성은 STEP67-9G-1 그대로 재사용 — JS(renderEntityCompareKpiValue)는
+             속성 기반 querySelector라 위치가 바뀌어도 수정이 필요 없다. -->
+        <div id="entityComparePerformanceSection" class="entity-compare-performance-section entity-compare-only">
+          <p class="eyebrow entity-compare-performance-eyebrow">Period Performance</p>
+          <article class="action-item ad-summary-card entity-compare-performance-card" data-entity-compare-kpi="sales">
+            <span>매출</span>
+            <table class="entity-compare-performance-table">
+              <thead><tr><th scope="col">브랜드</th><th scope="col"><strong data-entity-compare-current-period>현재 기간</strong><small>현재</small></th><th scope="col"><strong data-entity-compare-target-period>비교 대상</strong><small>비교 대상</small></th><th scope="col"><strong>증감</strong><small>현재 - 비교 대상</small></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </article>
+          <article class="action-item ad-summary-card entity-compare-performance-card" data-entity-compare-kpi="qty">
+            <span>판매수량</span>
+            <table class="entity-compare-performance-table">
+              <thead><tr><th scope="col">브랜드</th><th scope="col"><strong data-entity-compare-current-period>현재 기간</strong><small>현재</small></th><th scope="col"><strong data-entity-compare-target-period>비교 대상</strong><small>비교 대상</small></th><th scope="col"><strong>증감</strong><small>현재 - 비교 대상</small></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </article>
+          <article class="action-item ad-summary-card entity-compare-performance-card" data-entity-compare-kpi="orders">
+            <span>주문수</span>
+            <table class="entity-compare-performance-table">
+              <thead><tr><th scope="col">브랜드</th><th scope="col"><strong data-entity-compare-current-period>현재 기간</strong><small>현재</small></th><th scope="col"><strong data-entity-compare-target-period>비교 대상</strong><small>비교 대상</small></th><th scope="col"><strong>증감</strong><small>현재 - 비교 대상</small></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </article>
+          <article class="action-item ad-summary-card entity-compare-performance-card" data-entity-compare-kpi="aov">
+            <span>객단가</span>
+            <table class="entity-compare-performance-table">
+              <thead><tr><th scope="col">브랜드</th><th scope="col"><strong data-entity-compare-current-period>현재 기간</strong><small>현재</small></th><th scope="col"><strong data-entity-compare-target-period>비교 대상</strong><small>비교 대상</small></th><th scope="col"><strong>증감</strong><small>현재 - 비교 대상</small></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </article>
+        </div>
+
+        <!-- STEP67-5/67-6: SKU는 "전체 등록 SKU"가 아니라 "선택 기간 판매 상품 수"다(등록
+             SKU 전체를 셀 수 있는 canonical source가 없음 — Report 9번 항목 참고). 온라인
+             (Cafe24 productNo)과 오프라인(ECOUNT productName)은 식별자 체계가 달라 하나로
+             합치면 중복/누락이 생길 수 있어 두 값을 각각 그대로 보여준다(임의로 합산하지
+             않음). 온라인 값은 이미 fetch된 Monthly Report productSales로 새 API 호출 없이
+             계산하고, 오프라인 값은 Customer Composition과 같은 API 응답을 재사용한다. -->
+        <p id="entityHeroSkuLine" class="entity-hero-sku-line" hidden>
+          <span id="entityHeroSkuLabel">이번 기간 판매 상품 수</span>
+          <span>온라인 <strong id="entityHeroSkuValue">-</strong></span>
+          <span id="entityHeroSkuMom" class="brand-hero-delta flat"></span>
+          <span>· 오프라인 <strong id="entityHeroSkuOfflineValue">-</strong></span>
+        </p>
+
+        <!-- STEP67-5: Final UX — Section 2 Channel Mix. STEP67-4가 연결한 동일 데이터
+             (row.online/row.offline, 새 계산 없음)를 가로 100% composition bar로 표시한다.
+             renderEntityHeroChannelSplit()이 여기 새 id로 값을 채운다(도넛은 제거 —
+             bar 하나로 3초 안에 채널 성격이 읽히면 충분하다는 지시에 따름). -->
+        <div id="entityHeroChannelSplit" class="section-block entity-channel-mix-section" hidden>
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Channel Mix</p>
+              <h3>이 브랜드는 어디에서 팔리는가</h3>
+            </div>
+          </div>
+          <div class="entity-channel-mix-bar-row">
+            <span class="entity-channel-mix-bar-label online">ONLINE <strong id="entityHeroChannelOnlineShare">-</strong></span>
+            <div class="entity-channel-mix-bar" role="img" aria-label="온라인/오프라인 매출 비중">
+              <div id="entityHeroChannelOnlineBar" class="entity-channel-mix-bar-fill online"></div>
+            </div>
+            <span class="entity-channel-mix-bar-label offline">OFFLINE <strong id="entityHeroChannelOfflineShare">-</strong></span>
+          </div>
+          <div class="entity-channel-mix-amounts">
+            <div class="entity-channel-mix-amount-row">
+              <span class="entity-hero-channel-dot online"></span>
+              <span class="entity-hero-channel-label">온라인 매출</span>
+              <strong id="entityHeroChannelOnlineAmount">-</strong>
+            </div>
+            <div class="entity-channel-mix-amount-row">
+              <span class="entity-hero-channel-dot offline"></span>
+              <span class="entity-hero-channel-label">오프라인 매출</span>
+              <strong id="entityHeroChannelOfflineAmount">-</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP55: Customer Composition Section. Clients 탭의 실제 상태/데이터는 전혀
+             건드리지 않고, 도넛·범례·TOP 리스트 "기법"만 독립적인 placeholder 데이터로
+             재구성했다. 렌더/hover는 전부 JS(renderEntityCompositionSection 등)가 담당한다. -->
+        <div class="section-block brand-customer-section">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Customer Composition</p>
+              <h3>고객 구성</h3>
+            </div>
+            <div id="entityCompositionToggle" class="product-action-filters" role="group" aria-label="집계 기준" hidden>
+              <button type="button" class="product-action-filter active" data-entity-composition-mode="count">건수</button>
+              <button type="button" class="product-action-filter" data-entity-composition-mode="sales">매출</button>
+            </div>
+          </div>
+          <p id="entityCompositionPeriodNote" class="hint-text entity-period-note"></p>
+
+          <!-- STEP58-4B: Entity Detail Empty States. 브랜드 미선택 시 placeholder 데이터가
+               실제 분석처럼 보이지 않도록 Empty State 카드로 대체한다(renderEntityHeroState
+               확장, 새 상태 변수 없이 brandSelectorActiveName만 참조). -->
+          <div id="entityCompositionEmpty" class="entity-detail-empty">
+            <span class="entity-detail-empty-icon" aria-hidden="true">👥</span>
+            <h4>고객 구성을 확인할 수 없습니다</h4>
+            <p>브랜드를 선택하면 고객 구성과 TOP 고객을 확인할 수 있습니다.</p>
+          </div>
+
+          <div id="entityCompositionContent" hidden>
+            <!-- STEP67-9H-2: Comparison Mode 전용 50:50 비교 레이아웃. Brand A/B 각각 큰
+                 도넛(#entityCompositionDonut과 동일한 .brand-customer-donut 크기/카드
+                 재사용) + 브랜드별 전용 legend(#entityCompareCompositionLegendA/B, 아래
+                 단일 브랜드 legend와 동일한 clients-donut-legend/brand-customer-legend
+                 마크업 재사용)로 구성한다. 단일 브랜드용 큰 도넛+TOP5+AI Insight
+                 (.brand-customer-grid/#entityCompositionInsightCard)는 비교 모드에서
+                 CSS로 숨긴다(중복 노출 방지, STEP67-9H-2 §7). -->
+            <div id="entityCompositionCompareBlock" class="entity-compare-composition entity-compare-only">
+              <div class="entity-compare-composition-col brand-customer-donut-card">
+                <p class="entity-compare-composition-brand-name"><span id="entityCompareCompositionBrandA">-</span></p>
+                <div id="entityCompareCompositionDonutA" class="entity-compare-mini-donut" role="img" aria-label="고객 구성 데이터 연결 대기"><span>데이터 연결 대기</span></div>
+                <ul id="entityCompareCompositionLegendA" class="clients-donut-legend brand-customer-legend"></ul>
+              </div>
+              <div class="entity-compare-composition-col brand-customer-donut-card">
+                <p class="entity-compare-composition-brand-name"><span id="entityCompareCompositionBrandB">-</span></p>
+                <div id="entityCompareCompositionDonutB" class="entity-compare-mini-donut" role="img" aria-label="비교 브랜드를 선택하세요"><span>비교 브랜드를 선택하세요</span></div>
+                <ul id="entityCompareCompositionLegendB" class="clients-donut-legend brand-customer-legend"></ul>
+              </div>
+            </div>
+            <div class="brand-customer-grid">
+              <div class="clients-donut-card brand-customer-donut-card">
+                <div id="entityCompositionDonut" class="brand-customer-donut" role="img" aria-label="고객 구성 비율">
+                  <div class="clients-donut-center brand-customer-donut-center">
+                    <strong>--</strong>
+                    <span>전체 고객</span>
+                  </div>
+                </div>
+                <ul id="entityCompositionLegend" class="clients-donut-legend brand-customer-legend"></ul>
+              </div>
+              <div class="brand-customer-top5">
+                <!-- STEP59-1: Entity Full List Drawer. 브랜드 미선택 시 entityCompositionContent
+                     자체가 hidden이라 이 버튼도 함께 숨겨진다(별도 토글 코드 불필요). -->
+                <div class="brand-customer-top5-head">
+                  <p class="brand-customer-top5-title">TOP 5</p>
+                  <button type="button" id="entityCompositionDrawerBtn" class="entity-drawer-open-btn">전체 보기</button>
+                </div>
+                <ul id="entityCompositionTop5" class="brand-customer-top5-list"></ul>
+              </div>
+            </div>
+
+            <article id="entityCompositionInsightCard" class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card">
+              <span>AI Insight</span>
+              <div id="entityCompositionInsight" class="brand-customer-insight-body"></div>
+            </article>
+          </div>
+        </div>
+
+        <!-- STEP57-4C: Category Intelligence (UI only). STEP57-4B-A에서 확정된 ECOUNT 카테고리
+             코드(BG/OT/ST/BT/AC)만 사용하고 실제 상품분류 API는 연결하지 않는다. 도넛/TOP
+             리스트/토글/Hover 카드는 전부 Customer Composition·Brand Mix의 기존 CSS 클래스를
+             그대로 재사용한다(renderEntityCategorySection). STEP58-4C: "누가 구매했는가
+             (Customer) → 무엇을 구매했는가(Category) → 언제 잘 팔렸는가(Monthly)" 정보 흐름에
+             맞춰 Monthly Trend보다 앞으로 위치만 이동(ID/class/data-*/함수 미변경 —
+             renderEntityCategorySection()은 ID 기반이라 위치 이동과 무관하게 그대로 동작). -->
+        <div class="section-block brand-category-section">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Category Intelligence</p>
+              <h3>상품군 인텔리전스</h3>
+            </div>
+            <div id="entityCategoryToggle" class="product-action-filters" role="group" aria-label="집계 기준">
+              <button type="button" class="product-action-filter active" data-entity-category-mode="revenue">매출</button>
+              <button type="button" class="product-action-filter" data-entity-category-mode="quantity">판매수량</button>
+            </div>
+          </div>
+          <p id="entityCategoryPeriodNote" class="hint-text entity-period-note"></p>
+
+          <div id="entityCategoryEmpty" class="entity-detail-empty">
+            <span class="entity-detail-empty-icon" aria-hidden="true">🏷️</span>
+            <h4>상품군 데이터가 연결되지 않았습니다</h4>
+            <p>공식 상품군 source가 확정되기 전에는 임의 분류를 표시하지 않습니다.</p>
+          </div>
+
+          <div id="entityCategoryContent">
+            <!-- STEP59-4: Compare Mode UX Refinement. 1위 Category 텍스트는
+                 entityCategoryCompareRevenue(하드코딩 Placeholder)로 renderEntityCategorySection()이
+                 채운다 — 실제 계산/API 연결 없음. 브랜드명은 entityCompareBrandA/B()를
+                 renderEntityCompareUI()가 그대로 재사용해 채운다. -->
+            <div id="entityCategoryCompareTop" class="entity-compare-category-top entity-compare-only">
+              <div class="entity-compare-category-top-col">
+                <span class="entity-compare-mini-label a">기준 · <span id="entityCompareCategoryBrandA">-</span> 1위</span>
+                <strong id="entityCategoryCompareTopA">-</strong>
+              </div>
+              <div class="entity-compare-category-top-col">
+                <span class="entity-compare-mini-label b">비교 · <span id="entityCompareCategoryBrandB">-</span> 1위</span>
+                <strong id="entityCategoryCompareTopB">-</strong>
+              </div>
+            </div>
+            <div class="brand-customer-grid brand-category-grid">
+              <div class="brand-monthly-trend-chart-card brand-category-donut-card">
+                <div class="brand-mix-list-head">
+                  <span>Category 비중</span>
+                  <em>Category Pie Chart · 데이터 연결 대기</em>
+                </div>
+                <div id="entityCategoryDonut" class="brand-customer-donut" role="img" aria-label="상품군 구성 비율">
+                  <div class="clients-donut-center brand-customer-donut-center">
+                    <strong id="entityCategoryDonutCenter">-</strong>
+                    <span>전체</span>
+                  </div>
+                </div>
+              </div>
+              <div class="brand-customer-top5">
+                <div class="brand-customer-top5-head">
+                  <p class="brand-customer-top5-title">Category TOP</p>
+                  <button type="button" id="entityCategoryDrawerBtn" class="entity-drawer-open-btn">전체 보기</button>
+                </div>
+                <ul id="entityCategoryList" class="brand-customer-top5-list"></ul>
+              </div>
+            </div>
+
+            <article class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card">
+              <span>AI Insight</span>
+              <div id="entityCategoryInsight" class="brand-customer-insight-body"></div>
+            </article>
+          </div>
+        </div>
+
+        <!-- STEP56-1: Monthly Trend Intelligence. 실제 Monthly API 연결 없이 placeholder
+             7개월 데이터로 차트/요약/지표/AI Insight 구조만 구현한다(renderEntityTrendSection).
+             STEP58-4C: Category Intelligence 뒤로 위치만 이동(ID/class/data-*/함수 미변경). -->
+        <div class="section-block brand-monthly-trend-section">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Monthly Trend</p>
+              <h3>Monthly Intelligence</h3>
+            </div>
+          </div>
+          <p id="entityTrendPeriodNote" class="hint-text entity-period-note"></p>
+
+          <div id="entityTrendEmpty" class="entity-detail-empty">
+            <span class="entity-detail-empty-icon" aria-hidden="true">📈</span>
+            <h4>월별 추이를 확인할 수 없습니다</h4>
+            <p>브랜드를 선택하면 월별 매출 추이와 객단가 변화를 확인할 수 있습니다.</p>
+          </div>
+
+          <div id="entityTrendContent" hidden>
+            <div class="brand-monthly-trend-main">
+              <div class="brand-monthly-trend-chart-card">
+                <div class="brand-monthly-trend-chart-head">
+                  <span>총매출 추이</span>
+                  <em id="entityTrendRangeLabel">-</em>
+                </div>
+                <!-- STEP59-4: Compare Mode UX Refinement. 실선/dashed 선이 각각 어느
+                     브랜드인지 색상만으로 구분하지 않도록 범례에 선 스타일 아이콘 +
+                     기준/비교 + 브랜드명을 함께 표시한다. 브랜드명은 renderEntityCompareUI()가
+                     entityCompareBrandA/B()로 채운다(섹션 전용 로직 없음). -->
+                <div id="entityTrendCompareLegend" class="entity-compare-trend-legend entity-compare-only">
+                  <span class="entity-compare-trend-legend-item a"><i class="entity-compare-trend-swatch solid"></i>기준 · <span id="entityCompareTrendBrandA">-</span></span>
+                  <span class="entity-compare-trend-legend-item b"><i class="entity-compare-trend-swatch dashed"></i>비교 · <span id="entityCompareTrendBrandB">-</span></span>
+                </div>
+                <div id="entityTrendChart" class="brand-monthly-trend-chart"></div>
+              </div>
+              <div class="brand-monthly-trend-summary-card">
+                <p class="brand-monthly-trend-summary-title">Trend Summary</p>
+                <div class="brand-monthly-trend-summary-row">
+                  <span>최근 3개월</span>
+                  <strong id="entityTrendRecentLabel">-</strong>
+                </div>
+                <div class="brand-monthly-trend-summary-row">
+                  <span>평균 객단가</span>
+                  <strong id="entityTrendAvgAov">-</strong>
+                </div>
+                <div class="brand-monthly-trend-summary-row">
+                  <span>최고 매출</span>
+                  <strong id="entityTrendMax">-</strong>
+                </div>
+                <div class="brand-monthly-trend-summary-row">
+                  <span>최저 매출</span>
+                  <strong id="entityTrendMin">-</strong>
+                </div>
+                <div class="brand-monthly-trend-summary-row">
+                  <span>최근 Trend</span>
+                  <strong id="entityTrendState">-</strong>
+                </div>
+                <div id="entityTrendIndicators" class="brand-monthly-trend-indicators"></div>
+              </div>
+            </div>
+
+            <article class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card">
+              <span>AI Insight</span>
+              <p id="entityTrendInsight" class="brand-monthly-trend-insight-text"></p>
+            </article>
+
+            <!-- STEP59-3: Compare Mode UI. Compare ON일 때만 노출되는 카드 —
+                 entity-compare-only + body.entity-compare-on 조합으로만 표시 제어(전용
+                 render 로직 없음, 카드 자체의 표시/숨김은 여전히 CSS 클래스 조합만 담당). -->
+            <!-- STEP67-10G-3: 본문은 더 이상 고정 placeholder 문구가 아니다 —
+                 renderEntityCompareSummary()(buildComparisonSummaryFacts()의 100% 결정론적
+                 결과, LLM/AI 없음, work/reports/STEP67-10G-2 아키텍처 그대로 구현)가
+                 매 데이터 갱신마다 다시 채운다. AI가 만든 것처럼 보이지 않도록 별도 배지도
+                 추가하지 않는다(과제 지시: "Do not label deterministic output as
+                 AI-generated"). -->
+            <article id="entityCompareSummaryCard" class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card entity-compare-only">
+              <span class="entity-compare-summary-title">Comparison Summary</span>
+              <p id="entityCompareSummaryText" class="brand-monthly-trend-insight-text">기간 성과 수치는 위 표에서 확인할 수 있습니다.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP57-4A: Brand Overview view(STEP58-3에서 id="EntityOverview"로 리네임, Entity
+           Intelligence Framework 명명 규칙 — 화면/동작은 동일). STEP57-3 진단에 따라 Brand Mix
+           Analysis(포트폴리오 비교 성격)를 #brand-dashboard(단일 브랜드 Intelligence)에서
+           분리했다. 마크업/클래스는 STEP57-1/57-2 그대로 재사용하고 위치만 옮겼다 —
+           renderEntityOverviewSection()은 ID 기반 DOM 조작이라 별도 수정 없이 이 위치에서도
+           그대로 동작한다. 브랜드 선택기/Intelligence 탭 연동은 이번 STEP 범위 밖(SAMPLAS
+           하드코딩은 STEP57-4B에서 처리). -->
+      <section id="EntityOverview" class="view">
+        <div class="section-title home-hero">
+          <div>
+            <p class="eyebrow">Brand</p>
+            <h3>OVERVIEW</h3>
+          </div>
+        </div>
+        <p class="hint-text">전체 브랜드의 성장과 위험 상태를 확인하세요.</p>
+
+        <!-- STEP59-2: Brand Overview Full List Drawer. STEP59-1의 공용 Entity Drawer를
+             그대로 재사용한다(entityDrawerConfig.overview 타입만 추가, 새 Drawer 컴포넌트
+             생성 없음). #brands는 브랜드 선택 상태와 무관하므로 버튼이 항상 노출된다. -->
+        <div class="section-block brand-mix-section">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Brand Mix Analysis</p>
+              <h3>같이 구매되는 브랜드</h3>
+            </div>
+            <button type="button" id="entityOverviewDrawerBtn" class="entity-drawer-open-btn">전체 보기</button>
+          </div>
+
+          <div class="brand-mix-main">
+            <div class="brand-monthly-trend-chart-card brand-mix-list-card">
+              <div class="brand-mix-list-head">
+                <span>브랜드별 비중</span>
+                <em>상위 8개 · Placeholder</em>
+              </div>
+              <ul id="entityOverviewList" class="brand-mix-list"></ul>
+            </div>
+            <div class="brand-monthly-trend-summary-card brand-mix-summary-card">
+              <p class="brand-monthly-trend-summary-title">Brand Summary</p>
+              <div id="entityOverviewSummary"></div>
+            </div>
+          </div>
+
+          <article class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card">
+            <span>AI Insight</span>
+            <p id="entityOverviewInsight" class="brand-monthly-trend-insight-text"></p>
+          </article>
+        </div>
+      </section>
+
+      <!-- STEP65-3~STEP66-1: Promotion Intelligence. GET /api/promotion/:categoryNo/summary
+           (STEP65-2)를 그대로 표시만 하는 순수 Derived View다. Promotion을 저장하지
+           않으므로 목록/등록 UI가 없다 — Promotion Selector에서 이름을 선택하면
+           내부적으로만 categoryNo를 알아내 조회한다(사용자에게 categoryNo 숫자를
+           노출하지 않음, STEP65-4). categoryNo -> 이름 매핑은 새 Category API가 아니라
+           실제 SAMPLAS 공개 스토어(scause.cafe24.com) 상단 메뉴에서 직접 확인한 값이다
+           (JS 상단 PROMOTION_CATALOG 주석 참고). Category/Benefit 원본 API가 아직
+           배포되지 않아 promotionName이 null이면 선택한 이름을 그대로, status가
+           UNKNOWN이면 "상태 확인 중"으로 표시한다 — 거짓 이름/상태로 보정하지 않는다.
+           Brand Selector(1233행)와 동일 CSS 클래스(.brand-selector-trigger/-dropdown/
+           -list)를 재사용하되, 291개 브랜드용 검색/최근/비교 로직(entitySelectorInstances)
+           은 프로모션 2개에는 과한 장치라 별도의 작은 독립 토글로 구현한다.
+           STEP66-1: docs/DESIGN_SYSTEM.md(STEP66-0, Brand Intelligence 기준)에 맞춰
+           구조를 재배치했다 — Header -> Hero(한 카드) -> Primary KPI -> Secondary KPI ->
+           Performance Summary -> Brand -> Product 순서(지시된 Visual Hierarchy). 새
+           CSS 프레임워크를 만들지 않고 Brand Intelligence가 이미 쓰는 클래스
+           (.action-item/.brand-hero-status-badge/.clients-tooltip-badge/
+           .brand-hero-kpi-grid)만 재사용한다. API/Selector 로직/Category Mapping은
+           이 STEP에서 손대지 않았다(JS 렌더 함수 내부 구조만 변경). -->
+      <section id="PromotionSummary" class="view">
+        <div class="section-title home-hero">
+          <div>
+            <p class="eyebrow">PROMOTION INTELLIGENCE</p>
+            <div class="brand-selector promotion-selector">
+              <button type="button" id="promotionSelectorTrigger" class="brand-selector-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="promotionSelectorDropdown">
+                <span id="promotionSelectorTriggerLabel">프로모션 선택</span>
+                <i class="brand-selector-trigger-chevron" aria-hidden="true"></i>
+              </button>
+              <div id="promotionSelectorDropdown" class="brand-selector-dropdown" hidden>
+                <ul id="promotionSelectorList" class="brand-selector-list"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="promotionSummaryStatusBanner" class="ad-status-banner loading" hidden></div>
+
+        <!-- SECTION 1: Hero. Promotion Name/Status/기간/Products/Brands를 한 카드에서
+             표현한다(기존에는 Header 아래 흩어진 텍스트였다). Health Score 게이지 같은
+             새 계산은 만들지 않았다 — 이미 API가 주는 값만 카드 하나에 모았다. -->
+        <article id="promotionSummaryHero" class="action-item promotion-hero-card">
+          <div class="promotion-hero-head">
+            <h3 id="promotionSummaryName">프로모션을 선택하세요</h3>
+            <span id="promotionSummaryStatusBadge" class="brand-hero-status-badge"><i></i><span id="promotionSummaryStatusBadgeText">상태 확인 중</span></span>
+          </div>
+          <div id="promotionSummaryMeta" class="brand-hero-meta" hidden>
+            <span class="clients-tooltip-badge" id="promotionSummaryPeriodBadge">기간 확인 중</span>
+            <span class="clients-tooltip-badge" id="promotionSummaryProductBadge">상품 -</span>
+            <span class="clients-tooltip-badge" id="promotionSummaryBrandBadge">브랜드 -</span>
+          </div>
+        </article>
+
+        <!-- SECTION 2: Primary KPI(매출/주문) -->
+        <div class="section-block" id="promotionSummaryTierOneBlock" hidden>
+          <div class="section-title compact"><div><p class="eyebrow">핵심 지표</p></div></div>
+          <div id="promotionSummaryTierOne" class="cards brand-hero-kpi-grid"></div>
+        </div>
+
+        <!-- SECTION 3: Secondary KPI(판매수량/객단가/브랜드 수/상품 수) -->
+        <div class="section-block" id="promotionSummaryTierTwoBlock" hidden>
+          <div class="section-title compact"><div><p class="eyebrow">판매 지표</p></div></div>
+          <div id="promotionSummaryTierTwo" class="kpi-grid"></div>
+        </div>
+
+        <!-- SECTION 4: Performance Summary. Top Brand/Top Product/Brand Contribution을
+             표(SECTION 5/6)보다 먼저 문장으로 보여준다. -->
+        <article id="promotionSummaryInsight" class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card" hidden>
+          <span>Performance Summary</span>
+          <p id="promotionSummaryInsightText" class="brand-monthly-trend-insight-text"></p>
+        </article>
+
+        <!-- SECTION 5: Brand Performance -->
+        <div class="section-block" id="promotionSummaryBrandsBlock" hidden>
+          <div class="section-title compact">
+            <div><p class="eyebrow">Brand Contribution</p><h3>Top Brands</h3></div>
+          </div>
+          <div id="promotionSummaryTopBrandsList" class="inventory-intel-coverage-bars"></div>
+        </div>
+
+        <!-- SECTION 6: Top Products -->
+        <div class="section-block" id="promotionSummaryProductsBlock" hidden>
+          <div class="section-title compact">
+            <div><p class="eyebrow">Products</p><h3>Top Products</h3></div>
+          </div>
+          <div id="promotionSummaryTopProductsList" class="inventory-intel-coverage-bars"></div>
+        </div>
+      </section>
     </main>
   </div>
   <div id="productBrandOrderPopover" class="brand-order-popover" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260718-annual-brand-performance"></script>
+  <script src="./samplas-marketing-os.js?v=20260807-step63-3-clients-identity-pipeline"></script>
 </body>
 </html>

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SAMPLAS Master Data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["identity_master", "brand_master", "product_master", "merge_history"],
+  "properties": {
+    "identity_master": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "canonical_name", "aliases", "client_type", "status"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "canonical_name": { "type": "string", "minLength": 1 },
+          "aliases": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+          "client_type": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["review", "approved", "merged", "rejected"] },
+          "reviewedAt": { "type": ["string", "null"] },
+          "reviewedBy": { "type": ["string", "null"] },
+          "approvedAt": { "type": ["string", "null"] },
+          "approvedBy": { "type": ["string", "null"] },
+          "mergedAt": { "type": ["string", "null"] },
+          "mergedBy": { "type": ["string", "null"] },
+          "mergeReason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "brand_master": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["brand_id", "canonical_name", "brand_codes", "aliases", "status"],
+        "properties": {
+          "brand_id": { "type": "string", "minLength": 1 },
+          "canonical_name": { "type": "string", "minLength": 1 },
+          "brand_codes": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+          "aliases": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+          "status": { "enum": ["review", "approved", "merged", "rejected"] },
+          "reviewedAt": { "type": ["string", "null"] },
+          "reviewedBy": { "type": ["string", "null"] },
+          "approvedAt": { "type": ["string", "null"] },
+          "approvedBy": { "type": ["string", "null"] },
+          "mergedAt": { "type": ["string", "null"] },
+          "mergedBy": { "type": ["string", "null"] },
+          "mergeReason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "product_master": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["product_id", "canonical_name", "brand_id", "cafe24_product_ids", "ecount_codes", "status"],
+        "properties": {
+          "product_id": { "type": "string", "minLength": 1 },
+          "canonical_name": { "type": "string", "minLength": 1 },
+          "brand_id": { "type": "string", "minLength": 1 },
+          "cafe24_product_ids": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+          "ecount_codes": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+          "status": { "enum": ["review", "approved", "merged", "rejected"] },
+          "reviewedAt": { "type": ["string", "null"] },
+          "reviewedBy": { "type": ["string", "null"] },
+          "approvedAt": { "type": ["string", "null"] },
+          "approvedBy": { "type": ["string", "null"] },
+          "mergedAt": { "type": ["string", "null"] },
+          "mergedBy": { "type": ["string", "null"] },
+          "mergeReason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "merge_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entityType",
+          "entityId",
+          "previousCanonical",
+          "currentCanonical",
+          "timestamp",
+          "approvedBy",
+          "mergeReason"
+        ],
+        "properties": {
+          "entityType": { "enum": ["identity", "brand", "product"] },
+          "entityId": { "type": "string", "minLength": 1 },
+          "previousCanonical": { "type": "string", "minLength": 1 },
+          "currentCanonical": { "type": "string", "minLength": 1 },
+          "timestamp": { "type": "string", "minLength": 1 },
+          "approvedBy": { "type": "string", "minLength": 1 },
+          "mergeReason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
