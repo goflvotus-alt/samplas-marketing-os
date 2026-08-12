@@ -1442,9 +1442,11 @@
           </div>
         </div>
 
-        <div id="entityHeroContent" class="brand-hero" hidden>
-          <!-- STEP67-5: Final UX. Brand Score는 실제 계산 근거가 아직 없어 숨긴다(삭제
-               아님 — hidden만 추가, 계산이 완성되면 이 한 줄만 되돌리면 된다). -->
+        <!-- BI-BATCH-H: 07 FUTURE/BLOCKED. Brand Score는 공식 산식이 없어 항상 "--"/블록
+             상태만 표시한다(BI-BATCH-D) — 그 사실은 그대로 두고, 카드 위치만
+             entityHeroContent에서 분리해 Future/Blocked 구역으로 옮긴다(hidden 토글은
+             renderEntityHeroState()에서 entityHeroContent와 항상 같은 값을 받는다). -->
+        <div id="entityHeroScoreBlock" class="brand-hero" hidden>
           <div class="brand-hero-score-block">
             <div class="brand-hero-score" data-entity-hero-tooltip="score" tabindex="0" role="img" aria-label="Health Score 산식 연결 대기">
               <div class="brand-hero-score-ring" style="--score: 0; --score-color: var(--muted);">
@@ -1477,7 +1479,9 @@
               </li>
             </ul>
           </div>
+        </div>
 
+        <div id="entityHeroContent" class="brand-hero" hidden>
           <div class="brand-hero-cards">
             <!-- STEP67-6: AI Insight/Action. 실제 연결된 KPI(매출/MoM/Channel Mix/Trend)에서만
                  결정론적으로(원인 추론 없이) 생성한다 — renderEntityHeroInsight()가 이 두 노드만
@@ -1492,6 +1496,29 @@
               <ul id="entityHeroActionList"></ul>
             </article>
           </div>
+        </div>
+
+        <!-- BI-BATCH-H: 05 PRODUCT. 이미 계산된 entitySkuRows(BATCH B/B2, 온라인 매출 +
+             ECOUNT 현재 재고 join)를 매출 순 상위 몇 개만 보여준다 — 새 계산/새 소스 없음.
+             행 클릭/"전체 보기"는 기존 SKU Drawer(openEntityDrawer("sku"))를 그대로 연다. -->
+        <div id="entityProductSection" class="section-block brand-product-section">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Product Intelligence · Online Only</p>
+              <h3>주요 판매 상품 (온라인)</h3>
+            </div>
+            <span id="entityProductSkuCount" class="clients-tooltip-badge">-</span>
+          </div>
+          <div class="brand-customer-top5">
+            <div class="brand-customer-top5-head">
+              <p class="brand-customer-top5-title">온라인 매출 TOP</p>
+              <button type="button" id="entityProductDrawerBtn" class="entity-drawer-open-btn">전체 보기</button>
+            </div>
+            <ul id="entityProductList" class="brand-customer-top5-list">
+              <li class="entity-drawer-empty">브랜드를 선택하면 온라인 판매 상품을 확인할 수 있습니다.</li>
+            </ul>
+          </div>
+          <p id="entityProductInsight" class="entity-hero-source-note"></p>
         </div>
 
         <div class="brand-hero-status-row">
@@ -1516,6 +1543,8 @@
           </div>
         </div>
 
+        <!-- BI-BATCH-H Phase 3: 01 PERFORMANCE 순서(매출/판매수량/주문수/객단가/재고/
+             Sell-through) — 표시 문구/계산 없음, 카드 순서만 재배열. -->
         <div id="entityHeroEmptyKpi" class="cards brand-hero-kpi-grid">
           <article class="action-item ad-summary-card ad-core-kpi-card">
             <span>매출</span>
@@ -1528,17 +1557,22 @@
             <p>데이터 준비 중</p>
           </article>
           <article class="action-item ad-summary-card ad-core-kpi-card">
+            <span>주문수</span>
+            <strong>--</strong>
+            <p>데이터 준비 중</p>
+          </article>
+          <article class="action-item ad-summary-card ad-core-kpi-card">
             <span>객단가</span>
             <strong>--</strong>
             <p>데이터 준비 중</p>
           </article>
           <article class="action-item ad-summary-card ad-core-kpi-card">
-            <span>Sell-through</span>
+            <span>재고</span>
             <strong>--</strong>
             <p>데이터 준비 중</p>
           </article>
           <article class="action-item ad-summary-card ad-core-kpi-card">
-            <span>재고</span>
+            <span>Sell-through</span>
             <strong>--</strong>
             <p>데이터 준비 중</p>
           </article>
@@ -1551,6 +1585,8 @@
              기존 MoM 줄은 지우지 않고 entity-hero-mom-line 클래스로 시각적 우선순위만
              낮춘다(Compare OFF에서는 기존 그대로 최우선 정보). 전부 하드코딩 Placeholder
              — 실제 비교 계산 없음. -->
+        <!-- BI-BATCH-H Phase 3: 01 PERFORMANCE 순서(매출/판매수량/주문수/객단가/재고/
+             Sell-through) — id/데이터 바인딩/계산 로직 변경 없음, 카드 순서만 재배열. -->
         <div id="entityHeroKpiGrid" class="cards brand-hero-kpi-grid" hidden>
           <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="sales" tabindex="0">
             <span>매출</span>
@@ -1561,16 +1597,21 @@
             <span>판매수량</span>
             <strong id="entityHeroKpiQty">-</strong>
           </article>
-          <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="aov" tabindex="0">
-            <span>객단가</span>
-            <strong id="entityHeroKpiAov">-</strong>
-          </article>
           <!-- STEP61-3: Hero/KPI Data Binding. 주문수는 기존 6개 KPI 카드에 없던 항목이라
                새로 추가한다(계산은 없음 — STEP61-2의 entityTrendMonths 행이 이미 갖고 있는
                orderCount를 그대로 표시). -->
           <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="orders" tabindex="0">
             <span>주문수</span>
             <strong id="entityHeroKpiOrders">-</strong>
+          </article>
+          <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="aov" tabindex="0">
+            <span>객단가</span>
+            <strong id="entityHeroKpiAov">-</strong>
+          </article>
+          <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="stock" tabindex="0">
+            <span>현재 재고</span>
+            <strong id="entityHeroInventoryValue">-</strong>
+            <p id="entityHeroInventoryNote" class="entity-hero-source-note">ECOUNT 현재 재고</p>
           </article>
           <!-- STEP67-6: Sell-through/재고는 canonical brand_code 기준 source가 없다(Inventory
                브랜드 집계가 레거시 brand-master-list.json 기준이라 291개 canonical 브랜드와
@@ -1582,11 +1623,6 @@
             <span>Sell-through</span>
             <strong>정의 미확정</strong>
             <p class="entity-hero-source-note">BLOCKED · 공식 산식 필요</p>
-          </article>
-          <article class="action-item ad-summary-card ad-core-kpi-card" data-entity-hero-tooltip="stock" tabindex="0">
-            <span>현재 재고</span>
-            <strong id="entityHeroInventoryValue">-</strong>
-            <p id="entityHeroInventoryNote" class="entity-hero-source-note">ECOUNT 현재 재고</p>
           </article>
         </div>
 
@@ -1753,6 +1789,32 @@
              (Customer) → 무엇을 구매했는가(Category) → 언제 잘 팔렸는가(Monthly)" 정보 흐름에
              맞춰 Monthly Trend보다 앞으로 위치만 이동(ID/class/data-*/함수 미변경 —
              renderEntityCategorySection()은 ID 기반이라 위치 이동과 무관하게 그대로 동작). -->
+        <!-- BI-BATCH-H: 07 FUTURE/BLOCKED. 4개 모두 이미 확정된 영구 BLOCKED 상태다
+             (Category: BI-BATCH-C, Score: BI-BATCH-D, Sell-through: BI-BATCH-F, 추천
+             Action: 이전부터 미정) — 조건부 로직이 필요 없어 정적 텍스트로만 표시한다.
+             System Status와 동일한 .brand-hero-status-* 클래스를 그대로 재사용한다. -->
+        <div id="entityFutureBlockedStatus" class="brand-hero-status-row">
+          <p class="brand-hero-status-title">Future / Blocked</p>
+          <div class="brand-hero-status-grid">
+            <div class="brand-hero-status-item">
+              <span class="brand-hero-status-badge"><i></i>Category Intelligence</span>
+              <em>BLOCKED · 공식 상품군 분류 필요</em>
+            </div>
+            <div class="brand-hero-status-item">
+              <span class="brand-hero-status-badge"><i></i>Brand Score</span>
+              <em>BLOCKED · 공식 산식 필요</em>
+            </div>
+            <div class="brand-hero-status-item">
+              <span class="brand-hero-status-badge"><i></i>Sell-through</span>
+              <em>BLOCKED · 입고 데이터 필요</em>
+            </div>
+            <div class="brand-hero-status-item">
+              <span class="brand-hero-status-badge"><i></i>추천 Action</span>
+              <em>BLOCKED · 정책 정의 필요</em>
+            </div>
+          </div>
+        </div>
+
         <div class="section-block brand-category-section">
           <div class="section-title compact">
             <div>

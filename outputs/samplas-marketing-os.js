@@ -12561,6 +12561,10 @@ function renderEntityHeroState() {
   $("#entityHeroMeta")?.toggleAttribute("hidden", !selected);
   $("#entityHeroEmptyPanel")?.toggleAttribute("hidden", selected);
   $("#entityHeroContent")?.toggleAttribute("hidden", !selected);
+  // BI-BATCH-H: 07 FUTURE/BLOCKED. Score block을 entityHeroContent에서 별도 카드로 분리해
+  // 페이지 하단으로 옮기면서, 기존과 동일한 hidden 토글을 새 id에도 그대로 적용한다(로직
+  // 변경 없음 — entityHeroContent와 항상 같은 값으로 토글되던 것이 이제 두 줄이 됐을 뿐).
+  $("#entityHeroScoreBlock")?.toggleAttribute("hidden", !selected);
   $("#entityHeroEmptyKpi")?.toggleAttribute("hidden", selected);
   $("#entityHeroKpiGrid")?.toggleAttribute("hidden", !selected);
   $("#entityHeroSkuLine")?.toggleAttribute("hidden", !selected);
@@ -14362,7 +14366,10 @@ function renderEntityHeroInsight(row, index) {
   if (entityHeroInventoryState.brandCode === brandIdentityState.brandCode && entityHeroInventoryState.ready && entityHeroInventoryState.stock !== null) {
     sentences.push(`현재 재고는 ${apiNum(entityHeroInventoryState.stock)}개입니다.`);
   }
-  summaryEl.textContent = sentences.length ? sentences.join(" ") : "이번 기간 판단 가능한 데이터가 부족합니다.";
+  // BI-BATCH-H: 06 INTELLIGENCE 재배치 — 같은 문장들을 한 문단으로 이어붙이던 것을
+  // 줄바꿈으로 구분해 스캔하기 쉬운 짧은 statement 목록처럼 보이게 한다(CSS
+  // white-space:pre-line만 추가, 새 문장/새 판단 로직 없음 — 사실 목록 자체는 그대로).
+  summaryEl.textContent = sentences.length ? sentences.join("\n") : "이번 기간 판단 가능한 데이터가 부족합니다.";
   if (noteEl) noteEl.textContent = "매출/Channel Mix/Monthly Trend 실데이터 기반";
   if (actionListEl) {
     actionListEl.innerHTML = `<li>공식 추천 규칙 미확정 — 현재 재고는 참고 정보이며 Sell-through 산식과 Action threshold가 확정되기 전에는 행동을 자동 추천하지 않습니다.</li>`;
@@ -14959,6 +14966,7 @@ async function rebuildEntitySkuRows() {
   if (!brandCode || entitySkuSalesState.brandCode !== brandCode || entitySkuSalesState.fetchFailed) {
     entitySkuJoinDiagnostics = { matchedStock: 0, unmatchedStock: 0, salesRows: 0 };
     refreshOpenEntitySkuDrawer();
+    renderEntityProductSection();
     return;
   }
   const stockReady = entityInventoryItemsState.ready && entityInventoryItemsState.brandCode === brandCode;
@@ -15024,6 +15032,7 @@ async function rebuildEntitySkuRows() {
   entitySkuJoinDiagnostics = { matchedStock, unmatchedStock, salesRows: rows.length, stockOnlyRows: caseCRows.length };
   entitySkuRows.push(...rows, ...caseCRows);
   refreshOpenEntitySkuDrawer();
+  renderEntityProductSection();
 }
 
 // BATCH B: Sales(archive.commerce.productSales, 이미 fetch됨)만 이 브랜드/기간으로
@@ -15042,6 +15051,73 @@ function refreshEntitySkuSales(brandCode, periodMonth, productSales, fetchFailed
 // (refreshOpenEntityCustomerDetailViews와 동일한 stale-data 방지 패턴).
 function refreshOpenEntitySkuDrawer() {
   if (entityDrawerState.open && entityDrawerState.type === "sku") renderEntityDrawerBody();
+}
+
+// BI-BATCH-H: 05 PRODUCT. entitySkuRows(BATCH B/B2가 이미 계산해 둔 온라인 매출 + 재고
+// join 결과, SKU Drawer가 쓰는 것과 정확히 같은 배열)를 매출 순으로 상위 몇 개만 뽑아
+// 메인 페이지에 노출한다 — 새 계산/새 소스 없음. 행 클릭·"전체 보기"는 기존 SKU Drawer를
+// 그대로 연다(별도 상세 시스템 없음, Phase 12). emptyText 분기는 entityDrawerConfig.sku의
+// 원칙(로딩 중/fetch 실패/진짜 없음을 구분, NULL != ZERO)을 그대로 재사용한다.
+const ENTITY_PRODUCT_SECTION_TOP_N = 5;
+
+function renderEntityProductSection() {
+  const listEl = $("#entityProductList");
+  const insightEl = $("#entityProductInsight");
+  const countEl = $("#entityProductSkuCount");
+  if (!listEl) return;
+  const emptyLi = (text) => `<li class="entity-drawer-empty">${esc(text)}</li>`;
+  const brandCode = brandIdentityState.brandCode;
+  if (!brandCode) {
+    listEl.innerHTML = emptyLi("브랜드를 선택하면 온라인 판매 상품을 확인할 수 있습니다.");
+    if (insightEl) insightEl.textContent = "";
+    if (countEl) countEl.textContent = "-";
+    return;
+  }
+  if (entitySkuSalesState.brandCode !== brandCode) {
+    listEl.innerHTML = emptyLi("불러오는 중...");
+    if (insightEl) insightEl.textContent = "";
+    if (countEl) countEl.textContent = "-";
+    return;
+  }
+  if (entitySkuSalesState.fetchFailed) {
+    listEl.innerHTML = emptyLi("이번 기간 매출 데이터를 불러오지 못했습니다.");
+    if (insightEl) insightEl.textContent = "";
+    if (countEl) countEl.textContent = "-";
+    return;
+  }
+  if (!entitySkuRows.length) {
+    listEl.innerHTML = emptyLi("이번 기간 온라인 판매 또는 확인된 재고가 없습니다.");
+    if (insightEl) insightEl.textContent = "";
+    if (countEl) countEl.textContent = "0개";
+    return;
+  }
+  const sorted = [...entitySkuRows].sort((a, b) => b.revenue - a.revenue);
+  const top = sorted.slice(0, ENTITY_PRODUCT_SECTION_TOP_N);
+  const maxRevenue = Math.max(1, ...top.map((row) => row.revenue));
+  listEl.innerHTML = top.map((row, index) => {
+    const stockText = row.stock == null ? "-" : `${apiNum(row.stock)}개`;
+    const barPct = Math.max(2, Math.round((row.revenue / maxRevenue) * 100));
+    return `
+      <li data-entity-product-row="${index}" tabindex="0">
+        <div class="brand-customer-top5-row-head">
+          <span class="brand-customer-top5-rank">${index + 1}</span>
+          <span class="brand-customer-top5-name">${esc(row.productName)}</span>
+          <strong>${apiWon(row.revenue)}</strong>
+        </div>
+        <i class="brand-customer-top5-bar"><b style="width:${barPct}%"></b></i>
+        <p class="entity-product-row-sub">온라인 ${apiNum(row.quantitySold)}개 · 현재 재고 ${stockText}</p>
+      </li>`;
+  }).join("");
+  // 이번 기간 온라인 판매 상품 수는 entityTrendMonths[].skuCount(STEP67-6, 이미 계산됨)를
+  // 표시용으로 다시 읽을 뿐이다(새 계산 없음).
+  const periodRow = entityTrendMonths.find((item) => item.key === currentEntityPeriodMonthKey());
+  if (countEl) countEl.textContent = periodRow?.skuCount != null ? `${apiNum(periodRow.skuCount)}개` : "-";
+  const topSeller = sorted.find((row) => row.revenue > 0);
+  if (insightEl) {
+    insightEl.textContent = topSeller
+      ? `온라인 매출 1위 상품: ${topSeller.productName}`
+      : "이번 기간 온라인 매출이 확인된 상품이 없습니다.";
+  }
 }
 
 function entityDrawerSkuRowHtml(row, index) {
@@ -16140,6 +16216,13 @@ function bind() {
   $("#entityCompositionDrawerBtn")?.addEventListener("click", () => openEntityDrawer("customer"));
   $("#entityCategoryDrawerBtn")?.addEventListener("click", () => openEntityDrawer("category"));
   $("#entityOverviewDrawerBtn")?.addEventListener("click", () => openEntityDrawer("overview"));
+  // BI-BATCH-H: 05 PRODUCT. 행 클릭/"전체 보기" 모두 별도 상세 시스템을 만들지 않고
+  // 기존 SKU Drawer(openEntityDrawer("sku"))를 그대로 연다(Phase 12).
+  $("#entityProductDrawerBtn")?.addEventListener("click", () => openEntityDrawer("sku"));
+  $("#entityProductList")?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-entity-product-row]")) openEntityDrawer("sku");
+  });
+  renderEntityProductSection();
   document.addEventListener("click", (event) => {
     if (event.target.closest("[data-entity-drawer-close]")) closeEntityDrawer();
   });

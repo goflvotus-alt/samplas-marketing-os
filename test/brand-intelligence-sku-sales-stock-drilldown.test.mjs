@@ -108,7 +108,7 @@ function loadSkuJoin({ brandCode, sharedJsonResponses = {}, drawerOpen = false }
   const renderCalls = { count: 0 };
   const getSharedJsonImpl = async (url) => sharedJsonResponses[url] ?? { entries: [] };
   const fn = Function(
-    "brandIdentityState", "getSharedJson", "entityDrawerState", "renderEntityDrawerBody",
+    "brandIdentityState", "getSharedJson", "entityDrawerState", "renderEntityDrawerBody", "renderEntityProductSection",
     `
     let entitySkuSalesState = { brandCode: null, periodMonth: null, rows: [], fetchFailed: false };
     let entityInventoryItemsState = { brandCode: null, brandKey: null, items: [], fetchFailed: false, ready: false };
@@ -130,7 +130,8 @@ function loadSkuJoin({ brandCode, sharedJsonResponses = {}, drawerOpen = false }
     { brandCode },
     getSharedJsonImpl,
     { open: drawerOpen, type: drawerOpen ? "sku" : null },
-    () => { renderCalls.count += 1; }
+    () => { renderCalls.count += 1; },
+    () => {}
   );
 }
 

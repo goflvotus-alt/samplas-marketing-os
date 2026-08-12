@@ -3134,6 +3134,16 @@ select,
   color: var(--muted);
 }
 
+/* BI-BATCH-H: 06 INTELLIGENCE. renderEntityHeroInsight()가 문장을 "\n"으로 이어붙이므로
+   여기서 줄바꿈으로 보이게 한다 — 짧은 statement 목록처럼 스캔하기 쉽게(새 계산/새
+   문장 없음, 구분자만 시각화). #entityHeroAiSummary로 한정해 다른 sales-list-card 재사용에
+   영향 없게 한다. */
+#entityHeroAiSummary {
+  white-space: pre-line;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
 .sales-kpi-card p,
 .sales-list-card p,
 .sales-compare-card p {
@@ -8499,9 +8509,13 @@ body.clients-detail-modal-open {
   margin: 24px 0;
 }
 
+/* BI-BATCH-H Phase 4: 02 TREND가 독립 섹션이 되면서(더 이상 Intelligence와 좌우로 폭을
+   나눠 쓰지 않음) 차트 카드 비율을 넓힌다 — entityTrendChartSvg()는 viewBox만 쓰고
+   width/height가 없어 이미 반응형이라(.brand-monthly-trend-svg{width:100%}) JS/SVG
+   변경 없이 비율만 조정하면 된다. */
 .brand-monthly-trend-main {
   display: grid;
-  grid-template-columns: 7fr 3fr;
+  grid-template-columns: 3fr 1fr;
   gap: 16px;
   margin-bottom: 12px;
 }
@@ -10062,32 +10076,58 @@ body.entity-compare-on #entityHeroKpiGrid {
   max-width: 100%;
 }
 
+/* BI-BATCH-H Phase 9: 07 FUTURE/BLOCKED 컴팩트화. renderEntityCategorySection()은
+   entityCategoryRows.length가 항상 0이라(BI-BATCH-C, 영구 BLOCKED) #entityCategoryEmpty와
+   #entityCategoryContent를 동시에 보여준다(JS는 그대로 둠, 변경 없음) — 그 결과 빈
+   도넛+리스트+AI Insight 카드가 페이지 전체 폭을 차지하던 문제를 CSS로만 압축한다.
+   #entityCategoryEmpty(이미 컴팩트)와 compare 전용 #entityCategoryCompareTop만 남기고,
+   도넛+TOP 리스트와 AI Insight 카드를 숨긴다 — JS 함수/데이터는 손대지 않는다. */
+.brand-category-section .brand-category-grid,
+.brand-category-section .brand-customer-insight-card {
+  display: none;
+}
+
+/* BI-BATCH-H Phase 7: 05 PRODUCT. .brand-customer-top5-list를 그대로 재사용하되, 행이
+   클릭 가능하다는 것을 보여주기 위해 커서만 pointer로 바꾸고(TOP5는 cursor:default),
+   온라인 판매수량/현재 재고 서브라인 한 줄만 추가한다. */
+#entityProductList li[data-entity-product-row] {
+  cursor: pointer;
+}
+
+.entity-product-row-sub {
+  margin: 0;
+  padding-left: 24px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* BI-BATCH-H: 01~07 재배치. #BrandDashboard.view.active > *가 flex:1 1 100%을 기본으로
+   주므로(폭은 항상 전체), 여기서는 순서(order)만 새 정보 구조(01 PERFORMANCE → 02 TREND →
+   03 CHANNEL → 04 CUSTOMER → 05 PRODUCT → 06 INTELLIGENCE → 07 FUTURE/BLOCKED → SYSTEM
+   STATUS)로 재배정한다 — 이 블록들은 모두 이미 #BrandDashboard의 직계 자식이라 HTML
+   소스 순서를 옮기지 않고도 order만으로 화면 순서를 바꿀 수 있다(STEP58-4C와 동일 원리).
+   Trend와 Intelligence를 좌우 2-column으로 묶던 기존 460px 규칙은 더 이상 서로 인접한
+   섹션이 아니게 되어 제거하고, 각자 기본 전체 폭을 쓴다(Trend는 Phase 4가 요구한 "더 넓은
+   차트"를 .brand-monthly-trend-main 내부 grid 비율로 얻는다, 아래). */
 #BrandDashboard > .brand-selector { order: 1; }
 #BrandDashboard > .entity-period-toolbar { order: 2; }
 #BrandDashboard > #entityCompareHeader { order: 3; }
 #BrandDashboard > .section-title.home-hero { order: 4; }
 #BrandDashboard > #entityHeroEmptyKpi,
 #BrandDashboard > #entityHeroKpiGrid,
-#BrandDashboard > #entityComparePerformanceSection { order: 5; }
-#BrandDashboard > #entityHeroSkuLine { order: 6; }
-#BrandDashboard > #entityHeroChannelSplit { order: 7; }
-#BrandDashboard > .brand-monthly-trend-section,
+#BrandDashboard > #entityComparePerformanceSection { order: 5; } /* 01 PERFORMANCE */
+#BrandDashboard > .brand-monthly-trend-section { order: 6; } /* 02 TREND */
+#BrandDashboard > #entityHeroChannelSplit { order: 7; } /* 03 CHANNEL */
+#BrandDashboard > .brand-customer-section { order: 8; } /* 04 CUSTOMER */
+#BrandDashboard > #entityHeroSkuLine,
+#BrandDashboard > #entityProductSection { order: 9; } /* 05 PRODUCT */
 #BrandDashboard > #entityHeroEmptyPanel,
-#BrandDashboard > #entityHeroContent {
-  order: 8;
-}
-/* .view.active를 함께 명시해 위 #BrandDashboard.view.active > * 규칙(더 높은 우선순위)을
-   확실히 덮어쓴다 — 이 두 항목만 좌우 2-column 폭을 갖는다. */
-#BrandDashboard.view.active > .brand-monthly-trend-section,
-#BrandDashboard.view.active > #entityHeroEmptyPanel,
-#BrandDashboard.view.active > #entityHeroContent {
-  flex: 1 1 460px;
-  max-width: 100%;
-}
-#BrandDashboard > .brand-monthly-trend-section { margin-right: 20px; }
-#BrandDashboard > .brand-customer-section { order: 9; }
-#BrandDashboard > .brand-category-section { order: 10; }
-#BrandDashboard > .brand-hero-status-row { order: 11; }
+#BrandDashboard > #entityHeroContent { order: 10; } /* 06 INTELLIGENCE */
+#BrandDashboard > #entityHeroScoreBlock,
+#BrandDashboard > .brand-category-section { order: 11; } /* 07 FUTURE/BLOCKED */
+#BrandDashboard > #entityFutureBlockedStatus { order: 11; } /* 07 FUTURE/BLOCKED (status list) */
+#BrandDashboard > .brand-hero-status-row { order: 12; } /* SYSTEM STATUS — 항상 맨 아래 */
 
 /* STEP67-9G-1B: Period Performance Independent Section. STEP67-9G-1A가 실측한
    충돌(592px 2-column 카드 vs 960px 4-column 표)을 해결하기 위해 #entityHeroKpiGrid
