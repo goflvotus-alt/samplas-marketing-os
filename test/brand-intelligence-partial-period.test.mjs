@@ -34,8 +34,17 @@ function makeFakeDom() {
   return { $, nodes };
 }
 
+// BI-BATCH-D: renderEntityHeroInsight() now also reads entityHeroInventoryState (the
+// already-resolved Hero inventory value, no new fetch) and brandIdentityState.brandCode to
+// decide whether to append a "현재 재고는 N개입니다" sentence. Every extraction site that
+// pulls in renderEntityHeroInsight needs both as free variables — default them to "not
+// ready" / no brand so the new sentence is a no-op unless a test explicitly opts in, keeping
+// every pre-existing assertion in this file valid.
+const HERO_INSIGHT_STATE_STUB = "let entityHeroInventoryState = { brandCode: null, ready: false, stock: null, fetchFailed: false }; let brandIdentityState = { brandCode: null };";
+
 const HERO_SOURCE = [
   "const nf = new Intl.NumberFormat(\"ko-KR\");",
+  HERO_INSIGHT_STATE_STUB,
   sourceOfFunction("hasApiValue"),
   sourceOfFunction("apiNum"),
   sourceOfFunction("apiWon"),
@@ -119,6 +128,7 @@ test("2. HERO SAVED MONTH — existing MoM % calculation unchanged for completed
 test("3. AI SUMMARY LIVE MONTH — no completed-period decline/ranking claims", () => {
   const source = [
     "const nf = new Intl.NumberFormat(\"ko-KR\");",
+    HERO_INSIGHT_STATE_STUB,
     sourceOfFunction("hasApiValue"),
     sourceOfFunction("apiNum"),
     sourceOfFunction("apiWon"),
@@ -217,6 +227,7 @@ test("12. WORDING SAFETY — no unsupported completed-period claims for a live t
 
   const source = [
     "const nf = new Intl.NumberFormat(\"ko-KR\");",
+    HERO_INSIGHT_STATE_STUB,
     sourceOfFunction("hasApiValue"),
     sourceOfFunction("apiNum"),
     sourceOfFunction("apiWon"),
@@ -284,6 +295,7 @@ test("16. AI SUMMARY — fetch failure does not produce a false -100% MoM or ran
   ];
   const source = [
     "const nf = new Intl.NumberFormat(\"ko-KR\");",
+    HERO_INSIGHT_STATE_STUB,
     sourceOfFunction("hasApiValue"),
     sourceOfFunction("apiNum"),
     sourceOfFunction("apiWon"),

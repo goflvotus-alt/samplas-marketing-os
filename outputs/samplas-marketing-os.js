@@ -13313,6 +13313,9 @@ async function refreshEntityTrendMonths() {
   if (!brandIdentityState.brandCode) {
     entityTrendMonths = [];
     entityTrendCompareMonths = [];
+    // BI-BATCH-D: 브랜드 선택이 해제되면 AI Summary의 "현재 재고는 N개입니다" 문장이
+    // 이전 브랜드 값을 들고 있지 않도록 함께 비운다.
+    entityHeroInventoryState = { brandCode: null, ready: false, stock: null, fetchFailed: false };
     renderEntityTrendSection();
     renderEntityHeroKpiFromMonthlyState();
     renderEntityCompositionEmpty();
@@ -14141,10 +14144,21 @@ function renderEntityCompareSummary() {
   textEl.textContent = sentences.join(" ");
 }
 
+// BI-BATCH-D: AI Summary(renderEntityHeroInsight)가 "현재 재고는 N개입니다" 문장을
+// 붙이려면 refreshEntityInventory()가 이미 resolve한 knownStock을 알아야 한다 — 새 fetch를
+// 만들지 않고 이 값만 별도 state에 남긴다. ready:false(조회 중)와 ready:true+stock:null
+// (조회 완료, 그러나 canonical 재고 없음)을 구분해야 "아직 모름"과 "확인된 재고 없음"이
+// 섞이지 않는다(NULL != ZERO와 동일한 원칙). Inventory는 Trend/AI Summary와 별개 비동기
+// fetch라 늦게 도착할 수 있으므로, 값이 준비되면 renderEntityHeroKpiFromMonthlyState()를
+// 다시 호출해 이미 그려진 AI Summary에도 반영한다(BATCH A/B의 refreshOpen* 재렌더 패턴과
+// 동일 — 새 렌더 경로를 만들지 않고 기존 idempotent 렌더 함수를 재사용).
+let entityHeroInventoryState = { brandCode: null, ready: false, stock: null, fetchFailed: false };
+
 async function refreshEntityInventory(brandCode) {
   const seq = ++entityInventoryRefreshSeq;
   const valueEl = $("#entityHeroInventoryValue");
   const noteEl = $("#entityHeroInventoryNote");
+  entityHeroInventoryState = { brandCode, ready: false, stock: null, fetchFailed: false };
   if (!valueEl || !noteEl) return;
   valueEl.textContent = "불러오는 중";
   noteEl.textContent = "ECOUNT 현재 재고 조회 중";
@@ -14165,10 +14179,14 @@ async function refreshEntityInventory(brandCode) {
     // 남아있지 않도록 명시적으로 비운다(0 재고로 오해되지 않게 null 유지, Phase 9).
     entityInventoryItemsState = { brandCode, brandKey: null, items: [], fetchFailed: Boolean(data?.error), ready: true };
     rebuildEntitySkuRows();
+    entityHeroInventoryState = { brandCode, ready: true, stock: null, fetchFailed: Boolean(data?.error) };
+    renderEntityHeroKpiFromMonthlyState();
     return;
   }
   valueEl.textContent = `${apiNum(row.knownStock || 0)}개`;
   noteEl.textContent = `현재 재고 · ECOUNT · ${exact ? "canonical brand_code" : "exact canonical name"} · SKU ${apiNum(row.totalSku || 0)}개 · 확인 필요 ${apiNum(row.negativeReviewCount || 0)}개`;
+  entityHeroInventoryState = { brandCode, ready: true, stock: Number(row.knownStock || 0), fetchFailed: false };
+  renderEntityHeroKpiFromMonthlyState();
   // BATCH B: 이 브랜드의 SKU별 재고 items를 받아온다. row.brandKey는 위에서 이미 정확히
   // resolve된 ECOUNT 키(canonical brand_code 또는 "raw:..." 형태)이므로 같은 brandKey에
   // 대해 rollup fetch와 별개로 딱 한 번만 더 요청한다(동일 brand 중복 요청 금지, Phase 10).
@@ -14332,6 +14350,17 @@ function renderEntityHeroInsight(row, index) {
     } else if (completedRevenues.length > 1 && row.revenue === Math.max(...completedRevenues)) {
       sentences.push(`최근 ${completedRevenues.length}개월 중 이번 달 매출이 가장 높습니다.`);
     }
+  }
+  // BI-BATCH-D: skuCount는 entityTrendMonths가 이 함수 호출 전에 이미 계산해 둔 값이다
+  // (STEP67-6, archive.commerce.productSales에서 distinct product_no만 센 것, 새 계산
+  // 없음) — row가 fetchFailed가 아니면 항상 실수(0 포함)이므로 그대로 문장화한다.
+  sentences.push(`이번 기간 온라인 판매가 확인된 상품은 ${apiNum(row.skuCount)}개입니다.`);
+  // BI-BATCH-D: 현재 재고는 refreshEntityInventory()가 이미 resolve해 둔 값만 쓴다(새
+  // fetch 없음). ready가 아니거나(아직 조회 중) stock이 null이면(canonical 재고 확인 불가)
+  // 문장 자체를 만들지 않는다 — "재고 0개"로 오해되게 하지 않는다(NULL != ZERO).
+  // brandCode가 다르면(막 브랜드를 바꿔 이전 브랜드 값이 남아있는 상태) 역시 생략한다.
+  if (entityHeroInventoryState.brandCode === brandIdentityState.brandCode && entityHeroInventoryState.ready && entityHeroInventoryState.stock !== null) {
+    sentences.push(`현재 재고는 ${apiNum(entityHeroInventoryState.stock)}개입니다.`);
   }
   summaryEl.textContent = sentences.length ? sentences.join(" ") : "이번 기간 판단 가능한 데이터가 부족합니다.";
   if (noteEl) noteEl.textContent = "매출/Channel Mix/Monthly Trend 실데이터 기반";
