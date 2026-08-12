@@ -14858,7 +14858,7 @@ let entityDrawerPreviousFocus = null;
 function entityDrawerCustomerRowHtml(row, index) {
   const aov = row.count ? Math.round(row.sales / row.count) : 0;
   return `
-    <li class="entity-drawer-row" data-entity-type="client" data-entity-id="placeholder" tabindex="0">
+    <li class="entity-drawer-row" data-entity-type="client" data-entity-id="${esc(row.name)}" data-entity-label="${esc(row.name)}" tabindex="0">
       <span class="entity-drawer-rank">${index + 1}</span>
       <span class="entity-drawer-name">${esc(row.name)}</span>
       <span class="clients-tooltip-badge brand-customer-type-badge" style="border-color:${entityCompositionColors[row.type]}22;color:${entityCompositionColors[row.type]}">${esc(entityCompositionTypeLabel[row.type] || "-")}</span>
@@ -15231,7 +15231,20 @@ const entityDrawerConfig = {
       recent_desc: (a, b) => (b.lastPurchase || "").localeCompare(a.lastPurchase || "")
     },
     rowHtml: entityDrawerCustomerRowHtml,
-    clickToast: "Client Intelligence 연결 예정"
+    clickToast: "Client Intelligence 연결 예정",
+    // BI-BATCH-E: "전체 고객" 목록은 이미 entityCompositionRows(실데이터)를 보여주면서도
+    // 행 클릭은 여전히 옛 toast만 띄웠다 — 같은 고객이 TOP5에서는 이미 BATCH A의 실제 Client
+    // Workspace(구매 내역 포함)로 연결돼 있다. 새 매칭 로직을 만들지 않고 그 자리에서 이미
+    // 쓰는 identity(row.name)로 entityCompositionRows에서 같은 행을 찾아 openClientWorkspace로
+    // 그대로 넘긴다(openEntityWorkspace가 이미 하는 것처럼 Drawer는 먼저 닫는다).
+    onRowClick: (rowEl) => {
+      const name = rowEl.dataset.entityLabel;
+      const match = entityCompositionRows.find((row) => row.name === name);
+      if (!match) return;
+      closeEntityDrawer();
+      openClientWorkspace(match);
+    },
+    emptyText: "검색 조건에 맞는 고객이 없습니다."
   },
   category: {
     title: "전체 상품군",
@@ -15280,6 +15293,14 @@ const entityDrawerConfig = {
     },
     rowHtml: entityDrawerSkuRowHtml,
     clickToast: "SKU Intelligence 연결 예정",
+    // BI-BATCH-E: SKU는 BATCH B로 이미 연결됐다 — 이번 기간 온라인 판매/재고가 실제로
+    // 없거나 검색 결과가 없을 때도 "데이터 연결 대기"(=아직 안 만들어짐)로 보이면
+    // 오해된다. 정직하게 "이번 기간에는 없다"로 구분하되, sales fetch 자체가 실패한
+    // 경우는 "없다"가 아니라 "확인 실패"로 명확히 구분한다(entitySkuSalesState.fetchFailed,
+    // NULL != ZERO와 동일 원칙 — fetch 실패를 확정된 빈 상태로 보여주지 않는다).
+    emptyText: () => (entitySkuSalesState.fetchFailed
+      ? "이번 기간 매출 데이터를 불러오지 못했습니다."
+      : "이번 기간 온라인 판매 또는 확인된 재고가 없습니다."),
     next: "order"
   },
   order: {
@@ -15326,7 +15347,17 @@ const entityDrawerConfig = {
       amount_desc: (a, b) => b.salesAmount - a.salesAmount
     },
     rowHtml: entityDrawerClientOrderRowHtml,
-    clickToast: "SKU Intelligence 연결 예정",
+    // BI-BATCH-E: next가 있어 클릭 시 실제로는 pushEntityDrawerLevel("sku", ...)만 타므로
+    // 이 clickToast는 호출되지 않는다 — 그래도 이전 값이 다른 타입(SKU) 문구를 잘못
+    // 복사해 온 것이었어서 맞는 문구로 고친다.
+    clickToast: "Client Intelligence 연결 예정",
+    // BI-BATCH-E: entityClientPurchaseLinesFor()는 fetch 실패 시에도 빈 배열을 반환하므로
+    // (entityClientOverviewMatchFor가 null을 돌려줌) sku와 동일하게 "정말 없음"과 "확인
+    // 실패"를 구분해야 한다 — entityClientsOverviewFetchFailed로 판정(BATCH A가 이미 이
+    // 플래그로 Workspace 본문의 실패 상태를 구분하던 것과 같은 값, 새 상태 아님).
+    emptyText: () => (entityClientsOverviewFetchFailed
+      ? "구매 내역을 불러오지 못했습니다."
+      : "이 고객의 이 브랜드 구매 내역이 없습니다."),
     next: "sku"
   },
   overview: {
@@ -15425,9 +15456,17 @@ function renderEntityDrawerBody() {
   if (!config || !body) return;
   const rows = entityDrawerFilteredSortedRows();
   const context = entityDrawerState.context || { sourceType: entityDrawerState.type, label: `${config.title} 데이터 연결 대기` };
+  // BI-BATCH-E: 기본 문구 "데이터 연결 대기"는 아직 실제로 연결되지 않은 타입(category/
+  // order)에는 맞지만, 이미 실데이터에 연결된 타입(sku/customer)이 이번 기간/검색 조건에
+  // 맞는 행이 없을 때도 그대로 쓰면 "기능이 아직 안 만들어졌다"처럼 오해된다 — 타입별
+  // emptyText가 있으면 그것을, 없으면(=여전히 미연결) 기존 문구를 그대로 쓴다(회귀 없음).
+  // emptyText가 함수면(fetch 실패와 "진짜 없음"을 구분해야 하는 타입, 예: sku) 호출해서
+  // 쓴다 — fetch 실패를 "이번 기간엔 없다"는 확정 문장으로 오인시키지 않기 위함(Phase 11
+  // NULL != ZERO와 동일한 원칙).
+  const emptyText = typeof config.emptyText === "function" ? config.emptyText() : (config.emptyText || "데이터 연결 대기");
   body.innerHTML = rows.length
     ? rows.map((row, index) => config.rowHtml(row, index)).join("")
-    : `<li class="entity-drawer-empty">데이터 연결 대기${config.next ? `<br><button type="button" class="entity-drawer-related-chip" data-entity-drawer-jump="${esc(config.next)}">${esc(entityDrawerConfig[config.next].title)} 구조 보기</button>` : ""}</li>`;
+    : `<li class="entity-drawer-empty">${esc(emptyText)}${config.next ? `<br><button type="button" class="entity-drawer-related-chip" data-entity-drawer-jump="${esc(config.next)}">${esc(entityDrawerConfig[config.next].title)} 구조 보기</button>` : ""}</li>`;
   if (footer) footer.textContent = `${rows.length}건 표시 중`;
 }
 
@@ -16107,6 +16146,7 @@ function bind() {
       sourceType: row.dataset.entityContextSource || entityDrawerState.type,
       label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title
     });
+    else if (config.onRowClick) config.onRowClick(row);
     else toast(config.clickToast);
   });
   // Breadcrumb 크럼(뒤로가기 포함) + Related Entity/Next Question 단축 이동은 전부
@@ -16166,6 +16206,7 @@ function bind() {
         sourceType: row.dataset.entityContextSource || entityDrawerState.type,
         label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title
       });
+      else if (config.onRowClick) config.onRowClick(row);
       else toast(config.clickToast);
       return;
     }
