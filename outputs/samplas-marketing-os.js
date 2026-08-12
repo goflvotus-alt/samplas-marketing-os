@@ -16111,7 +16111,16 @@ function bind() {
     renderEntityCompareUI();
     refreshEntityTrendMonths();
   });
-  $("#entityCompareTarget")?.addEventListener("change", renderEntityCompareUI);
+  // BI-BATCH-G: 이전에는 이 change 핸들러가 renderEntityCompareUI()만 호출해 헤더의
+  // "비교 대상" 라벨(prev/yoy/custom)만 바뀌고, 실제 Period Performance 표/Comparison
+  // Summary는 refreshEntityCompareTargetPeriodData()가 다시 fetch해야만 갱신되는데 그
+  // 호출이 전혀 없었다 — prev→YoY로 바꿔도 지난달 숫자가 그대로 남아있던 원인. 새 fetch
+  // 함수를 만들지 않고 이미 존재하는 refreshEntityCompareKpi()(=refreshEntityTrendMonths가
+  // 브랜드/기간 변경 시 쓰는 것과 동일한 함수)를 그대로 재사용한다.
+  $("#entityCompareTarget")?.addEventListener("change", () => {
+    renderEntityCompareUI();
+    refreshEntityCompareKpi();
+  });
   // STEP67-8D: Comparison Brand A Local Selector. 기존에는 이 트리거가 상단 Primary
   // Selector로 스크롤 후 그 드롭다운을 여는 방식이었다(STEP59-4B~STEP67-8D 중간
   // 수정까지) — 사용자 Chrome QA에서 "버튼 바로 아래가 아니라 엉뚱한 곳이 열린다"는
