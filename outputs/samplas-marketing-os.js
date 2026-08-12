@@ -12919,12 +12919,16 @@ function positionEntityCompositionProfileCard(anchor, card) {
   card.style.top = `${top}px`;
 }
 
-// STEP60-2B: Client Quick Profile. Header → KPI → 최근 Activity → Related → Explore
-// 패턴으로 재구성한다. 실제 고객별 구매 이력 계산은 하지 않고 entityClientRecentPurchases
-// (하드코딩 Placeholder, entityDrawerConfig.clientOrders와 동일한 소스)를 그대로
-// 재사용한다 — 어떤 고객 카드를 열어도 동일한 값이 보인다(기존 STEP60-1 원칙과 동일).
+// STEP60-2B: Client Quick Profile. Header → KPI → 최근 Activity → Related → Explore 패턴.
+// BATCH A: "최근 주문" 섹션은 entityClientPurchaseLinesFor(row)의 실제 데이터를 최대
+// 3건만 압축해서 보여준다(호버 카드는 좁은 공간이라 전체 목록은 여전히 아래 "최근 주문
+// 보기" 버튼이 여는 clientOrders Drawer가 담당 — 새 UI를 만들지 않음).
 function entityCompositionProfileHtml(row) {
   const aov = row.count ? Math.round(row.sales / row.count) : 0;
+  const brandLines = entityClientPurchaseLinesFor(row);
+  const recentHtml = entityClientPurchaseStateHtml(brandLines) || brandLines.slice(0, 3).map((line) => (
+    `<div class="brand-customer-profile-row"><span>${esc(line.date || "-")}</span><strong>${esc(line.productName || "제품 정보 없음")} · ${apiWon(line.salesAmount)}</strong></div>`
+  )).join("");
   return `
     <div class="brand-customer-profile-head">
       <div class="brand-customer-profile-heading">
@@ -12942,9 +12946,7 @@ function entityCompositionProfileHtml(row) {
       <div class="brand-customer-profile-row"><span>최근 구매일</span><strong>${esc(row.lastPurchase || "데이터 없음")}</strong></div>
     </div>
     <p class="brand-customer-profile-section-title">최근 주문</p>
-    <div class="entity-detail-empty">
-      <p>상품 단위 주문 데이터가 연결되지 않았습니다.</p>
-    </div>
+    ${recentHtml}
     <button type="button" class="brand-customer-profile-orders-btn" data-entity-drawer-quick-orders>최근 주문 보기</button>
     <div class="brand-customer-profile-mini-chips" aria-label="관련 상세 탐색">
       <button type="button" data-entity-drawer-quick-jump="sku">SKU</button>
@@ -12987,14 +12989,17 @@ let clientWorkspacePreviousFocus = null;
 // 재사용하면 Workspace가 열려 있고 Drawer는 닫혀 있는 상태에서 클릭이 그 리스너에 잘못
 // 걸릴 수 있다. 시각 스타일(entity-drawer-rank/name/stat)은 그대로 재사용하되 바깥 li만
 // 별도 클래스(client-workspace-order-row, 리스너 없음)를 써서 그 결합을 피한다.
+// BATCH A: row는 실제 purchaseDetails 라인(entityDrawerClientOrderRowHtml과 동일한 필드
+// 이름/의미 — 옛 product/amount/variant placeholder 필드는 실제 payload에 없어 제거).
 function clientWorkspaceOrderRowHtml(row, index) {
+  const productLabel = row.productName || "제품 정보 없음";
+  const channelLabel = row.source === "online" ? "온라인" : row.source === "offline" ? "오프라인" : "-";
   return `
     <li class="client-workspace-order-row">
       <span class="entity-drawer-rank">${index + 1}</span>
-      <span class="entity-drawer-name">${esc(row.product)}<i class="entity-drawer-code">${esc(row.brand)}</i></span>
-      <span class="entity-drawer-stat"><span>주문일</span><strong>${esc(row.date)}</strong></span>
-      <span class="entity-drawer-stat"><span>옵션</span><strong>${esc(row.variant)}</strong></span>
-      <span class="entity-drawer-stat"><span>금액</span><strong>${apiWon(row.amount)}</strong></span>
+      <span class="entity-drawer-name">${esc(productLabel)}<i class="entity-drawer-code">${esc(channelLabel)}</i></span>
+      <span class="entity-drawer-stat"><span>구매일</span><strong>${esc(row.date || "-")}</strong></span>
+      <span class="entity-drawer-stat"><span>금액</span><strong>${apiWon(row.salesAmount)}</strong></span>
     </li>`;
 }
 
@@ -13022,8 +13027,26 @@ function clientWorkspaceModalNode() {
 // profile-*/entity-drawer-related*)를 그대로 재사용하고, Hero KPI/Insight는 Brand
 // Dashboard의 기존 KPI 카드(.ad-core-kpi-card)를 재사용한다 — 새 카드 컴포넌트를 만들지
 // 않는다.
+// BATCH A: Brand/Recent Orders 섹션은 entityClientPurchaseLinesFor(row)(선택된 브랜드로
+// 필터링된 실제 purchaseDetails)를 읽는다 — Category 섹션은 이번 BATCH 범위 밖이라
+// 그대로 둔다(Category Intelligence 자체에 canonical source가 없음, BI-GAP-1 §4).
 function clientWorkspaceBodyHtml(row) {
   const aov = row.count ? Math.round(row.sales / row.count) : 0;
+  const brandLines = entityClientPurchaseLinesFor(row);
+  const brandStateHtml = entityClientPurchaseStateHtml(brandLines);
+  const brandSectionHtml = brandStateHtml || (() => {
+    const totalSales = brandLines.reduce((sum, line) => sum + Number(line.salesAmount || 0), 0);
+    const totalQuantity = brandLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+    const latestDate = brandLines.reduce((latest, line) => (!latest || String(line.date || "") > latest ? line.date : latest), null);
+    return `
+      <div class="cards brand-hero-kpi-grid">
+        <article class="action-item ad-summary-card ad-core-kpi-card"><span>이 브랜드 구매금액</span><strong>${apiWon(totalSales)}</strong></article>
+        <article class="action-item ad-summary-card ad-core-kpi-card"><span>구매 수량</span><strong>${apiNum(totalQuantity)}개</strong></article>
+        <article class="action-item ad-summary-card ad-core-kpi-card"><span>구매 건수</span><strong>${apiNum(brandLines.length)}건</strong></article>
+        <article class="action-item ad-summary-card ad-core-kpi-card"><span>최근 구매일</span><strong>${esc(latestDate || "-")}</strong></article>
+      </div>`;
+  })();
+  const recentOrdersHtml = brandStateHtml || brandLines.slice(0, 5).map((line, index) => clientWorkspaceOrderRowHtml(line, index)).join("");
   return `
     <div class="client-workspace-breadcrumb entity-drawer-breadcrumb">
       <button type="button" class="entity-drawer-breadcrumb-crumb" data-client-workspace-breadcrumb-brand>${esc(entityCompareBrandA())}</button>
@@ -13048,7 +13071,7 @@ function clientWorkspaceBodyHtml(row) {
     </div>
     <div class="client-workspace-section">
       <p class="eyebrow">Brand</p>
-      <div class="entity-detail-empty"><p>고객별 브랜드 구매 데이터 연결 대기</p></div>
+      ${brandSectionHtml}
     </div>
     <div class="client-workspace-section">
       <p class="eyebrow">Category</p>
@@ -13056,7 +13079,7 @@ function clientWorkspaceBodyHtml(row) {
     </div>
     <div class="client-workspace-section">
       <p class="eyebrow">Recent Orders</p>
-      <div class="entity-detail-empty"><p>상품 단위 주문 데이터가 연결되지 않았습니다.</p></div>
+      ${recentOrdersHtml}
       <button type="button" class="entity-drawer-open-btn" data-client-workspace-related="clientOrders">최근 주문 Drawer 열기</button>
     </div>
     <article class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card">
@@ -13278,6 +13301,12 @@ function currentEntityPeriodMonthKey() {
 
 async function refreshEntityTrendMonths() {
   const seq = ++entityTrendRefreshSeq;
+  // BATCH A: 브랜드/기간이 바뀌는 시점(이 함수가 유일한 트리거)에 이전 브랜드/기간의
+  // Customer Detail 데이터가 화면에 남지 않도록 열려 있는 Workspace/clientOrders Drawer를
+  // 닫는다(Phase 10 stale-data 방지) — 아직 새 브랜드의 purchase 데이터가 없는 시점에
+  // 이전 브랜드 내용을 그대로 보여주는 것보다 명시적으로 닫는 편이 안전하다.
+  if (clientWorkspaceRow) closeClientWorkspace();
+  if (entityDrawerState.open && entityDrawerState.type === "clientOrders") closeEntityDrawer();
   if (!brandIdentityState.brandCode) {
     entityTrendMonths = [];
     entityTrendCompareMonths = [];
@@ -13371,6 +13400,10 @@ async function refreshEntityTrendMonths() {
   refreshEntityCustomerComposition(brandCode, periodMonth);
   refreshEntityCompareCustomerComposition(periodMonth);
   refreshEntityInventory(brandCode);
+  // BATCH A: Customer Purchase Detail. 브랜드와 무관하게 기간 단위로만 fetch하고(Phase 4),
+  // 브랜드 필터링은 읽는 시점(entityClientPurchaseLinesFor)에 수행한다 — 여기서는 다른
+  // 보조 fetch들과 동일하게 트리거만 공유한다(별도 트리거 추가 없음).
+  refreshEntityClientsOverview(periodMonth);
   // STEP67-9E-1: Comparison Monthly Core KPI. 브랜드/기간이 바뀔 때도 이 트리거 하나로
   // Compare KPI가 함께 갱신되도록 여기서 호출한다(별도 트리거 추가 없음).
   refreshEntityCompareKpi();
@@ -14838,26 +14871,111 @@ function entityDrawerOrderRowHtml(row, index) {
     </li>`;
 }
 
-// STEP60-2B: Client Quick Profile. entityOrderRows(SKU 기준 "누가 샀나")와 반대 방향인
-// "이 고객이 최근 무엇을 샀나"용 Placeholder 3건 — 특정 고객별로 다르게 만들지 않고
-// 어떤 고객 카드를 열어도 동일한 값을 보여준다(STEP60-1의 "어떤 Category에서 진입해도
-// 동일한 SKU" 원칙과 동일). 브랜드명은 이미 쓰인 BONNAE/KIMYO/AAH MIDNIGHT만 재사용한다.
+// BATCH A (Customer Purchase Detail): entityOrderRows(SKU 기준 "누가 샀나")와 반대 방향인
+// "이 고객이 이 브랜드에서 실제로 무엇을 샀나"용 배열. 더 이상 Placeholder가 아니다 —
+// openEntityDrawer("clientOrders", ...) 직전에 entityClientPurchaseLinesFor(row)의 실제
+// 결과로 채워진다(구매 없음/불러오는 중/실패 상태는 이 배열이 아니라 clientWorkspaceBodyHtml/
+// entityCompositionProfileHtml이 렌더링 시점에 별도로 표시한다).
 const entityClientRecentPurchases = [];
+
+// BATCH A: /api/intelligence/clients(Clients 화면이 이미 쓰는 buildClientsOverview(), 새
+// 계산 없음)를 브랜드와 무관하게 "선택된 기간" 단위로 한 번만 가져와 Quick Profile/Client
+// Workspace/clientOrders Drawer가 모두 공유한다 — 고객을 클릭할 때마다 새 fetch를 만들지
+// 않는다(Phase 4). 브랜드 필터링(canonicalBrandCode)은 이 데이터를 읽는 시점에 매번
+// 계산한다(entityClientPurchaseLinesFor) — 브랜드를 바꿔도 새 네트워크 요청이 필요 없다.
+let entityClientsOverviewData = null;
+let entityClientsOverviewFetchFailed = false;
+let entityClientsOverviewRefreshSeq = 0;
+
+async function refreshEntityClientsOverview(month) {
+  const seq = ++entityClientsOverviewRefreshSeq;
+  const { monthStart, monthEnd } = monthlyReportMonthRange(month);
+  const data = await getSharedJson(intelligenceUrl(`/api/intelligence/clients?since=${monthStart}&until=${monthEnd}`), 15000);
+  if (seq !== entityClientsOverviewRefreshSeq) return; // 더 최근 브랜드/기간 변경이 이미 진행 중이면 이 결과는 버린다.
+  // BI-CORE-4와 동일한 NULL != ZERO 원칙: fetch 실패를 "구매 없음"으로 위장하지 않는다.
+  if (data?.error || data?.ok !== true || !Array.isArray(data?.clients)) {
+    if (data?.error) {
+      console.warn(`[Brand Intelligence] clients fetch failure — month=${month}, reason=${data.error}`);
+    }
+    entityClientsOverviewData = null;
+    entityClientsOverviewFetchFailed = true;
+  } else {
+    entityClientsOverviewData = data;
+    entityClientsOverviewFetchFailed = false;
+  }
+  refreshOpenEntityCustomerDetailViews();
+}
+
+// BATCH A — Phase 3 (Customer Identity Matching): row.name은 buildBrandCustomerComposition()이
+// 그대로 쓰는 원본 ECOUNT customerName이다(server.mjs:4141-4151). buildClientsOverview()는
+// 이미 이 원본 이름들을 clientMergeKey()로 병합해 clients[].aliases에 전부 보존해 둔다 —
+// 새 정규화 규칙을 만들지 않고, 그 병합 결과에 원본 이름이 포함되는 그룹을 찾는 것으로
+// 충분하다(정확 일치만 사용, fuzzy 매칭 없음).
+function entityClientOverviewMatchFor(row) {
+  if (!row || !entityClientsOverviewData) return null;
+  return entityClientsOverviewData.clients.find((client) => (
+    client.name === row.name || (client.aliases || []).includes(row.name)
+  )) || null;
+}
+
+// BATCH A — Phase 5 (Brand Filter): canonicalBrandCode === 선택된 brand_code인 라인만
+// 남긴다. 온라인(개인결제창) 라인은 실제 상품 정보가 없어 canonicalBrandCode가 항상
+// null이다(intelligence-service.mjs의 기존 설계 그대로 — 새 추론을 추가하지 않는다).
+// 즉 이 목록은 구조적으로 오프라인 구매만 보여준다 — 데이터를 숨기는 것이 아니라 원천
+// 데이터 자체에 온라인 라인의 브랜드 귀속 정보가 없기 때문이다.
+function entityClientPurchaseLinesFor(row) {
+  const brandCode = brandIdentityState.brandCode;
+  const match = entityClientOverviewMatchFor(row);
+  if (!brandCode || !match) return [];
+  return (match.purchaseDetails || []).filter((line) => line.canonicalBrandCode === brandCode);
+}
+
+// BATCH A: fetch가 늦게 끝났을 때 이미 열려 있는 Client Workspace/clientOrders Drawer가
+// 있으면 최신 데이터로 다시 그린다(Phase 10 stale-data 방지). Quick Profile 호버 카드는
+// 180ms 지연 후 표시되고 mouseleave 시 즉시 사라지는 짧은 생명주기라 별도 재렌더 없이
+// 다음 hover에서 최신 데이터를 그대로 읽는다 — fetch는 이미 브랜드/기간이 바뀌는 시점에
+// 시작되므로 실제로 뒤처지는 경우는 드물다.
+function refreshOpenEntityCustomerDetailViews() {
+  if (clientWorkspaceRow) {
+    const body = $("#clientWorkspaceBody");
+    if (body) body.innerHTML = clientWorkspaceBodyHtml(clientWorkspaceRow);
+  }
+  if (entityDrawerState.open && entityDrawerState.type === "clientOrders" && entityDrawerState.context?.row) {
+    entityClientRecentPurchases.length = 0;
+    entityClientRecentPurchases.push(...entityClientPurchaseLinesFor(entityDrawerState.context.row));
+    renderEntityDrawerBody();
+  }
+}
+
+// BATCH A: 세 가지 state(불러오는 중/실패/성공)를 구분하는 공용 empty-state 조각 —
+// Quick Profile/Client Workspace가 동일한 텍스트 규칙을 공유한다(Phase 10, BI-CORE-4의
+// NULL != ZERO 원칙과 동일하게 "실패"를 "구매 없음"으로 위장하지 않는다).
+function entityClientPurchaseStateHtml(brandLines) {
+  if (entityClientsOverviewFetchFailed) return `<div class="entity-detail-empty"><p>구매 내역을 불러오지 못했습니다.</p></div>`;
+  if (!entityClientsOverviewData) return `<div class="entity-detail-empty"><p>불러오는 중...</p></div>`;
+  if (!brandLines.length) return `<div class="entity-detail-empty"><p>이 브랜드 구매 내역이 없습니다.</p></div>`;
+  return null;
+}
 
 // STEP60-3: Client Workspace Foundation. 최근 주문 5건 — 위 3건을 그대로 펼치고, 이미
 // entityOverviewRows에 존재하는 브랜드명(SUNDAY OFF CLUB/CLUB CULTURE)만 재사용해 2건을
 // 더해 5건을 채운다 — 새 브랜드명을 지어내지 않는다.
 const entityClientWorkspaceOrders = [];
 
+// BATCH A: row는 이제 buildClientsOverview()의 실제 purchaseDetails 라인(date/orderId/
+// productName/brand/quantity/salesAmount/source)이다 — 옛 Placeholder의 product/amount/
+// variant 필드명은 실제 payload에 없으므로 제거하고(Phase 2 실측 필드명), 없는 값(옵션 등)을
+// 지어내지 않는다. source(online/offline)는 실제로 존재하는 채널 정보라 대신 표시한다.
 function entityDrawerClientOrderRowHtml(row, index) {
+  const productLabel = row.productName || "제품 정보 없음";
+  const channelLabel = row.source === "online" ? "온라인" : row.source === "offline" ? "오프라인" : "-";
   return `
-    <li class="entity-drawer-row" data-entity-type="clientOrders" data-entity-id="${esc(row.product)}" data-entity-label="${esc(row.product)}" tabindex="0">
+    <li class="entity-drawer-row" data-entity-type="clientOrders" data-entity-id="${esc(String(row.orderId ?? index))}" data-entity-label="${esc(productLabel)}" tabindex="0">
       <span class="entity-drawer-rank">${index + 1}</span>
-      <span class="entity-drawer-name">${esc(row.product)}<i class="entity-drawer-code">${esc(row.brand)}</i></span>
-      <span class="entity-drawer-stat"><span>주문일</span><strong>${esc(row.date)}</strong></span>
-      <span class="entity-drawer-stat"><span>옵션</span><strong>${esc(row.variant)}</strong></span>
+      <span class="entity-drawer-name">${esc(productLabel)}<i class="entity-drawer-code">${esc(channelLabel)}</i></span>
+      <span class="entity-drawer-stat"><span>구매일</span><strong>${esc(row.date || "-")}</strong></span>
       <span class="entity-drawer-stat"><span>수량</span><strong>${apiNum(row.quantity)}개</strong></span>
-      <span class="entity-drawer-stat"><span>금액</span><strong>${apiWon(row.amount)}</strong></span>
+      <span class="entity-drawer-stat"><span>금액</span><strong>${apiWon(row.salesAmount)}</strong></span>
     </li>`;
 }
 
@@ -14986,19 +15104,22 @@ const entityDrawerConfig = {
   // 기존 Entity Drawer 컴포넌트(같은 CSS/열기·닫기·포커스 트랩)를 그대로 재사용하고
   // config 타입 하나만 추가한다 — 새 Drawer를 만들지 않는다. 상품명 클릭 시 next:"sku"로
   // 기존 SKU Drawer로 그대로 이동한다("SKU Navigation" 요구사항).
+  // BATCH A: rows()는 openEntityDrawer("clientOrders", { row })/refreshOpenEntityCustomerDetailViews()가
+  // 그 시점의 entityClientPurchaseLinesFor(row) 결과로 채워 넣는 entityClientRecentPurchases를
+  // 그대로 읽는다(config 자체는 여전히 어떤 고객인지 모른다 — 기존 구조 그대로).
   clientOrders: {
     title: "최근 주문",
-    description: "선택한 고객의 최근 주문 목록",
-    searchPlaceholder: "상품명 또는 브랜드 검색",
+    description: "선택한 고객의 이 브랜드 구매 내역",
+    searchPlaceholder: "상품명 검색",
     sortOptions: [
-      { value: "date_desc", label: "최근 주문일 순" },
+      { value: "date_desc", label: "최근 구매일 순" },
       { value: "amount_desc", label: "금액 높은 순" }
     ],
     rows: () => entityClientRecentPurchases,
-    matchesQuery: (row, query) => row.product.toLowerCase().includes(query) || row.brand.toLowerCase().includes(query),
+    matchesQuery: (row, query) => String(row.productName || "").toLowerCase().includes(query),
     sortFns: {
       date_desc: (a, b) => (b.date || "").localeCompare(a.date || ""),
-      amount_desc: (a, b) => b.amount - a.amount
+      amount_desc: (a, b) => b.salesAmount - a.salesAmount
     },
     rowHtml: entityDrawerClientOrderRowHtml,
     clickToast: "SKU Intelligence 연결 예정",
@@ -15572,7 +15693,12 @@ function bind() {
     }
     if (event.target.closest("[data-entity-drawer-quick-orders]")) {
       hideCard();
-      openEntityDrawer("clientOrders");
+      // BATCH A: 이 고객의 브랜드 필터링된 실제 구매 내역으로 채운 뒤 연다(config.rows()가
+      // entityClientRecentPurchases를 그대로 읽으므로 여기서 미리 채워야 한다).
+      const activeRow = entityCompositionProfileActiveRow;
+      entityClientRecentPurchases.length = 0;
+      entityClientRecentPurchases.push(...entityClientPurchaseLinesFor(activeRow));
+      openEntityDrawer("clientOrders", { row: activeRow });
       return;
     }
     const jumpBtn = event.target.closest("[data-entity-drawer-quick-jump]");
@@ -15606,7 +15732,16 @@ function bind() {
     }
     const relatedBtn = event.target.closest("[data-client-workspace-related]");
     if (relatedBtn) {
-      openEntityDrawer(relatedBtn.dataset.clientWorkspaceRelated);
+      const type = relatedBtn.dataset.clientWorkspaceRelated;
+      // BATCH A: clientOrders는 Workspace가 이미 열려 있는 고객(clientWorkspaceRow) 기준으로
+      // entityClientRecentPurchases를 채운 뒤 연다 — sku/order 등 다른 타입은 기존 동작 그대로.
+      if (type === "clientOrders" && clientWorkspaceRow) {
+        entityClientRecentPurchases.length = 0;
+        entityClientRecentPurchases.push(...entityClientPurchaseLinesFor(clientWorkspaceRow));
+        openEntityDrawer(type, { row: clientWorkspaceRow });
+      } else {
+        openEntityDrawer(type);
+      }
       return;
     }
     const workspaceBtn = event.target.closest("[data-client-workspace-workspace]");
