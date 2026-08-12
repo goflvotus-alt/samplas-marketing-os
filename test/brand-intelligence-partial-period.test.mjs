@@ -232,3 +232,122 @@ test("12. WORDING SAFETY — no unsupported completed-period claims for a live t
     assert.doesNotMatch(summaryText, new RegExp(word), `unsupported word "${word}" found in live-month AI summary: ${summaryText}`);
   }
 });
+
+// =============================================================================
+// BI-CORE-4: NULL != ZERO error-state guard. getJson()의 timeout/네트워크 오류
+// 폴백({ error: ... })이 refreshEntityTrendMonths()에서 revenue/units/orders/aov = 0으로
+// 합성되지 않고 null(=fetchFailed:true)로 남는지, 그리고 그 null이 Hero KPI/AI Summary/
+// Trend Chart/Trend 통계 전부에서 "실제 매출 0"과 구분되어 "-"/공백으로만 처리되는지
+// 검증한다. 위 CARNET_MONTHS_LIVE_TAIL 등 기존 fixture는 전부 성공 응답을 가정하므로
+// 회귀 없이 그대로 통과해야 한다(테스트 18이 재확인).
+// =============================================================================
+
+test("13. NULL != ZERO — fetch failure renders \"-\" for all four hero metrics, never a fake zero", () => {
+  const months = [
+    { key: "2026-07", label: "7월", revenue: 23303130, quantitySold: 69, orderCount: 66, online: 2448430, offline: 20854700, skuCount: 15, aov: 353078, memo: "", archiveStatus: "saved", fetchFailed: false },
+    { key: "2026-08", label: "8월", revenue: null, quantitySold: null, orderCount: null, online: null, offline: null, skuCount: 0, aov: null, memo: "", archiveStatus: null, fetchFailed: true }
+  ];
+  const nodes = loadHeroEngine(months, "2026-08");
+  assert.equal(nodes.get("entityHeroKpiSales").textContent, "-");
+  assert.equal(nodes.get("entityHeroKpiQty").textContent, "-");
+  assert.equal(nodes.get("entityHeroKpiOrders").textContent, "-");
+  assert.equal(nodes.get("entityHeroKpiAov").textContent, "-");
+  assert.notEqual(nodes.get("entityHeroKpiSales").textContent, "0원");
+  assert.notEqual(nodes.get("entityHeroKpiQty").textContent, "0개");
+  assert.notEqual(nodes.get("entityHeroKpiOrders").textContent, "0건");
+});
+
+test("14. REAL ZERO PRESERVED — successful row with genuine zero sales still renders 0, not \"-\"", () => {
+  const months = [
+    { key: "2026-08", label: "8월", revenue: 0, quantitySold: 0, orderCount: 0, online: 0, offline: 0, skuCount: 0, aov: 0, memo: "", archiveStatus: "live", fetchFailed: false }
+  ];
+  const nodes = loadHeroEngine(months, "2026-08");
+  assert.equal(nodes.get("entityHeroKpiSales").textContent, "0원");
+  assert.equal(nodes.get("entityHeroKpiQty").textContent, "0개");
+  assert.equal(nodes.get("entityHeroKpiOrders").textContent, "0건");
+  assert.equal(nodes.get("entityHeroKpiAov").textContent, "0원");
+});
+
+test("15. MISSING BRAND ROW — successful fetch but no matching brand renders \"-\", not a fabricated 0", () => {
+  const months = [
+    { key: "2026-08", label: "8월", revenue: null, quantitySold: null, orderCount: null, online: null, offline: null, skuCount: 0, aov: null, memo: "", archiveStatus: "live", fetchFailed: false }
+  ];
+  const nodes = loadHeroEngine(months, "2026-08");
+  assert.equal(nodes.get("entityHeroKpiSales").textContent, "-");
+  assert.equal(nodes.get("entityHeroKpiOrders").textContent, "-");
+});
+
+test("16. AI SUMMARY — fetch failure does not produce a false -100% MoM or ranking claim", () => {
+  const months = [
+    { key: "2026-07", label: "7월", revenue: 23303130, quantitySold: 69, orderCount: 66, online: 2448430, offline: 20854700, skuCount: 15, aov: 353078, memo: "", archiveStatus: "saved", fetchFailed: false },
+    { key: "2026-08", label: "8월", revenue: null, quantitySold: null, orderCount: null, online: null, offline: null, skuCount: 0, aov: null, memo: "", archiveStatus: null, fetchFailed: true }
+  ];
+  const source = [
+    "const nf = new Intl.NumberFormat(\"ko-KR\");",
+    sourceOfFunction("hasApiValue"),
+    sourceOfFunction("apiNum"),
+    sourceOfFunction("apiWon"),
+    sourceOfFunction("entityIsLiveMonthRow"),
+    sourceOfFunction("entityTrendMoMPct"),
+    sourceOfFunction("renderEntityHeroInsight")
+  ].join("\n\n");
+  const { $, nodes } = makeFakeDom();
+  const fn = Function("$", "entityTrendMonths", `${source}; return renderEntityHeroInsight;`)($, months);
+  fn(months[1], 1);
+  const text = nodes.get("entityHeroAiSummary").textContent;
+  assert.doesNotMatch(text, /100%/);
+  assert.doesNotMatch(text, /감소했습니다/);
+  assert.doesNotMatch(text, /가장 낮습니다|가장 높습니다/);
+  assert.equal(text, "이번 기간 판단 가능한 데이터가 부족합니다.");
+});
+
+test("17. CHART — fetch failure does not plot a fake zero point, and does not break the polyline into a false dip", () => {
+  const months = [
+    { key: "2026-06", label: "6월", revenue: 24400000, quantitySold: 60, orderCount: 55, online: 2400000, offline: 22000000, skuCount: 16, aov: 443636, memo: "", archiveStatus: "saved", fetchFailed: false },
+    { key: "2026-07", label: "7월", revenue: null, quantitySold: null, orderCount: null, online: null, offline: null, skuCount: 0, aov: null, memo: "", archiveStatus: null, fetchFailed: true },
+    { key: "2026-08", label: "8월", revenue: 10883059, quantitySold: 32, orderCount: 25, online: 1021959, offline: 9861100, skuCount: 3, aov: 435322, memo: "", archiveStatus: "live", fetchFailed: false }
+  ];
+  const svg = loadEntityTrendChartSvg(months);
+  const pointCount = (svg.match(/data-entity-trend-point/g) || []).length;
+  assert.equal(pointCount, 2, "only the 2 successful months get a plotted point — the failed month gets none");
+  // axis labels are preserved for every month, including the failed one
+  assert.match(svg, />6월</);
+  assert.match(svg, />7월</);
+  assert.match(svg, />8월</);
+});
+
+test("18. CARNET ARCHIVE REGRESSION — successful-fetch values are unchanged by the null-vs-zero guard", () => {
+  const months = [
+    { key: "2026-07", label: "7월", revenue: 23303130, quantitySold: 69, orderCount: 66, online: 2448430, offline: 20854700, skuCount: 15, aov: 353078, memo: "", archiveStatus: "saved", fetchFailed: false },
+    { key: "2026-08", label: "8월", revenue: 10883059, quantitySold: 32, orderCount: 25, online: 1021959, offline: 9861100, skuCount: 3, aov: 435322, memo: "", archiveStatus: "live", fetchFailed: false }
+  ];
+  const nodes = loadHeroEngine(months, "2026-08");
+  assert.equal(nodes.get("entityHeroKpiSales").textContent, "10,883,059원");
+  assert.equal(nodes.get("entityHeroKpiQty").textContent, "32개");
+  assert.equal(nodes.get("entityHeroKpiOrders").textContent, "25건");
+  assert.equal(nodes.get("entityHeroKpiAov").textContent, "435,322원");
+});
+
+test("19. TREND STATS — fetch-failed month excluded from Max/Min so it cannot masquerade as the lowest month", () => {
+  const months = [
+    { key: "2026-06", label: "6월", revenue: 24400000, quantitySold: 60, orderCount: 55, online: 2400000, offline: 22000000, skuCount: 16, aov: 443636, memo: "", archiveStatus: "saved", fetchFailed: false },
+    { key: "2026-07", label: "7월", revenue: null, quantitySold: null, orderCount: null, online: null, offline: null, skuCount: 0, aov: null, memo: "", archiveStatus: null, fetchFailed: true },
+    { key: "2026-08", label: "8월", revenue: 10883059, quantitySold: 32, orderCount: 25, online: 1021959, offline: 9861100, skuCount: 3, aov: 435322, memo: "", archiveStatus: "saved", fetchFailed: false }
+  ];
+  const nodes = loadTrendEngine(months);
+  const minHtml = nodes.get("entityTrendMin").innerHTML;
+  const maxHtml = nodes.get("entityTrendMax").innerHTML;
+  // Without the guard, null coerces to 0 in `<` comparisons and the failed month would
+  // incorrectly win "lowest month" over the real (smaller but nonzero) August figure.
+  assert.doesNotMatch(minHtml, /2026-07/);
+  assert.match(minHtml, /2026-08/);
+  assert.match(maxHtml, /2026-06/);
+});
+
+test("20. entityTrendMoMPct — null current or previous revenue returns null, never a fabricated ±100%", () => {
+  const source = sourceOfFunction("entityTrendMoMPct");
+  const failedCurrent = Function("entityTrendMonths", `${source}; return entityTrendMoMPct;`)([{ revenue: 23303130 }, { revenue: null }]);
+  assert.equal(failedCurrent(1), null);
+  const failedPrev = Function("entityTrendMonths", `${source}; return entityTrendMoMPct;`)([{ revenue: null }, { revenue: 10883059 }]);
+  assert.equal(failedPrev(1), null);
+});

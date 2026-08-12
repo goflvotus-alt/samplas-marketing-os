@@ -13295,16 +13295,25 @@ async function refreshEntityTrendMonths() {
   if (seq !== entityTrendRefreshSeq) return; // 더 최근 브랜드/기간 변경이 이미 진행 중이면 이 결과는 버린다.
   entityTrendMonths = months.map((month, index) => {
     const archive = archives[index];
+    // BI-CORE-4: NULL != ZERO. getJson()의 timeout/네트워크 오류 폴백(error 필드만 있는
+    // 객체)을 "그 달 매출이 실제로 0원"인 것과 구분한다 — fetchFailed=true인 달은 revenue/
+    // quantitySold/orderCount/online/offline/aov를 0으로 합성하지 않고 null로 남겨(row가
+    // 없을 때와 동일한 표현) Hero KPI/AI Summary/Trend Chart가 "-"/공백으로 처리하게 한다.
+    // 재시도 로직은 이번 STEP 범위 밖(BI-CORE-3에서 실제 timeout이 재현되지 않아 보류).
+    const fetchFailed = Boolean(archive?.error);
+    if (fetchFailed) {
+      console.warn(`[Brand Intelligence] monthly fetch failure — month=${month}, reason=${archive.error}`);
+    }
     const brandSales = archive?.commerce?.brandSales || [];
     const row = brandSales.find((item) => monthlyReportBrandCode(item) === brandCode);
-    const revenue = row ? canonicalPaidAmount(row) : 0;
-    const quantitySold = row ? Number(row.quantitySold || 0) : 0;
-    const orderCount = row ? Number(row.orderCount || 0) : 0;
+    const revenue = row ? canonicalPaidAmount(row) : null;
+    const quantitySold = row ? Number(row.quantitySold || 0) : null;
+    const orderCount = row ? Number(row.orderCount || 0) : null;
     // STEP67-4: Channel Sales Breakdown. row가 이미 갖고 있는 onlinePaidAmount/
     // offlineSalesAmount를 그대로 옮긴다(새 계산 없음, mergeOfflineBrandSales가
     // 이미 revenue = online + offline이 되도록 채워 넣은 값이다).
-    const online = row ? Number(row.onlinePaidAmount || 0) : 0;
-    const offline = row ? Number(row.offlineSalesAmount || 0) : 0;
+    const online = row ? Number(row.onlinePaidAmount || 0) : null;
+    const offline = row ? Number(row.offlineSalesAmount || 0) : null;
     // STEP67-6: SKU(이번 기간 판매 상품 수). archive.commerce.productSales는 이미 이 fetch로
     // 받아온 데이터다(새 API 호출 없음) — 이 브랜드의 canonical brand_code와 일치하는 distinct
     // product_no 개수만 센다. "전체 등록 SKU"가 아니라 "이번 기간 판매 상품 수"임을 명확히
@@ -13330,9 +13339,10 @@ async function refreshEntityTrendMonths() {
       online,
       offline,
       skuCount,
-      aov: orderCount ? Math.round(revenue / orderCount) : 0,
+      aov: row ? (orderCount ? Math.round(revenue / orderCount) : 0) : null,
       memo: "",
-      archiveStatus
+      archiveStatus,
+      fetchFailed
     };
   });
   // Brand A와 같은 archive/identity/금액 함수를 그대로 사용한다. 월별 행이 없으면 null로
@@ -14135,10 +14145,12 @@ function renderEntityHeroKpiFromMonthlyState() {
     renderEntityHeroChannelSplit(null);
     return;
   }
+  // BI-CORE-4: apiWon()은 null을 이미 "-"로 처리하지만(hasApiValue), apiNum()의 "개"/"건"
+  // 접미사는 호출부에서 문자열로 이어붙이므로 null일 때 "-개"/"-건"이 되는 것을 막아야 한다.
   salesEl.textContent = apiWon(row.revenue);
-  qtyEl.textContent = `${apiNum(row.quantitySold)}개`;
+  qtyEl.textContent = row.quantitySold == null ? "-" : `${apiNum(row.quantitySold)}개`;
   aovEl.textContent = apiWon(row.aov);
-  ordersEl.textContent = `${apiNum(row.orderCount)}건`;
+  ordersEl.textContent = row.orderCount == null ? "-" : `${apiNum(row.orderCount)}건`;
   if (salesMomEl) {
     // STEP67-10G-4: 진행 중인(archiveStatus="live") 이번 달은 완결된 지난달과
     // 직접 % 비교하지 않는다(Comparison Summary의 PARTIAL_PERIOD 가드와 동일한
@@ -14218,6 +14230,15 @@ function renderEntityHeroInsight(row, index) {
     if (actionListEl) actionListEl.innerHTML = "";
     return;
   }
+  // BI-CORE-4: NULL != ZERO. fetch 실패(row.revenue 등이 null)로 이번 달을 완결 월과
+  // 비교해 "전월 대비 100% 감소" 같은 허위 문장을 만들지 않는다 — 기존 데이터 부족
+  // 문구를 그대로 재사용한다(새 문구를 만들지 않음).
+  if (row.fetchFailed) {
+    summaryEl.textContent = "이번 기간 판단 가능한 데이터가 부족합니다.";
+    if (noteEl) noteEl.textContent = "";
+    if (actionListEl) actionListEl.innerHTML = "";
+    return;
+  }
   const sentences = [];
   const isLive = entityIsLiveMonthRow(row);
   // STEP67-10G-4: 진행 중인 달은 완결된 지난달과의 MoM % 문장을 만들지 않는다(Comparison
@@ -14242,7 +14263,9 @@ function renderEntityHeroInsight(row, index) {
   // STEP67-10G-4: 진행 중인 달 자신을 완결된 달들과 최저/최고로 순위 매기지 않는다 —
   // 완결 월만 모은 배열로 판정한다(진행 중인 달이면 이 문장 자체를 만들지 않음, Rule 6).
   if (!isLive) {
-    const completedRevenues = entityTrendMonths.filter((item) => !entityIsLiveMonthRow(item)).map((item) => item.revenue);
+    // BI-CORE-4: fetch 실패 달(revenue null)이 섞이면 Math.min/max가 null을 0으로
+    // 취급해 최저/최고 판정을 왜곡한다 — 완결 + 실제 값이 있는 달만 남긴다.
+    const completedRevenues = entityTrendMonths.filter((item) => !entityIsLiveMonthRow(item) && item.revenue !== null).map((item) => item.revenue);
     if (completedRevenues.length > 1 && row.revenue === Math.min(...completedRevenues)) {
       sentences.push(`최근 ${completedRevenues.length}개월 중 이번 달 매출이 가장 낮습니다.`);
     } else if (completedRevenues.length > 1 && row.revenue === Math.max(...completedRevenues)) {
@@ -14292,8 +14315,11 @@ function renderEntityHeroChannelSplit(row) {
 function entityTrendMoMPct(index) {
   if (index <= 0) return null;
   const prev = entityTrendMonths[index - 1].revenue;
-  if (!prev) return null;
-  return ((entityTrendMonths[index].revenue - prev) / prev) * 100;
+  const current = entityTrendMonths[index].revenue;
+  // BI-CORE-4: NULL != ZERO. prev/current 어느 쪽이든 null(fetch 실패 또는 브랜드 행 없음)이면
+  // null을 0으로 착각해 허위 -100%/+100% 같은 MoM%를 만들지 않는다.
+  if (!prev || current === null) return null;
+  return ((current - prev) / prev) * 100;
 }
 
 let entityTrendCompareMonths = [];
@@ -14321,8 +14347,10 @@ function entityTrendPointTooltipHtml(index) {
 function entityTrendChartSvg() {
   const width = 560;
   const height = 170;
+  // BI-CORE-4: NULL != ZERO. fetch 실패 달(row.revenue === null)은 축 범위(min/max)
+  // 계산에서 제외한다 — 안 그러면 null이 0으로 취급돼 축이 왜곡된다.
   const values = [
-    ...entityTrendMonths.map((row) => row.revenue),
+    ...entityTrendMonths.filter((row) => row.revenue !== null).map((row) => row.revenue),
     ...entityTrendCompareMonths.filter(Boolean).map((row) => row.revenue)
   ];
   const max = Math.max(1, ...values);
@@ -14331,11 +14359,24 @@ function entityTrendChartSvg() {
   const step = entityTrendMonths.length > 1 ? width / (entityTrendMonths.length - 1) : width;
   const coordinates = entityTrendMonths.map((row, index) => {
     const x = entityTrendMonths.length > 1 ? index * step : width / 2;
+    // BI-CORE-4: fetch 실패 달은 y를 null로 남긴다 — 0원 지점으로 그려 넣으면(NULL을 ZERO로
+    // 오인하는 것과 동일한 문제) 그 달이 실제로 매출 0인 것처럼 보인다. 아래에서 좌표 없는
+    // 지점은 선을 끊고(비교선의 기존 segment 분리 패턴과 동일) 점도 찍지 않는다.
+    if (row.revenue === null) return { ...row, x, y: null, index };
     // 최소~최댓값 구간을 차트 높이에 꽉 채워 월별 굴곡이 잘 보이게 한다(에디토리얼 느낌).
     const y = height - ((row.revenue - min) / span) * (height - 28) - 14;
     return { ...row, x, y, index };
   });
-  const path = coordinates.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+  const pathSegments = [];
+  let pathSegment = [];
+  coordinates.forEach((point) => {
+    if (point.y !== null) pathSegment.push(`${point.x.toFixed(1)},${point.y.toFixed(1)}`);
+    else if (pathSegment.length) {
+      pathSegments.push(pathSegment.join(" "));
+      pathSegment = [];
+    }
+  });
+  if (pathSegment.length) pathSegments.push(pathSegment.join(" "));
   // STEP59-3: Compare Mode UI. 기존 min/max/span/step을 그대로 재사용해 두 번째(비교)
   // 선의 좌표만 추가 계산한다(축 재계산 없음 — 원래 선의 좌표/모양은 완전히 그대로).
   const compareCoordinates = entityTrendCompareMonths.map((row, index) => {
@@ -14357,8 +14398,8 @@ function entityTrendChartSvg() {
   return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="최근 7개월 매출 추세" class="brand-monthly-trend-svg">
     <line x1="0" y1="${height - 14}" x2="${width}" y2="${height - 14}" class="brand-monthly-trend-baseline"></line>
     ${comparePaths.map((points) => `<polyline points="${esc(points)}" fill="none" class="entity-trend-compare-polyline entity-compare-only"></polyline>`).join("")}
-    <polyline points="${esc(path)}" fill="none" class="brand-monthly-trend-line"></polyline>
-    ${coordinates.map((point) => `<circle data-entity-trend-point="${point.index}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4" class="brand-monthly-trend-point" tabindex="0"></circle>`).join("")}
+    ${pathSegments.map((points) => `<polyline points="${esc(points)}" fill="none" class="brand-monthly-trend-line"></polyline>`).join("")}
+    ${coordinates.filter((point) => point.y !== null).map((point) => `<circle data-entity-trend-point="${point.index}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4" class="brand-monthly-trend-point" tabindex="0"></circle>`).join("")}
     ${coordinates.map((point) => `<text x="${point.x.toFixed(1)}" y="${height - 1}" class="brand-monthly-trend-axis-label">${esc(point.label)}</text>`).join("")}
   </svg>`;
 }
@@ -14403,7 +14444,10 @@ function renderEntityTrendSection() {
   // 추세 방향 계산에 섞이면 §12(STEP67-10G-2)와 같은 왜곡이 재현된다. entityTrendMonths는
   // (있다면) 진행 중인 달이 항상 마지막 한 개뿐이므로 필터링해도 나머지 달의 순서/인접
   // 관계는 그대로 유지된다.
-  const completedMonths = entityTrendMonths.filter((row) => !entityIsLiveMonthRow(row));
+  // BI-CORE-4: NULL != ZERO. fetch 실패 달(revenue null)도 완결 월 통계(Max/Min/평균 AOV/
+  // 인디케이터)에서 제외한다 — 안 그러면 null이 산술에서 0으로 취급돼 최저/최고/평균이
+  // 왜곡된다(entityTrendMoMPct와 동일한 원칙).
+  const completedMonths = entityTrendMonths.filter((row) => !entityIsLiveMonthRow(row) && !row.fetchFailed);
   const insight = $("#entityTrendInsight");
   if (!completedMonths.length) {
     // 완결된 달이 하나도 없음(신규 브랜드의 첫 달이 마침 진행 중인 경우 등) — 억지로
