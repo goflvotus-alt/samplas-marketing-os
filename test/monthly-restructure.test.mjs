@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 // MONTHLY UI RESTRUCTURE: advertising UI removed from Monthly, Monthly/Annual visually
-// separated, Monthly re-chaptered into 01 Summary / 02 Commerce / 03 Monthly Intelligence
-// (Content chapter was removed in a later batch — see monthly-content-removal.test.mjs).
+// separated. Monthly's chapter structure has since been finalized to exactly
+// 01 Summary / 02 Commerce (Content chapter removed — monthly-content-removal.test.mjs;
+// Monthly Intelligence/Mission chapter removed — monthly-cleanup-mission-removal.test.mjs).
 // Structural-assertion pattern (no jsdom), matching prior batches.
 let js;
 let html;
@@ -63,24 +64,25 @@ test("5b. the one call site passes only (currentRows, previousRows, trendRows)",
   assert.match(js, /monthlyReportBrandSignalsBlock\(performanceBrandSales, previousBrandSales, monthlyBrandTrendRows\)/);
 });
 
-// 6. chapter renumbering / TOC correctness
-test("6. Monthly report TOC is 01 Summary / 02 Commerce / 03 Monthly Intelligence", () => {
+// 6. chapter renumbering / TOC correctness (updated by MONTHLY CLEANUP: Monthly Intelligence/
+// Mission chapter was removed entirely — see monthly-cleanup-mission-removal.test.mjs)
+test("6. Monthly report TOC is exactly 01 Summary / 02 Commerce", () => {
   const fn = monthlyReportFnBody();
   const tocMatch = fn.match(/<nav class="monthly-report-toc"[\s\S]*?<\/nav>/);
   assert.notEqual(tocMatch, null);
   const toc = tocMatch[0];
   assert.match(toc, /<a href="#monthly-report-ch1">01 Summary<\/a>/);
   assert.match(toc, /<a href="#monthly-report-ch2">02 Commerce<\/a>/);
-  assert.match(toc, /<a href="#monthly-report-ch3">03 Monthly Intelligence<\/a>/);
   assert.doesNotMatch(toc, /Marketing/);
   assert.doesNotMatch(toc, />0\d Content</);
+  assert.doesNotMatch(toc, /monthly-report-ch3/);
 });
 
 test("7. chapter section ids/numbers match the new structure", () => {
   const fn = monthlyReportFnBody();
   assert.match(fn, /<section id="monthly-report-ch1" class="monthly-report-chapter">[\s\S]{0,200}<span>01<\/span>[\s\S]{0,120}<p class="eyebrow">Summary<\/p>/);
   assert.match(fn, /<section id="monthly-report-ch2" class="monthly-report-chapter">[\s\S]{0,200}<span>02<\/span>[\s\S]{0,120}<p class="eyebrow">Commerce<\/p>/);
-  assert.match(fn, /<section id="monthly-report-ch3" class="monthly-report-chapter">[\s\S]{0,200}<span>03<\/span>[\s\S]{0,120}<p class="eyebrow">Monthly Intelligence<\/p>/);
+  assert.doesNotMatch(fn, /monthly-report-ch3/);
 });
 
 // 8. existing Commerce/Content data fields are preserved verbatim (only removed = ad UI)
@@ -92,11 +94,10 @@ test("8. Commerce chapter still shows payment methods / brand TOP5 / product TOP
   assert.match(fn, /apiWon\(commerce\.paidAmount\)/);
 });
 
-test("9. Monthly Intelligence (ch3) is the mission chapter, not a Content chapter", () => {
+test("9. Monthly report ends after Commerce — no Monthly Intelligence/Mission chapter remains", () => {
   const fn = monthlyReportFnBody();
-  const ch3Match = fn.match(/<section id="monthly-report-ch3"[\s\S]*?\$\{missionSummaryBlock\}/);
-  assert.notEqual(ch3Match, null);
-  assert.match(ch3Match[0], /다음 달 우선순위 Mission/);
+  assert.doesNotMatch(fn, /다음 달 우선순위 Mission/);
+  assert.doesNotMatch(fn, /missionSummaryBlock/);
 });
 
 // 10. new Summary chapter uses only already-fetched data (no mock/placeholder values)

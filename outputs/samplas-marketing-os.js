@@ -720,8 +720,15 @@ function currentRouteHash() {
   return decodeURIComponent(String(window.location.hash || "").replace(/^#/, ""));
 }
 
+// MONTHLY CLEANUP: Monthly TOC anchors (#monthly-report-ch1/ch2) are in-page chapter jumps,
+// not separate routes — a hard reload/deep-link on one of these hashes must still resolve to
+// the Monthly (Reports) view instead of falling back to Overview via hashViewMap.
+function normalizedRouteHash(hash) {
+  return /^monthly-report-ch\d+$/.test(hash) ? "monthly-report" : hash;
+}
+
 function viewFromHash() {
-  return hashViewMap[currentRouteHash()] || "Overview";
+  return hashViewMap[normalizedRouteHash(currentRouteHash())] || "Overview";
 }
 
 function updateViewHash(view, routeHash = "") {
@@ -797,14 +804,14 @@ function renderNav() {
   `).join('<div class="nav-group-divider" aria-hidden="true"></div>') + navItems.filter((item) => item.hidden).map((item) => (
     `<button type="button" data-view="${esc(item.view)}" data-route="${esc(item.hash)}" hidden>${esc(item.label)}</button>`
   )).join("");
-  setActiveView(viewFromHash(), { routeHash: currentRouteHash(), updateHash: false, scroll: false });
+  setActiveView(viewFromHash(), { routeHash: normalizedRouteHash(currentRouteHash()), updateHash: false, scroll: false });
   nav.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-view]");
     if (!button) return;
     setActiveView(button.dataset.view, { routeHash: button.dataset.route });
   });
-  window.addEventListener("popstate", () => setActiveView(viewFromHash(), { routeHash: currentRouteHash(), updateHash: false, smooth: false }));
-  window.addEventListener("hashchange", () => setActiveView(viewFromHash(), { routeHash: currentRouteHash(), updateHash: false, smooth: false }));
+  window.addEventListener("popstate", () => setActiveView(viewFromHash(), { routeHash: normalizedRouteHash(currentRouteHash()), updateHash: false, smooth: false }));
+  window.addEventListener("hashchange", () => setActiveView(viewFromHash(), { routeHash: normalizedRouteHash(currentRouteHash()), updateHash: false, smooth: false }));
 }
 
 // Topbar used to repeat "MONTHLY INTELLIGENCE / Marketing Director / SAMPLAS"
@@ -3915,11 +3922,12 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const previousMonth = previousMonthKey(month);
   const trendMonths = monthlyReportTrendMonths(month);
   const { monthStart, monthEnd } = monthlyReportMonthRange(month);
-  const missionParams = new URLSearchParams({ since: monthStart, until: monthEnd, limit: "3" });
-  const [archive, previousArchive, missionResult, trendArchiveResults, brandMasterResult, offlineSnapshot] = await Promise.all([
+  // MONTHLY CLEANUP: Mission teaser/chapter placeholder가 제거되어 이 render는 더 이상
+  // Intelligence Service의 mission 목록을 소비하지 않는다. 엔드포인트/계산/다른 화면의
+  // 사용은 그대로 둔다 — 여기서는 Monthly만의 fetch 호출을 없앤다.
+  const [archive, previousArchive, trendArchiveResults, brandMasterResult, offlineSnapshot] = await Promise.all([
     getJson(`/api/reports/monthly?month=${month}`, 8000),
     previousMonth ? getJson(`/api/reports/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" }),
-    monthStart && monthEnd ? getJson(intelligenceUrl(`/api/intelligence/missions?${missionParams.toString()}`), 12000) : Promise.resolve({ error: "월 범위 없음" }),
     Promise.allSettled(trendMonths.map((item) => getJson(`/api/reports/monthly?month=${item}`, 8000))),
     getSharedJson("/api/brand-master", 12000),
     getJson(`/api/ecount-sales/monthly?month=${month}`, 8000)
@@ -4068,26 +4076,6 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const brandSignalsBlock = brandSales.length && previousBrandSales.length
     ? monthlyReportBrandSignalsBlock(performanceBrandSales, previousBrandSales, monthlyBrandTrendRows)
     : "";
-  const missionRows = !missionResult?.error && missionResult?.ok && Array.isArray(missionResult.missions)
-    ? missionResult.missions.slice(0, 3)
-    : [];
-  const missionSummaryBlock = `
-    <section id="monthly-report-ch3" class="monthly-report-chapter">
-      <div class="monthly-report-chapter-head">
-        <span>03</span>
-        <div><p class="eyebrow">Monthly Intelligence</p><h3>다음 달 우선순위 Mission</h3></div>
-      </div>
-      <section class="monthly-report-block">
-        <div class="monthly-report-block-head"><h4>다음 달 우선순위 Mission</h4><span>현재 시점 기준</span></div>
-        ${missionRows.length ? `
-        <div class="monthly-report-grid2">
-          ${missionRows.map((mission) => intelligenceBriefCard(mission)).join("")}
-        </div>
-        <p class="monthly-report-fnote">Mission은 저장된 월간 archive가 아니라 현재 Intelligence Service 기준으로 표시됩니다.</p>
-        ` : `<p class="monthly-report-fnote monthly-report-muted">이번 달 저장된 Mission이 없습니다.</p>`}
-      </section>
-    </section>
-  `;
 
   target.innerHTML = `
     <header class="monthly-report-header">
@@ -4112,7 +4100,6 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     <nav class="monthly-report-toc" aria-label="Monthly report chapters">
       <a href="#monthly-report-ch1">01 Summary</a>
       <a href="#monthly-report-ch2">02 Commerce</a>
-      <a href="#monthly-report-ch3">03 Monthly Intelligence</a>
     </nav>
 
     <section id="monthly-report-ch1" class="monthly-report-chapter">
@@ -4122,12 +4109,6 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       </div>
       ${salesSummaryBlock}
       ${brandSignalsBlock}
-      ${missionRows.length ? `
-      <section class="monthly-report-block">
-        <div class="monthly-report-block-head"><h4>이번 달 주요 Intelligence</h4><span><a href="#monthly-report-ch3">03 Monthly Intelligence 전체 보기</a></span></div>
-        <p class="monthly-report-fnote">${esc(missionRows.length)}건의 Mission · 최우선 "${esc(missionRows[0]?.title || "Mission")}"</p>
-      </section>
-      ` : ""}
     </section>
 
     <section id="monthly-report-ch2" class="monthly-report-chapter">
@@ -4187,8 +4168,6 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
         </div>
       </section>
     </section>
-
-    ${missionSummaryBlock}
   `;
 }
 
@@ -17942,6 +17921,20 @@ function bind() {
       !brandPanel.contains(event.target)
     ) {
       closeProductBrandOrderPopover();
+    }
+    // MONTHLY CLEANUP: Monthly TOC anchors (#monthly-report-chN) point at in-page sections,
+    // but the native anchor jump fires a "hashchange" event whose hash isn't in hashViewMap —
+    // the global hashchange listener then falls back to Overview and kicks the user to Today.
+    // Fix scoped to just these links: preventDefault the native jump, scroll manually, and use
+    // pushState (which never fires hashchange) so the URL reflects the chapter without
+    // re-triggering the view router.
+    const monthlyTocLink = event.target.closest('.monthly-report-toc a[href^="#monthly-report-ch"]');
+    if (monthlyTocLink) {
+      event.preventDefault();
+      const targetId = monthlyTocLink.getAttribute("href").slice(1);
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "auto", block: "start" });
+      window.history.pushState(null, "", monthlyTocLink.getAttribute("href"));
+      return;
     }
     const button = event.target.closest("[data-jump-view]");
     if (!button) return;

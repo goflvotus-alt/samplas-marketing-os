@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 // MONTHLY IA STEP: Content is no longer a Monthly chapter (Content + Advertising both move
-// to Content Intelligence). Monthly is limited to 01 Summary / 02 Commerce /
-// 03 Monthly Intelligence. Structural-assertion pattern (no jsdom), matching prior batches.
+// to Content Intelligence). Monthly's chapter structure has since been finalized to exactly
+// 01 Summary / 02 Commerce (Monthly Intelligence/Mission chapter removed in a later batch —
+// see monthly-cleanup-mission-removal.test.mjs). Structural-assertion pattern (no jsdom).
 let js;
 let html;
 test.before(async () => {
@@ -61,49 +62,41 @@ test("4b. archive is destructured/used as a whole object (archive.content is nev
   assert.doesNotMatch(fn, /delete archive\.content/);
 });
 
-// 5. final chapter/nav structure is exactly 01 Summary / 02 Commerce / 03 Monthly Intelligence
-test("5. TOC and DOM both express exactly 3 chapters: Summary, Commerce, Monthly Intelligence", () => {
+// 5/6/7/8. updated by MONTHLY CLEANUP: Monthly Intelligence/Mission chapter (was 03) has since
+// been removed too — Monthly is now exactly 01 Summary / 02 Commerce.
+// See monthly-cleanup-mission-removal.test.mjs for the dedicated removal assertions.
+test("5. TOC and DOM both express exactly 2 chapters: Summary, Commerce", () => {
   const fn = monthlyReportFnBody();
   const tocMatch = fn.match(/<nav class="monthly-report-toc"[\s\S]*?<\/nav>/);
   assert.notEqual(tocMatch, null);
   const links = [...tocMatch[0].matchAll(/<a href="#monthly-report-ch(\d)">(\d\d) ([^<]+)<\/a>/g)];
   assert.deepEqual(links.map((m) => [m[1], m[2], m[3]]), [
     ["1", "01", "Summary"],
-    ["2", "02", "Commerce"],
-    ["3", "03", "Monthly Intelligence"]
+    ["2", "02", "Commerce"]
   ]);
   const chapterCount = (fn.match(/class="monthly-report-chapter"/g) || []).length;
-  assert.equal(chapterCount, 3, "exactly 3 chapter sections should exist in the rendered template");
+  assert.equal(chapterCount, 2, "exactly 2 chapter sections should exist in the rendered template");
 });
 
-// 6. DOM order reads Summary -> Commerce -> Monthly Intelligence (no chapter left in between)
-test("6. chapters appear in source order Summary, Commerce, then Monthly Intelligence (missionSummaryBlock)", () => {
+test("6. chapters appear in source order Summary, then Commerce", () => {
   const fn = monthlyReportFnBody();
   const ch1Idx = fn.indexOf('<section id="monthly-report-ch1"');
   const ch2Idx = fn.indexOf('<section id="monthly-report-ch2"');
-  const missionBlockUseIdx = fn.lastIndexOf("${missionSummaryBlock}");
-  assert.ok(ch1Idx > -1 && ch2Idx > -1 && missionBlockUseIdx > -1);
+  assert.ok(ch1Idx > -1 && ch2Idx > -1);
   assert.ok(ch1Idx < ch2Idx, "Summary must come before Commerce");
-  assert.ok(ch2Idx < missionBlockUseIdx, "Commerce must come before Monthly Intelligence");
 });
 
-// 7. no stray empty section/divider left where Content used to be — the ch2 Commerce
-// section's closing tag is immediately followed by the Monthly Intelligence block, with no
-// intervening empty <section> (this would indicate a leftover display:none-style husk
-// instead of a true DOM removal).
-test("7. no leftover empty section between Commerce's close and Monthly Intelligence (true DOM removal, not display:none)", () => {
+test("7. Commerce chapter is the last thing in the template (true DOM removal, not display:none)", () => {
   const fn = monthlyReportFnBody();
-  const between = fn.match(/<\/section>\s*\n\s*\$\{missionSummaryBlock\}/);
-  assert.notEqual(between, null, "Commerce chapter's closing tag must be immediately followed by the Monthly Intelligence block");
+  assert.match(fn, /<\/section>\s*\n\s*`;\s*\n}/, "Commerce chapter's closing tag must be immediately followed by the end of the template literal");
   assert.doesNotMatch(fn, /style="display:\s*none"/);
   assert.doesNotMatch(fn, /\bhidden\b[^>]*>[\s\n]*<\/section>/);
 });
 
-// 8. Summary's Intelligence teaser now points at chapter 03 (not the old 04)
-test("8. Summary chapter's Intelligence teaser links to #monthly-report-ch3 / 03 Monthly Intelligence", () => {
+test("8. Summary chapter no longer has an Intelligence teaser (Mission chapter removed)", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /<a href="#monthly-report-ch3">03 Monthly Intelligence 전체 보기<\/a>/);
-  assert.doesNotMatch(fn, /monthly-report-ch4/);
+  assert.doesNotMatch(fn, /이번 달 주요 Intelligence/);
+  assert.doesNotMatch(fn, /monthly-report-ch3/);
 });
 
 // 9. Commerce chapter content is fully preserved (regression guard for section 5 of the spec)
@@ -117,11 +110,10 @@ test("9. Commerce chapter still shows payment methods / brand TOP5 / product TOP
   assert.match(fn, /apiWon\(commerce\.paidAmount\)/);
 });
 
-// 10. Monthly Intelligence chapter reuses the existing Mission UI, no new mock data
-test("10. Monthly Intelligence chapter reuses existing missionRows/intelligenceBriefCard, empty state is real (not mock numbers)", () => {
+// 10. updated by MONTHLY CLEANUP: the Mission UI this test used to check for inside Monthly
+// has been removed entirely — no mock data was introduced in its place.
+test("10. no mock/placeholder data was introduced by removing the Mission chapter", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /missionRows\.map\(\(mission\) => intelligenceBriefCard\(mission\)\)/);
-  assert.match(fn, /이번 달 저장된 Mission이 없습니다/);
   assert.doesNotMatch(fn, /MOCK_/);
 });
 
