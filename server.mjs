@@ -3776,13 +3776,17 @@ function monthRequestBounds(month, since, until) {
 // 있어도 항상 회사 전체 온라인 합계 그대로다. storeCode가 없으면(기존 기본 동작) 전과
 // 완전히 동일한 ALL 결과를 낸다 — 새 계산식이 아니라 기존 필터 조건에 store 조건 하나만
 // 추가로 걸 뿐이다.
-export async function buildCanonicalTotalSales({ since: sinceValue, until: untilValue, storeCode: storeCodeValue } = {}) {
+export async function buildCanonicalTotalSales({ since: sinceValue, until: untilValue, storeCode: storeCodeValue, workDir: workDirValue } = {}) {
   const since = assertInstagramRangeDate(sinceValue, "since");
   const until = assertInstagramRangeDate(untilValue, "until");
   if (since > until) {
     throw new Error("since must be before or equal to until");
   }
   const storeCode = storeCodeValue && storeCodeValue !== "ALL" ? String(storeCodeValue) : null;
+  // STORE-BATCH-C: readEcountOfflineSalesSnapshot/refreshMonthlySales와 동일한 workDir
+  // 주입 패턴 — 테스트가 실제 work/ 디렉터리를 건드리지 않고 격리된 임시 디렉터리로
+  // 검증할 수 있게 한다. 생략 시(기존 모든 호출부) 기존 동작과 완전히 동일하다.
+  const effectiveWorkDir = workDirValue || workDir;
 
   const onlineSource = await buildBrandSalesDiagnostics(since, until);
   const onlinePaidAmount = finiteNumberOrZero(onlineSource?.totals?.paidAmount);
@@ -3790,9 +3794,15 @@ export async function buildCanonicalTotalSales({ since: sinceValue, until: until
   const missingMonths = [];
   const partialMonths = [];
   let offlineSalesAmount = 0;
+  // STORE-BATCH-C: 요청 범위에 걸친 달들 중 하나라도 storeCode별 스냅샷이 없으면(=매장
+  // 미분류 UNKNOWN 라인이 섞여 있으면) storeCode 필터 선택 시 정직하게 알려주기 위한
+  // 신호. readEcountOfflineSalesSnapshot()이 이미 계산한 storesIncluded/storesMissing을
+  // 월별로 그대로 모아 합집합만 낸다 — 새 계산 없음.
+  const storesIncludedSet = new Set();
+  const storesMissingSet = new Set();
 
   for (const month of months) {
-    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir: effectiveWorkDir });
     if (!snapshot) {
       missingMonths.push(month);
       continue;
@@ -3802,6 +3812,8 @@ export async function buildCanonicalTotalSales({ since: sinceValue, until: until
     if (String(snapshot.periodStart || "") > requested.start || String(snapshot.periodEnd || "") < requested.end) {
       partialMonths.push(month);
     }
+    for (const code of Array.isArray(snapshot.storesIncluded) ? snapshot.storesIncluded : []) storesIncludedSet.add(code);
+    for (const code of Array.isArray(snapshot.storesMissing) ? snapshot.storesMissing : []) storesMissingSet.add(code);
 
     const lines = Array.isArray(snapshot.salesLines) ? snapshot.salesLines : Array.isArray(snapshot.rows) ? snapshot.rows : [];
     for (const line of lines) {
@@ -3837,7 +3849,9 @@ export async function buildCanonicalTotalSales({ since: sinceValue, until: until
       offline: offlineComplete,
       complete: offlineComplete,
       partialMonths,
-      missingMonths
+      missingMonths,
+      storesIncluded: [...storesIncludedSet],
+      storesMissing: [...storesMissingSet]
     }
   };
 }

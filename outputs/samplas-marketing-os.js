@@ -60,6 +60,10 @@ let operationsRange = "month";
 let operationsRangeCustomSince = "";
 let operationsRangeCustomUntil = "";
 let operationsRenderSeq = 0;
+// STORE-BATCH-C: Channel(온라인/오프라인)과 다른 축인 Store Dimension의 공용 UI state.
+// operationsRange와 동일하게 새로고침 시 ALL로 초기화되는 순수 모듈 변수(URL/localStorage
+// 영속화 없음) — 기존 selector들의 확립된 패턴을 그대로 따른다.
+let storeFilterState = "ALL";
 let productBrandSalesSort = "brand_asc";
 let productBrandSalesSearch = "";
 let productSoldFilterBrand = "all";
@@ -803,7 +807,13 @@ function updateTopbarControls(view) {
   if (monthSelect) monthSelect.hidden = !showOperations;
   if (operationsSelect) operationsSelect.hidden = !showOperations;
   if (customRange) customRange.hidden = !showOperations || operationsRange !== "custom";
-  if (controls) controls.hidden = !showOperations;
+  // STORE-BATCH-C: Store selector는 Today(Overview)/Monthly·Annual(Reports)/Commerce(Sales)
+  // 필수 target에서만 보인다 — Reports는 자체 월/연 selector가 따로 있어 showOperations
+  // 목록엔 없지만 Store Dimension은 지원 대상이므로 별도 목록으로 판단한다.
+  const storeSelect = $("#storeFilterSelect");
+  const showStoreFilter = ["Overview", "Reports", "Sales"].includes(view);
+  if (storeSelect) storeSelect.hidden = !showStoreFilter;
+  if (controls) controls.hidden = !showOperations && !showStoreFilter;
 }
 
 function renderContentTabs() {
@@ -1299,7 +1309,7 @@ async function renderOverviewLiveData(data, renderSeq) {
     getJson("/api/status", 6000),
     getSharedJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
     getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 7000),
-    getJson(`/api/sales/total?since=${startDate}&until=${endDate}`, 10000),
+    getJson(`/api/sales/total?since=${startDate}&until=${endDate}${storeFilterState !== "ALL" ? `&store=${storeFilterState}` : ""}`, 10000),
     getJson(`/api/instagram/range?since=${startDate}&until=${endDate}`, 7000),
     getJson("/api/contents/cardnews-status", 6000)
   ]);
@@ -3528,6 +3538,46 @@ function annualArchiveBrandPerformanceBlock(rows) {
   </section>`;
 }
 
+// STORE-BATCH-C: Monthly/Annual에서 특정 매장 선택 시 보여줄 오프라인 매출 disclosure
+// 문구. readEcountOfflineSalesSnapshot의 store-scoped 읽기를 그대로 쓰므로(=
+// STORE-BATCH-B에서 이미 검증됨) 새 계산 없음. 온라인 매출은 매장 귀속이 불가능하므로
+// 여기서 다루지 않는다(문구로만 명시) — 총매출처럼 합산해 보여주지 않는다.
+const STORE_FILTER_LABELS = { APGUJEONG: "압구정", VAIL: "VAIL" };
+async function monthlyStoreScopeNote(month, storeCode) {
+  const label = STORE_FILTER_LABELS[storeCode] || storeCode;
+  const data = await getJson(`/api/ecount-sales/monthly?month=${month}&store=${encodeURIComponent(storeCode)}`, 8000);
+  if (data?.error) {
+    return `매장 필터: ${label} — 이 달은 매장별로 분리 업로드된 오프라인 매출이 없습니다(미업로드, 0원으로 간주하지 않음). 아래 상세는 매장 구분 없는 전체(ALL) 기준입니다. 온라인 매출은 매장별로 구분되지 않습니다.`;
+  }
+  return `매장 필터: ${label} — 오프라인 매출 ${won(data.totalOfflineSales || 0)}(해당 매장 업로드분만 집계). 아래 브랜드/상품 상세는 매장 구분 없는 전체(ALL) 기준입니다. 온라인 매출은 매장별로 구분되지 않으므로 이 숫자에 합산하지 않습니다.`;
+}
+
+// STORE-BATCH-C: Annual용 — 연도 내 각 달을 store-scoped로 조회해 합산만 한다(archive
+// 파이프라인 재계산 없음). 일부 달만 매장별로 분리 업로드되어 있어도 완전한 연간
+// 합계처럼 보이지 않도록 uploadedMonths/missingMonths를 함께 노출한다.
+async function annualStoreScopeNote(year, months, storeCode) {
+  const label = STORE_FILTER_LABELS[storeCode] || storeCode;
+  const results = await Promise.all(months.map((month) => getJson(`/api/ecount-sales/monthly?month=${month}&store=${encodeURIComponent(storeCode)}`, 8000)));
+  let total = 0;
+  const uploadedMonths = [];
+  const missingMonths = [];
+  results.forEach((data, index) => {
+    if (data?.error) {
+      missingMonths.push(months[index]);
+    } else {
+      uploadedMonths.push(months[index]);
+      total += Number(data.totalOfflineSales || 0);
+    }
+  });
+  if (!uploadedMonths.length) {
+    return `매장 필터: ${label} — ${esc(year)}년 전체에 매장별로 분리 업로드된 오프라인 매출이 없습니다(미업로드, 0원으로 간주하지 않음). 아래 상세는 매장 구분 없는 전체(ALL) 기준입니다.`;
+  }
+  const coverageNote = missingMonths.length
+    ? ` (${missingMonths.join(", ")}은 매장별 미업로드 — 이 합계에서 제외됨, 연간 전체 매출로 오인 금지)`
+    : " (연중 전 개월 매장별 업로드 완료)";
+  return `매장 필터: ${label} — 오프라인 매출 ${won(total)} 누적${coverageNote}. 아래 브랜드/상품 상세는 매장 구분 없는 전체(ALL) 기준입니다. 온라인 매출은 매장별로 구분되지 않으므로 이 숫자에 합산하지 않습니다.`;
+}
+
 async function renderAnnualArchiveFlow(month, renderSeq) {
   const target = $("#annualArchiveFlow");
   if (!target) return;
@@ -3544,6 +3594,8 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
   ]);
   if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
   registerBrandMasterResponse(brandMasterResult);
+  const annualStoreNote = storeFilterState !== "ALL" ? await annualStoreScopeNote(year, months, storeFilterState) : "";
+  if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
   const rows = months.map((item, index) => {
     const result = settled[index];
     const archive = result.status === "fulfilled" ? result.value : {};
@@ -3563,6 +3615,7 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
       <div><p class="eyebrow">Annual Flow</p><h3>${esc(year)}년 누적 흐름 · ${esc(yearLabel)}</h3></div>
     </div>
     <p class="monthly-report-fnote">월별 아카이브 기준입니다. 현재월은 Live Draft가 포함될 수 있으며 Saved Archive와 계산 시점이 다를 수 있습니다. 총매출은 Cafe24 온라인 매출과 확보된 ECOUNT 오프라인 매출의 합계입니다. 팔로워 증감은 조회 시점 스냅샷 기준입니다.</p>
+    ${annualStoreNote ? `<p class="monthly-report-fnote store-filter-note">${esc(annualStoreNote)}</p>` : ""}
     <div class="annual-flow-filters" aria-label="Annual Flow filter">
       <button class="segment active" type="button" data-annual-filter="all">전체</button>
       <button class="segment" type="button" data-annual-filter="commerce">Commerce</button>
@@ -3604,6 +3657,11 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   ]);
   if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
   registerBrandMasterResponse(brandMasterResult);
+  // STORE-BATCH-C: Monthly Report의 브랜드/총매출 테이블(archive)은 항상 ALL 기준을
+  // 그대로 유지한다(archive 재계산 파이프라인을 이번 배치에서 건드리지 않음 — 다른
+  // 여러 기능이 이 아카이브를 공유하므로 regression 위험이 큼). storeFilterState가
+  // ALL이 아니면 별도로 매장별 오프라인 매출만 조회해 disclosure 배너로만 보여준다.
+  const storeScopeNote = storeFilterState !== "ALL" ? await monthlyStoreScopeNote(month, storeFilterState) : "";
 
   if (archive.error) {
     target.innerHTML = `<article class="action-item"><strong>Monthly Report 생성 실패</strong><p>${esc(archive.error)}</p></article>`;
@@ -3777,6 +3835,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       </div>
     </header>
     <p class="monthly-report-fnote">${esc(monthlySummary)}. ${esc(reportBasisNote)}.${liveDraftNotice ? ` ${esc(liveDraftNotice)}` : ""}</p>
+    ${storeScopeNote ? `<p class="monthly-report-fnote store-filter-note">${esc(storeScopeNote)}</p>` : ""}
     <nav class="monthly-report-toc" aria-label="Monthly report chapters">
       <a href="#monthly-report-ch1">01 Commerce</a>
       <a href="#monthly-report-ch2">02 Marketing</a>
@@ -6785,7 +6844,7 @@ async function renderCafe24Sales(data, renderSeq) {
   const endDate = range.until;
   const [sales, totalSales] = await Promise.all([
     getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000),
-    getJson(`/api/sales/total?since=${startDate}&until=${endDate}`, 10000)
+    getJson(`/api/sales/total?since=${startDate}&until=${endDate}${storeFilterState !== "ALL" ? `&store=${storeFilterState}` : ""}`, 10000)
   ]);
   if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
   // STEP48A: 매출 요약(Hero/Compare/결제수단) 카드는 재확인 결과 오프라인/ECOUNT를 전혀
@@ -6897,45 +6956,58 @@ function commerceOnlineOfflineSplit() {
   const offlineRaw = totalSales?.offlineSales?.offlineSalesAmount;
   const totalRaw = totalSales?.totalSales?.amount;
   const online = hasApiValue(onlineRaw) ? Number(onlineRaw) : null;
-  const offline = hasApiValue(offlineRaw) ? Number(offlineRaw) : null;
-  const total = hasApiValue(totalRaw) ? Number(totalRaw) : (Number.isFinite(online) && Number.isFinite(offline) ? online + offline : (Number.isFinite(online) ? online : null));
-  return { online, offline, total, cafeTotals };
+  // STORE-BATCH-C: 매장 선택 시(storeCode) 온라인+오프라인을 합산한 total을 만들지
+  // 않는다(온라인은 매장 귀속 불가) — 오프라인만 매장 필터가 적용된 값이고,
+  // storesIncluded에 그 매장이 없으면(분리 업로드 없음) 0원이 아니라 null(데이터 없음).
+  const storeCode = storeFilterState !== "ALL" ? storeFilterState : null;
+  const storesIncluded = Array.isArray(totalSales?.coverage?.storesIncluded) ? totalSales.coverage.storesIncluded : [];
+  const storeHasData = !storeCode || storesIncluded.includes(storeCode);
+  const offline = hasApiValue(offlineRaw) && storeHasData ? Number(offlineRaw) : null;
+  const total = storeCode ? null : (hasApiValue(totalRaw) ? Number(totalRaw) : (Number.isFinite(online) && Number.isFinite(offline) ? online + offline : (Number.isFinite(online) ? online : null)));
+  return { online, offline, total, cafeTotals, storeCode, storeHasData };
 }
 
 function renderCommercePrimaryKpi() {
   const target = $("#commercePrimaryKpi");
   if (!target) return;
-  const { online, offline, total } = commerceOnlineOfflineSplit();
-  target.innerHTML = [
-    ["총매출", total],
-    ["온라인", online],
-    ["오프라인", offline]
-  ].map(([label, value]) => `<article class="action-item ad-summary-card ad-core-kpi-card"><span>${esc(label)}</span><strong>${value === null ? "-" : apiWon(value)}</strong></article>`).join("");
+  const { online, offline, total, storeCode, storeHasData } = commerceOnlineOfflineSplit();
+  const offlineLabel = storeCode ? `오프라인 (${STORE_FILTER_LABELS[storeCode] || storeCode})` : "오프라인";
+  const rows = storeCode
+    ? [["온라인 (전체, 매장 무관)", online], [offlineLabel, offline]]
+    : [["총매출", total], ["온라인", online], ["오프라인", offline]];
+  target.innerHTML = rows.map(([label, value]) => {
+    const empty = label.startsWith("오프라인") && storeCode && !storeHasData ? "데이터 없음" : "-";
+    return `<article class="action-item ad-summary-card ad-core-kpi-card"><span>${esc(label)}</span><strong>${value === null ? empty : apiWon(value)}</strong></article>`;
+  }).join("");
 }
 
 function renderCommerceSecondaryKpi() {
   const target = $("#commerceSecondaryKpi");
   if (!target) return;
-  const { online, offline, cafeTotals } = commerceOnlineOfflineSplit();
+  const { online, offline, cafeTotals, storeCode } = commerceOnlineOfflineSplit();
   const shareBase = (Number.isFinite(online) ? online : 0) + (Number.isFinite(offline) ? offline : 0);
   const onlineShare = shareBase > 0 && Number.isFinite(online) ? `${(online / shareBase * 100).toFixed(1)}%` : "-";
   const offlineShare = shareBase > 0 && Number.isFinite(offline) ? `${(offline / shareBase * 100).toFixed(1)}%` : "-";
   target.innerHTML = [
     ["주문수", `${apiNum(cafeTotals.orderCount)}건`],
     ["객단가", apiWon(cafeTotals.averageOrderValue)],
-    ["온라인 비중", onlineShare],
-    ["오프라인 비중", offlineShare]
+    [storeCode ? "온라인 비중 (매장 무관 기준)" : "온라인 비중", onlineShare],
+    [storeCode ? "오프라인 비중 (매장 기준)" : "오프라인 비중", offlineShare]
   ].map(([label, value]) => `<article class="kpi"><span>${esc(label)}</span><strong>${value}</strong></article>`).join("");
 }
 
 function renderCommerceChannelCards() {
   const target = $("#commerceChannelCards");
   if (!target) return;
-  const { online, offline } = commerceOnlineOfflineSplit();
+  const { online, offline, storeCode, storeHasData } = commerceOnlineOfflineSplit();
   const shareBase = (Number.isFinite(online) ? online : 0) + (Number.isFinite(offline) ? offline : 0);
+  const offlineLabel = storeCode ? `Offline (${STORE_FILTER_LABELS[storeCode] || storeCode})` : "Offline";
+  const offlineNote = storeCode
+    ? (storeHasData ? "ECOUNT 해당 매장 업로드분 기준" : "이 기간 매장별 분리 업로드 없음(미업로드)")
+    : "ECOUNT 매장 매출 기준";
   const rows = [
-    { label: "Online", value: online, note: "Cafe24 canonical 실결제 기준" },
-    { label: "Offline", value: offline, note: "ECOUNT 매장 매출 기준" }
+    { label: storeCode ? "Online (전체, 매장 무관)" : "Online", value: online, note: "Cafe24 canonical 실결제 기준" },
+    { label: offlineLabel, value: offline, note: offlineNote }
   ];
   target.innerHTML = rows.map((row) => {
     const share = shareBase > 0 && Number.isFinite(row.value) ? `${(row.value / shareBase * 100).toFixed(1)}%` : "-";
@@ -6954,13 +7026,13 @@ function renderCommerceSalesSummary() {
   const totalSales = commerceSummaryState.totalSales || {};
   const cafeTotals = commerceSummaryState.cafe?.totals || {};
   const decision = commerceSummaryState.decision || null;
-  const salesInfo = todaySummarySalesInfo(totalSales, cafeTotals);
+  const salesInfo = todaySummarySalesInfo(totalSales, cafeTotals, storeFilterState !== "ALL" ? storeFilterState : null);
   const issue = decision ? `${decision.label} — ${decision.reason}` : "이슈 확인 중";
   block.removeAttribute("hidden");
-  text.textContent = `${salesInfo.label} ${salesInfo.value}(${salesInfo.note}). 대표 이슈: ${issue}`;
+  text.textContent = `${salesInfo.label} ${salesInfo.value}(${salesInfo.note.replace(/\.$/, "")}). 대표 이슈: ${issue}`;
 }
 
-function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}) {
+function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = null) {
   const onlineRaw = hasApiValue(totalSales?.onlineSales?.paidAmount)
     ? totalSales.onlineSales.paidAmount
     : cafeTotals.paidAmount;
@@ -6972,6 +7044,23 @@ function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}) {
   const onlineAvailable = Number.isFinite(onlineSales);
   const offlineAvailable = Number.isFinite(offlineSales);
   const totalAvailable = Number.isFinite(canonicalTotal);
+  // STORE-BATCH-C: 특정 매장 선택 시 온라인+오프라인을 억지로 합산한 "총매출"을 만들지
+  // 않는다(온라인은 매장 귀속 불가) — 오프라인(매장) 값만 별도로 보여준다. 그 매장이
+  // storesIncluded에 없으면(=분리 업로드가 없는 달) 0원으로 단정하지 않고 정직하게
+  // "데이터 없음"으로 표시한다.
+  if (storeCode) {
+    const label = STORE_FILTER_LABELS[storeCode] || storeCode;
+    const storesIncluded = Array.isArray(totalSales?.coverage?.storesIncluded) ? totalSales.coverage.storesIncluded : [];
+    const storeHasData = storesIncluded.includes(storeCode);
+    return {
+      label: `오프라인 매출 (${label})`,
+      value: storeHasData && offlineAvailable ? apiWon(offlineSales) : "데이터 없음",
+      note: storeHasData
+        ? `온라인 매출은 매장별로 구분되지 않아 포함하지 않습니다${onlineAvailable ? ` (참고: 전체 온라인 ${apiWon(onlineSales)})` : ""}.`
+        : "이 기간에는 매장별로 분리 업로드된 오프라인 매출이 없습니다(미업로드).",
+      ready: storeHasData && offlineAvailable
+    };
+  }
   if (totalAvailable) {
     return {
       label: "총매출",
@@ -7035,7 +7124,7 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing, totalSale
   const marketingState = state.marketing || {};
   const totalSalesState = state.totalSales || {};
   const metaAge = relativeAgeText(cacheAgeMinutes(state.meta || {}));
-  const salesInfo = todaySummarySalesInfo(totalSalesState, cafeTotals);
+  const salesInfo = todaySummarySalesInfo(totalSalesState, cafeTotals, storeFilterState !== "ALL" ? storeFilterState : null);
   const marketingValue = marketingState.adSpendShare === null || marketingState.adSpendShare === undefined ? "확인 필요" : pct(marketingState.adSpendShare);
   const marketingBriefingValue = marketingState.briefingCount === null || marketingState.briefingCount === undefined
     ? "확인 필요"
@@ -16946,6 +17035,17 @@ function bind() {
     const renderSeq = renderOperationsSections();
     if (todayViewActive() || commerceDestinationViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
     else todayViewDirty = true;
+    if ($("#Clients")?.classList.contains("active")) refreshClientsView();
+  });
+  // STORE-BATCH-C: Today/Monthly·Annual(Reports)/Commerce가 공유하는 storeFilterState.
+  // operationsRange 핸들러와 동일하게, 지금 보이는 화면만 다시 그린다(숨은 화면은
+  // dirty 표시만 해서 다음 진입 시 그려지게 하는 기존 패턴을 그대로 따름).
+  $("#storeFilterSelect")?.addEventListener("change", (event) => {
+    storeFilterState = event.target.value || "ALL";
+    const renderSeq = renderOperationsSections();
+    if (todayViewActive() || commerceDestinationViewActive()) renderOverviewLiveData(selectedMonth(), renderSeq);
+    else todayViewDirty = true;
+    if ($("#Reports")?.classList.contains("active")) renderReportsMonth(reportsMonth);
     if ($("#Clients")?.classList.contains("active")) refreshClientsView();
   });
   $("#operationsSince")?.addEventListener("change", (event) => {
