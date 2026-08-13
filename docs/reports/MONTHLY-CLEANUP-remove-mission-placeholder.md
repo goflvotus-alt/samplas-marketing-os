@@ -128,11 +128,11 @@ None proposed — per instruction, this batch stops here without proposing or st
 
 ## COMMITS
 
-(recorded after commit — see follow-up doc-fix)
+`b7121cc refactor(monthly): remove mission placeholder and finalize report structure` — staged only the exact 5 files for this batch, no `git add .`/`git add -A`. Pre-existing untracked BI-BATCH docs left untouched.
 
 ## FINAL HEAD
 
-(recorded after commit — see follow-up doc-fix)
+`b7121cc` (parent: `45dd164`)
 
 ## PUSH: NONE
 ## DEPLOY: NONE
