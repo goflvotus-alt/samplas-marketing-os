@@ -739,6 +739,12 @@ function setActiveView(view, options = {}) {
   $$(".nav button").forEach((node) => node.classList.toggle("active", node.dataset.route === routeHash));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.id === targetView));
   $("#monthlyDestinationLayout")?.toggleAttribute("hidden", routeHash === "annual-report");
+  // MONTHLY-RESTRUCTURE: Reports view는 Monthly/Annual이 같은 <section>을 공유하지만
+  // (renderReportsMonth가 매번 둘 다 렌더링함, 이건 그대로 둔다), 화면에는 라우트에 맞는
+  // 쪽만 보이도록 hidden을 대칭으로 토글한다. 계산/렌더 로직은 건드리지 않는다.
+  $("#annualArchiveFlow")?.toggleAttribute("hidden", routeHash !== "annual-report");
+  $("#monthlyArchiveReport")?.toggleAttribute("hidden", routeHash === "annual-report");
+  $("#monthlyFreshnessHeader")?.toggleAttribute("hidden", routeHash === "annual-report");
   setTopbarTitle(targetView, routeHash);
   updateTopbarControls(targetView);
   if (targetView === "Intelligence") refreshActiveIntelligencePanel();
@@ -1960,9 +1966,11 @@ function homeActionCard(item) {
 }
 
 function homeGoalCards({ cafeTotals = {}, metaTotals = {}, postCount = 0, followerDelta = null } = {}) {
+  // MONTHLY-RESTRUCTURE: 이 goal-card 목록은 #nextActions(Monthly의 "Goal Progress" 위젯)에만
+  // 렌더링된다(HTML에 id="nextActions"는 이 한 곳뿐). 광고 목표는 Monthly UI에서 제거한다 —
+  // metaTotals 파라미터/호출부는 그대로 두어 향후 Content Intelligence에서 재사용 가능하게 둔다.
   const items = [
     { label: "매출", value: goalPercent(Number(cafeTotals.orderAmount || 0), 5000000), note: "월 목표 500만원" },
-    { label: "광고", value: goalPercent(Number(metaTotals.spend || 0), 1500000), note: "월 예산 150만원" },
     { label: "콘텐츠", value: goalPercent(Number(postCount || 0), 20), note: "월 목표 20개" },
     { label: "팔로워", value: hasApiValue(followerDelta) ? goalPercent(Math.max(0, Number(followerDelta)), 300) : null, note: hasApiValue(followerDelta) ? "월 목표 +300명" : "월 목표 +300명 · 계산 불가" }
   ];
@@ -3150,7 +3158,7 @@ function brandTrendDetailTriggerHtml(item, series, prefix, title) {
     <small class="monthly-report-brand-trend-months">${esc(monthlyReportBrandTrendInlineSummary(series))}</small>`;
 }
 
-function monthlyReportBrandSignalsBlock(currentRows, previousRows, reconciliationLabel, trendRows = []) {
+function monthlyReportBrandSignalsBlock(currentRows, previousRows, trendRows = []) {
   const signals = monthlyReportBrandSignals(currentRows, previousRows);
   if (!signals.length) return "";
   const previousByCode = new Map(previousRows.map((row) => [monthlyReportBrandCode(row), row]));
@@ -3163,7 +3171,7 @@ function monthlyReportBrandSignalsBlock(currentRows, previousRows, reconciliatio
     .sort((left, right) => left.diffRate - right.diffRate)
     .slice(0, 3);
   return `<section class="monthly-report-block">
-    <div class="monthly-report-block-head"><h4>브랜드 신호</h4><span>데이터 일치검증 ${esc(reconciliationLabel)}</span></div>
+    <div class="monthly-report-block-head"><h4>브랜드 신호</h4><span>이번 달 vs 전월</span></div>
     <div class="monthly-report-grid2">
       <div>
         <div class="monthly-report-block-head"><h4>상승 브랜드 TOP3</h4><span>이번 달 판매금액</span></div>
@@ -3952,10 +3960,8 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   });
 
   const commerce = archive.commerce || {};
-  const marketing = archive.marketing || {};
   const content = archive.content || {};
   const previousCommerce = previousArchive.error ? {} : previousArchive.commerce || {};
-  const previousMarketing = previousArchive.error ? {} : previousArchive.marketing || {};
   const previousContent = previousArchive.error ? {} : previousArchive.content || {};
   const previousBrandSales = previousArchive.error ? [] : previousCommerce.brandSales || [];
   const monthlyBrandTrendRows = trendMonths.map((item, index) => {
@@ -3979,11 +3985,6 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const formatMix = content.formatMix || [];
   const topContent = content.topContent || [];
   const aboveAverageSaveRatePosts = content.aboveAverageSaveRatePosts || [];
-  const reconciliationLabel = marketing.reconciliationStatus === "matched"
-    ? "일치"
-    : marketing.reconciliationStatus === "mismatch"
-      ? "불일치"
-      : "확인 불가";
   const archiveStatusLabel = {
     live: "Live Draft",
     saved: "Saved Archive",
@@ -4012,14 +4013,14 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     ? `<button type="button" class="button secondary" data-archive-save="${esc(month)}" data-archive-status="${esc(archive.archiveStatus)}">${archive.archiveStatus === "saved" ? "최신 값으로 다시 저장" : "아카이브 저장"}</button>`
     : "";
   const paymentTotal = Number(commerce.paidAmount || 0);
-  const compareBase = Math.max(Number(marketing.spend || 0), Number(marketing.purchaseValue || 0), 1);
   const hasMonthlySummaryPrevious = months.includes(previousMonth) && !previousArchive.error;
   const summaryPreviousCommerce = hasMonthlySummaryPrevious ? previousCommerce : {};
-  const summaryPreviousMarketing = hasMonthlySummaryPrevious ? previousMarketing : {};
   const summaryPreviousContent = hasMonthlySummaryPrevious ? previousContent : {};
+  // MONTHLY-RESTRUCTURE: "광고비는..." 문장을 제거한다(광고 정보는 Content Intelligence로
+  // 이관). archive.marketing 필드 자체와 계산 로직은 그대로 두고(서버/API 변경 없음),
+  // Monthly의 요약 문장 렌더링에서만 제외한다.
   const monthlySummary = [
     monthlyReportDirectionText("온라인 실제 매출은", commerce.paidAmount, summaryPreviousCommerce.paidAmount, { formatter: apiWon }),
-    monthlyReportDirectionText("광고비는", marketing.spend, summaryPreviousMarketing.spend, { formatter: apiWon }),
     monthlyReportDirectionText("콘텐츠 조회는", content.totalViews, summaryPreviousContent.totalViews),
     monthlyReportFollowerDirectionText(content.followerDelta, summaryPreviousContent.followerDelta)
   ].join(". ");
@@ -4034,6 +4035,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     ? sales.onlineSales.paidAmount
     : commerce.paidAmount;
   const salesOfflineAmount = sales?.offlineSales?.offlineSalesAmount;
+  const previousSalesTotalAmount = previousArchive.error ? undefined : previousArchive.sales?.totalSales?.amount;
   const hasCanonicalTotalSales = hasApiValue(salesTotalAmount);
   const hasOnlineSales = hasApiValue(salesOnlineAmount);
   const hasOfflineSales = hasApiValue(salesOfflineAmount);
@@ -4056,6 +4058,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
           <span>${hasCanonicalTotalSales ? "총매출" : "온라인 매출"}</span>
           <strong>${apiWon(hasCanonicalTotalSales ? salesTotalAmount : salesOnlineAmount)}</strong>
           <em>${hasCanonicalTotalSales ? "Cafe24 온라인 + ECOUNT 오프라인" : "Cafe24 온라인 실제 결제 매출"}</em>
+          <em>${esc(monthlyReportDelta(hasCanonicalTotalSales ? salesTotalAmount : salesOnlineAmount, hasCanonicalTotalSales ? previousSalesTotalAmount : summaryPreviousCommerce.paidAmount, apiWon))}</em>
         </div>
         <div class="monthly-report-side">
           <div class="monthly-report-side-row"><span>온라인 매출</span><strong>${apiWon(salesOnlineAmount)}</strong></div>
@@ -4070,20 +4073,28 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     </section>
   ` : "";
   const brandSignalsBlock = brandSales.length && previousBrandSales.length
-    ? monthlyReportBrandSignalsBlock(performanceBrandSales, previousBrandSales, reconciliationLabel, monthlyBrandTrendRows)
+    ? monthlyReportBrandSignalsBlock(performanceBrandSales, previousBrandSales, monthlyBrandTrendRows)
     : "";
   const missionRows = !missionResult?.error && missionResult?.ok && Array.isArray(missionResult.missions)
     ? missionResult.missions.slice(0, 3)
     : [];
-  const missionSummaryBlock = missionRows.length ? `
-    <section class="monthly-report-block">
-      <div class="monthly-report-block-head"><h4>다음 달 우선순위 Mission</h4><span>현재 시점 기준</span></div>
-      <div class="monthly-report-grid2">
-        ${missionRows.map((mission) => intelligenceBriefCard(mission)).join("")}
+  const missionSummaryBlock = `
+    <section id="monthly-report-ch4" class="monthly-report-chapter">
+      <div class="monthly-report-chapter-head">
+        <span>04</span>
+        <div><p class="eyebrow">Monthly Intelligence</p><h3>다음 달 우선순위 Mission</h3></div>
       </div>
-      <p class="monthly-report-fnote">Mission은 저장된 월간 archive가 아니라 현재 Intelligence Service 기준으로 표시됩니다.</p>
+      <section class="monthly-report-block">
+        <div class="monthly-report-block-head"><h4>다음 달 우선순위 Mission</h4><span>현재 시점 기준</span></div>
+        ${missionRows.length ? `
+        <div class="monthly-report-grid2">
+          ${missionRows.map((mission) => intelligenceBriefCard(mission)).join("")}
+        </div>
+        <p class="monthly-report-fnote">Mission은 저장된 월간 archive가 아니라 현재 Intelligence Service 기준으로 표시됩니다.</p>
+        ` : `<p class="monthly-report-fnote monthly-report-muted">이번 달 저장된 Mission이 없습니다.</p>`}
+      </section>
     </section>
-  ` : "";
+  `;
 
   target.innerHTML = `
     <header class="monthly-report-header">
@@ -4106,16 +4117,39 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
          텍스트라 그대로 안전하다). -->
     ${storeScopeNote ? `<p class="monthly-report-fnote store-filter-note">${storeScopeNote}</p>` : ""}
     <nav class="monthly-report-toc" aria-label="Monthly report chapters">
-      <a href="#monthly-report-ch1">01 Commerce</a>
-      <a href="#monthly-report-ch2">02 Marketing</a>
+      <a href="#monthly-report-ch1">01 Summary</a>
+      <a href="#monthly-report-ch2">02 Commerce</a>
       <a href="#monthly-report-ch3">03 Content</a>
+      <a href="#monthly-report-ch4">04 Monthly Intelligence</a>
     </nav>
-    ${salesSummaryBlock}
-    ${brandSignalsBlock}
 
     <section id="monthly-report-ch1" class="monthly-report-chapter">
       <div class="monthly-report-chapter-head">
         <span>01</span>
+        <div><p class="eyebrow">Summary</p><h3>이번 달 한눈에 보기</h3></div>
+      </div>
+      ${salesSummaryBlock}
+      ${brandSignalsBlock}
+      <section class="monthly-report-block">
+        <div class="monthly-report-block-head"><h4>콘텐츠 핵심 성과</h4><span>이번 달 vs 전월</span></div>
+        <div class="monthly-report-strip">
+          <div><span>조회수</span><strong>${apiNum(content.totalViews)}</strong><em>${esc(monthlyReportDelta(content.totalViews, previousContent.totalViews, apiNum))}</em></div>
+          <div><span>저장</span><strong>${apiNum(content.totalSaves)}</strong><em>${esc(monthlyReportDelta(content.totalSaves, previousContent.totalSaves, apiNum))}</em></div>
+          <div><span>좋아요</span><strong>${apiNum(content.totalLikes)}</strong></div>
+          <div><span>팔로워 변화</span><strong>${hasApiValue(content.followerDelta) ? `${Number(content.followerDelta) > 0 ? "+" : ""}${apiNum(content.followerDelta)}명` : "-"}</strong></div>
+        </div>
+      </section>
+      ${missionRows.length ? `
+      <section class="monthly-report-block">
+        <div class="monthly-report-block-head"><h4>이번 달 주요 Intelligence</h4><span><a href="#monthly-report-ch4">04 Monthly Intelligence 전체 보기</a></span></div>
+        <p class="monthly-report-fnote">${esc(missionRows.length)}건의 Mission · 최우선 "${esc(missionRows[0]?.title || "Mission")}"</p>
+      </section>
+      ` : ""}
+    </section>
+
+    <section id="monthly-report-ch2" class="monthly-report-chapter">
+      <div class="monthly-report-chapter-head">
+        <span>02</span>
         <div><p class="eyebrow">Commerce</p><h3>월간 판매 스냅샷</h3></div>
       </div>
       <div class="monthly-report-hero">
@@ -4169,53 +4203,6 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
           })}
         </div>
       </section>
-    </section>
-
-    <section id="monthly-report-ch2" class="monthly-report-chapter">
-      <div class="monthly-report-chapter-head">
-        <span>02</span>
-        <div><p class="eyebrow">Marketing</p><h3>월간 광고 스냅샷</h3></div>
-      </div>
-      <div class="monthly-report-hero">
-        <div class="monthly-report-hero-main">
-          <span>광고비</span>
-          <strong>${apiWon(marketing.spend)}</strong>
-          <em>${esc(monthlyReportDelta(marketing.spend, previousMarketing.spend, apiWon))}</em>
-        </div>
-        <div class="monthly-report-side">
-          <div class="monthly-report-side-row"><span>광고비 / 실제 매출</span><strong>${hasApiValue(marketing.adSpendShare) ? pct(marketing.adSpendShare) : "-"}</strong><em>광고비가 실제 매출에서 차지하는 비중</em></div>
-          <div class="monthly-report-side-row"><span>오차율</span><strong>${marketing.comparable === false ? "비교 불가" : hasApiValue(marketing.mismatchRate) ? pct(marketing.mismatchRate) : "-"}</strong></div>
-          <div class="monthly-report-side-row"><span>일치검증</span><strong>${reconciliationLabel}</strong></div>
-        </div>
-      </div>
-      <section class="monthly-report-block">
-        <div class="monthly-report-block-head"><h4>광고비와 Meta 구매값</h4><span>Meta 광고 귀속 기준 · 실제 매출 아님</span></div>
-        <div class="monthly-report-compare">
-          <div class="monthly-report-compare-row">
-            <span>광고비</span>
-            <div><i style="width:${monthlyReportRatio(marketing.spend, compareBase)}%"></i></div>
-            <strong>${apiWon(marketing.spend)}</strong>
-            <em>${esc(monthlyReportDelta(marketing.spend, previousMarketing.spend, apiWon))}</em>
-          </div>
-          <div class="monthly-report-compare-row monthly-report-attributed">
-            <span>구매값</span>
-            <div><i style="width:${monthlyReportRatio(marketing.purchaseValue, compareBase)}%"></i></div>
-            <strong>${apiWon(marketing.purchaseValue)}</strong>
-            <em>${esc(monthlyReportDelta(marketing.purchaseValue, previousMarketing.purchaseValue, apiWon))}</em>
-          </div>
-        </div>
-      </section>
-      <div class="monthly-report-strip">
-        <div><span>집행</span><strong>${apiNum(marketing.activeCampaignCount)}</strong></div>
-        <div><span>미집행</span><strong>${apiNum(marketing.inactiveCampaignCount)}</strong></div>
-        <div><span>누락</span><strong>${apiNum(marketing.unlistedCampaignCount)}</strong></div>
-        <div><span>일치검증</span><strong>${reconciliationLabel}</strong></div>
-        <div><span>오차율</span><strong>${marketing.comparable === false ? "비교 불가" : hasApiValue(marketing.mismatchRate) ? pct(marketing.mismatchRate) : "-"}</strong></div>
-      </div>
-      <div class="monthly-report-drill">
-        <span>Marketing ▸ Advertising</span>
-        <button class="today-jump-button" type="button" data-jump-view="Advertising">광고 데이터 보기</button>
-      </div>
     </section>
 
     <section id="monthly-report-ch3" class="monthly-report-chapter">
