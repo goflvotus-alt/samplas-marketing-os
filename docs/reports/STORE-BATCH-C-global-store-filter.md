@@ -111,11 +111,11 @@ No CSS changes were needed (existing `<select>` and `.controls` flex-wrap stylin
 
 ## COMMITS
 
-Pending — this report is written before the commit per the batch's required order; commit follows immediately after, staged only to these exact files (`git add outputs/samplas-marketing-os.html outputs/samplas-marketing-os.js server.mjs test/store-filter.test.mjs docs/reports/STORE-BATCH-C-global-store-filter.md`), no `git add .`/`git add -A`.
+`9e083f8 feat(store): add global store filter (ALL / 압구정 / VAIL)` — staged only the exact 5 STORE-BATCH-C files (`outputs/samplas-marketing-os.html`, `outputs/samplas-marketing-os.js`, `server.mjs`, `test/store-filter.test.mjs`, this report), no `git add .`/`git add -A`. Pre-existing untracked BI-BATCH docs left untouched.
 
 ## FINAL HEAD
 
-To be confirmed after commit (see final message).
+`9e083f8` (parent: `cbd172e`)
 
 ## PUSH: NONE
 ## DEPLOY: NONE
