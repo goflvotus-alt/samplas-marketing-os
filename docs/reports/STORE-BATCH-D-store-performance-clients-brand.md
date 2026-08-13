@@ -142,11 +142,11 @@ Resized to 900×523/900×700 on both Today and Brand Intelligence — the store 
 
 ## COMMITS
 
-Pending — see final message for the hash after commit.
+`f5c4fcc feat(store): build store performance views (Today/Monthly/Annual/Commerce/Clients/Brand Intelligence)` — staged only the exact 7 STORE-BATCH-D files, no `git add .`/`git add -A`. Pre-existing untracked BI-BATCH docs left untouched.
 
 ## FINAL HEAD
 
-To be confirmed after commit.
+`f5c4fcc` (parent: `a0a440e`)
 
 ## PUSH: NONE
 ## DEPLOY: NONE
