@@ -1734,6 +1734,9 @@
             </div>
           </div>
           <p id="entityCompositionPeriodNote" class="hint-text entity-period-note"></p>
+          <!-- STORE-BATCH-D: Brand Revenue의 매장별(온라인/압구정/VAIL) 구성 disclosure.
+               period note와 별도 요소로 둬 기존 기간 표시 로직과 충돌하지 않는다. -->
+          <p id="entityCompositionStoreNote" class="hint-text entity-period-note"></p>
 
           <!-- STEP58-4B: Entity Detail Empty States. 브랜드 미선택 시 placeholder 데이터가
                실제 분석처럼 보이지 않도록 Empty State 카드로 대체한다(renderEntityHeroState

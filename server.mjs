@@ -474,11 +474,14 @@ const server = isMainModule ? createServer(async (req, res) => {
       const brandCode = decodeURIComponent(brandCustomerCompositionMatch[1]);
       const month = url.searchParams.get("month") || currentMonth();
       if (!isValidMonthKey(month)) return json(res, { error: "Invalid month" }, 400);
+      // STORE-BATCH-D: store 쿼리가 없거나 ALL이면 기존 동작과 완전히 동일하다.
+      const compositionStoreParam = url.searchParams.get("store");
+      const compositionStoreCode = compositionStoreParam && compositionStoreParam !== "ALL" ? compositionStoreParam : null;
       try {
         const monthStart = `${month}-01`;
         const monthEnd = monthEndKey(month);
         const commerceSource = await buildBrandSalesDiagnostics(monthStart, monthEnd);
-        const composition = await buildBrandCustomerComposition(brandCode, month, commerceSource);
+        const composition = await buildBrandCustomerComposition(brandCode, month, commerceSource, compositionStoreCode);
         return json(res, { ok: true, brandCode, month, ...composition });
       } catch (error) {
         return json(res, { ok: false, error: safeErrorMessage(error) }, 500);
@@ -620,9 +623,14 @@ const server = isMainModule ? createServer(async (req, res) => {
       if (since > until) {
         return json(res, { ok: false, error: "Bad Request", message: "since must be before or equal to until" }, 400);
       }
+      // STORE-BATCH-D: 이 로컬 핸들러가 intelligence-service.mjs의 handleClientsOverviewRoute
+      // 보다 먼저 매칭돼(아래 634행 범용 프록시보다도 먼저) 실제로 이 코드가 실행된다 —
+      // store 쿼리를 여기서도 반드시 읽어 넘겨야 한다.
+      const storeParam = url.searchParams.get("store");
+      const storeCode = storeParam && storeParam !== "ALL" ? storeParam : null;
       try {
         const cafe24 = await fetchCafe24Orders(since, until, { limit: 500 });
-        const overview = await buildClientsOverview({ since, until, cafe24Orders: cafe24.orders });
+        const overview = await buildClientsOverview({ since, until, cafe24Orders: cafe24.orders, storeCode });
         return json(res, { ok: true, ...overview });
       } catch (error) {
         return json(res, { ok: false, error: "Internal Server Error", message: safeErrorMessage(error) }, 500);
@@ -3800,6 +3808,11 @@ export async function buildCanonicalTotalSales({ since: sinceValue, until: until
   // 월별로 그대로 모아 합집합만 낸다 — 새 계산 없음.
   const storesIncludedSet = new Set();
   const storesMissingSet = new Set();
+  // STORE-BATCH-D: ALL 화면에서 "온라인/압구정/VAIL" 3축을 한 번에 보여주기 위한 매장별
+  // 오프라인 합계. storeCode 필터와 무관하게(각 라인의 실제 storeCode 기준으로) 항상 함께
+  // 계산한다 — offlineSalesAmount(필터 적용값)와 별개의 추가 필드일 뿐, 기존 계산식은
+  // 그대로다(APGUJEONG+VAIL=OFFLINE, ONLINE+OFFLINE=TOTAL 불변).
+  const offlineByStore = { APGUJEONG: 0, VAIL: 0 };
 
   for (const month of months) {
     const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir: effectiveWorkDir });
@@ -3819,14 +3832,9 @@ export async function buildCanonicalTotalSales({ since: sinceValue, until: until
     for (const line of lines) {
       const date = String(line?.date || "");
       const salesAmount = Number(line?.salesAmount);
-      if (
-        line?.isOfflineRevenue === true
-        && Number.isFinite(salesAmount)
-        && date >= since && date <= until
-        && (!storeCode || line?.storeCode === storeCode)
-      ) {
-        offlineSalesAmount += salesAmount;
-      }
+      if (line?.isOfflineRevenue !== true || !Number.isFinite(salesAmount) || date < since || date > until) continue;
+      if (Object.prototype.hasOwnProperty.call(offlineByStore, line?.storeCode)) offlineByStore[line.storeCode] += salesAmount;
+      if (!storeCode || line?.storeCode === storeCode) offlineSalesAmount += salesAmount;
     }
   }
 
@@ -3839,7 +3847,8 @@ export async function buildCanonicalTotalSales({ since: sinceValue, until: until
       paidAmount: onlinePaidAmount
     },
     offlineSales: {
-      offlineSalesAmount
+      offlineSalesAmount,
+      byStore: offlineByStore
     },
     totalSales: {
       amount: onlinePaidAmount + offlineSalesAmount
@@ -4165,15 +4174,20 @@ async function enrichMonthlyArchiveBrandSales(archive, month) {
 // 예: CARNET ARCHIVE)를 놓친다는 것을 실측으로 확인했다 — Clients 화면 자체는 건드리지
 // 않고, 여기서는 STEP67-3가 이미 검증한 2차 온라인 카탈로그 조회까지 포함한 동일 패턴을
 // 별도로 적용한다.
-async function buildBrandCustomerComposition(brandCode, month, commerceSource) {
+// STORE-BATCH-D: storeCode(4번째 인자, 옵션)가 있으면 그 매장의 오프라인 라인만 집계한다.
+// 이 함수는 애초에 온라인 데이터를 전혀 섞지 않으므로(오프라인 전용) "온라인을 매장에
+// 귀속시키지 않는다"는 절대 원칙이 이미 구조적으로 보장된다 — storeCode 필터만 추가하면 된다.
+export async function buildBrandCustomerComposition(brandCode, month, commerceSource, storeCode = null, workDirOverride = null) {
   const monthStart = `${month}-01`;
   const monthEnd = monthEndKey(month);
-  const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+  const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir: workDirOverride || workDir });
   const lines = Array.isArray(snapshot?.salesLines)
     ? snapshot.salesLines
     : Array.isArray(snapshot?.rows)
       ? snapshot.rows
       : [];
+  const storesIncluded = Array.isArray(snapshot?.storesIncluded) ? snapshot.storesIncluded : [];
+  const storeHasData = !storeCode || storesIncluded.includes(storeCode);
   const identityContext = await loadResolverContext({
     onlineCatalog: { brands: commerceSource?.brands || [], products: commerceSource?.products || [] }
   });
@@ -4184,6 +4198,10 @@ async function buildBrandCustomerComposition(brandCode, month, commerceSource) {
   // 여기서 이미 브랜드/기간을 필터링해 순회하는 김에 오프라인 distinct productName도 함께 센다
   // (고객 식별 여부와 무관하게, 매장방문고객 등 포함 — 새 API 호출 없음).
   const offlineProductNames = new Set();
+  // PART F(Brand Revenue): storeCode 필터와 무관하게 브랜드의 매장별 오프라인 매출을
+  // 항상 함께 집계한다 — ALL에서 "온라인/압구정/VAIL" 3축을 보여주고, Store Focus에서
+  // Brand Store Share(분모=canonical ALL) 계산에 재사용하기 위함(추가 API 호출 없음).
+  const revenueByStore = { APGUJEONG: 0, VAIL: 0 };
   for (const line of lines) {
     const date = String(line?.date || "");
     if (line?.isOfflineRevenue !== true || date < monthStart || date > monthEnd) continue;
@@ -4192,6 +4210,8 @@ async function buildBrandCustomerComposition(brandCode, month, commerceSource) {
     if (!identity.resolved || identity.brand.brandCode !== brandCode) continue;
     const amount = Number(line.salesAmount);
     if (!Number.isFinite(amount) || amount <= 0) continue; // Clients와 동일 정책: 환불/0원 라인은 "구매 건수"로 세지 않음
+    if (Object.prototype.hasOwnProperty.call(revenueByStore, line?.storeCode)) revenueByStore[line.storeCode] += amount;
+    if (storeCode && line?.storeCode !== storeCode) continue;
     const productName = String(line.productName || "").trim();
     if (productName) offlineProductNames.add(productName);
     const rawName = String(line.customerName || "").trim();
@@ -4219,7 +4239,11 @@ async function buildBrandCustomerComposition(brandCode, month, commerceSource) {
   return {
     typeStats: [...typeBuckets.values()].sort((a, b) => b.sales - a.sales),
     topCustomers: [...customerBuckets.values()].sort((a, b) => b.sales - a.sales).slice(0, 10),
-    offlineProductCount: offlineProductNames.size
+    offlineProductCount: offlineProductNames.size,
+    storeCode,
+    storeHasData,
+    revenueByStore,
+    storesIncluded
   };
 }
 

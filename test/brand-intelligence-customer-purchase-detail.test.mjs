@@ -255,7 +255,9 @@ test("fetch architecture reuses getSharedJson + intelligenceUrl + monthlyReportM
   // BI-BATCH-I Part 8: this fetch now retries once on timeout (getSharedJson(url, 30000)),
   // mirroring getEntityCompareMonthlyArchive's established pattern — still the same
   // getSharedJson/intelligenceUrl/monthlyReportMonthRange primitives, no new architecture.
-  assert.match(js, /const url = intelligenceUrl\(`\/api\/intelligence\/clients\?since=\$\{monthStart\}&until=\$\{monthEnd\}`\);/);
+  // STORE-BATCH-D: the URL gained a conditional `&store=` fragment (shared storeFilterState)
+  // — still the exact same intelligenceUrl/getSharedJson call, not a new fetch pattern.
+  assert.match(js, /const url = intelligenceUrl\(`\/api\/intelligence\/clients\?since=\$\{monthStart\}&until=\$\{monthEnd\}\$\{storeFilterState/);
   assert.match(js, /let data = await getSharedJson\(url, 15000\);/);
   assert.match(js, /data = await getSharedJson\(url, 30000\);/);
   assert.match(js, /const \{ monthStart, monthEnd \} = monthlyReportMonthRange\(month\);/);

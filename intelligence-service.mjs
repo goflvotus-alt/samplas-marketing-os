@@ -36,7 +36,7 @@ import {
 // STORE-BATCH-B: loadEcountClientLines()가 work/ecount-sales/를 직접 readdir하던 것을
 // 이 공용 리더로 교체한다 — 매장별 분리 스냅샷을 병합해 기존과 동일한 ALL 라인 집합을
 // 얻는 로직(그리고 storeCode 보존)을 여기서 새로 구현하지 않고 그대로 재사용한다.
-import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
+import { readEcountOfflineSalesSnapshot, KNOWN_STORE_CODES } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 
 const root = resolve(".");
 const env = await loadEnv();
@@ -613,8 +613,11 @@ async function handleClientsOverviewRoute(url, res) {
   if (!period.ok) {
     return json(res, { ok: false, error: "Bad Request", message: period.message }, 400);
   }
+  // STORE-BATCH-D: store 쿼리가 없거나 ALL이면 기존 동작과 완전히 동일하다.
+  const storeParam = url.searchParams.get("store");
+  const storeCode = storeParam && storeParam !== "ALL" ? storeParam : null;
   try {
-    const overview = await buildClientsOverview({ since: period.since, until: period.until });
+    const overview = await buildClientsOverview({ since: period.since, until: period.until, storeCode });
     return json(res, { ok: true, ...overview });
   } catch (error) {
     return json(res, { ok: false, error: "Internal Server Error", message: safeErrorMessage(error) }, 500);
@@ -2593,6 +2596,11 @@ export async function buildClientsOverview(options = {}) {
   const until = isDateKey(options.until) ? options.until : todayKey();
   const now = options.now ? new Date(options.now) : new Date();
   const currentMonth = options.currentMonth || clientsIntelligenceMonthKey(now);
+  // STORE-BATCH-D: storeCode가 있으면 Store Focus Mode다. Client identity는 절대 매장별로
+  // 복제하지 않는다(Store는 purchase activity의 dimension) — 아래에서도 "고객을 다시
+  // 그룹핑"하지 않고, 이미 그룹핑된 고객의 offline 구매 라인만 storeCode로 필터하고
+  // online 주문은 전부 제외한다(온라인은 physical store에 귀속하지 않는다는 절대 원칙).
+  const storeCode = options.storeCode && options.storeCode !== "ALL" ? String(options.storeCode) : null;
 
   // STEP63-3: Brand Master/Product Registry는 로컬 파일이라 새 API 호출 없이 읽을 수 있다
   // (work/brand-master.json, work/product-registry.json). 온라인 Cafe24 카탈로그 기반
@@ -2602,7 +2610,7 @@ export async function buildClientsOverview(options = {}) {
   // 지시사항과 충돌한다(work/reports/STEP63-3.md 4번 항목에 이 판단 근거를 상세히 기록).
   const identityResolverContext = await loadResolverContext();
 
-  const ecountClients = await loadEcountClientLines();
+  const ecountClients = await loadEcountClientLines(options.workDir);
   // STEP49-2A-2: 주입 경로도 canonicalizeCafe24ClientOrders()로 기존 캐시 경로와 동일한
   // 정규화/기간 필터/order_id dedupe를 거친 뒤에만 matchKey를 붙인다(디스크 캐시와 병합하지 않음).
   const cafe24PersonalPaymentOrders = Array.isArray(options.cafe24Orders)
@@ -2679,7 +2687,10 @@ export async function buildClientsOverview(options = {}) {
     const representativeRawName = selectRepresentativeClientRawName(group.aliases);
     const classification = group.classification;
 
-    const onlineOrdersInPeriod = [...group.orders.values()].filter((order) => (
+    // STORE-BATCH-D: Store Focus Mode(storeCode 지정)에서는 온라인 주문을 아예 집계하지
+    // 않는다 — 절대 원칙(온라인은 물리 매장에 귀속하지 않음)을 "이 고객의 온라인 매출을
+    // 0으로 만드는" 방식이 아니라 "이 필터에서는 온라인이 대상이 아니다"로 구현한다.
+    const onlineOrdersInPeriod = storeCode ? [] : [...group.orders.values()].filter((order) => (
       order.paidAmount > 0 &&
       order.orderDate >= since &&
       order.orderDate <= until
@@ -2687,10 +2698,13 @@ export async function buildClientsOverview(options = {}) {
     const onlineSales = onlineOrdersInPeriod.reduce((sum, order) => sum + order.paidAmount, 0);
     const onlinePurchaseCount = onlineOrdersInPeriod.length;
 
+    // storeCode 지정 시 그 매장 라인만 남긴다. 레거시(store-unclassified, storeCode:null)
+    // 라인은 어느 storeCode와도 일치하지 않아 자연히 제외된다(추정 귀속 없음).
     const offlineLinesInPeriodRaw = group.lines.filter((line) => (
       line?.isOfflineRevenue === true &&
       String(line?.date || "") >= since &&
-      String(line?.date || "") <= until
+      String(line?.date || "") <= until &&
+      (!storeCode || line?.storeCode === storeCode)
     ));
     // TASK3(2026-07-17 최종 정정): 기프트는 거래처/고객 단위가 아니라 "판매행 자신"의 실제 필드
     // (이 데이터 스키마에서는 customerName 하나뿐 — 실측 확인, 아래 isGiftSalesLine 주석 참고)로만
@@ -2821,7 +2835,9 @@ export async function buildClientsOverview(options = {}) {
   // "매칭된 고객" 여부와 무관하게 기간 내 전체 Cafe24 온라인 주문(취소/환불 제외, 이미
   // normalizeCafe24CsvOrder/normalizeCafe24ProxyOrder에서 제외됨) 기준. 정책7: 온라인
   // 주문수 = Cafe24 order_id 고유 개수. 정책8: 온라인 판매수량 = 품목별 수량 합.
-  const onlineOrdersInWindow = cafe24PersonalPaymentOrders.filter((order) => order.orderDate >= since && order.orderDate <= until);
+  // STORE-BATCH-D: Store Focus Mode에서는 온라인 요약 지표(주문수/수량/적립금/배송비) 전체가
+  // 대상 밖이다 — 0으로 확정하지 않고 아예 빈 윈도우로 둔다(meta.storeCode로 UI가 구분).
+  const onlineOrdersInWindow = storeCode ? [] : cafe24PersonalPaymentOrders.filter((order) => order.orderDate >= since && order.orderDate <= until);
   const onlineOrderIdSet = new Set(onlineOrdersInWindow.map((order) => String(order.orderId ?? clientOrderDedupeKey(order))));
   const onlineOrderCount = onlineOrderIdSet.size;
   const onlineQuantity = onlineOrdersInWindow.reduce((sum, order) => sum + (Number.isFinite(order.quantity) ? order.quantity : 0), 0);
@@ -2858,6 +2874,7 @@ export async function buildClientsOverview(options = {}) {
   for (const [, lines] of ecountClients) {
     for (const line of lines) {
       if (line?.isOfflineRevenue !== true) continue;
+      if (storeCode && line?.storeCode !== storeCode) continue;
       const date = String(line?.date || "");
       if (!(date >= since && date <= until)) continue;
       offlineOrderKeySet.add(`${date}::${line?.slipNo || line?.documentNo || ""}`);
@@ -2865,6 +2882,28 @@ export async function buildClientsOverview(options = {}) {
     }
   }
   const offlineOrderCount = offlineOrderKeySet.size;
+
+  // STORE-BATCH-D: storeCode 지정 시, 이 기간에 그 매장의 분리 업로드가 실제로 있었는지
+  // 알려준다 — 없으면 위 집계 결과(0명/0원)가 "진짜 0"이 아니라 "미업로드"일 수 있다는
+  // 신호를 UI가 받아 정직하게 "데이터 없음"으로 보여줄 수 있게 한다.
+  let storeCoverage = null;
+  if (storeCode) {
+    const monthKeys = new Set();
+    for (let cursor = since.slice(0, 7); cursor <= until.slice(0, 7);) {
+      monthKeys.add(cursor);
+      const [year, month] = cursor.split("-").map(Number);
+      const next = new Date(year, month, 1);
+      cursor = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+    }
+    const includedMonths = [];
+    const missingMonths = [];
+    for (const month of [...monthKeys].sort()) {
+      const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir: options.workDir || workRoot, storeCode });
+      if (snapshot) includedMonths.push(month);
+      else missingMonths.push(month);
+    }
+    storeCoverage = { storesIncluded: includedMonths.length ? [storeCode] : [], includedMonths, missingMonths };
+  }
 
   const typeBreakdown = CLIENT_TYPE_ORDER.map((type) => {
     const rows = clients.filter((client) => client.clientType === type);
@@ -2900,6 +2939,8 @@ export async function buildClientsOverview(options = {}) {
   return {
     periodStart: since,
     periodEnd: until,
+    storeCode,
+    storeCoverage,
     summary: {
       totalClients,
       totalPurchaseCount,
@@ -3260,8 +3301,11 @@ function extractClientMatchKey(text) {
 // 어떤 월이 존재하는지만 디렉터리에서 찾고(레거시 "{month}.json"과 신규
 // "{month}.{storeCode}.json" 파일명 둘 다에서 월을 추출), 실제 라인 읽기/병합/storeCode
 // 보존은 전부 그 공용 리더에 위임한다(로직 중복 없음).
-async function loadEcountClientLines() {
-  const dir = join(workRoot, "ecount-sales");
+// STORE-BATCH-D: workDirOverride는 테스트 격리용(생략 시 기존과 동일하게 workRoot 사용) —
+// readEcountOfflineSalesSnapshot/buildCanonicalTotalSales와 같은 패턴.
+async function loadEcountClientLines(workDirOverride) {
+  const effectiveWorkDir = workDirOverride || workRoot;
+  const dir = join(effectiveWorkDir, "ecount-sales");
   const names = await safeReaddir(dir);
   const months = new Set();
   for (const name of names) {
@@ -3270,7 +3314,7 @@ async function loadEcountClientLines() {
   }
   const clients = new Map();
   for (const month of [...months].sort()) {
-    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir: workRoot });
+    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir: effectiveWorkDir });
     if (!snapshot) continue;
     const lines = Array.isArray(snapshot?.salesLines)
       ? snapshot.salesLines
