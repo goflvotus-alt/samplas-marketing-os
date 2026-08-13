@@ -2,6 +2,7 @@ import { mkdir, open, readFile, readdir, stat, unlink } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { importEcountOfflineSalesSnapshot } from "./import-ecount-offline-sales.mjs";
+import { ecountOfflineSalesSnapshotPath } from "./read-ecount-offline-sales-snapshot.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const monthFromFile = (name) => name.match(/^(\d{4})[.-](\d{2})\.xlsx$/i)?.slice(1, 3).join("-") || "";
@@ -42,6 +43,9 @@ export function validateMonthlyArchive(archive) {
   return true;
 }
 
+// STORE-BATCH-B: storeCode(+sourceWarehouseCode/sourceWarehouseName)가 주어지면 매장별
+// 분리 스냅샷 경로/파일로 적재한다 — 없으면(기존 CLI 대량 재적재) 완전히 기존과 동일하게
+// 동작한다(하위 호환, 새 계산 없음).
 export async function refreshMonthlySales(folder, options = {}) {
   const workDir = resolve(options.workDir || join(root, "work"));
   const log = options.log || console.log;
@@ -49,6 +53,9 @@ export async function refreshMonthlySales(folder, options = {}) {
   const importSnapshot = options.importSnapshot || importEcountOfflineSalesSnapshot;
   const buildArchive = options.buildArchive;
   const writeArchive = options.writeArchive;
+  const storeCode = options.storeCode || null;
+  const sourceWarehouseCode = options.sourceWarehouseCode || null;
+  const sourceWarehouseName = options.sourceWarehouseName || null;
   const files = (await readdir(resolve(folder), { withFileTypes: true }))
     .filter((entry) => entry.isFile() && monthFromFile(entry.name))
     .map((entry) => ({ name: entry.name, month: monthFromFile(entry.name) }))
@@ -61,14 +68,15 @@ export async function refreshMonthlySales(folder, options = {}) {
   for (const file of files) {
     const startedAt = Date.now();
     const xlsxPath = join(resolve(folder), file.name);
-    const detected = await monthlySnapshotStatus(xlsxPath, join(workDir, "ecount-sales", `${file.month}.json`));
+    const snapshotPath = ecountOfflineSalesSnapshotPath(file.month, { workDir, storeCode });
+    const detected = await monthlySnapshotStatus(xlsxPath, snapshotPath);
     log(`[${file.month}] ${file.name}\n${detected.status}`);
     if (detected.status === "FRESH") {
       log("Skipped");
       results.push({ month: file.month, status: detected.status, snapshot: "SKIP", archive: "SKIP", reason: detected.reason, duration: Date.now() - startedAt });
       continue;
     }
-    const lockPath = join(workDir, "monthly", `.refresh-lock-${file.month}`);
+    const lockPath = join(workDir, "monthly", `.refresh-lock-${file.month}${storeCode ? `-${storeCode}` : ""}`);
     let lock;
     try {
       lock = await open(lockPath, "wx");
@@ -82,7 +90,7 @@ export async function refreshMonthlySales(folder, options = {}) {
 
     const result = { month: file.month, status: detected.status, snapshot: "FAIL", archive: "SKIP", reason: detected.reason, duration: 0 };
     try {
-      const imported = await importSnapshot(xlsxPath, { workDir });
+      const imported = await importSnapshot(xlsxPath, { workDir, storeCode, sourceWarehouseCode, sourceWarehouseName });
       if (imported?.snapshot?.month !== file.month) throw new Error(`Filename month ${file.month} does not match snapshot month ${imported?.snapshot?.month || "unknown"}`);
       result.snapshot = "PASS";
       log("Snapshot\nPASS");

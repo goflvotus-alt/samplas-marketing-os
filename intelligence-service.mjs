@@ -33,6 +33,10 @@ import {
   cafe24PointsUsedAmount,
   trustedCafe24OrderDate
 } from "./scripts/cafe24-order-amount.mjs";
+// STORE-BATCH-B: loadEcountClientLines()가 work/ecount-sales/를 직접 readdir하던 것을
+// 이 공용 리더로 교체한다 — 매장별 분리 스냅샷을 병합해 기존과 동일한 ALL 라인 집합을
+// 얻는 로직(그리고 storeCode 보존)을 여기서 새로 구현하지 않고 그대로 재사용한다.
+import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 
 const root = resolve(".");
 const env = await loadEnv();
@@ -3251,17 +3255,23 @@ function extractClientMatchKey(text) {
 }
 
 // work/ecount-sales/*.json 전체를 읽어 customerName(거래처명) 문자열 그대로를 client 그룹 키로 사용한다.
+// STORE-BATCH-B: 파일을 직접 파싱하지 않고 readEcountOfflineSalesSnapshot()(매장별 분리
+// 스냅샷 병합 + 레거시 단일 파일 fallback을 이미 처리하는 공용 리더)을 월별로 호출한다 —
+// 어떤 월이 존재하는지만 디렉터리에서 찾고(레거시 "{month}.json"과 신규
+// "{month}.{storeCode}.json" 파일명 둘 다에서 월을 추출), 실제 라인 읽기/병합/storeCode
+// 보존은 전부 그 공용 리더에 위임한다(로직 중복 없음).
 async function loadEcountClientLines() {
   const dir = join(workRoot, "ecount-sales");
-  const names = (await safeReaddir(dir)).filter((name) => /^\d{4}-\d{2}\.json$/.test(name));
-  const clients = new Map();
+  const names = await safeReaddir(dir);
+  const months = new Set();
   for (const name of names) {
-    let snapshot;
-    try {
-      snapshot = JSON.parse(await readFile(join(dir, name), "utf8"));
-    } catch {
-      continue;
-    }
+    const match = name.match(/^(\d{4}-\d{2})(?:\.[A-Z0-9_]+)?\.json$/);
+    if (match) months.add(match[1]);
+  }
+  const clients = new Map();
+  for (const month of [...months].sort()) {
+    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir: workRoot });
+    if (!snapshot) continue;
     const lines = Array.isArray(snapshot?.salesLines)
       ? snapshot.salesLines
       : Array.isArray(snapshot?.rows)

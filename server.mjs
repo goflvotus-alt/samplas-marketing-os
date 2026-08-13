@@ -374,8 +374,11 @@ const server = isMainModule ? createServer(async (req, res) => {
       const since = url.searchParams.get("since");
       const until = url.searchParams.get("until");
       if (!since || !until) return json(res, { error: "since and until are required" }, 400);
+      // STORE-BATCH-B Part 8/9: store 쿼리가 없으면(기존 기본값) 이전과 완전히 동일한
+      // ALL 결과를 낸다 — 하위 호환.
+      const storeCode = url.searchParams.get("store") || undefined;
       try {
-        const data = await buildCanonicalTotalSales({ since, until });
+        const data = await buildCanonicalTotalSales({ since, until, storeCode });
         return json(res, data);
       } catch (error) {
         const message = safeErrorMessage(error);
@@ -452,9 +455,12 @@ const server = isMainModule ? createServer(async (req, res) => {
       if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
       const month = url.searchParams.get("month");
       if (!month) return json(res, { error: "Month is required" }, 400);
+      // STORE-BATCH-B: store 쿼리가 없으면(기존 동작 그대로) 매장별 스냅샷을 합친 ALL
+      // 뷰를 반환한다 — 새 계산 없이 readEcountOfflineSalesSnapshot()이 이미 병합해 준다.
+      const storeCode = url.searchParams.get("store") || undefined;
       try {
-        const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
-        if (!snapshot) return json(res, { error: "ECOUNT offline sales snapshot not found", month }, 404);
+        const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir, storeCode });
+        if (!snapshot) return json(res, { error: "ECOUNT offline sales snapshot not found", month, storeCode: storeCode || null }, 404);
         return json(res, snapshot);
       } catch (error) {
         const message = safeErrorMessage(error);
@@ -1446,7 +1452,24 @@ async function readJsonBody(req) {
 // 전송 방식은 multipart 대신 원본 바이트를 그대로 body로 받고 파일명은 헤더로 받는
 // 방식(기존 서버 구조와 가장 단순하게 맞음, 새 파서/의존성 불필요).
 const ECOUNT_UPLOAD_MAX_BYTES = 30 * 1024 * 1024;
+const storeMasterFile = () => join(workDir, "store-master.json");
 
+// STORE-BATCH-B: SAMPLAS Store Master v1을 읽기만 한다(쓰지 않음) — brand-master.json과
+// 동일한 로컬 파일 로딩 패턴. 매장 목록이 바뀌면 work/store-master.json만 갱신하면 된다.
+async function loadStoreMaster() {
+  try {
+    const parsed = JSON.parse(await readFile(storeMasterFile(), "utf8"));
+    return Array.isArray(parsed?.stores) ? parsed.stores : [];
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+// STORE-BATCH-B: 업로드 슬롯(storeCode)이 store identity를 부여한다 — Excel 내용에서
+// 매장명을 추측하지 않는다. X-Ecount-Store-Code 헤더가 Store Master의 실제 storeCode와
+// 일치할 때만 그 매장의 source.warehouseCode/warehouseName(사용자 확인값)을 스냅샷에
+// 그대로 보존한다.
 async function importEcountOfflineSalesUpload(req) {
   const rawName = req.headers["x-ecount-file-name"];
   let fileName = "";
@@ -1457,6 +1480,18 @@ async function importEcountOfflineSalesUpload(req) {
   }
   if (!fileName) throw Object.assign(new Error("파일명이 필요합니다 (X-Ecount-File-Name 헤더)."), { status: 400 });
   if (!/\.xlsx$/i.test(fileName)) throw Object.assign(new Error("XLSX 파일만 업로드할 수 있습니다."), { status: 400 });
+
+  const rawStoreCode = req.headers["x-ecount-store-code"];
+  let storeCode = "";
+  try {
+    storeCode = rawStoreCode ? decodeURIComponent(String(rawStoreCode)) : "";
+  } catch {
+    throw Object.assign(new Error("매장 코드를 읽을 수 없습니다."), { status: 400 });
+  }
+  if (!storeCode) throw Object.assign(new Error("매장 코드가 필요합니다 (X-Ecount-Store-Code 헤더)."), { status: 400 });
+  const stores = await loadStoreMaster();
+  const store = stores.find((item) => item.storeCode === storeCode);
+  if (!store) throw Object.assign(new Error(`알 수 없는 매장 코드입니다: ${storeCode}`), { status: 400 });
 
   const chunks = [];
   let receivedBytes = 0;
@@ -1478,7 +1513,10 @@ async function importEcountOfflineSalesUpload(req) {
     const results = await refreshMonthlySales(tempDir, {
       workDir,
       buildArchive: buildMonthlyArchive,
-      writeArchive: writeMonthlyArchive
+      writeArchive: writeMonthlyArchive,
+      storeCode: store.storeCode,
+      sourceWarehouseCode: store.source?.warehouseCode || null,
+      sourceWarehouseName: store.source?.warehouseName || null
     });
     const result = results[0];
     if (!result) {
@@ -1490,9 +1528,11 @@ async function importEcountOfflineSalesUpload(req) {
     if (result.snapshot === "FAIL" || result.archive === "FAIL") {
       throw Object.assign(new Error(result.reason || "XLSX 처리에 실패했습니다."), { status: 400 });
     }
-    const snapshot = await readEcountOfflineSalesSnapshot(result.month, { workDir });
+    const snapshot = await readEcountOfflineSalesSnapshot(result.month, { workDir, storeCode: store.storeCode });
     return {
       month: result.month,
+      storeCode: store.storeCode,
+      storeDisplayName: store.displayName || store.storeCode,
       snapshotStatus: result.snapshot,
       archiveStatus: result.archive,
       reason: result.reason || null,
@@ -3731,12 +3771,18 @@ function monthRequestBounds(month, since, until) {
   };
 }
 
-export async function buildCanonicalTotalSales({ since: sinceValue, until: untilValue } = {}) {
+// STORE-BATCH-B Part 8/9: storeCode는 offline 라인만 필터링한다 — online은 store 개념이
+// 없으므로(절대 원칙: 온라인 매출을 특정 오프라인 매장에 강제 귀속시키지 않음) storeCode가
+// 있어도 항상 회사 전체 온라인 합계 그대로다. storeCode가 없으면(기존 기본 동작) 전과
+// 완전히 동일한 ALL 결과를 낸다 — 새 계산식이 아니라 기존 필터 조건에 store 조건 하나만
+// 추가로 걸 뿐이다.
+export async function buildCanonicalTotalSales({ since: sinceValue, until: untilValue, storeCode: storeCodeValue } = {}) {
   const since = assertInstagramRangeDate(sinceValue, "since");
   const until = assertInstagramRangeDate(untilValue, "until");
   if (since > until) {
     throw new Error("since must be before or equal to until");
   }
+  const storeCode = storeCodeValue && storeCodeValue !== "ALL" ? String(storeCodeValue) : null;
 
   const onlineSource = await buildBrandSalesDiagnostics(since, until);
   const onlinePaidAmount = finiteNumberOrZero(onlineSource?.totals?.paidAmount);
@@ -3761,7 +3807,12 @@ export async function buildCanonicalTotalSales({ since: sinceValue, until: until
     for (const line of lines) {
       const date = String(line?.date || "");
       const salesAmount = Number(line?.salesAmount);
-      if (line?.isOfflineRevenue === true && Number.isFinite(salesAmount) && date >= since && date <= until) {
+      if (
+        line?.isOfflineRevenue === true
+        && Number.isFinite(salesAmount)
+        && date >= since && date <= until
+        && (!storeCode || line?.storeCode === storeCode)
+      ) {
         offlineSalesAmount += salesAmount;
       }
     }
@@ -3771,6 +3822,7 @@ export async function buildCanonicalTotalSales({ since: sinceValue, until: until
   return {
     periodStart: since,
     periodEnd: until,
+    storeCode,
     onlineSales: {
       paidAmount: onlinePaidAmount
     },

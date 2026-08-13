@@ -1,0 +1,26 @@
+{
+  "version": "v1",
+  "note": "SAMPLAS Store Master v1 (STORE-BATCH-B). ECOUNT 판매현황에는 매출행 단위 창고 필드가 없다 — 대신 조회 시점에 창고를 선택해 매장별로 별도 Excel을 내려받는다(STORE-BATCH-A). storeCode는 Marketing OS 표시용 canonical key이고, source.warehouseCode/warehouseName은 ECOUNT 판매현황 검색조건의 실제 값(사용자 확인, 2026-08-13)을 그대로 보존한다 — 추측하지 않는다.",
+  "stores": [
+    {
+      "storeCode": "APGUJEONG",
+      "displayName": "압구정 매장",
+      "type": "physical",
+      "source": {
+        "system": "ECOUNT",
+        "warehouseCode": "100",
+        "warehouseName": "매장"
+      }
+    },
+    {
+      "storeCode": "VAIL",
+      "displayName": "SAMPLAS VAIL",
+      "type": "physical",
+      "source": {
+        "system": "ECOUNT",
+        "warehouseCode": "200",
+        "warehouseName": "SAMPLAS Veil"
+      }
+    }
+  ]
+}
