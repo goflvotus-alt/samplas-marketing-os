@@ -3960,9 +3960,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   });
 
   const commerce = archive.commerce || {};
-  const content = archive.content || {};
   const previousCommerce = previousArchive.error ? {} : previousArchive.commerce || {};
-  const previousContent = previousArchive.error ? {} : previousArchive.content || {};
   const previousBrandSales = previousArchive.error ? [] : previousCommerce.brandSales || [];
   const monthlyBrandTrendRows = trendMonths.map((item, index) => {
     const result = trendArchiveResults[index];
@@ -3982,9 +3980,6 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     .filter((item) => !isExcludedBrandPerformance(item))
     .sort((left, right) => brandPerformanceOnlinePaidAmount(right) - brandPerformanceOnlinePaidAmount(left));
   const canonicalProductSales = [...productSales].sort((left, right) => canonicalPaidAmount(right) - canonicalPaidAmount(left));
-  const formatMix = content.formatMix || [];
-  const topContent = content.topContent || [];
-  const aboveAverageSaveRatePosts = content.aboveAverageSaveRatePosts || [];
   const archiveStatusLabel = {
     live: "Live Draft",
     saved: "Saved Archive",
@@ -4015,14 +4010,12 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const paymentTotal = Number(commerce.paidAmount || 0);
   const hasMonthlySummaryPrevious = months.includes(previousMonth) && !previousArchive.error;
   const summaryPreviousCommerce = hasMonthlySummaryPrevious ? previousCommerce : {};
-  const summaryPreviousContent = hasMonthlySummaryPrevious ? previousContent : {};
-  // MONTHLY-RESTRUCTURE: "광고비는..." 문장을 제거한다(광고 정보는 Content Intelligence로
-  // 이관). archive.marketing 필드 자체와 계산 로직은 그대로 두고(서버/API 변경 없음),
+  // MONTHLY-RESTRUCTURE: 광고("광고비는...")에 이어 콘텐츠("콘텐츠 조회는...", 팔로워 변화)
+  // 문장도 제거한다 — Content/Advertising 상세는 앞으로 Content Intelligence가 책임진다.
+  // archive.content/marketing 필드 자체와 계산 로직은 그대로 두고(서버/API 변경 없음),
   // Monthly의 요약 문장 렌더링에서만 제외한다.
   const monthlySummary = [
-    monthlyReportDirectionText("온라인 실제 매출은", commerce.paidAmount, summaryPreviousCommerce.paidAmount, { formatter: apiWon }),
-    monthlyReportDirectionText("콘텐츠 조회는", content.totalViews, summaryPreviousContent.totalViews),
-    monthlyReportFollowerDirectionText(content.followerDelta, summaryPreviousContent.followerDelta)
+    monthlyReportDirectionText("온라인 실제 매출은", commerce.paidAmount, summaryPreviousCommerce.paidAmount, { formatter: apiWon })
   ].join(". ");
   const liveDraftNotice = archive.archiveStatus === "live"
     ? "현재 화면은 Live Draft 기준입니다."
@@ -4079,9 +4072,9 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     ? missionResult.missions.slice(0, 3)
     : [];
   const missionSummaryBlock = `
-    <section id="monthly-report-ch4" class="monthly-report-chapter">
+    <section id="monthly-report-ch3" class="monthly-report-chapter">
       <div class="monthly-report-chapter-head">
-        <span>04</span>
+        <span>03</span>
         <div><p class="eyebrow">Monthly Intelligence</p><h3>다음 달 우선순위 Mission</h3></div>
       </div>
       <section class="monthly-report-block">
@@ -4119,8 +4112,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     <nav class="monthly-report-toc" aria-label="Monthly report chapters">
       <a href="#monthly-report-ch1">01 Summary</a>
       <a href="#monthly-report-ch2">02 Commerce</a>
-      <a href="#monthly-report-ch3">03 Content</a>
-      <a href="#monthly-report-ch4">04 Monthly Intelligence</a>
+      <a href="#monthly-report-ch3">03 Monthly Intelligence</a>
     </nav>
 
     <section id="monthly-report-ch1" class="monthly-report-chapter">
@@ -4130,18 +4122,9 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       </div>
       ${salesSummaryBlock}
       ${brandSignalsBlock}
-      <section class="monthly-report-block">
-        <div class="monthly-report-block-head"><h4>콘텐츠 핵심 성과</h4><span>이번 달 vs 전월</span></div>
-        <div class="monthly-report-strip">
-          <div><span>조회수</span><strong>${apiNum(content.totalViews)}</strong><em>${esc(monthlyReportDelta(content.totalViews, previousContent.totalViews, apiNum))}</em></div>
-          <div><span>저장</span><strong>${apiNum(content.totalSaves)}</strong><em>${esc(monthlyReportDelta(content.totalSaves, previousContent.totalSaves, apiNum))}</em></div>
-          <div><span>좋아요</span><strong>${apiNum(content.totalLikes)}</strong></div>
-          <div><span>팔로워 변화</span><strong>${hasApiValue(content.followerDelta) ? `${Number(content.followerDelta) > 0 ? "+" : ""}${apiNum(content.followerDelta)}명` : "-"}</strong></div>
-        </div>
-      </section>
       ${missionRows.length ? `
       <section class="monthly-report-block">
-        <div class="monthly-report-block-head"><h4>이번 달 주요 Intelligence</h4><span><a href="#monthly-report-ch4">04 Monthly Intelligence 전체 보기</a></span></div>
+        <div class="monthly-report-block-head"><h4>이번 달 주요 Intelligence</h4><span><a href="#monthly-report-ch3">03 Monthly Intelligence 전체 보기</a></span></div>
         <p class="monthly-report-fnote">${esc(missionRows.length)}건의 Mission · 최우선 "${esc(missionRows[0]?.title || "Mission")}"</p>
       </section>
       ` : ""}
@@ -4205,82 +4188,6 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       </section>
     </section>
 
-    <section id="monthly-report-ch3" class="monthly-report-chapter">
-      <div class="monthly-report-chapter-head">
-        <span>03</span>
-        <div><p class="eyebrow">Content</p><h3>월간 콘텐츠 스냅샷</h3></div>
-      </div>
-      <div class="monthly-report-hero">
-        <div class="monthly-report-hero-main">
-          <span>조회수</span>
-          <strong>${apiNum(content.totalViews)}</strong>
-          <em>${esc(monthlyReportDelta(content.totalViews, previousContent.totalViews, apiNum))}</em>
-        </div>
-        <div class="monthly-report-hero-main">
-          <span>저장</span>
-          <strong>${apiNum(content.totalSaves)}</strong>
-          <em>${esc(monthlyReportDelta(content.totalSaves, previousContent.totalSaves, apiNum))}</em>
-        </div>
-        <div class="monthly-report-side">
-          <div class="monthly-report-side-row"><span>콘텐츠 수</span><strong>${apiNum(content.postCount)}</strong></div>
-          <div class="monthly-report-side-row"><span>좋아요</span><strong>${apiNum(content.totalLikes)}</strong></div>
-          <div class="monthly-report-side-row"><span>공유</span><strong>${apiNum(content.totalShares)}</strong></div>
-          <div class="monthly-report-side-row monthly-report-muted"><span>팔로워 변화</span><strong>${hasApiValue(content.followerDelta) ? `${Number(content.followerDelta) > 0 ? "+" : ""}${apiNum(content.followerDelta)}명` : "-"}</strong><em>${esc(monthlyReportDelta(content.followerDelta, previousContent.followerDelta, (value) => `${apiNum(value)}명`, { noPercent: true }))}</em></div>
-        </div>
-      </div>
-      <p class="monthly-report-fnote">팔로워 변화는 월말 확정 증감이 아니라 조회 시점 스냅샷 기준입니다.</p>
-      <section class="monthly-report-block">
-        <div class="monthly-report-block-head"><h4>Format Mix</h4><span>archive percentage 기준</span></div>
-        <div class="monthly-report-fmix">
-          ${formatMix.length ? formatMix.map((item) => {
-            const width = monthlyReportRatio(item.percentage, 100);
-            return `<article class="monthly-report-fmix-row">
-              <div>
-                <strong>${esc(item.type || "-")}</strong>
-                <span>${apiNum(item.count)}개 · ${hasApiValue(item.percentage) ? pct(item.percentage) : "-"} · Reach ${apiNum(item.reach)} · 저장 ${apiNum(item.saves)} · 공유 ${apiNum(item.shares)} · 저장률 ${hasApiValue(item.avgSaveRate) ? pct(item.avgSaveRate) : "-"}</span>
-              </div>
-              <div><i style="width:${width}%"></i></div>
-            </article>`;
-          }).join("") : `<div class="monthly-report-fmix-row monthly-report-muted"><strong>데이터 없음</strong><span>저장된 Format Mix가 없습니다.</span></div>`}
-        </div>
-      </section>
-      <div class="monthly-report-grid2">
-        <section class="monthly-report-block">
-          <div class="monthly-report-block-head">
-            <h4>조회 상위 콘텐츠</h4>
-            <span>views</span>
-          </div>
-          <div class="monthly-report-rank">
-            ${monthlyReportRankRows(topContent.slice(0, 3), {
-              withBar: true,
-              valueFn: (item) => item.views,
-              labelFn: (item) => item.title || item.caption || "-",
-              subFn: (item) => item.date || item.type || "",
-              formatValue: (value) => apiNum(value)
-            })}
-          </div>
-        </section>
-        <section class="monthly-report-block">
-          <div class="monthly-report-block-head">
-            <h4>평균 저장률 상회</h4>
-            <span>saves / reach</span>
-          </div>
-          <div class="monthly-report-rank">
-            ${monthlyReportRankRows(aboveAverageSaveRatePosts.slice(0, 3), {
-              withBar: false,
-              valueFn: (item) => item.saves,
-              labelFn: (item) => item.title || item.caption || "-",
-              subFn: (item) => `저장 ${apiNum(item.saves)} · Reach ${apiNum(item.reach || item.views)}`,
-              formatValue: () => ""
-            })}
-          </div>
-        </section>
-      </div>
-      <div class="monthly-report-drill">
-        <span>Content ▸ Editorial AI</span>
-        <button class="today-jump-button" type="button" data-jump-view="Editorial AI">Editorial AI 분석</button>
-      </div>
-    </section>
     ${missionSummaryBlock}
   `;
 }
