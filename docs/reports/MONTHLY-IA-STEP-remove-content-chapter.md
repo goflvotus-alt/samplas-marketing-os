@@ -118,11 +118,11 @@ All figures identical — confirmed live in Chrome by re-loading `#monthly-repor
 
 ## COMMITS
 
-(recorded after commit — see follow-up doc-fix)
+`358f4f7 refactor(monthly): remove Content chapter, finalize IA to Summary/Commerce/Monthly Intelligence` — staged only the exact 4 files for this batch, no `git add .`/`git add -A`. Pre-existing untracked BI-BATCH docs left untouched.
 
 ## FINAL HEAD
 
-(recorded after commit — see follow-up doc-fix)
+`358f4f7` (parent: `cfea02f`)
 
 ## PUSH: NONE
 ## DEPLOY: NONE
