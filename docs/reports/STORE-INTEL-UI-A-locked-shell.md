@@ -98,11 +98,11 @@ No changes to `server.mjs`, `intelligence-service.mjs`, or any file under `work/
 
 ## COMMITS
 
-Pending — see final message for the hash after commit.
+`cdf4605 feat(store-intelligence): add locked apgujeong and vail ui shells` — staged only the exact 5 STORE-INTEL-UI-A files, no `git add .`/`git add -A`. Pre-existing untracked BI-BATCH docs left untouched.
 
 ## FINAL HEAD
 
-To be confirmed after commit.
+`cdf4605` (parent: `55aa5f6`)
 
 ## PUSH: NONE
 ## DEPLOY: NONE
