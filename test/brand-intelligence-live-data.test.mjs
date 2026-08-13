@@ -16,10 +16,11 @@ test("Brand Intelligence uses canonical product names and live ECOUNT inventory"
   assert.doesNotMatch(html, /data-entity-hero-tooltip="stock"[\s\S]{0,220}SOURCE NOT AVAILABLE/);
   assert.match(html, /BLOCKED · 공식 산식 필요/);
   assert.doesNotMatch(html, /id="entityCompareToggle"[^>]+(?:disabled|aria-disabled)/);
-  assert.match(html, /공식 상품군 source가 확정되기 전에는 임의 분류를 표시하지 않습니다/);
+  // BI-BATCH-I: Category Intelligence는 더 이상 영구 BLOCKED가 아니다(SAMPLAS Category
+  // Master v1) — 브랜드 미선택 상태의 empty 문구만 확인한다.
+  assert.match(html, /브랜드를 선택하면 상품군 데이터를 확인할 수 있습니다/);
   assert.match(js, /getSharedJson\("\/api\/intelligence\/product-registry"/);
   assert.match(js, /const brandSelectorRecentNames = \[\];/);
-  assert.match(js, /const entityCategoryDrawerRows = \[\];/);
   assert.match(js, /const entitySkuRows = \[\];/);
   assert.match(js, /const entityOrderRows = \[\];/);
   assert.match(js, /const entityClientRecentPurchases = \[\];/);

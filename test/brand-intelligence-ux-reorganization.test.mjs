@@ -106,21 +106,21 @@ test("06 INTELLIGENCE: AI Summary sentences are joined with a newline and render
   assert.match(css, /#entityHeroAiSummary\s*\{[^}]*white-space:\s*pre-line;/);
 });
 
-test("07 FUTURE/BLOCKED: Category's donut+TOP list and AI Insight card are compacted via CSS only (no JS/data change) — empty and compare-top stay visible", () => {
-  assert.match(css, /\.brand-category-section \.brand-category-grid,\s*\n\.brand-category-section \.brand-customer-insight-card \{\s*\n\s*display: none;/);
-  // Regression guard: renderEntityCategorySection's permanent-blocked branch is untouched.
-  assert.match(js, /const entityCategoryRows = \[\];/);
-});
+// BI-BATCH-I superseded BATCH-H's Category compacting: Category Intelligence gained a real
+// source (SAMPLAS Category Master v1) and is no longer permanently blocked, so the CSS-only
+// hide and the "always both empty+content visible" guard no longer apply — see
+// test/brand-intelligence-category-master.test.mjs for the new real-data coverage.
 
-test("07 FUTURE/BLOCKED: static status list names all four permanently-blocked features with no conditional logic", () => {
+test("BI-BATCH-I: FUTURE/BLOCKED status list now names only Sell-through (Category/Score/Grade/Action all shipped v1 definitions)", () => {
   const sectionStart = html.indexOf('id="entityFutureBlockedStatus"');
   assert.notEqual(sectionStart, -1);
-  const region = html.slice(sectionStart, sectionStart + 1400);
-  ["Category Intelligence", "Brand Score", "Sell-through", "추천 Action"].forEach((label) => {
-    assert.match(region, new RegExp(label));
-  });
-  const blockedCount = (region.match(/BLOCKED/g) || []).length;
-  assert.equal(blockedCount, 4);
+  const region = html.slice(sectionStart, html.indexOf("</div>\n\n        <div class=\"section-block brand-category-section\">", sectionStart));
+  assert.match(region, /Sell-through/);
+  assert.doesNotMatch(region, /Category Intelligence/);
+  assert.doesNotMatch(region, /Brand Score/);
+  assert.doesNotMatch(region, /추천 Action/);
+  const blockedCount = (region.match(/BLOCKED|DEFERRED/g) || []).length;
+  assert.equal(blockedCount, 1);
 });
 
 test("Score block split: #entityHeroScoreBlock is a standalone hidden panel toggled by renderEntityHeroState() the same way #entityHeroContent is", () => {
@@ -139,10 +139,10 @@ test("02 TREND: Monthly Trend chart card gets a wider grid ratio; entityTrendCha
   assert.match(fnRegion, /viewBox="0 0 \$\{width\} \$\{height\}"/, "chart SVG viewBox template must be unchanged (no JS/SVG edits, CSS-only widening)");
 });
 
-// Regression guards: this batch is UX reorganization only — it must not have invented or
-// changed any canonical formula (Category/Score/Sell-through/Action all remain honestly
-// blocked, and core sales/customer/SKU join logic is untouched).
-test("no canonical formulas were invented this batch (Category/Score/Sell-through/Action remain honestly blocked)", () => {
-  assert.match(js, /공식 Health Score 산식이 연결되기 전까지 점수를 표시하지 않습니다/);
-  assert.match(js, /Sell-through 산식과 Action threshold가 확정되기 전에는 행동을 자동 추천하지 않습니다/);
+// Regression guard (BI-BATCH-H scope): core sales/customer/SKU join semantics were not
+// touched by the UX reorganization itself. BI-BATCH-I later approved and implemented
+// Category/Score/Grade/Action v1 definitions — see docs/BRAND_INTELLIGENCE_RULES.md.
+test("canonical sales/customer/SKU join semantics are untouched by the UX reorganization", () => {
+  assert.match(js, /function canonicalPaidAmount\(/);
+  assert.match(js, /function entitySkuStockFor\(/);
 });

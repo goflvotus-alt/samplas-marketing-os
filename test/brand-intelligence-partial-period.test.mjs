@@ -40,7 +40,22 @@ function makeFakeDom() {
 // pulls in renderEntityHeroInsight needs both as free variables — default them to "not
 // ready" / no brand so the new sentence is a no-op unless a test explicitly opts in, keeping
 // every pre-existing assertion in this file valid.
-const HERO_INSIGHT_STATE_STUB = "let entityHeroInventoryState = { brandCode: null, ready: false, stock: null, fetchFailed: false }; let brandIdentityState = { brandCode: null };";
+// BI-BATCH-I: renderEntityHeroInsight() now also reads entityScoreState (Brand Operating
+// Score v1, async — defaults to "idle" here so none of its sentences fire unless a test
+// explicitly opts in), entityCompositionTypeStats/entitySkuRows/entityCategoryRows/
+// entityCategoryCoverage (all default empty/null — same no-op-unless-opted-in principle).
+const HERO_INSIGHT_STATE_STUB = [
+  "let entityHeroInventoryState = { brandCode: null, ready: false, stock: null, fetchFailed: false };",
+  "let brandIdentityState = { brandCode: null };",
+  "let entityInventoryItemsState = { brandCode: null, brandKey: null, items: [], fetchFailed: false, ready: false };",
+  "let entityScoreState = { status: 'idle', brandCode: null, periodKey: null };",
+  "let entityCompositionTypeStats = {};",
+  "let entityCompositionTypeLabel = { stylist: '스타일리스트' };",
+  "let entityCompositionMode = 'count';",
+  "let entitySkuRows = [];",
+  "let entityCategoryRows = [];",
+  "let entityCategoryCoverage = null;"
+].join("\n");
 
 const HERO_SOURCE = [
   "const nf = new Intl.NumberFormat(\"ko-KR\");",
@@ -51,6 +66,8 @@ const HERO_SOURCE = [
   sourceOfFunction("esc"),
   sourceOfFunction("entityIsLiveMonthRow"),
   sourceOfFunction("entityTrendMoMPct"),
+  sourceOfFunction("entityCompositionRatiosForStats"),
+  sourceOfFunction("entityRecommendedActionListHtml"),
   sourceOfFunction("renderEntityHeroChannelSplit"),
   sourceOfFunction("renderEntityHeroSku"),
   sourceOfFunction("renderEntityHeroInsight"),
@@ -132,8 +149,11 @@ test("3. AI SUMMARY LIVE MONTH — no completed-period decline/ranking claims", 
     sourceOfFunction("hasApiValue"),
     sourceOfFunction("apiNum"),
     sourceOfFunction("apiWon"),
+    sourceOfFunction("esc"),
     sourceOfFunction("entityIsLiveMonthRow"),
     sourceOfFunction("entityTrendMoMPct"),
+    sourceOfFunction("entityCompositionRatiosForStats"),
+    sourceOfFunction("entityRecommendedActionListHtml"),
     sourceOfFunction("renderEntityHeroInsight")
   ].join("\n\n");
   const { $, nodes } = makeFakeDom();
@@ -231,8 +251,11 @@ test("12. WORDING SAFETY — no unsupported completed-period claims for a live t
     sourceOfFunction("hasApiValue"),
     sourceOfFunction("apiNum"),
     sourceOfFunction("apiWon"),
+    sourceOfFunction("esc"),
     sourceOfFunction("entityIsLiveMonthRow"),
     sourceOfFunction("entityTrendMoMPct"),
+    sourceOfFunction("entityCompositionRatiosForStats"),
+    sourceOfFunction("entityRecommendedActionListHtml"),
     sourceOfFunction("renderEntityHeroInsight")
   ].join("\n\n");
   const { $, nodes } = makeFakeDom();

@@ -164,17 +164,37 @@ test("3/4. clientWorkspaceBodyHtml renders real Brand-section totals and Recent 
     sourceOfFunction("entityClientPurchaseLinesFor"),
     sourceOfFunction("entityClientPurchaseStateHtml"),
     sourceOfFunction("clientWorkspaceOrderRowHtml"),
+    // BI-BATCH-I: clientWorkspaceBodyHtml now also renders Customer Contribution Grade v1
+    // and real Category breakdown — pull in their real source too (no reimplementation).
+    sourceOfFunction("entityCustomerContributionGrade"),
+    sourceOfFunction("matchCategoryByNameKeywords"),
+    sourceOfFunction("categoryKeywordPattern"),
+    sourceOfFunction("clientWorkspaceCategoryHtml"),
     sourceOfFunction("clientWorkspaceBodyHtml")
   ].join("\n\n");
   const entityCompositionColors = { stylist: "#000" };
   const entityCompositionTypeLabel = { stylist: "스타일리스트" };
+  const CATEGORY_NAME_KEYWORD_RULES = [
+    ["TOP", ["t-shirt", "tee", "shirt", "blouse", "knit", "sweater", "cardigan", "hoodie", "sweatshirt", "jersey top", "tank top"]],
+    ["BOTTOM", ["pants", "trousers", "jeans", "denim pants", "shorts", "skirt", "slacks"]],
+    ["OUTER", ["jacket", "coat", "blazer", "vest", "parka", "bomber", "outer"]],
+    ["DRESS", ["dress", "one-piece"]],
+    ["BAG", ["bag", "backpack", "tote", "shopper", "pouch"]],
+    ["FOOTWEAR", ["boots", "boot", "shoe", "shoes", "sneaker", "sneakers", "mule", "sandal", "sandals", "loafer"]],
+    ["HEADWEAR", ["cap", "hat", "beanie", "headwear"]],
+    ["JEWELRY", ["necklace", "ring", "earring", "earrings", "bracelet", "bangle", "chain jewelry", "pendant"]],
+    ["ACCESSORY", ["belt", "wallet", "keyring", "key chain", "scarf", "tie", "gloves", "sunglasses", "eyewear", "socks", "accessory"]]
+  ];
+  const CATEGORY_MASTER_V1_NAME_BY_CODE = new Map([["UNCLASSIFIED", "미분류"], ["OUTER", "아우터"]]);
   const html = Function(
     "entityClientsOverviewData", "entityClientsOverviewFetchFailed", "brandIdentityState",
     "entityCompositionColors", "entityCompositionTypeLabel", "entityCompareBrandA",
+    "entityCompositionRows", "CATEGORY_NAME_KEYWORD_RULES", "CATEGORY_MASTER_V1_NAME_BY_CODE",
     `${source}; return clientWorkspaceBodyHtml;`
   )(
     { clients: [clientGroup()] }, false, { brandCode: CARNET_CODE },
-    entityCompositionColors, entityCompositionTypeLabel, () => "CARNET ARCHIVE"
+    entityCompositionColors, entityCompositionTypeLabel, () => "CARNET ARCHIVE",
+    [{ name: "이종현 실장님", sales: 1000000, count: 10 }], CATEGORY_NAME_KEYWORD_RULES, CATEGORY_MASTER_V1_NAME_BY_CODE
   )({ name: "이종현 실장님", type: "stylist", count: 10, sales: 1000000, lastPurchase: "2026-08-10" });
 
   assert.doesNotMatch(html, /고객별 브랜드 구매 데이터 연결 대기/, "old static placeholder text must be gone");
@@ -232,6 +252,11 @@ test("10. refreshEntityTrendMonths closes the Client Workspace and clientOrders 
 // pattern — confirms it reuses getSharedJson/intelligenceUrl/monthlyReportMonthRange exactly
 // as every other Brand Intelligence secondary fetch already does (no new architecture).
 test("fetch architecture reuses getSharedJson + intelligenceUrl + monthlyReportMonthRange (no new fetch pattern)", () => {
-  assert.match(js, /getSharedJson\(intelligenceUrl\(`\/api\/intelligence\/clients\?since=\$\{monthStart\}&until=\$\{monthEnd\}`\), 15000\)/);
+  // BI-BATCH-I Part 8: this fetch now retries once on timeout (getSharedJson(url, 30000)),
+  // mirroring getEntityCompareMonthlyArchive's established pattern — still the same
+  // getSharedJson/intelligenceUrl/monthlyReportMonthRange primitives, no new architecture.
+  assert.match(js, /const url = intelligenceUrl\(`\/api\/intelligence\/clients\?since=\$\{monthStart\}&until=\$\{monthEnd\}`\);/);
+  assert.match(js, /let data = await getSharedJson\(url, 15000\);/);
+  assert.match(js, /data = await getSharedJson\(url, 30000\);/);
   assert.match(js, /const \{ monthStart, monthEnd \} = monthlyReportMonthRange\(month\);/);
 });

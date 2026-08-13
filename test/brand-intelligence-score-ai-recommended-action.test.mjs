@@ -49,17 +49,42 @@ const INSIGHT_SOURCE = [
   sourceOfFunction("hasApiValue"),
   sourceOfFunction("apiNum"),
   sourceOfFunction("apiWon"),
+  sourceOfFunction("esc"),
   sourceOfFunction("entityIsLiveMonthRow"),
   sourceOfFunction("entityTrendMoMPct"),
+  sourceOfFunction("entityCompositionRatiosForStats"),
+  sourceOfFunction("entityRecommendedActionListHtml"),
   sourceOfFunction("renderEntityHeroInsight")
 ].join("\n\n");
 
-function renderInsight(row, index, entityTrendMonths, entityHeroInventoryState, brandIdentityState) {
+// BI-BATCH-I: renderEntityHeroInsight() now also reads entityScoreState/
+// entityCompositionTypeStats/entitySkuRows/entityCategoryRows/entityCategoryCoverage/
+// entityInventoryItemsState — all default to "not available" here so none of AI Summary
+// v2's new sentences or Recommended Action v1's rules fire unless a test opts in
+// (keeps every pre-existing BI-BATCH-D assertion valid).
+function renderInsight(row, index, entityTrendMonths, entityHeroInventoryState, brandIdentityState, overrides = {}) {
   const { $, nodes } = makeFakeDom();
+  const defaults = {
+    entityScoreState: { status: "idle", brandCode: null, periodKey: null },
+    entityCompositionTypeStats: {},
+    entityCompositionTypeLabel: { stylist: "스타일리스트" },
+    entityCompositionMode: "count",
+    entitySkuRows: [],
+    entityCategoryRows: [],
+    entityCategoryCoverage: null,
+    entityInventoryItemsState: { brandCode: null, brandKey: null, items: [], fetchFailed: false, ready: false }
+  };
+  const state = { ...defaults, ...overrides };
   const fn = Function(
     "$", "entityTrendMonths", "entityHeroInventoryState", "brandIdentityState",
+    "entityScoreState", "entityCompositionTypeStats", "entityCompositionTypeLabel", "entityCompositionMode",
+    "entitySkuRows", "entityCategoryRows", "entityCategoryCoverage", "entityInventoryItemsState",
     `${INSIGHT_SOURCE}; return renderEntityHeroInsight;`
-  )($, entityTrendMonths, entityHeroInventoryState, brandIdentityState);
+  )(
+    $, entityTrendMonths, entityHeroInventoryState, brandIdentityState,
+    state.entityScoreState, state.entityCompositionTypeStats, state.entityCompositionTypeLabel, state.entityCompositionMode,
+    state.entitySkuRows, state.entityCategoryRows, state.entityCategoryCoverage, state.entityInventoryItemsState
+  );
   fn(row, index);
   return {
     summary: nodes.get("entityHeroAiSummary").textContent,
@@ -123,25 +148,81 @@ test("stock sentence is omitted when entityHeroInventoryState belongs to a diffe
   assert.doesNotMatch(summary, /현재 재고는/, "a stock value resolved for a previously-selected brand must not appear under the newly-selected brand");
 });
 
-// 8/9. AI Summary never interprets missing Category/Sell-through as a performance judgment —
-// in fact it must never mention them at all (they are out of this function's real inputs).
-test("8/9. AI Summary never mentions Category or Sell-through in any state", () => {
+// BI-BATCH-I Part 6: AI Summary v2 is explicitly allowed (and required) to disclose Sell-
+// through's deferred status with the exact approved sentence, and to mention a Category
+// leader once coverage is adequate (entityCategoryCoverage.coveragePct >= 50) — but must
+// never mention Sell-through any other way, and must never mention Category when coverage
+// is inadequate or entityCategoryRows is empty.
+test("8/9. AI Summary discloses Sell-through only via the exact approved deferred sentence, and never guesses at a Category leader without adequate coverage", () => {
   const cases = [
     renderInsight(carnetRow(), 0, [carnetRow()], IDLE_INVENTORY, { brandCode: BRAND }),
     renderInsight(carnetRow({ fetchFailed: true, revenue: null, quantitySold: null, orderCount: null, online: null, offline: null, skuCount: 0 }), 0, [carnetRow()], IDLE_INVENTORY, { brandCode: BRAND }),
     renderInsight(null, 0, [], IDLE_INVENTORY, { brandCode: null })
   ];
   for (const { summary } of cases) {
-    assert.doesNotMatch(summary, /카테고리|Category|셀스루|Sell-?through/i, `AI Summary must never mention Category/Sell-through: "${summary}"`);
+    assert.doesNotMatch(summary, /카테고리|상품군|Category/i, `AI Summary must not mention Category without adequate coverage: "${summary}"`);
   }
+  const { summary: readySummary } = renderInsight(carnetRow(), 0, [carnetRow()], IDLE_INVENTORY, { brandCode: BRAND });
+  assert.match(readySummary, /Sell-through는 입고 데이터 확보 후 제공됩니다\./, "the exact approved Sell-through-deferred disclosure sentence must appear");
 });
 
-// 11/12. Recommended Action only uses the existing, already-approved honest disclosure — no
-// invented business rule (discount/promotion/reorder/ad recommendations).
-test("11/12. Recommended Action stays the existing honest 'rule not defined' disclosure, never an invented recommendation", () => {
+test("Category leader sentence appears only when entityCategoryCoverage.coveragePct >= 50 (adequate coverage), using real entityCategoryRows", () => {
+  const highCoverage = {
+    entityCategoryCoverage: { totalRevenue: 100, totalUnits: 10, attributedRevenue: 60, unattributedRevenue: 40, attributedUnits: 6, unattributedUnits: 4, coveragePct: 60 },
+    entityCategoryRows: [{ code: "TOP", name: "상의", revenue: 60, quantitySold: 6, skuCount: 2 }]
+  };
+  const { summary: withCategory } = renderInsight(carnetRow(), 0, [carnetRow()], IDLE_INVENTORY, { brandCode: BRAND }, highCoverage);
+  assert.match(withCategory, /상품군 매출 1위는 상의입니다\./);
+
+  const lowCoverage = {
+    entityCategoryCoverage: { totalRevenue: 100, totalUnits: 10, attributedRevenue: 20, unattributedRevenue: 80, attributedUnits: 2, unattributedUnits: 8, coveragePct: 20 },
+    entityCategoryRows: [{ code: "TOP", name: "상의", revenue: 20, quantitySold: 2, skuCount: 1 }]
+  };
+  const { summary: withoutCategory } = renderInsight(carnetRow(), 0, [carnetRow()], IDLE_INVENTORY, { brandCode: BRAND }, lowCoverage);
+  assert.doesNotMatch(withoutCategory, /상품군 매출 1위/, "low coverage must not produce a misleading category-leader claim");
+});
+
+// BI-BATCH-I Part 5: SAMPLAS Recommended Action v1 — a threshold-based operational
+// checklist, never a marketing/business recommendation (discount/promotion/reorder/ad).
+test("11/12. Recommended Action v1: no triggered rule falls back to the honest 'no urgent items' sentence, never an invented recommendation", () => {
   const { action } = renderInsight(carnetRow(), 0, [carnetRow()], { brandCode: BRAND, ready: true, stock: 272, fetchFailed: false }, { brandCode: BRAND });
-  assert.match(action, /추천 규칙 미확정/);
-  assert.doesNotMatch(action, /할인 추천|프로모션 추천|재입고 추천|발주 추천|광고 추천/, "no invented marketing/business action rule may appear");
+  assert.match(action, /현재 기준 긴급 점검 항목이 없습니다/);
+  assert.doesNotMatch(action, /할인|프로모션|재입고|발주|광고/, "no invented marketing/business action rule may appear");
+});
+
+test("Recommended Action v1: negative-inventory rule fires with a real count (priority 1)", () => {
+  const items = { brandCode: BRAND, ready: true, fetchFailed: false, items: [{ stockQuantity: -3 }, { stockQuantity: 5 }, { stockQuantity: -1 }] };
+  const { action } = renderInsight(carnetRow(), 0, [carnetRow()], IDLE_INVENTORY, { brandCode: BRAND }, { entityInventoryItemsState: items });
+  assert.match(action, /음수 재고 SKU를 확인하세요\. \(2개\)/);
+});
+
+test("Recommended Action v1: revenue/orders/customers rules fire only when their Score component is <= 50 points, using the real score state", () => {
+  const lowEverything = {
+    status: "ready", brandCode: BRAND, periodKey: "2026-08",
+    revenue: { pct: -25, points: 30 }, orders: { pct: -15, points: 50 }, customers: { pct: -40, points: 10 },
+    inventory: { points: 100 }, overall: 40, label: "WATCH", coveragePct: 100
+  };
+  const { action } = renderInsight(carnetRow(), 0, [carnetRow()], IDLE_INVENTORY, { brandCode: BRAND }, { entityScoreState: lowEverything });
+  assert.match(action, /매출 하락 구간을 점검하세요/);
+  assert.match(action, /주문수 감소 구간을 점검하세요/);
+  assert.match(action, /구매 고객 수 감소를 점검하세요/);
+});
+
+test("Recommended Action v1: at most 3 actions, priority order is inventory > revenue > orders > customers", () => {
+  const items = { brandCode: BRAND, ready: true, fetchFailed: false, items: [{ stockQuantity: -1 }] };
+  const allTriggered = {
+    status: "ready", brandCode: BRAND, periodKey: "2026-08",
+    revenue: { pct: -25, points: 30 }, orders: { pct: -15, points: 50 }, customers: { pct: -40, points: 10 },
+    inventory: { points: 0 }, overall: 20, label: "RISK", coveragePct: 100
+  };
+  const { action } = renderInsight(carnetRow(), 0, [carnetRow()], IDLE_INVENTORY, { brandCode: BRAND }, { entityScoreState: allTriggered, entityInventoryItemsState: items });
+  const items_ = (action.match(/<li>/g) || []).length;
+  assert.equal(items_, 3, "max 3 actions even when 4 rules would trigger");
+  const invIdx = action.indexOf("음수 재고");
+  const revIdx = action.indexOf("매출 하락");
+  const ordIdx = action.indexOf("주문수 감소");
+  assert.ok(invIdx !== -1 && invIdx < revIdx && revIdx < ordIdx, "inventory > revenue > orders priority order");
+  assert.doesNotMatch(action, /구매 고객 수 감소/, "4th-priority customer rule must be dropped by the max-3 cap");
 });
 
 // 10. AI Summary failure state stays safe with the new sentences too (BI-CORE-4 regression).
@@ -151,28 +232,11 @@ test("10. fetch-failed row still renders only the existing neutral fallback — 
   assert.equal(summary, "이번 기간 판단 가능한 데이터가 부족합니다.");
 });
 
-// Phase 1/2/4: Brand Score has zero approved formula for any of its 4 sub-components or the
-// overall value anywhere in the repository (confirmed via docs/ROADMAP.md's own explicit
-// "likely a new formula, needs STEP0 design first" note) — this batch must not invent one.
-// Structural guard: no JS anywhere computes/assigns a Brand Score value.
-test("Brand Score: no JS code computes or assigns .brand-hero-score-value (still a static, honest 'unavailable' shell)", () => {
-  assert.doesNotMatch(js, /brand-hero-score-value["']?\)?\s*\.\s*textContent\s*=/, "no function may assign a computed value to the Brand Score display");
-  assert.doesNotMatch(js, /entityHeroScoreValue|brand-hero-score-ring["']?\)?\s*\.\s*style/, "no function may compute a dynamic Brand Score ring value");
-});
-
-test("Brand Score: existing tooltip copy still honestly discloses 'formula not connected' for all 4 sub-components and the overall score", () => {
-  assert.match(js, /공식 Health Score 산식이 연결되기 전까지 점수를 표시하지 않습니다/);
-  assert.match(js, /매출 성장 점수 산식 연결 대기/);
-  assert.match(js, /재고 건전성 점수 산식 연결 대기/);
-  assert.match(js, /판매 회전율 점수 산식 연결 대기/);
-  assert.match(js, /고객 성장 점수 산식 연결 대기/);
-});
-
-// Category remains untouched/still blocked this batch (BI-BATCH-C PATH B) — structural guard
-// against accidental scope creep.
-test("Category remains blocked/unimplemented — entityCategoryRows is still the literal empty array", () => {
-  assert.match(js, /const entityCategoryRows = \[\];/);
-});
+// BI-BATCH-I superseded BI-BATCH-D's "Brand Score has no approved formula" guard: SAMPLAS
+// Brand Operating Score v1 is now approved and implemented (docs/BRAND_INTELLIGENCE_RULES.md).
+// See test/brand-intelligence-score-grade-action.test.mjs for its coverage. Category also
+// gained a real source (SAMPLAS Category Master v1) — see
+// test/brand-intelligence-category-master.test.mjs.
 
 // Brand/period stale guard: refreshEntityTrendMonths resets entityHeroInventoryState when the
 // brand is deselected, so a stale stock number from a previous brand can never linger.

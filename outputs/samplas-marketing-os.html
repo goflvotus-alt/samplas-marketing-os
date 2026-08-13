@@ -1442,17 +1442,20 @@
           </div>
         </div>
 
-        <!-- BI-BATCH-H: 07 FUTURE/BLOCKED. Brand Score는 공식 산식이 없어 항상 "--"/블록
-             상태만 표시한다(BI-BATCH-D) — 그 사실은 그대로 두고, 카드 위치만
-             entityHeroContent에서 분리해 Future/Blocked 구역으로 옮긴다(hidden 토글은
-             renderEntityHeroState()에서 entityHeroContent와 항상 같은 값을 받는다). -->
+        <!-- BI-BATCH-H가 이 카드를 entityHeroContent에서 분리해 이 위치로 옮겼다(hidden
+             토글은 renderEntityHeroState()에서 entityHeroContent와 항상 같은 값을 받는다).
+             BI-BATCH-I부터 SAMPLAS Brand Operating Score v1(renderEntityScore())이 실제
+             값을 채운다 — 위치/시각 shell은 그대로, 내용만 실데이터로 바뀐다. -->
         <div id="entityHeroScoreBlock" class="brand-hero" hidden>
           <div class="brand-hero-score-block">
-            <div class="brand-hero-score" data-entity-hero-tooltip="score" tabindex="0" role="img" aria-label="Health Score 산식 연결 대기">
+            <!-- BI-BATCH-I: SAMPLAS Brand Operating Score v1. renderEntityScore()가 이
+                 클래스/data-entity-hero-tooltip 셀렉터로 직접 채운다(id 추가 없이 기존
+                 시각 shell 재사용). -->
+            <div class="brand-hero-score" data-entity-hero-tooltip="score" tabindex="0" role="img" aria-label="브랜드를 선택하세요">
               <div class="brand-hero-score-ring" style="--score: 0; --score-color: var(--muted);">
                 <div class="brand-hero-score-inner">
                   <strong class="brand-hero-score-value">--</strong>
-                  <span class="brand-hero-score-tier">산식 연결 대기</span>
+                  <span class="brand-hero-score-tier">브랜드를 선택하세요</span>
                 </div>
               </div>
             </div>
@@ -1467,8 +1470,8 @@
                 <i class="brand-hero-score-bar"><b style="width:0%"></b></i>
                 <em>--</em>
               </li>
-              <li data-entity-hero-tooltip="score-turnover" tabindex="0">
-                <span>판매 회전율</span>
+              <li data-entity-hero-tooltip="score-orders" tabindex="0">
+                <span>주문 성장</span>
                 <i class="brand-hero-score-bar"><b style="width:0%"></b></i>
                 <em>--</em>
               </li>
@@ -1789,28 +1792,17 @@
              (Customer) → 무엇을 구매했는가(Category) → 언제 잘 팔렸는가(Monthly)" 정보 흐름에
              맞춰 Monthly Trend보다 앞으로 위치만 이동(ID/class/data-*/함수 미변경 —
              renderEntityCategorySection()은 ID 기반이라 위치 이동과 무관하게 그대로 동작). -->
-        <!-- BI-BATCH-H: 07 FUTURE/BLOCKED. 4개 모두 이미 확정된 영구 BLOCKED 상태다
-             (Category: BI-BATCH-C, Score: BI-BATCH-D, Sell-through: BI-BATCH-F, 추천
-             Action: 이전부터 미정) — 조건부 로직이 필요 없어 정적 텍스트로만 표시한다.
-             System Status와 동일한 .brand-hero-status-* 클래스를 그대로 재사용한다. -->
+        <!-- BI-BATCH-I Part 7: Category/Brand Score/Customer Contribution Grade/추천
+             Action이 전부 v1으로 정의·구현되면서 남은 BLOCKED 항목은 Sell-through
+             하나뿐이다(입고/수령 데이터 자체가 어디에도 없음 — BI-BATCH-F, 이번 배치
+             에서도 의도적으로 구현하지 않음). System Status와 동일한
+             .brand-hero-status-* 클래스를 그대로 재사용한다. -->
         <div id="entityFutureBlockedStatus" class="brand-hero-status-row">
           <p class="brand-hero-status-title">Future / Blocked</p>
           <div class="brand-hero-status-grid">
             <div class="brand-hero-status-item">
-              <span class="brand-hero-status-badge"><i></i>Category Intelligence</span>
-              <em>BLOCKED · 공식 상품군 분류 필요</em>
-            </div>
-            <div class="brand-hero-status-item">
-              <span class="brand-hero-status-badge"><i></i>Brand Score</span>
-              <em>BLOCKED · 공식 산식 필요</em>
-            </div>
-            <div class="brand-hero-status-item">
               <span class="brand-hero-status-badge"><i></i>Sell-through</span>
-              <em>BLOCKED · 입고 데이터 필요</em>
-            </div>
-            <div class="brand-hero-status-item">
-              <span class="brand-hero-status-badge"><i></i>추천 Action</span>
-              <em>BLOCKED · 정책 정의 필요</em>
+              <em>DEFERRED · 입고 데이터 필요</em>
             </div>
           </div>
         </div>
@@ -1827,18 +1819,22 @@
             </div>
           </div>
           <p id="entityCategoryPeriodNote" class="hint-text entity-period-note"></p>
+          <!-- BI-BATCH-I: SAMPLAS Category Master v1 커버리지 공개 문구(attributed/
+               unattributed/coverage%) — 100% 커버리지를 강제하지 않고 항상 실제 비율을
+               보여준다(Part 1/9 요구사항). -->
+          <p id="entityCategoryCoverageNote" class="hint-text entity-period-note"></p>
 
           <div id="entityCategoryEmpty" class="entity-detail-empty">
             <span class="entity-detail-empty-icon" aria-hidden="true">🏷️</span>
-            <h4>상품군 데이터가 연결되지 않았습니다</h4>
-            <p>공식 상품군 source가 확정되기 전에는 임의 분류를 표시하지 않습니다.</p>
+            <h4>브랜드를 선택하세요</h4>
+            <p>브랜드를 선택하면 상품군 데이터를 확인할 수 있습니다.</p>
           </div>
 
           <div id="entityCategoryContent">
-            <!-- STEP59-4: Compare Mode UX Refinement. 1위 Category 텍스트는
-                 entityCategoryCompareRevenue(하드코딩 Placeholder)로 renderEntityCategorySection()이
-                 채운다 — 실제 계산/API 연결 없음. 브랜드명은 entityCompareBrandA/B()를
-                 renderEntityCompareUI()가 그대로 재사용해 채운다. -->
+            <!-- BI-BATCH-I: 기준(선택 브랜드) 1위는 실제 entityCategoryRows에서 계산한다.
+                 비교 브랜드의 상품군 데이터는 이 배치에서 새로 fetch하지 않아(Part 15)
+                 renderEntityCategorySection()이 정직하게 "아직 제공되지 않습니다"로
+                 표시한다 — 0으로 fabricate하지 않는다. -->
             <div id="entityCategoryCompareTop" class="entity-compare-category-top entity-compare-only">
               <div class="entity-compare-category-top-col">
                 <span class="entity-compare-mini-label a">기준 · <span id="entityCompareCategoryBrandA">-</span> 1위</span>
@@ -1853,7 +1849,7 @@
               <div class="brand-monthly-trend-chart-card brand-category-donut-card">
                 <div class="brand-mix-list-head">
                   <span>Category 비중</span>
-                  <em>Category Pie Chart · 데이터 연결 대기</em>
+                  <em>온라인 매출 기준 · SAMPLAS Category Master v1</em>
                 </div>
                 <div id="entityCategoryDonut" class="brand-customer-donut" role="img" aria-label="상품군 구성 비율">
                   <div class="clients-donut-center brand-customer-donut-center">

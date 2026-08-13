@@ -11962,11 +11962,13 @@ function closeEcountWizard() {
 // placeholder이며 어떤 API도 호출하지 않는다. Clients 탭의 hover tooltip 데이터/저장소는
 // 건드리지 않고, 동일한 뷰포트 인지 포지셔닝 방식만 독립적인 헬퍼로 재구성했다.
 const entityHeroTooltipText = {
-  score: "공식 Health Score 산식이 연결되기 전까지 점수를 표시하지 않습니다.",
-  "score-sales": "매출 성장 점수 산식 연결 대기",
-  "score-inventory": "재고 건전성 점수 산식 연결 대기",
-  "score-turnover": "판매 회전율 점수 산식 연결 대기",
-  "score-customer": "고객 성장 점수 산식 연결 대기",
+  // BI-BATCH-I: SAMPLAS Brand Operating Score v1(docs/BRAND_INTELLIGENCE_RULES.md).
+  // Sell-through는 v1에 포함되지 않는다(입고 데이터 없음, 계속 DEFERRED).
+  score: "SAMPLAS Brand Operating Score v1 — 매출 성장 35% + 주문 성장 25% + 고객 성장 20% + 재고 건전성 20%. 4개 중 일부가 계산 불가면 남은 항목만으로 정규화(60% 미만이면 점수 자체를 표시하지 않음).",
+  "score-sales": "Revenue Momentum — 선택 기간 vs 직전 비교 가능 기간 매출 증감률(진행 중인 달은 동일 경과일 기준).",
+  "score-inventory": "Inventory Integrity — ECOUNT 현재 재고 중 음수 재고 SKU 비율(판매 효율/Sell-through 아님).",
+  "score-orders": "Order Momentum — 선택 기간 vs 직전 비교 가능 기간 주문수 증감률.",
+  "score-customer": "Customer Momentum — 선택 기간 vs 직전 비교 가능 기간 구매 고객 수 증감률.",
   sales: "선택 기간 온라인+오프라인 합산 매출입니다.",
   qty: "선택 기간 판매된 총 수량입니다.",
   sellthrough: "공식 Sell-through 산식이 확정되지 않아 계산하지 않습니다.",
@@ -12576,9 +12578,13 @@ function renderEntityHeroState() {
   $("#entityTrendEmpty")?.toggleAttribute("hidden", selected);
   $("#entityTrendContent")?.toggleAttribute("hidden", !selected);
 
-  $("#entityCategoryToggle")?.toggleAttribute("hidden", false);
-  $("#entityCategoryEmpty")?.toggleAttribute("hidden", false);
-  $("#entityCategoryContent")?.toggleAttribute("hidden", false);
+  // BI-BATCH-I: Category Intelligence는 더 이상 영구 BLOCKED가 아니다 — empty/content
+  // 토글은 이제 renderEntityCategorySection()이 실제 fetch 상태(브랜드 선택 여부/로딩/
+  // 실패/실데이터)에 따라 전적으로 관리한다(이전처럼 이 함수가 항상 둘 다 보이게
+  // 강제하지 않는다 — 그게 바로 BI-BATCH-H가 지적한 "빈 상태와 실제 콘텐츠가 동시에
+  // 보이는" 문제의 원인이었다).
+  $("#entityCategoryToggle")?.toggleAttribute("hidden", !selected);
+  renderEntityCategorySection();
 }
 
 function renderEntitySystemStatusItem(id, label, ok, updatedAt) {
@@ -13025,15 +13031,65 @@ function clientWorkspaceModalNode() {
   return modal;
 }
 
-// Header(이름/Client Type/VIP) → Breadcrumb → Hero KPI → Brand → Category → 최근 주문 →
-// Insight → Related → Explore 순서(Marketing OS 철학의 질문→답→다음 질문 흐름). Header/
-// Related/Explore는 Quick Profile Card·Entity Drawer가 이미 쓰는 클래스(brand-customer-
-// profile-*/entity-drawer-related*)를 그대로 재사용하고, Hero KPI/Insight는 Brand
-// Dashboard의 기존 KPI 카드(.ad-core-kpi-card)를 재사용한다 — 새 카드 컴포넌트를 만들지
-// 않는다.
+// ====================================================================
+// BI-BATCH-I — SAMPLAS Customer Contribution Grade v1
+// (docs/BRAND_INTELLIGENCE_RULES.md). 평생 로열티/VIP 등급이 아니라 "선택 브랜드 +
+// 선택 기간" 안에서만 유효한 상대적 기여도다 — UI 문구에 이 scope를 항상 명시한다.
+// ====================================================================
+function entityCustomerContributionGrade(row) {
+  if (!row || !entityCompositionRows.length) return null;
+  const percentileOf = (value, list) => {
+    if (!list.length) return 0;
+    const below = list.filter((v) => v < value).length;
+    return (below / list.length) * 100;
+  };
+  const revenuePct = percentileOf(row.sales, entityCompositionRows.map((r) => r.sales));
+  const orderPct = percentileOf(row.count, entityCompositionRows.map((r) => r.count));
+  const score = revenuePct * 0.7 + orderPct * 0.3;
+  const grade = score >= 90 ? "S" : score >= 70 ? "A" : score >= 40 ? "B" : "C";
+  return { score, grade, sampleSize: entityCompositionRows.length, smallSample: entityCompositionRows.length < 5 };
+}
+
+// entityClientPurchaseLinesFor(row)의 오프라인 라인만으로 상품군을 분류한다 — ECOUNT
+// 오프라인 라인엔 prodCd가 없어(purchaseDetails 스키마 확인됨) 이름 규칙(우선순위 3)만
+// 쓴다(ECOUNT suffix fallback 불가, manual override는 productNo 기반이라 여기선 적용
+// 안 함 — Cafe24 productNo가 없는 오프라인 라인이기 때문). 새 매출 계산 없음, 이미 있는
+// salesAmount/quantity를 카테고리별로 합산할 뿐이다.
+function clientWorkspaceCategoryHtml(brandLines) {
+  if (!brandLines.length) return `<div class="entity-detail-empty"><p>이 브랜드 구매 내역이 없어 상품군을 계산할 수 없습니다.</p></div>`;
+  const byCode = new Map();
+  brandLines.forEach((line) => {
+    const code = matchCategoryByNameKeywords(line.productName) || "UNCLASSIFIED";
+    const bucket = byCode.get(code) || { code, name: CATEGORY_MASTER_V1_NAME_BY_CODE.get(code) || code, revenue: 0, quantity: 0, count: 0 };
+    bucket.revenue += Number(line.salesAmount || 0);
+    bucket.quantity += Number(line.quantity || 0);
+    bucket.count += 1;
+    byCode.set(code, bucket);
+  });
+  const rows = [...byCode.values()].sort((a, b) => b.revenue - a.revenue);
+  const totalRevenue = rows.reduce((sum, r) => sum + r.revenue, 0);
+  return `<ul class="brand-customer-top5-list">${rows.map((r) => {
+    const pct = totalRevenue ? (r.revenue / totalRevenue) * 100 : 0;
+    return `
+      <li>
+        <div class="brand-customer-top5-row-head">
+          <span class="brand-customer-top5-name">${esc(r.name)}</span>
+          <strong>${apiWon(r.revenue)}</strong>
+        </div>
+        <i class="brand-customer-top5-bar"><b style="width:${Math.max(4, pct)}%"></b></i>
+        <p class="entity-product-row-sub">${pct.toFixed(0)}% · ${apiNum(r.quantity)}개 · ${apiNum(r.count)}건</p>
+      </li>`;
+  }).join("")}</ul>`;
+}
+
+// Header(이름/Client Type/기여도 등급) → Breadcrumb → Hero KPI → Brand → Category → 최근
+// 주문 → Insight → Related → Explore 순서(Marketing OS 철학의 질문→답→다음 질문 흐름).
+// Header/Related/Explore는 Quick Profile Card·Entity Drawer가 이미 쓰는 클래스(brand-
+// customer-profile-*/entity-drawer-related*)를 그대로 재사용하고, Hero KPI/Insight는
+// Brand Dashboard의 기존 KPI 카드(.ad-core-kpi-card)를 재사용한다 — 새 카드 컴포넌트를
+// 만들지 않는다.
 // BATCH A: Brand/Recent Orders 섹션은 entityClientPurchaseLinesFor(row)(선택된 브랜드로
-// 필터링된 실제 purchaseDetails)를 읽는다 — Category 섹션은 이번 BATCH 범위 밖이라
-// 그대로 둔다(Category Intelligence 자체에 canonical source가 없음, BI-GAP-1 §4).
+// 필터링된 실제 purchaseDetails)를 읽는다.
 function clientWorkspaceBodyHtml(row) {
   const aov = row.count ? Math.round(row.sales / row.count) : 0;
   const brandLines = entityClientPurchaseLinesFor(row);
@@ -13051,6 +13107,11 @@ function clientWorkspaceBodyHtml(row) {
       </div>`;
   })();
   const recentOrdersHtml = brandStateHtml || brandLines.slice(0, 5).map((line, index) => clientWorkspaceOrderRowHtml(line, index)).join("");
+  // BI-BATCH-I Part 4: Customer Contribution Grade v1 — 선택 브랜드+기간 안에서만 유효한
+  // 상대적 기여도다(평생 로열티/VIP 아님, "기여도 등급" 문구로 항상 명시).
+  const grade = entityCustomerContributionGrade(row);
+  const gradeLabel = grade ? grade.grade : "--";
+  const gradeAria = grade ? `기여도 등급 ${grade.grade} (${grade.score.toFixed(0)}점)` : "기여도 등급 계산 불가";
   return `
     <div class="client-workspace-breadcrumb entity-drawer-breadcrumb">
       <button type="button" class="entity-drawer-breadcrumb-crumb" data-client-workspace-breadcrumb-brand>${esc(entityCompareBrandA())}</button>
@@ -13062,8 +13123,11 @@ function clientWorkspaceBodyHtml(row) {
         <strong id="clientWorkspaceTitle">${esc(row.name)}</strong>
         <span class="clients-tooltip-badge brand-customer-type-badge" style="border-color:${entityCompositionColors[row.type]}22;color:${entityCompositionColors[row.type]}">${esc(entityCompositionTypeLabel[row.type] || "-")}</span>
       </div>
-      <div class="brand-customer-profile-vip-ring" style="--score:0" aria-label="고객 등급 산식 연결 대기"><div class="brand-customer-profile-vip-ring-inner">--</div></div>
+      <div class="brand-customer-profile-vip-ring" style="--score:${grade ? grade.score : 0}" aria-label="${esc(gradeAria)}">
+        <div class="brand-customer-profile-vip-ring-inner">${esc(gradeLabel)}</div>
+      </div>
     </div>
+    <p class="entity-hero-source-note">이 브랜드·이 기간 기준 기여도 등급${grade?.smallSample ? " · 표본 적음" : ""}</p>
     <div class="client-workspace-section">
       <p class="eyebrow">Customer</p>
       <div class="cards brand-hero-kpi-grid">
@@ -13079,7 +13143,7 @@ function clientWorkspaceBodyHtml(row) {
     </div>
     <div class="client-workspace-section">
       <p class="eyebrow">Category</p>
-      <div class="entity-detail-empty"><p>고객별 상품군 데이터 연결 대기</p></div>
+      ${brandStateHtml || clientWorkspaceCategoryHtml(brandLines)}
     </div>
     <div class="client-workspace-section">
       <p class="eyebrow">Recent Orders</p>
@@ -14366,14 +14430,70 @@ function renderEntityHeroInsight(row, index) {
   if (entityHeroInventoryState.brandCode === brandIdentityState.brandCode && entityHeroInventoryState.ready && entityHeroInventoryState.stock !== null) {
     sentences.push(`현재 재고는 ${apiNum(entityHeroInventoryState.stock)}개입니다.`);
   }
+  // ==================================================================
+  // BI-BATCH-I Part 6 — AI Summary v2. 아래는 전부 이미 계산된 소스(entityScoreState/
+  // entityCompositionTypeStats/entitySkuRows/entityCategoryRows)만 다시 읽어 문장화한다 —
+  // 새 판단/새 계산/원인 추론 없음. entityScoreState는 refreshEntityScore()가 채우는
+  // 비동기 상태라 이 함수 첫 호출 시점엔 아직 없을 수 있다 — refreshEntityScore()가
+  // 완료 후 이 함수를 다시 호출한다(아래 정의부 참고).
+  const scoreMatchesRow = entityScoreState.status === "ready" && entityScoreState.brandCode === brandIdentityState.brandCode && entityScoreState.periodKey === row.key;
+  if (scoreMatchesRow && entityScoreState.orders?.pct != null) {
+    const pct = entityScoreState.orders.pct;
+    const dir = pct > 0 ? "증가" : pct < 0 ? "감소" : "변동 없이 유지";
+    sentences.push(`주문수는 비교 가능한 직전 기간 대비 ${Math.abs(pct).toFixed(0)}% ${dir}했습니다.`);
+  }
+  if (scoreMatchesRow && entityScoreState.overall != null) {
+    sentences.push(`브랜드 운영 점수는 ${Math.round(entityScoreState.overall)}점(${entityScoreState.label})입니다.`);
+  }
+  const typeRatios = entityCompositionRatiosForStats(entityCompositionTypeStats);
+  if (typeRatios.length) {
+    const topType = [...typeRatios].sort((a, b) => b.ratioPct - a.ratioPct)[0];
+    sentences.push(`${entityCompositionTypeLabel[topType.type] || topType.type} 구매 비중이 ${topType.ratioPct.toFixed(0)}%로 가장 높습니다.`);
+  }
+  const topProduct = [...entitySkuRows].filter((r) => r.revenue > 0).sort((a, b) => b.revenue - a.revenue)[0];
+  if (topProduct) sentences.push(`온라인 매출 1위 상품은 ${topProduct.productName}입니다.`);
+  // Category coverage가 충분히 높을 때만(과반 이상 실제 분류된 매출) 리더를 언급한다 —
+  // coverage가 낮으면(대부분 오프라인/미분류) 오해 소지가 있어 언급을 생략한다.
+  if (entityCategoryCoverage && entityCategoryCoverage.coveragePct != null && entityCategoryCoverage.coveragePct >= 50 && entityCategoryRows.length) {
+    const topCategory = [...entityCategoryRows].sort((a, b) => b.revenue - a.revenue)[0];
+    if (topCategory && topCategory.code !== "UNCLASSIFIED") sentences.push(`상품군 매출 1위는 ${topCategory.name}입니다.`);
+  }
+  sentences.push("Sell-through는 입고 데이터 확보 후 제공됩니다.");
   // BI-BATCH-H: 06 INTELLIGENCE 재배치 — 같은 문장들을 한 문단으로 이어붙이던 것을
   // 줄바꿈으로 구분해 스캔하기 쉬운 짧은 statement 목록처럼 보이게 한다(CSS
   // white-space:pre-line만 추가, 새 문장/새 판단 로직 없음 — 사실 목록 자체는 그대로).
   summaryEl.textContent = sentences.length ? sentences.join("\n") : "이번 기간 판단 가능한 데이터가 부족합니다.";
-  if (noteEl) noteEl.textContent = "매출/Channel Mix/Monthly Trend 실데이터 기반";
-  if (actionListEl) {
-    actionListEl.innerHTML = `<li>공식 추천 규칙 미확정 — 현재 재고는 참고 정보이며 Sell-through 산식과 Action threshold가 확정되기 전에는 행동을 자동 추천하지 않습니다.</li>`;
+  if (noteEl) noteEl.textContent = "매출/Channel Mix/Monthly Trend/Score/Category 실데이터 기반";
+  if (actionListEl) actionListEl.innerHTML = entityRecommendedActionListHtml(row, scoreMatchesRow ? entityScoreState : null);
+}
+
+// ====================================================================
+// BI-BATCH-I Part 5 — SAMPLAS Recommended Action v1 (docs/BRAND_INTELLIGENCE_RULES.md).
+// 자율 마케팅 전략이 아니라 명시적 threshold 기반 운영 체크리스트다 — 할인/프로모션/
+// 재입고/광고 추천은 어떤 경우에도 생성하지 않는다(Sell-through가 없어 재고 판매효율
+// 판단 자체가 불가능하기 때문이기도 하다). 우선순위: 1) 데이터/재고 무결성 2) 매출
+// 3) 주문수 4) 고객 — 최대 3개.
+function entityRecommendedActionListHtml(row, scoreState) {
+  const actions = [];
+  const negativeCount = (entityInventoryItemsState.ready && entityInventoryItemsState.brandCode === brandIdentityState.brandCode && !entityInventoryItemsState.fetchFailed)
+    ? entityInventoryItemsState.items.filter((item) => Number(item?.stockQuantity || 0) < 0).length
+    : null;
+  if (negativeCount) actions.push(`음수 재고 SKU를 확인하세요. (${apiNum(negativeCount)}개)`);
+  if (scoreState?.revenue?.points != null && scoreState.revenue.points <= 50) {
+    const pct = scoreState.revenue.pct;
+    actions.push(`매출 하락 구간을 점검하세요. (직전 비교 기간 대비 ${pct != null ? `${pct.toFixed(0)}%` : "확인 필요"})`);
   }
+  if (scoreState?.orders?.points != null && scoreState.orders.points <= 50) {
+    const pct = scoreState.orders.pct;
+    actions.push(`주문수 감소 구간을 점검하세요. (직전 비교 기간 대비 ${pct != null ? `${pct.toFixed(0)}%` : "확인 필요"})`);
+  }
+  if (scoreState?.customers?.points != null && scoreState.customers.points <= 50) {
+    const pct = scoreState.customers.pct;
+    actions.push(`구매 고객 수 감소를 점검하세요. (직전 비교 기간 대비 ${pct != null ? `${pct.toFixed(0)}%` : "확인 필요"})`);
+  }
+  const top3 = actions.slice(0, 3);
+  if (!top3.length) return `<li>현재 기준 긴급 점검 항목이 없습니다.</li>`;
+  return top3.map((text) => `<li>${esc(text)}</li>`).join("");
 }
 
 // STEP67-4: Channel Sales Breakdown. entityTrendMonths 행의 online/offline(둘 다
@@ -14607,27 +14727,327 @@ function renderEntityTrendSection() {
   }
 }
 
-// STEP57-4C: Entity Category(Category Intelligence). STEP58-3에서 Entity Intelligence
-// Framework 명명 규칙에 맞춰 brandCategory* → entityCategory*로 리네임(UI/동작 동일).
-// STEP57-4B-A 진단에서 확정된 ECOUNT 카테고리
-// 코드(BG=Bag/OT=Outer/ST=Top/BT=Bottom/AC=Accessory)만 사용한다 — 실제 상품분류 API는
-// 연결하지 않고, Hero KPI 카드의 매출(34,466,777원)/판매수량(592개)/재고(1,204개) 합계와
-// 정확히 일치하도록 카테고리별로 분해한 placeholder 값이다(실데이터 연결 시 이 배열만
-// API 응답으로 교체). 대표 SKU는 실제 상품명을 지어내지 않고 "대표 SKU" 고정 텍스트만 쓴다.
-const entityCategoryRows = [];
-const entityCategoryColors = { BG: "#171717", OT: "#6d6a62", ST: "#c76a35", BT: "#4fb082", AC: "#8d6ecf" };
+// ====================================================================
+// BI-BATCH-I — SAMPLAS Category Master v1 (docs/BRAND_INTELLIGENCE_RULES.md)
+// ====================================================================
+// Cafe24 categoryNos(전시/프로모션 진열용, BI-BATCH-C에서 상품 분류가 아님을 확인)는
+// 절대 쓰지 않는다. 우선순위: 1) manual override 2) (v1은 항상 결정론적으로 재계산하므로
+// "기존 확정 카테고리" 캐시가 별도로 필요 없음 — 같은 입력엔 항상 같은 출력) 3) 상품명
+// 키워드 규칙 4) ECOUNT prodCd suffix 규칙(감사된 것만) 5) UNCLASSIFIED. 런타임 AI/LLM
+// 분류는 절대 쓰지 않는다.
+const CATEGORY_MASTER_V1 = [
+  { code: "TOP", name: "상의" },
+  { code: "BOTTOM", name: "하의" },
+  { code: "OUTER", name: "아우터" },
+  { code: "DRESS", name: "드레스" },
+  { code: "BAG", name: "가방" },
+  { code: "FOOTWEAR", name: "신발" },
+  { code: "HEADWEAR", name: "모자" },
+  { code: "JEWELRY", name: "주얼리" },
+  { code: "ACCESSORY", name: "액세서리" },
+  { code: "OTHER", name: "기타" },
+  { code: "UNCLASSIFIED", name: "미분류" }
+];
+const CATEGORY_MASTER_V1_NAME_BY_CODE = new Map(CATEGORY_MASTER_V1.map((c) => [c.code, c.name]));
+const entityCategoryColors = {
+  TOP: "#171717", BOTTOM: "#4fb082", OUTER: "#6d6a62", DRESS: "#c76a35", BAG: "#8d6ecf",
+  FOOTWEAR: "#3f6fb0", HEADWEAR: "#b08a3f", JEWELRY: "#a9423d", ACCESSORY: "#5c8f8f",
+  OTHER: "#9a9a9a", UNCLASSIFIED: "#c9c6bd"
+};
 let entityCategoryMode = "revenue";
+const entityCategoryRows = [];
+let entityCategoryCoverage = null;
 
-// STEP59-4: Compare Mode UX Refinement. entityTrendCompareMonths와 동일한 패턴 —
-// entityCategoryRows와 같은 code 폭에 맞춘 순수 하드코딩 Placeholder 매출(계산/API
-// 연결 없음). 카테고리별 기준/비교 값을 코드별로 매칭하기 위한 용도로만 쓴다.
-const entityCategoryCompareRevenue = {};
+// 정확히 하나의 카테고리 키워드만 매칭되면 그 카테고리, 0개 또는 2개 이상 매칭되면 null
+// (추측 금지 → 다음 우선순위로 넘어감). 순서는 문서화 목적일 뿐 매칭 자체와 무관하다.
+const CATEGORY_NAME_KEYWORD_RULES = [
+  ["TOP", ["t-shirt", "tee", "shirt", "blouse", "knit", "sweater", "cardigan", "hoodie", "sweatshirt", "jersey top", "tank top"]],
+  ["BOTTOM", ["pants", "trousers", "jeans", "denim pants", "shorts", "skirt", "slacks"]],
+  ["OUTER", ["jacket", "coat", "blazer", "vest", "parka", "bomber", "outer"]],
+  ["DRESS", ["dress", "one-piece"]],
+  ["BAG", ["bag", "backpack", "tote", "shopper", "pouch"]],
+  ["FOOTWEAR", ["boots", "boot", "shoe", "shoes", "sneaker", "sneakers", "mule", "sandal", "sandals", "loafer"]],
+  ["HEADWEAR", ["cap", "hat", "beanie", "headwear"]],
+  ["JEWELRY", ["necklace", "ring", "earring", "earrings", "bracelet", "bangle", "chain jewelry", "pendant"]],
+  ["ACCESSORY", ["belt", "wallet", "keyring", "key chain", "scarf", "tie", "gloves", "sunglasses", "eyewear", "socks", "accessory"]]
+];
 
-function entityCategoryStockStatus(stock) {
-  if (stock < 150) return { label: "Critical", color: "#a9423d" };
-  if (stock < 200) return { label: "Low", color: "#d7a642" };
-  if (stock < 260) return { label: "Healthy", color: "#206f54" };
-  return { label: "Watch", color: "#d7a642" };
+// BI-BATCH-I: work/product-registry.json의 verified+confirmed 103개 항목 실제 ECOUNT
+// prodCd를 감사한 결과만 활성화했다(docs/BRAND_INTELLIGENCE_RULES.md에 근거 기록).
+// BG/BT/SH/JW/FW/OT/HW는 감사한 모든 사례에서 카테고리가 하나로 일관됐다. AC(주얼리/
+// 모자/액세서리 혼재)·LT(대부분 TOP이나 예외 존재, 이름 규칙이 이미 대부분 처리)·
+// ST(TOP/DRESS 혼재)는 결정론적이지 않아 의도적으로 비활성화했다. DR은 실제 카탈로그
+// 사례가 없어 검증 불가라 비활성 상태로 둔다.
+const CATEGORY_ECOUNT_SUFFIX_MAP = { BG: "BAG", BT: "BOTTOM", SH: "TOP", JW: "JEWELRY", FW: "FOOTWEAR", OT: "OUTER", HW: "HEADWEAR" };
+
+function categoryKeywordPattern(keyword) {
+  return new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+}
+
+function matchCategoryByNameKeywords(productName) {
+  const normalized = String(productName || "");
+  if (!normalized.trim()) return null;
+  const matched = new Set();
+  CATEGORY_NAME_KEYWORD_RULES.forEach(([category, keywords]) => {
+    if (keywords.some((keyword) => categoryKeywordPattern(keyword).test(normalized))) matched.add(category);
+  });
+  return matched.size === 1 ? [...matched][0] : null;
+}
+
+function ecountCategorySuffixFromProdCd(prodCd) {
+  const match = String(prodCd || "").match(/([A-Za-z]+)(\d+)$/);
+  if (!match) return null;
+  return CATEGORY_ECOUNT_SUFFIX_MAP[match[1].toUpperCase()] || null;
+}
+
+// BI-BATCH-I: work/category-master.json의 manualOverrides만 읽는다(우선순위 1, 항상
+// 최우선 승리) — productNo(Cafe24, Product Registry와 동일 식별자)만 참조하고 새 상품
+// 아이덴티티를 만들지 않는다.
+let entityCategoryManualOverridesPromise = null;
+function loadEntityCategoryManualOverrides() {
+  if (!entityCategoryManualOverridesPromise) {
+    entityCategoryManualOverridesPromise = getSharedJson("/api/intelligence/category-master", 12000).then((data) => {
+      const list = Array.isArray(data?.categoryMaster?.manualOverrides) ? data.categoryMaster.manualOverrides : [];
+      const map = new Map();
+      list.forEach((item) => {
+        if (item?.productNo && item?.categoryCode) map.set(String(item.productNo), item.categoryCode);
+      });
+      return map;
+    }).catch(() => new Map());
+  }
+  return entityCategoryManualOverridesPromise;
+}
+
+function classifyEntityProductCategory(productNo, productName, prodCd, overrides) {
+  const override = overrides?.get(String(productNo || ""));
+  if (override) return { code: override, source: "manual_override" };
+  const nameMatch = matchCategoryByNameKeywords(productName);
+  if (nameMatch) return { code: nameMatch, source: "name_rule" };
+  const suffixMatch = ecountCategorySuffixFromProdCd(prodCd);
+  if (suffixMatch) return { code: suffixMatch, source: "ecount_suffix" };
+  return { code: "UNCLASSIFIED", source: "fallback" };
+}
+
+// entitySkuRows(이미 계산된 온라인 매출, rebuildEntitySkuRows가 채운 categoryCode)만
+// 재사용해 카테고리별로 합산한다 — 새 매출 계산 없음. UNCLASSIFIED는 목록에서 숨기지
+// 않지만(요구사항) coverage%의 "attributed"에서는 제외한다(상품군을 실제로 알 수
+// 없다는 뜻이므로) — Case C(재고만 있고 이번 기간 매출 0)는 이중집계 방지를 위해
+// 집계에서 제외한다(Product 섹션에서 이미 별도로 보여줌).
+function rebuildEntityCategoryRows() {
+  entityCategoryRows.length = 0;
+  const brandCode = brandIdentityState.brandCode;
+  if (!brandCode || entitySkuSalesState.brandCode !== brandCode || entitySkuSalesState.fetchFailed) {
+    entityCategoryCoverage = null;
+    renderEntityCategorySection();
+    return;
+  }
+  const byCode = new Map();
+  entitySkuRows.forEach((row) => {
+    if (row.stockOnly) return;
+    const bucket = byCode.get(row.categoryCode) || { code: row.categoryCode, revenue: 0, quantitySold: 0, skuCount: 0 };
+    bucket.revenue += row.revenue;
+    bucket.quantitySold += row.quantitySold;
+    bucket.skuCount += 1;
+    byCode.set(row.categoryCode, bucket);
+  });
+  CATEGORY_MASTER_V1.forEach((cat) => {
+    const bucket = byCode.get(cat.code);
+    if (bucket) entityCategoryRows.push({ code: cat.code, name: cat.name, revenue: bucket.revenue, quantitySold: bucket.quantitySold, skuCount: bucket.skuCount });
+  });
+  // 캐노니컬 총 매출/수량(entityTrendMonths, Hero KPI와 동일 소스) 대비 attributed(=
+  // UNCLASSIFIED가 아닌 카테고리로 분류된 온라인 매출) 비중을 coverage%로 노출한다.
+  const periodRow = entityTrendMonths.find((item) => item.key === currentEntityPeriodMonthKey());
+  const totalRevenue = periodRow?.revenue ?? null;
+  const totalUnits = periodRow?.quantitySold ?? null;
+  const named = entityCategoryRows.filter((row) => row.code !== "UNCLASSIFIED");
+  const attributedRevenue = named.reduce((sum, row) => sum + row.revenue, 0);
+  const attributedUnits = named.reduce((sum, row) => sum + row.quantitySold, 0);
+  entityCategoryCoverage = {
+    totalRevenue,
+    totalUnits,
+    attributedRevenue,
+    unattributedRevenue: totalRevenue == null ? null : Math.max(0, totalRevenue - attributedRevenue),
+    attributedUnits,
+    unattributedUnits: totalUnits == null ? null : Math.max(0, totalUnits - attributedUnits),
+    coveragePct: totalRevenue ? (attributedRevenue / totalRevenue) * 100 : (totalRevenue === 0 ? 0 : null)
+  };
+  renderEntityCategorySection();
+}
+
+// ====================================================================
+// BI-BATCH-I — SAMPLAS Brand Operating Score v1 (docs/BRAND_INTELLIGENCE_RULES.md)
+// ====================================================================
+// 4 components: Revenue Momentum 35% / Order Momentum 25% / Customer Momentum 20% /
+// Inventory Integrity 20%. Sell-through is explicitly NOT part of v1(입고 데이터 없음).
+const ENTITY_SCORE_WEIGHTS = { revenue: 35, orders: 25, customers: 20, inventory: 20 };
+
+function entityScoreMomentumPoints(pct) {
+  if (pct == null || !Number.isFinite(pct)) return null;
+  if (pct >= 20) return 100;
+  if (pct >= 10) return 90;
+  if (pct >= 0) return 80;
+  if (pct >= -10) return 65;
+  if (pct >= -20) return 50;
+  if (pct >= -30) return 30;
+  return 10;
+}
+
+function entityScoreLabel(score) {
+  if (score >= 90) return "EXCELLENT · 매우 강함";
+  if (score >= 75) return "STRONG · 강함";
+  if (score >= 60) return "STABLE · 안정";
+  if (score >= 40) return "WATCH · 주의";
+  return "RISK · 위험";
+}
+
+function entityPreviousMonthKey(monthKey) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(monthKey || ""));
+  if (!match) return null;
+  let year = Number(match[1]);
+  let month = Number(match[2]) - 1;
+  if (month < 1) { month = 12; year -= 1; }
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+let entityScoreState = { status: "idle", brandCode: null, periodKey: null, revenue: null, orders: null, customers: null, inventory: null, overall: null, label: null, coveragePct: null };
+let entityScoreRefreshSeq = 0;
+
+// BI-BATCH-I: 이번 기간이 진행 중인 달(live)이면 Compare Mode가 이미 쓰는 것과 동일한
+// SAME-ELAPSED-DAYS cutoff 정규화 endpoint(getEntityCompareMonthlyArchiveCutoff)를
+// 독립적으로(Compare Mode의 target 선택과 무관하게, 항상 "전월"만) 호출한다 — 새
+// 아키텍처가 아니라 이미 있는 함수를 다른 위치에서 재사용하는 것뿐이다. 완결된 달이면
+// entityTrendMonths(이미 fetch됨)의 인접 두 행만 비교해 새 fetch가 없다. Customer
+// Momentum은 Customer Composition이 이미 쓰는 서버 엔드포인트를 전월에 대해 한 번 더
+// 부른다(같은 canonical identity semantics, 새 정의 없음). Inventory Integrity는 이미
+// 로드된 entityInventoryItemsState만 읽는다(새 fetch 없음).
+async function refreshEntityScore(brandCode, periodMonth) {
+  const seq = ++entityScoreRefreshSeq;
+  if (!brandCode || !periodMonth) {
+    entityScoreState = { status: "idle", brandCode: null, periodKey: null, revenue: null, orders: null, customers: null, inventory: null, overall: null, label: null, coveragePct: null };
+    renderEntityScore();
+    return;
+  }
+  // BI-BATCH-I Chrome QA 발견 버그: {...entityScoreState, status:"loading", ...}로 스프레드하면
+  // revenue/orders/customers/inventory/overall 등 이전 브랜드의 값이 그대로 남아, 링은 "--"로
+  // 리셋되지만 4개 서브 지표(bar/%)는 새 브랜드 로딩 중에도 이전 브랜드 값을 계속 보여주는
+  // stale 버그가 생겼다(TROUBLED WATERS로 전환 시 AIVER 값이 남아있는 것으로 실측 확인).
+  // 다른 브랜드 값이 새 브랜드에 남지 않도록 전부 명시적으로 null로 리셋한다.
+  entityScoreState = { status: "loading", brandCode, periodKey: periodMonth, revenue: null, orders: null, customers: null, inventory: null, overall: null, label: null, coveragePct: null };
+  renderEntityScore();
+
+  const prevMonth = entityPreviousMonthKey(periodMonth);
+  const currentRow = entityTrendMonths.find((row) => row.key === periodMonth);
+  const isLive = Boolean(currentRow && entityIsLiveMonthRow(currentRow));
+
+  let revenueCurrent = null, revenuePrev = null, ordersCurrent = null, ordersPrev = null;
+  if (isLive && prevMonth) {
+    const cutoffResult = await getEntityCompareMonthlyArchiveCutoff(periodMonth, prevMonth);
+    if (seq !== entityScoreRefreshSeq) return;
+    const payload = cutoffResult.status === "success" ? cutoffResult.payload : null;
+    const cur = payload ? entityCompareKpiRowFromCutoffPayload(payload, "base", brandCode) : null;
+    const prev = payload ? entityCompareKpiRowFromCutoffPayload(payload, "comparison", brandCode) : null;
+    revenueCurrent = cur ? cur.revenue : null;
+    revenuePrev = prev ? prev.revenue : null;
+    ordersCurrent = cur ? cur.orderCount : null;
+    ordersPrev = prev ? prev.orderCount : null;
+  } else if (currentRow && prevMonth) {
+    const prevRow = entityTrendMonths.find((row) => row.key === prevMonth);
+    revenueCurrent = currentRow.revenue;
+    revenuePrev = prevRow ? prevRow.revenue : null;
+    ordersCurrent = currentRow.orderCount;
+    ordersPrev = prevRow ? prevRow.orderCount : null;
+  }
+  const revenuePct = (revenueCurrent != null && revenuePrev) ? ((revenueCurrent - revenuePrev) / revenuePrev) * 100 : null;
+  const ordersPct = (ordersCurrent != null && ordersPrev) ? ((ordersCurrent - ordersPrev) / ordersPrev) * 100 : null;
+
+  let customerCurrent = null, customerPrev = null;
+  if (prevMonth) {
+    const totalOf = (data) => (!data?.error && Array.isArray(data?.typeStats)) ? data.typeStats.reduce((sum, row) => sum + Number(row.count || 0), 0) : null;
+    const [curData, prevData] = await Promise.all([
+      getEntityCompositionJson(`/api/brand-intelligence/${encodeURIComponent(brandCode)}/customer-composition?month=${encodeURIComponent(periodMonth)}`),
+      getEntityCompositionJson(`/api/brand-intelligence/${encodeURIComponent(brandCode)}/customer-composition?month=${encodeURIComponent(prevMonth)}`)
+    ]);
+    if (seq !== entityScoreRefreshSeq) return;
+    customerCurrent = totalOf(curData);
+    customerPrev = totalOf(prevData);
+  }
+  const customerPct = (customerCurrent != null && customerPrev) ? ((customerCurrent - customerPrev) / customerPrev) * 100 : null;
+
+  // Inventory Integrity: 재고 관리 데이터/음수 재고 SKU 비율(Sell-through 아님, 판매
+  // 효율 아님) — 재고 0은 벌점 대상이 아니다(품절은 그 자체로 비정상이 아님).
+  let inventoryPoints = null;
+  if (entityInventoryItemsState.ready && entityInventoryItemsState.brandCode === brandCode && !entityInventoryItemsState.fetchFailed) {
+    const items = entityInventoryItemsState.items;
+    if (items.length) {
+      const negativeRatio = (items.filter((item) => Number(item?.stockQuantity || 0) < 0).length / items.length) * 100;
+      inventoryPoints = negativeRatio === 0 ? 100 : negativeRatio <= 2 ? 80 : negativeRatio <= 5 ? 60 : negativeRatio <= 10 ? 30 : 0;
+    }
+  }
+
+  const revenuePoints = entityScoreMomentumPoints(revenuePct);
+  const orderPoints = entityScoreMomentumPoints(ordersPct);
+  const customerPoints = entityScoreMomentumPoints(customerPct);
+  const components = [
+    { weight: ENTITY_SCORE_WEIGHTS.revenue, points: revenuePoints },
+    { weight: ENTITY_SCORE_WEIGHTS.orders, points: orderPoints },
+    { weight: ENTITY_SCORE_WEIGHTS.customers, points: customerPoints },
+    { weight: ENTITY_SCORE_WEIGHTS.inventory, points: inventoryPoints }
+  ];
+  const availableWeight = components.filter((c) => c.points != null).reduce((sum, c) => sum + c.weight, 0);
+  let overall = null;
+  let label = null;
+  // Partial Score Policy(승인됨): available weight >= 60일 때만 정규화된 점수를 낸다.
+  if (availableWeight >= 60) {
+    const weightedSum = components.filter((c) => c.points != null).reduce((sum, c) => sum + c.points * c.weight, 0);
+    overall = weightedSum / availableWeight;
+    label = entityScoreLabel(overall);
+  }
+
+  entityScoreState = {
+    status: "ready", brandCode, periodKey: periodMonth,
+    revenue: { pct: revenuePct, points: revenuePoints },
+    orders: { pct: ordersPct, points: orderPoints },
+    customers: { pct: customerPct, points: customerPoints },
+    inventory: { points: inventoryPoints },
+    overall, label, coveragePct: availableWeight
+  };
+  renderEntityScore();
+  // BI-BATCH-I: AI Summary/추천 Action(renderEntityHeroInsight)이 Score 완료 시점의
+  // Order Momentum/전체 점수를 반영하도록 다시 그린다 — renderEntityHeroInsight는 이미
+  // 동기 함수라 entityTrendMonths에서 같은 행을 다시 찾아 넘기기만 한다(새 fetch 없음).
+  const insightIndex = entityTrendMonths.findIndex((r) => r.key === periodMonth);
+  if (insightIndex >= 0) renderEntityHeroInsight(entityTrendMonths[insightIndex], insightIndex);
+}
+
+function renderEntityScore() {
+  const ring = $("#entityHeroScoreBlock .brand-hero-score-ring");
+  if (!ring) return;
+  const s = entityScoreState;
+  const scoreRounded = s.status === "ready" && s.overall != null ? Math.round(s.overall) : null;
+  ring.style.setProperty("--score", scoreRounded != null ? scoreRounded : 0);
+  ring.style.setProperty("--score-color", scoreRounded == null ? "var(--muted)" : scoreRounded >= 75 ? "var(--green)" : scoreRounded >= 40 ? "var(--yellow)" : "var(--red)");
+  const valueEl = $("#entityHeroScoreBlock .brand-hero-score-value");
+  const tierEl = $("#entityHeroScoreBlock .brand-hero-score-tier");
+  if (valueEl) valueEl.textContent = scoreRounded != null ? String(scoreRounded) : "--";
+  if (tierEl) {
+    tierEl.textContent = scoreRounded != null
+      ? `${s.label} · 커버리지 ${Math.round(s.coveragePct)}%`
+      : s.status === "loading" ? "계산 중..."
+      : s.status === "ready" ? "커버리지 부족(60% 미만) · 점수 계산 불가"
+      : "브랜드를 선택하세요";
+  }
+  const setSubMetric = (key, points, pct) => {
+    const li = $(`#entityHeroScoreBlock [data-entity-hero-tooltip="${key}"]`);
+    if (!li) return;
+    const bar = li.querySelector("i.brand-hero-score-bar b");
+    const em = li.querySelector("em");
+    if (bar) bar.style.width = `${points != null ? points : 0}%`;
+    if (em) em.textContent = points == null ? "--" : (pct != null ? `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%` : `${points}점`);
+  };
+  setSubMetric("score-sales", s.revenue?.points ?? null, s.revenue?.pct ?? null);
+  setSubMetric("score-orders", s.orders?.points ?? null, s.orders?.pct ?? null);
+  setSubMetric("score-customer", s.customers?.points ?? null, s.customers?.pct ?? null);
+  setSubMetric("score-inventory", s.inventory?.points ?? null, null);
 }
 
 function entityCategoryRevenueSharePct(code) {
@@ -14663,10 +15083,7 @@ function entityCategoryProfileHtml(row) {
     </div>
     <div class="entity-detail-empty"><p>공식 상품군 매핑이 연결되면 상세 지표를 표시합니다.</p></div>`;
   const aov = row.quantitySold ? Math.round(row.revenue / row.quantitySold) : 0;
-  const stockStatus = entityCategoryStockStatus(row.stock);
   const revenueSharePct = entityCategoryRevenueSharePct(row.code);
-  const momTone = row.mom > 0 ? "up" : row.mom < 0 ? "down" : "flat";
-  const momArrow = row.mom > 0 ? "▲" : row.mom < 0 ? "▼" : "—";
   return `
     <div class="brand-customer-profile-head">
       <div class="brand-customer-profile-heading">
@@ -14675,18 +15092,11 @@ function entityCategoryProfileHtml(row) {
       </div>
     </div>
     <div class="brand-customer-profile-rows">
-      <div class="brand-customer-profile-row"><span>매출</span><strong>${apiWon(row.revenue)}</strong></div>
+      <div class="brand-customer-profile-row"><span>매출 (온라인)</span><strong>${apiWon(row.revenue)}</strong></div>
       <div class="brand-customer-profile-row"><span>매출 비중</span><strong>${revenueSharePct.toFixed(0)}%</strong></div>
-      <div class="brand-customer-profile-row"><span>판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></div>
+      <div class="brand-customer-profile-row"><span>판매수량 (온라인)</span><strong>${apiNum(row.quantitySold)}개</strong></div>
       <div class="brand-customer-profile-row"><span>객단가</span><strong>${apiWon(aov)}</strong></div>
-      <div class="brand-customer-profile-row"><span>대표 SKU</span><strong>대표 SKU</strong></div>
-    </div>
-    <div class="brand-customer-profile-rows">
-      <div class="brand-customer-profile-row"><span>재고 상태</span><strong style="color:${stockStatus.color}">${esc(stockStatus.label)}</strong></div>
-      <div class="brand-customer-profile-row"><span>전월</span><strong class="brand-hero-delta ${momTone}">${momArrow} ${Math.abs(row.mom)}%</strong></div>
-    </div>
-    <div class="brand-customer-profile-rows brand-mix-profile-ai-summary">
-      <p><span>AI Summary</span> ${esc(stockStatus.label)} 재고로 ${momTone === "up" ? "안정적인 성장세" : momTone === "down" ? "주의가 필요한 흐름" : "보합 흐름"}입니다. (Placeholder)</p>
+      <div class="brand-customer-profile-row"><span>포함 SKU 수</span><strong>${apiNum(row.skuCount)}개</strong></div>
     </div>
   `;
 }
@@ -14757,29 +15167,65 @@ function hideEntityCategoryProfileCardSoon() {
   scheduleEntityCategoryProfileHide();
 }
 
+// BI-BATCH-I: coverage% 문구를 "0/₩0/0%"과 "아직 계산 불가(null)"를 구분해서 만든다 —
+// NULL != ZERO 원칙을 Category coverage 문구에도 그대로 적용한다.
+function entityCategoryCoverageText() {
+  const c = entityCategoryCoverage;
+  if (!c || c.totalRevenue == null) return "커버리지 계산 불가(캐노니컬 매출 미확인)";
+  const pct = c.coveragePct == null ? "-" : c.coveragePct.toFixed(0);
+  return `상품군 커버리지 ${pct}% · 분류 매출 ${apiWon(c.attributedRevenue)} / 미분류·오프라인 ${apiWon(c.unattributedRevenue)}`;
+}
+
 function renderEntityCategorySection() {
   const donut = $("#entityCategoryDonut");
   if (!donut) return;
-  if (!entityCategoryRows.length) {
+  const brandCode = brandIdentityState.brandCode;
+  const coverageNoteEl = $("#entityCategoryCoverageNote");
+  const setEmptyText = (title, note) => {
+    const titleEl = $("#entityCategoryEmpty h4");
+    const noteEl = $("#entityCategoryEmpty p");
+    if (titleEl) titleEl.textContent = title;
+    if (noteEl) noteEl.textContent = note;
+  };
+  if (!brandCode) {
     $("#entityCategoryEmpty")?.toggleAttribute("hidden", false);
-    $("#entityCategoryContent")?.toggleAttribute("hidden", false);
-    $("#entityCategoryToggle")?.toggleAttribute("hidden", false);
-    donut.style.background = "none";
-    if ($("#entityCategoryDonutCenter")) $("#entityCategoryDonutCenter").textContent = "--";
-    if ($("#entityCategoryList")) $("#entityCategoryList").innerHTML = `
-      <li data-category-unavailable tabindex="0">
-        <div class="brand-mix-row-head">
-          <span class="brand-mix-name">상품군 상세</span>
-          <strong>데이터 연결 대기</strong>
-        </div>
-      </li>`;
-    if ($("#entityCategoryCompareTopA")) $("#entityCategoryCompareTopA").textContent = "데이터 연결 대기";
-    if ($("#entityCategoryCompareTopB")) $("#entityCategoryCompareTopB").textContent = "데이터 연결 대기";
-    if ($("#entityCategoryInsight")) $("#entityCategoryInsight").innerHTML = `<p class="brand-customer-insight-main">공식 상품군 매핑 연결 대기</p><p class="brand-customer-insight-sub">UI와 상세 탐색 구조는 유지됩니다.</p>`;
+    $("#entityCategoryContent")?.toggleAttribute("hidden", true);
+    setEmptyText("브랜드를 선택하세요", "브랜드를 선택하면 상품군 데이터를 확인할 수 있습니다.");
+    if (coverageNoteEl) coverageNoteEl.textContent = "";
     return;
   }
-  donut.style.background = `conic-gradient(${entityCategoryGradient()})`;
+  if (entitySkuSalesState.brandCode !== brandCode) {
+    $("#entityCategoryEmpty")?.toggleAttribute("hidden", false);
+    $("#entityCategoryContent")?.toggleAttribute("hidden", true);
+    setEmptyText("불러오는 중...", "");
+    if (coverageNoteEl) coverageNoteEl.textContent = "";
+    return;
+  }
+  if (entitySkuSalesState.fetchFailed) {
+    $("#entityCategoryEmpty")?.toggleAttribute("hidden", false);
+    $("#entityCategoryContent")?.toggleAttribute("hidden", true);
+    setEmptyText("이번 기간 매출 데이터를 불러오지 못했습니다.", "");
+    if (coverageNoteEl) coverageNoteEl.textContent = "";
+    return;
+  }
+  // 실제 브랜드/기간 데이터가 도착했다 — 카테고리 행이 0개(이번 기간 온라인 판매 자체가
+  // 없음)여도 실제 상태이므로 empty 블록이 아니라 content 블록을 그대로 보여주고
+  // coverage 문구로 정직하게 설명한다(가짜 빈 상태로 감추지 않는다).
+  $("#entityCategoryEmpty")?.toggleAttribute("hidden", true);
+  $("#entityCategoryContent")?.toggleAttribute("hidden", false);
+  if (coverageNoteEl) coverageNoteEl.textContent = entityCategoryCoverageText();
 
+  if (!entityCategoryRows.length) {
+    donut.style.background = "none";
+    if ($("#entityCategoryDonutCenter")) $("#entityCategoryDonutCenter").textContent = "0";
+    if ($("#entityCategoryList")) $("#entityCategoryList").innerHTML = `<li class="entity-drawer-empty">이번 기간 온라인 판매 데이터가 없어 상품군을 분류할 수 없습니다.</li>`;
+    if ($("#entityCategoryInsight")) $("#entityCategoryInsight").innerHTML = `<p class="brand-customer-insight-main">이번 기간 온라인 판매 데이터가 없습니다.</p>`;
+    if ($("#entityCategoryCompareTopA")) $("#entityCategoryCompareTopA").textContent = "-";
+    if ($("#entityCategoryCompareTopB")) $("#entityCategoryCompareTopB").textContent = "-";
+    return;
+  }
+
+  donut.style.background = `conic-gradient(${entityCategoryGradient()})`;
   const centerLabel = $("#entityCategoryDonutCenter");
   if (centerLabel) {
     centerLabel.textContent = entityCategoryMode === "revenue"
@@ -14787,57 +15233,35 @@ function renderEntityCategorySection() {
       : `${apiNum(entityCategoryRows.reduce((sum, row) => sum + row.quantitySold, 0))}개`;
   }
 
-  const shares = entityCategoryShares();
+  const shares = entityCategoryShares().sort((a, b) => b[entityCategoryMode === "revenue" ? "revenue" : "quantitySold"] - a[entityCategoryMode === "revenue" ? "revenue" : "quantitySold"]);
   const list = $("#entityCategoryList");
   if (list) {
-    list.innerHTML = shares.map((row) => {
-      const momTone = row.mom > 0 ? "up" : row.mom < 0 ? "down" : "flat";
-      const momArrow = row.mom > 0 ? "▲" : row.mom < 0 ? "▼" : "—";
-      // STEP59-4: Compare Mode UX Refinement. entityCategoryCompareRevenue(하드코딩
-      // Placeholder)를 code로 매칭해 기준/비교/차이를 한 줄에 함께 보여준다 — 기존
-      // TOP5 행 구조·클릭 단서(brand-mix-row-head)는 그대로 유지하고 아래에 한 줄만
-      // 추가한다.
-      const compareRevenue = entityCategoryCompareRevenue[row.code] || 0;
-      const revenueDiff = row.revenue - compareRevenue;
-      const diffTone = revenueDiff > 0 ? "up" : revenueDiff < 0 ? "down" : "flat";
-      const diffArrow = revenueDiff > 0 ? "▲" : revenueDiff < 0 ? "▼" : "—";
-      return `
+    list.innerHTML = shares.map((row) => `
       <li data-category-code="${esc(row.code)}" tabindex="0">
         <div class="brand-mix-row-head">
           <span class="brand-mix-name">${esc(row.name)}</span>
           <span class="brand-mix-pct">${row.sharePct.toFixed(0)}%</span>
           <strong>${entityCategoryMode === "revenue" ? apiWon(row.revenue) : `${apiNum(row.quantitySold)}개`}</strong>
-          <span class="entity-compare-chip entity-compare-only brand-hero-delta ${momTone}">${momArrow} ${Math.abs(row.mom)}%</span>
         </div>
         <i class="brand-mix-bar"><b style="width:${Math.max(4, row.barPct)}%;background:${entityCategoryColors[row.code]}"></b></i>
-        <div class="entity-compare-category-row entity-compare-only">
-          <span class="entity-compare-mini-tag a">기준 ${apiWon(row.revenue)}</span>
-          <span class="entity-compare-mini-tag b">비교 ${apiWon(compareRevenue)}</span>
-          <span class="entity-compare-mini-tag diff ${diffTone}">차이 ${diffArrow} ${apiWon(Math.abs(revenueDiff))}</span>
-        </div>
-      </li>`;
-    }).join("");
+      </li>`).join("");
   }
 
-  // STEP59-4: Compare Mode UX Refinement. entityCategoryRows(기준)/entityCategoryCompareRevenue
-  // (비교, 하드코딩 Placeholder)에서 각각 1위만 뽑아 보여준다 — 실제 데이터 연결/새 계산
-  // 로직 없이 이미 있는 두 배열을 정렬해서 읽는 것뿐이다.
+  // BI-BATCH-I: Compare Mode에서 브랜드 A(선택 브랜드)는 실제 1위 카테고리를 보여준다.
+  // 브랜드 B의 카테고리 데이터는 이 배치 범위에서 새로 fetch하지 않는다(Part 15: 기존
+  // Compare Category UI가 있는 곳에만 실데이터를 쓰고, 새 Compare 아키텍처는 만들지
+  // 않는다) — 없는 데이터를 0으로 fabricate하지 않고 정직하게 "미제공"이라고 밝힌다.
   const topA = [...entityCategoryRows].sort((a, b) => b.revenue - a.revenue)[0];
-  const topBCode = Object.keys(entityCategoryCompareRevenue).sort((a, b) => entityCategoryCompareRevenue[b] - entityCategoryCompareRevenue[a])[0];
-  const topBRow = entityCategoryRows.find((row) => row.code === topBCode);
   const topAEl = $("#entityCategoryCompareTopA");
   if (topAEl && topA) topAEl.textContent = `${topA.name} ${apiWon(topA.revenue)}`;
   const topBEl = $("#entityCategoryCompareTopB");
-  if (topBEl && topBRow) topBEl.textContent = `${topBRow.name} ${apiWon(entityCategoryCompareRevenue[topBCode])}`;
+  if (topBEl) topBEl.textContent = "비교 브랜드 상품군 데이터는 아직 제공되지 않습니다";
 
   const insight = $("#entityCategoryInsight");
   if (insight) {
     const topRevenue = [...entityCategoryRows].sort((a, b) => b.revenue - a.revenue)[0];
     const topRevenueSharePct = entityCategoryRevenueSharePct(topRevenue.code);
-    const worstMom = [...entityCategoryRows].sort((a, b) => a.mom - b.mom)[0];
-    insight.innerHTML = `
-      <p class="brand-customer-insight-main">${esc(topRevenue.name)} 비중이 브랜드 매출의 ${topRevenueSharePct.toFixed(0)}%입니다.</p>
-      <p class="brand-customer-insight-sub">${esc(worstMom.name)}은 전월대비 ${worstMom.mom < 0 ? "감소" : "증가"}했습니다. (Placeholder)</p>`;
+    insight.innerHTML = `<p class="brand-customer-insight-main">${esc(topRevenue.name)}이(가) 온라인 분류 매출의 ${topRevenueSharePct.toFixed(0)}%를 차지합니다.</p><p class="brand-customer-insight-sub">${esc(entityCategoryCoverageText())}</p>`;
   }
 }
 
@@ -14847,12 +15271,7 @@ function renderEntityCategorySection() {
 // 기존 clientsDetailModal(고객 상세 모달)과 동일한 fixed 오버레이/backdrop/포커스 트랩/
 // body 스크롤 잠금 패턴을 그대로 재사용하되, 위치만 중앙이 아니라 오른쪽 슬라이드로 바꿨다.
 // Drawer 내부에서는 기존 Quick Profile Card(hover)를 띄우지 않고 행 자체의 hover 강조만
-// 쓴다(요구사항 — Drawer 밖 hover 로직은 전혀 수정하지 않았으니 충돌하지 않는다). 실제
-// Client/Category Intelligence 상세 화면은 만들지 않고 기존 toast() 안내만 표시한다
-// (data-entity-type/data-entity-id 속성만 부여). Category 전체 목록은 STEP57-4B-A에서
-// 확정된 코드만 추가로 사용(entityCategoryRows 자체는 수정하지 않고 별도 배열로 확장 —
-// 기존 TOP5/Hero KPI 합계와 연동된 placeholder 숫자를 건드리지 않는다).
-const entityCategoryDrawerRows = [];
+// 쓴다(요구사항 — Drawer 밖 hover 로직은 전혀 수정하지 않았으니 충돌하지 않는다).
 
 let entityDrawerState = { type: null, open: false, query: "", sort: "" };
 // STEP60-1: Entity Navigation Foundation. Drawer가 "한 번 열리고 끝나는" 목록이 아니라
@@ -14878,18 +15297,14 @@ function entityDrawerCustomerRowHtml(row, index) {
 
 function entityDrawerCategoryRowHtml(row, index) {
   const aov = row.quantitySold ? Math.round(row.revenue / row.quantitySold) : 0;
-  const stockStatus = entityCategoryStockStatus(row.stock);
-  const momTone = row.mom > 0 ? "up" : row.mom < 0 ? "down" : "flat";
-  const momArrow = row.mom > 0 ? "▲" : row.mom < 0 ? "▼" : "—";
   return `
     <li class="entity-drawer-row" data-entity-type="category" data-entity-id="${esc(row.code)}" data-entity-label="${esc(row.name)}" tabindex="0">
       <span class="entity-drawer-rank">${index + 1}</span>
       <span class="entity-drawer-name">${esc(row.name)}<i class="entity-drawer-code">${esc(row.code)}</i></span>
-      <span class="entity-drawer-stat"><span>매출</span><strong>${apiWon(row.revenue)}</strong></span>
-      <span class="entity-drawer-stat"><span>판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></span>
+      <span class="entity-drawer-stat"><span>매출 (온라인)</span><strong>${apiWon(row.revenue)}</strong></span>
+      <span class="entity-drawer-stat"><span>판매수량 (온라인)</span><strong>${apiNum(row.quantitySold)}개</strong></span>
       <span class="entity-drawer-stat"><span>객단가</span><strong>${apiWon(aov)}</strong></span>
-      <span class="entity-drawer-stat"><span>재고상태</span><strong style="color:${stockStatus.color}">${esc(stockStatus.label)}</strong></span>
-      <span class="entity-drawer-stat"><span>전월</span><strong class="brand-hero-delta ${momTone}">${momArrow} ${Math.abs(row.mom)}%</strong></span>
+      <span class="entity-drawer-stat"><span>포함 SKU 수</span><strong>${apiNum(row.skuCount)}개</strong></span>
     </li>`;
 }
 
@@ -14941,6 +15356,16 @@ function entitySkuStockFor(productNo, registryEntries, inventoryItems) {
   return { stock: matchedItems.reduce((sum, item) => sum + Number(item?.stockQuantity || 0), 0), matched: true };
 }
 
+// BI-BATCH-I: Category ECOUNT suffix fallback(우선순위 4)에 쓸 prodCd 하나만 뽑는다 —
+// entitySkuStockFor와 동일한 verified+confirmed productNo 매칭을 재사용한다(새 매칭 로직
+// 없음). 재고(inventoryItems)와 무관해 stockReady가 false여도 항상 호출 가능하다.
+function entityEcountProdCdFor(productNo, registryEntries) {
+  const entry = registryEntries.find((item) => (
+    item?.verified === true && item?.status === "confirmed" && String(item?.cafe24?.productNo || "") === String(productNo || "")
+  ));
+  return entry?.ecount?.matchedProducts?.[0]?.prodCd || null;
+}
+
 // Case C 전용 역인덱스: verified+confirmed 항목의 ecount.matchedProducts[].prodCd →
 // registry 항목. 이 브랜드 재고 items 중 이 브랜드의 이번 기간 온라인 판매 목록에는
 // 없지만 registry로 confirmed 연결된 것이 있으면(재고는 있는데 이번 기간 온라인 판매가
@@ -14967,11 +15392,19 @@ async function rebuildEntitySkuRows() {
     entitySkuJoinDiagnostics = { matchedStock: 0, unmatchedStock: 0, salesRows: 0 };
     refreshOpenEntitySkuDrawer();
     renderEntityProductSection();
+    rebuildEntityCategoryRows();
+    refreshEntityScore(brandCode, currentEntityPeriodMonthKey());
     return;
   }
   const stockReady = entityInventoryItemsState.ready && entityInventoryItemsState.brandCode === brandCode;
   const inventoryItems = stockReady ? entityInventoryItemsState.items : [];
-  const registryEntries = stockReady ? await loadEntityProductRegistryEntries() : [];
+  // BI-BATCH-I: Category 분류(이름 규칙/ECOUNT suffix)는 재고 준비 여부와 무관하게 항상
+  // 시도한다 — loadEntityProductRegistryEntries()/loadEntityCategoryManualOverrides()는
+  // 캐시된 Promise라 항상 호출해도 비용이 낮다.
+  const [registryEntries, categoryOverrides] = await Promise.all([
+    loadEntityProductRegistryEntries(),
+    loadEntityCategoryManualOverrides()
+  ]);
   if (brandIdentityState.brandCode !== brandCode || entitySkuSalesState.brandCode !== brandCode) return; // 대기 중 브랜드가 또 바뀌었으면 이 결과는 버린다.
   let matchedStock = 0;
   let unmatchedStock = 0;
@@ -14984,6 +15417,8 @@ async function rebuildEntitySkuRows() {
       stockMatched = result.matched;
       if (stockMatched) matchedStock += 1; else unmatchedStock += 1;
     }
+    const prodCd = entityEcountProdCdFor(p.productNo, registryEntries);
+    const category = classifyEntityProductCategory(p.productNo, p.productName, prodCd, categoryOverrides);
     return {
       productNo: p.productNo,
       productCode: p.productCode || p.productNo,
@@ -14994,7 +15429,9 @@ async function rebuildEntitySkuRows() {
       salesVelocityPerDay: Number(p.salesVelocityPerDay || 0),
       stock,
       stockMatched,
-      stockUnavailable: !stockReady || entityInventoryItemsState.fetchFailed
+      stockUnavailable: !stockReady || entityInventoryItemsState.fetchFailed,
+      categoryCode: category.code,
+      categorySource: category.source
     };
   });
   // Case C: 재고는 있지만 이번 기간 온라인 판매가 없는(=productSales에 없는) SKU.
@@ -15014,10 +15451,12 @@ async function rebuildEntitySkuRows() {
       seen.add(productNo);
       const result = entitySkuStockFor(productNo, registryEntries, inventoryItems);
       if (result.matched) matchedStock += 1;
+      const productName = entry.cafe24?.productName || item.productName || "-";
+      const category = classifyEntityProductCategory(productNo, productName, entry.ecount?.matchedProducts?.[0]?.prodCd || null, categoryOverrides);
       caseCRows.push({
         productNo,
         productCode: entry.cafe24?.productCode || productNo,
-        productName: entry.cafe24?.productName || item.productName || "-",
+        productName,
         revenue: 0,
         quantitySold: 0,
         orderCount: 0,
@@ -15025,7 +15464,9 @@ async function rebuildEntitySkuRows() {
         stock: result.stock,
         stockMatched: result.matched,
         stockUnavailable: false,
-        stockOnly: true
+        stockOnly: true,
+        categoryCode: category.code,
+        categorySource: category.source
       });
     });
   }
@@ -15033,6 +15474,8 @@ async function rebuildEntitySkuRows() {
   entitySkuRows.push(...rows, ...caseCRows);
   refreshOpenEntitySkuDrawer();
   renderEntityProductSection();
+  rebuildEntityCategoryRows();
+  refreshEntityScore(brandCode, currentEntityPeriodMonthKey());
 }
 
 // BATCH B: Sales(archive.commerce.productSales, 이미 fetch됨)만 이 브랜드/기간으로
@@ -15172,7 +15615,17 @@ let entityClientsOverviewRefreshSeq = 0;
 async function refreshEntityClientsOverview(month) {
   const seq = ++entityClientsOverviewRefreshSeq;
   const { monthStart, monthEnd } = monthlyReportMonthRange(month);
-  const data = await getSharedJson(intelligenceUrl(`/api/intelligence/clients?since=${monthStart}&until=${monthEnd}`), 15000);
+  const url = intelligenceUrl(`/api/intelligence/clients?since=${monthStart}&until=${monthEnd}`);
+  let data = await getSharedJson(url, 15000);
+  // BI-BATCH-I Part 8: buildClientsOverview()는 월 전체 Cafe24+ECOUNT 라인을 합산하므로
+  // 15초를 넘기는 경우가 있었고, 이 함수는 재시도 없이 첫 타임아웃만으로 영구
+  // "구매 내역을 불러오지 못했습니다"에 빠졌다(Recent Orders/Client Workspace 버그).
+  // getEntityCompareMonthlyArchive()가 이미 쓰는 것과 동일한 1회 재시도 패턴을
+  // 적용한다(새 재시도 아키텍처 아님) — getSharedJson은 실패한 요청을 캐시에서 지우므로
+  // 같은 URL로 다시 호출하면 새 fetch가 실제로 나간다.
+  if (data?.error === "응답 지연") {
+    data = await getSharedJson(url, 30000);
+  }
   if (seq !== entityClientsOverviewRefreshSeq) return; // 더 최근 브랜드/기간 변경이 이미 진행 중이면 이 결과는 버린다.
   // BI-CORE-4와 동일한 NULL != ZERO 원칙: fetch 실패를 "구매 없음"으로 위장하지 않는다.
   if (data?.error || data?.ok !== true || !Array.isArray(data?.clients)) {
@@ -15330,20 +15783,23 @@ const entityDrawerConfig = {
       { value: "revenue_desc", label: "매출 높은 순" },
       { value: "qty_desc", label: "판매수량 높은 순" },
       { value: "aov_desc", label: "객단가 높은 순" },
-      { value: "stock_desc", label: "재고 많은 순" },
-      { value: "mom_desc", label: "전월 증감 높은 순" }
+      { value: "sku_desc", label: "SKU 수 많은 순" }
     ],
-    rows: () => entityCategoryDrawerRows,
+    // BI-BATCH-I: entityCategoryRows(rebuildEntityCategoryRows()가 이미 계산한 실데이터)를
+    // 그대로 재사용한다 — Drawer 전용 별도 placeholder 배열을 두지 않는다.
+    rows: () => entityCategoryRows,
     matchesQuery: (row, query) => row.name.toLowerCase().includes(query) || row.code.toLowerCase().includes(query),
     sortFns: {
       revenue_desc: (a, b) => b.revenue - a.revenue,
       qty_desc: (a, b) => b.quantitySold - a.quantitySold,
       aov_desc: (a, b) => (b.revenue / (b.quantitySold || 1)) - (a.revenue / (a.quantitySold || 1)),
-      stock_desc: (a, b) => b.stock - a.stock,
-      mom_desc: (a, b) => b.mom - a.mom
+      sku_desc: (a, b) => b.skuCount - a.skuCount
     },
     rowHtml: entityDrawerCategoryRowHtml,
     clickToast: "Category Intelligence 연결 예정",
+    emptyText: () => (entitySkuSalesState.fetchFailed
+      ? "이번 기간 매출 데이터를 불러오지 못했습니다."
+      : "이번 기간 온라인 판매 데이터가 없어 상품군을 분류할 수 없습니다."),
     // STEP60-1: Entity Navigation Foundation. next가 있으면 행 클릭 시 toast 대신
     // 다음 Entity 레벨로 이동한다(pushEntityDrawerLevel). overview/customer처럼 next가
     // 없는 타입은 기존 clickToast 동작을 그대로 유지한다(회귀 없음).
@@ -15359,7 +15815,15 @@ const entityDrawerConfig = {
       { value: "orders_desc", label: "온라인 주문수 높은 순" },
       { value: "stock_desc", label: "재고 많은 순" }
     ],
-    rows: () => entitySkuRows,
+    // BI-BATCH-I: Category → SKU drill-down. entityDrawerState.context.categoryCode가
+    // 있으면(Category 행 클릭으로 진입) 그 카테고리로 분류된 SKU만 보여준다 — Product
+    // Registry/이름 규칙으로 실제 분류가 가능했던 SKU만 필터링되므로 "Product Registry
+    // 매핑이 허용하는 한도 내에서" 요구사항을 그대로 만족한다. 그 외 진입(SKU Drawer를
+    // 직접 열었을 때)은 기존과 동일하게 전체 목록을 보여준다.
+    rows: () => {
+      const categoryCode = entityDrawerState.context?.categoryCode;
+      return categoryCode ? entitySkuRows.filter((row) => row.categoryCode === categoryCode) : entitySkuRows;
+    },
     matchesQuery: (row, query) => row.productName.toLowerCase().includes(query) || String(row.productCode || "").toLowerCase().includes(query),
     sortFns: {
       revenue_desc: (a, b) => b.revenue - a.revenue,
@@ -16223,6 +16687,7 @@ function bind() {
     if (event.target.closest("[data-entity-product-row]")) openEntityDrawer("sku");
   });
   renderEntityProductSection();
+  renderEntityScore();
   document.addEventListener("click", (event) => {
     if (event.target.closest("[data-entity-drawer-close]")) closeEntityDrawer();
   });
@@ -16236,7 +16701,11 @@ function bind() {
     if (!config) return;
     if (config.next) pushEntityDrawerLevel(config.next, row.dataset.entityLabel, {
       sourceType: row.dataset.entityContextSource || entityDrawerState.type,
-      label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title
+      label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title,
+      // BI-BATCH-I: Category → SKU drill-down 필터에 쓸 카테고리 코드. Category 레벨에서
+      // 클릭했을 때만 새로 채우고, 그 외(예: 이미 필터된 SKU→Order)에는 기존 context의
+      // categoryCode를 그대로 이어간다.
+      categoryCode: entityDrawerState.type === "category" ? row.dataset.entityId : (entityDrawerState.context?.categoryCode || null)
     });
     else if (config.onRowClick) config.onRowClick(row);
     else toast(config.clickToast);
@@ -16296,7 +16765,8 @@ function bind() {
       if (!config) return;
       if (config.next) pushEntityDrawerLevel(config.next, row.dataset.entityLabel, {
         sourceType: row.dataset.entityContextSource || entityDrawerState.type,
-        label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title
+        label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title,
+        categoryCode: entityDrawerState.type === "category" ? row.dataset.entityId : (entityDrawerState.context?.categoryCode || null)
       });
       else if (config.onRowClick) config.onRowClick(row);
       else toast(config.clickToast);

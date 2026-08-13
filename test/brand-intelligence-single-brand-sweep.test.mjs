@@ -156,15 +156,17 @@ test("clientOrders drawer config: clickToast copy-paste bug fixed (was the SKU d
   assert.doesNotMatch(configSource, /clickToast: "SKU Intelligence 연결 예정"/);
 });
 
-// --- Regression: still-blocked types keep the original honest "not connected" wording -----
+// --- Regression: order drawer (still genuinely unconnected) keeps the original honest
+// "not connected" wording. Category gained a real source in BI-BATCH-I (SAMPLAS Category
+// Master v1) — see test/brand-intelligence-category-master.test.mjs for its coverage.
 
-test("category/order drawers (still genuinely unconnected) keep the default 'data connection pending' text, unchanged", () => {
-  const categorySource = sourceOfObjectProperty(DRAWER_CONFIG_MARKER, "category");
+test("order drawer (still genuinely unconnected) keeps the default 'data connection pending' text, unchanged", () => {
   const orderSource = sourceOfObjectProperty(DRAWER_CONFIG_MARKER, "order");
-  assert.doesNotMatch(categorySource, /emptyText/, "Category has no real source (BI-BATCH-C) — must not gain a fake 'this period only' empty state");
   assert.doesNotMatch(orderSource, /emptyText/, "Order has no real source — must not gain a fake 'this period only' empty state");
 });
 
-test("Category Intelligence remains untouched by this sweep (entityCategoryRows still the literal empty array)", () => {
-  assert.match(js, /const entityCategoryRows = \[\];/);
+test("BI-BATCH-I: category drawer now has an honest, function-valued emptyText distinguishing fetch-failure from genuine zero (NULL != ZERO)", () => {
+  const categorySource = sourceOfObjectProperty(DRAWER_CONFIG_MARKER, "category");
+  assert.match(categorySource, /emptyText/);
+  assert.match(categorySource, /entitySkuSalesState\.fetchFailed/);
 });

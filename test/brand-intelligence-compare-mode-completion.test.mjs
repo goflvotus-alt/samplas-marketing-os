@@ -21,6 +21,7 @@ import test from "node:test";
 // adding the one missing call — no new fetch architecture, reuses the exact function
 // refreshEntityTrendMonths already calls for the same purpose.
 const js = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
+const html = await readFile(new URL("../outputs/samplas-marketing-os.html", import.meta.url), "utf8");
 
 test("entityCompareTarget's change handler refreshes the actual comparison data (Period Performance table + Comparison Summary), not just the header label", () => {
   const markerIndex = js.indexOf('$("#entityCompareTarget")?.addEventListener("change"');
@@ -54,12 +55,12 @@ test("refreshEntityCompareTargetPeriodData re-renders both the Period Performanc
   assert.match(fnRegion, /renderEntityCompareSummary\(\);/);
 });
 
-// Regression guards: Category/Sell-through/Score/Recommended Action must remain honestly
-// blocked in Compare Mode too — this batch must not have accidentally defined any of them.
-test("Category, Brand Score, Sell-through, Recommended Action remain untouched/blocked (no business definitions were invented this batch)", () => {
-  assert.match(js, /const entityCategoryRows = \[\];/);
-  assert.match(js, /공식 Health Score 산식이 연결되기 전까지 점수를 표시하지 않습니다/);
-  assert.match(js, /Sell-through 산식과 Action threshold가 확정되기 전에는 행동을 자동 추천하지 않습니다/);
+// Regression guard: only Sell-through remains blocked after BI-BATCH-I (Category/Score/
+// Customer Grade/Recommended Action all shipped v1 definitions — see
+// docs/BRAND_INTELLIGENCE_RULES.md and their dedicated test files).
+test("Sell-through remains the only deferred Brand Intelligence feature in Compare Mode too", () => {
+  assert.match(html, /정의 미확정/);
+  assert.match(html, /BLOCKED · 공식 산식 필요/);
 });
 
 // Regression guard: the failure-state copy for the comparison table (used by both cutoff and

@@ -60,6 +60,7 @@ const SKU_JOIN_SOURCE = [
   sourceOfFunction("canonicalPaidAmount"),
   sourceOfFunction("entitySkuStockFor"),
   sourceOfFunction("entityRegistryEntryByProdCd"),
+  sourceOfFunction("entityEcountProdCdFor"),
   sourceOfFunction("loadEntityProductRegistryEntries"),
   sourceOfFunction("rebuildEntitySkuRows"),
   sourceOfFunction("refreshEntitySkuSales"),
@@ -109,6 +110,8 @@ function loadSkuJoin({ brandCode, sharedJsonResponses = {}, drawerOpen = false }
   const getSharedJsonImpl = async (url) => sharedJsonResponses[url] ?? { entries: [] };
   const fn = Function(
     "brandIdentityState", "getSharedJson", "entityDrawerState", "renderEntityDrawerBody", "renderEntityProductSection",
+    "loadEntityCategoryManualOverrides", "classifyEntityProductCategory", "rebuildEntityCategoryRows",
+    "refreshEntityScore", "currentEntityPeriodMonthKey",
     `
     let entitySkuSalesState = { brandCode: null, periodMonth: null, rows: [], fetchFailed: false };
     let entityInventoryItemsState = { brandCode: null, brandKey: null, items: [], fetchFailed: false, ready: false };
@@ -131,7 +134,12 @@ function loadSkuJoin({ brandCode, sharedJsonResponses = {}, drawerOpen = false }
     getSharedJsonImpl,
     { open: drawerOpen, type: drawerOpen ? "sku" : null },
     () => { renderCalls.count += 1; },
-    () => {}
+    () => {},
+    async () => new Map(),
+    () => ({ code: "UNCLASSIFIED", source: "fallback" }),
+    () => {},
+    () => {},
+    () => "2026-08"
   );
 }
 
