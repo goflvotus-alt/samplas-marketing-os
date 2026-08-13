@@ -107,11 +107,11 @@ Monthly's in-page TOC anchors (`<a href="#monthly-report-ch1">` etc.) trigger th
 
 ## COMMITS
 
-(recorded after commit — see follow-up doc-fix)
+`34dda70 refactor(monthly): remove ad UI, separate Annual, re-chapter into Summary/Commerce/Content/Intelligence` — staged only the exact 4 MONTHLY-RESTRUCTURE files, no `git add .`/`git add -A`. Pre-existing untracked BI-BATCH docs left untouched.
 
 ## FINAL HEAD
 
-(recorded after commit — see follow-up doc-fix)
+`34dda70` (parent: `93039d9`)
 
 ## PUSH: NONE
 ## DEPLOY: NONE
