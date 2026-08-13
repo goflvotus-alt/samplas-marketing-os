@@ -90,11 +90,11 @@ No changes to `outputs/samplas-marketing-os.html`, `server.mjs`, `intelligence-s
 
 ## COMMITS
 
-Pending — see final message for the hash after commit.
+`8dbdfbf feat(store-intelligence): add intelligence navigation affordances` — staged only the exact 4 STORE-INTEL-UI-B files, no `git add .`/`git add -A`. Pre-existing untracked BI-BATCH docs left untouched.
 
 ## FINAL HEAD
 
-To be confirmed after commit.
+`8dbdfbf` (parent: `cdf4605`)
 
 ## PUSH: NONE
 ## DEPLOY: NONE
