@@ -3799,12 +3799,15 @@ function monthlyAllStoreBreakdownNote(offlineSnapshot, archive) {
     if (Object.prototype.hasOwnProperty.call(byStore, line?.storeCode)) byStore[line.storeCode] += Number(line.salesAmount) || 0;
   }
   const onlineAmount = hasApiValue(archive?.sales?.onlineSales?.paidAmount) ? archive.sales.onlineSales.paidAmount : archive?.commerce?.paidAmount;
-  const parts = [`온라인 ${hasApiValue(onlineAmount) ? won(onlineAmount) : "데이터 없음"}`];
+  // STORE-INTEL-UI-B: 온라인은 이동 대상이 없으니(Store Intelligence는 물리 매장
+  // 전용) plain text로 두고, 압구정/VAIL만 storeIntelJumpLink()로 감싼다.
+  const parts = [esc(`온라인 ${hasApiValue(onlineAmount) ? won(onlineAmount) : "데이터 없음"}`)];
   for (const code of ["APGUJEONG", "VAIL"]) {
     const codeLabel = STORE_FILTER_LABELS[code] || code;
-    parts.push(storesIncluded.includes(code) ? `${codeLabel} ${won(byStore[code])}` : `${codeLabel} 미분류`);
+    const text = storesIncluded.includes(code) ? `${codeLabel} ${won(byStore[code])}` : `${codeLabel} 미분류`;
+    parts.push(storeIntelJumpLink(code, text));
   }
-  return `매장 구성: ${parts.join(" · ")}.`;
+  return `${esc("매장 구성:")} ${parts.join(" · ")}${esc(".")}`;
 }
 
 // STORE-BATCH-C: Annual용 — 연도 내 각 달을 store-scoped로 조회해 합산만 한다(archive
@@ -4097,7 +4100,11 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       </div>
     </header>
     <p class="monthly-report-fnote">${esc(monthlySummary)}. ${esc(reportBasisNote)}.${liveDraftNotice ? ` ${esc(liveDraftNotice)}` : ""}</p>
-    ${storeScopeNote ? `<p class="monthly-report-fnote store-filter-note">${esc(storeScopeNote)}</p>` : ""}
+    <!-- STORE-INTEL-UI-B: storeScopeNote는 ALL 모드일 때 monthlyAllStoreBreakdownNote()가
+         만든 안전한(사용자 입력 없음, 이 코드가 직접 생성) <button> HTML을 포함할 수 있어
+         여기서 다시 esc()하지 않는다(store-focus 모드의 monthlyStoreScopeNote()도 순수
+         텍스트라 그대로 안전하다). -->
+    ${storeScopeNote ? `<p class="monthly-report-fnote store-filter-note">${storeScopeNote}</p>` : ""}
     <nav class="monthly-report-toc" aria-label="Monthly report chapters">
       <a href="#monthly-report-ch1">01 Commerce</a>
       <a href="#monthly-report-ch2">02 Marketing</a>
@@ -7296,6 +7303,18 @@ function renderCommerceSalesSummary() {
   text.textContent = `${salesInfo.label} ${salesInfo.value}(${salesInfo.note.replace(/\.$/, "")}). 대표 이슈: ${issue}`;
 }
 
+// STORE-INTEL-UI-B: 압구정/VAIL 관련 텍스트를 해당 Store Intelligence 화면으로 이동
+// 가능한 inline affordance로 감싼다. 기존 [data-jump-view] 위임 클릭 핸들러
+// (document.querySelector(`[data-view="${view}"]`)?.click())를 그대로 재사용하므로
+// 새 routing/click 로직이 없다 — <button>을 써서 Enter/Space 활성화와 focus도
+// 별도 keydown 핸들러 없이 네이티브로 동작한다. Intelligence Store UI Shell(UI-A)
+// 자체는 건드리지 않는다(이동 대상일 뿐, 그 화면 내부는 잠금 유지).
+function storeIntelJumpLink(storeCode, text) {
+  const viewName = storeCode === "APGUJEONG" ? "ApgujeongIntelligence" : "VailIntelligence";
+  const label = STORE_FILTER_LABELS[storeCode] || storeCode;
+  return `<button type="button" class="store-intel-inline-link" data-jump-view="${esc(viewName)}" aria-label="${esc(text)} — ${esc(label)} Intelligence로 이동">${esc(text)}<span class="store-intel-link-affix" aria-hidden="true">${esc(label)} Intelligence →</span></button>`;
+}
+
 function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = null) {
   const onlineRaw = hasApiValue(totalSales?.onlineSales?.paidAmount)
     ? totalSales.onlineSales.paidAmount
@@ -7342,10 +7361,14 @@ function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = nul
   // PART 3: ALL 화면에서 가능하면 온라인/압구정/VAIL 3축을 함께 보여준다 — 각 store가
   // storesIncluded에 있을 때만 실제 값을 쓰고, 없으면 "미분류"로 정직하게 표시한다
   // (0원 확정 금지). APGUJEONG+VAIL=OFFLINE, ONLINE+OFFLINE=TOTAL 계산식 자체는 그대로다.
+  // STORE-INTEL-UI-B: 압구정/VAIL 세그먼트를 각각 storeIntelJumpLink()로 감싸 해당
+  // Intelligence 화면으로 이동 가능한 hover/click affordance를 추가한다(값 자체는
+  // 그대로, 새 계산 없음).
   const storeBreakdown = byStore
     ? ["APGUJEONG", "VAIL"].map((code) => {
       const codeLabel = STORE_FILTER_LABELS[code] || code;
-      return storesIncluded.includes(code) ? `${codeLabel} ${apiWon(byStore[code] || 0)}` : `${codeLabel} 미분류`;
+      const text = storesIncluded.includes(code) ? `${codeLabel} ${apiWon(byStore[code] || 0)}` : `${codeLabel} 미분류`;
+      return storeIntelJumpLink(code, text);
     }).join(" · ")
     : "";
   if (totalAvailable) {
@@ -7425,12 +7448,16 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing, totalSale
 
   // PART 3/4: ALL이면 storeBreakdown(온라인/압구정/VAIL), Store Focus면 share(전체 회사
   // 매출 대비 비중)를 note 아래 추가 줄로 덧붙인다 — 카드 컴포넌트/레이아웃은 그대로다.
+  // STORE-INTEL-UI-B: storeBreakdown은 이제 storeIntelJumpLink()가 만든 안전한(사용자
+  // 입력 없음, 전부 이 코드가 직접 생성) <button> HTML을 담고 있으므로 여기서 다시
+  // esc()하지 않는다 — esc()하면 버튼 태그가 그대로 텍스트로 보이게 된다. share 텍스트는
+  // 여전히 escape한 채로 별도 join한다.
   const salesInfoExtra = [
     salesInfo.storeBreakdown || "",
-    salesInfo.share ? `${salesInfo.shareLabel} ${salesInfo.share}` : ""
+    salesInfo.share ? esc(`${salesInfo.shareLabel} ${salesInfo.share}`) : ""
   ].filter(Boolean).join(" · ");
   if (sectionsTarget && todayViewActive()) sectionsTarget.innerHTML = [
-    `<article class="action-item sales-compare-card"><span>${esc(salesInfo.label)}</span><strong>${esc(salesInfo.value)}</strong><p>${esc(salesInfo.note)}${salesInfoExtra ? ` · ${esc(salesInfoExtra)}` : ""}</p><button class="today-jump-button" type="button" data-jump-view="Sales">Commerce 보기</button></article>`,
+    `<article class="action-item sales-compare-card"><span>${esc(salesInfo.label)}</span><strong>${esc(salesInfo.value)}</strong><p>${esc(salesInfo.note)}${salesInfoExtra ? ` · ${salesInfoExtra}` : ""}</p><button class="today-jump-button" type="button" data-jump-view="Sales">Commerce 보기</button></article>`,
     `<article class="action-item sales-compare-card"><span>Reports</span><strong>Monthly Report</strong><p>월간 확정 스냅샷</p><button class="today-jump-button" type="button" data-jump-view="Reports">월간 리포트 보기</button></article>`
   ].join("");
 
