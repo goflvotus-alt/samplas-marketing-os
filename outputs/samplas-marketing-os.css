@@ -135,6 +135,20 @@ textarea {
   color: #fff;
 }
 
+/* STORE-INTEL-UI-A: 압구정/VAIL Intelligence 메뉴만 쓰는 선택적 2줄 표시.
+   sublabel 없는 기존 버튼들은 min-height 38px 그대로 유지된다. */
+.nav button:has(.nav-sublabel) {
+  min-height: 46px;
+}
+
+.nav-sublabel {
+  display: block;
+  margin-top: 1px;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .sync-panel {
   margin-top: auto;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -10521,5 +10535,243 @@ body.entity-compare-on .entity-compare-trend-legend {
 
   .entity-compare-category-top {
     flex-direction: column;
+  }
+}
+
+/* ============================================================================
+   STORE-INTEL-UI-A: 압구정 Intelligence / VAIL Intelligence UI Shell.
+   기존 팔레트(--ink/--muted/--line/--panel/--shadow, 8px radius)를 그대로 쓰고,
+   두 화면 구분용 accent만 기존 토큰(--yellow=압구정, --blue=VAIL)에서 가져온다 —
+   새 색상을 만들지 않는다. 카드/도넛/랭킹 바는 .action-item/.sales-kpi-card/
+   .clients-donut*/.inventory-intel-coverage-bar* 기존 클래스를 그대로 재사용한다.
+   ============================================================================ */
+.store-intel-accent-apgujeong { --store-accent: var(--yellow); }
+.store-intel-accent-vail { --store-accent: var(--blue); }
+
+.store-intel-header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--store-accent) 14%, transparent);
+  color: var(--store-accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.store-intel-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.store-intel-kpi-row .sales-kpi-card {
+  border-top: 3px solid var(--store-accent);
+}
+
+.store-intel-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.store-intel-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.store-intel-panel {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.store-intel-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.store-intel-panel-head h4 {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.store-intel-more-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.store-intel-more-link:hover {
+  color: var(--ink);
+}
+
+.store-intel-table-wrap {
+  overflow-x: auto;
+}
+
+.store-intel-table-wrap table {
+  min-width: 0;
+  width: 100%;
+}
+
+.store-intel-table-wrap th,
+.store-intel-table-wrap td {
+  padding: 10px 8px;
+  font-size: 12px;
+}
+
+.store-intel-product-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(160px, 1fr));
+  gap: 12px;
+  overflow-x: auto;
+}
+
+.store-intel-product-card {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.store-intel-product-rank {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--store-accent);
+}
+
+.store-intel-product-image-placeholder {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 6px;
+  background: var(--paper);
+  border: 1px dashed var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.store-intel-product-brand {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.store-intel-product-name {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  word-break: keep-all;
+}
+
+.store-intel-product-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.store-intel-product-meta strong {
+  color: var(--ink);
+}
+
+.store-intel-mini-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.store-intel-insight-list {
+  display: grid;
+  gap: 8px;
+}
+
+.store-intel-insight-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.store-intel-insight-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--store-accent) 16%, transparent);
+  color: var(--store-accent);
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.store-intel-insight-text {
+  font-size: 13px;
+  color: var(--ink);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.store-intel-mock-note {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (max-width: 1080px) {
+  .store-intel-kpi-row {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .store-intel-grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .store-intel-product-row {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .store-intel-grid-3,
+  .store-intel-grid-2,
+  .store-intel-mini-kpi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .store-intel-product-row {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
   }
 }

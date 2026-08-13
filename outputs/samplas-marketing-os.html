@@ -2103,6 +2103,170 @@
           <div id="promotionSummaryTopProductsList" class="inventory-intel-coverage-bars"></div>
         </div>
       </section>
+
+      <!-- STORE-INTEL-UI-A: UI Shell only — 실제 ECOUNT/Clients/Inventory 연결 없음.
+           모든 수치는 renderApgujeongIntelligenceView()가 MOCK_APGUJEONG_INTELLIGENCE에서
+           채운다(outputs/samplas-marketing-os.js). 다음 배치에서 데이터 연결 시 이
+           MOCK 소스만 실제 fetch로 교체하면 되도록 골격을 그대로 둔다. -->
+      <section id="ApgujeongIntelligence" class="view store-intel-accent-apgujeong">
+        <div class="section-title home-hero">
+          <div>
+            <span class="store-intel-header-badge">Apgujeong Store</span>
+            <h3>압구정 INTELLIGENCE</h3>
+            <p class="topbar-subtitle">스타일리스트와 고객 관계 중심의 인사이트</p>
+          </div>
+        </div>
+        <p class="store-intel-mock-note">MOCK / UI SHELL — placeholder 데이터입니다. 실제 매출·고객 데이터는 다음 배치에서 연결됩니다.</p>
+
+        <div class="section-block">
+          <div id="apgujeongIntelKpiRow" class="store-intel-kpi-row"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact">
+            <div><p class="eyebrow">Stylist Performance</p><h3>스타일리스트 매출 성과</h3></div>
+          </div>
+          <div class="store-intel-grid-3">
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>스타일리스트 매출 비중</h4></div>
+              <div class="clients-donut-card" style="border:0;box-shadow:none;padding:0;">
+                <div id="apgujeongIntelStylistDonut" class="clients-donut" role="img" aria-label="스타일리스트 매출 비중">
+                  <div class="clients-donut-center"><strong>--</strong><span>매출 비중</span></div>
+                </div>
+                <ul id="apgujeongIntelStylistDonutLegend" class="clients-donut-legend"></ul>
+              </div>
+            </div>
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head">
+                <h4>TOP 스타일리스트 (매출)</h4>
+                <button type="button" class="store-intel-more-link" data-store-intel-more="apgujeong-stylist-ranking">더보기 &gt;</button>
+              </div>
+              <div id="apgujeongIntelStylistRanking" class="inventory-intel-coverage-bars"></div>
+            </div>
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>스타일리스트별 고객 수</h4></div>
+              <div id="apgujeongIntelStylistCustomerBars" class="inventory-intel-coverage-bars"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact">
+            <div><p class="eyebrow">Brand × Stylist</p><h3>브랜드 × 스타일리스트 성과</h3></div>
+          </div>
+          <div class="store-intel-grid-2">
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>스타일리스트별 TOP 브랜드</h4></div>
+              <div class="store-intel-table-wrap">
+                <table id="apgujeongIntelStylistBrandTable">
+                  <thead><tr><th>스타일리스트</th><th>TOP 브랜드</th><th>매출</th><th>비중</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>고객 유형 구성</h4></div>
+              <div class="clients-donut-card" style="border:0;box-shadow:none;padding:0;">
+                <div id="apgujeongIntelCustomerTypeDonut" class="clients-donut" role="img" aria-label="고객 유형 구성">
+                  <div class="clients-donut-center"><strong>--</strong><span>전체 고객</span></div>
+                </div>
+                <ul id="apgujeongIntelCustomerTypeDonutLegend" class="clients-donut-legend"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="store-intel-grid-2">
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>최근 구매 고객 (상위 5명)</h4></div>
+              <div class="store-intel-table-wrap">
+                <table id="apgujeongIntelRecentCustomersTable">
+                  <thead><tr><th>고객명</th><th>최근 구매일</th><th>구매 횟수</th><th>총 구매 금액</th><th>담당 스타일리스트</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>오늘의 인사이트</h4></div>
+              <div id="apgujeongIntelInsightList" class="store-intel-insight-list"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STORE-INTEL-UI-A: UI Shell only — 실제 상품/재고/Sell-through 연결 없음.
+           MOCK_VAIL_INTELLIGENCE에서 채운다. -->
+      <section id="VailIntelligence" class="view store-intel-accent-vail">
+        <div class="section-title home-hero">
+          <div>
+            <span class="store-intel-header-badge">SAMPLAS VAIL</span>
+            <h3>SAMPLAS VAIL INTELLIGENCE</h3>
+            <p class="topbar-subtitle">MD와 상품 소비자 중심의 인사이트</p>
+          </div>
+        </div>
+        <p class="store-intel-mock-note">MOCK / UI SHELL — placeholder 데이터입니다. 실제 매출·재고 데이터는 다음 배치에서 연결됩니다.</p>
+
+        <div class="section-block">
+          <div id="vailIntelKpiRow" class="store-intel-kpi-row"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact">
+            <div><p class="eyebrow">Product</p><h3>TOP 상품 (판매 수량)</h3></div>
+          </div>
+          <div id="vailIntelTopProductRow" class="store-intel-product-row"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="store-intel-grid-2">
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>브랜드 성과 (매출)</h4></div>
+              <div id="vailIntelBrandRanking" class="inventory-intel-coverage-bars"></div>
+            </div>
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>카테고리 구성 (매출 비중)</h4></div>
+              <div class="clients-donut-card" style="border:0;box-shadow:none;padding:0;">
+                <div id="vailIntelCategoryDonut" class="clients-donut" role="img" aria-label="카테고리 구성">
+                  <div class="clients-donut-center"><strong>--</strong><span>매출 비중</span></div>
+                </div>
+                <ul id="vailIntelCategoryDonutLegend" class="clients-donut-legend"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="store-intel-grid-2">
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>Sell-through (입고 후 경과일)</h4></div>
+              <div id="vailIntelSellThroughKpi" class="store-intel-mini-kpi-row"></div>
+            </div>
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>재고 현황</h4></div>
+              <div id="vailIntelInventoryKpi" class="store-intel-mini-kpi-row"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="store-intel-grid-2">
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>신규 입점 브랜드 반응</h4></div>
+              <div class="store-intel-table-wrap">
+                <table id="vailIntelNewBrandTable">
+                  <thead><tr><th>브랜드</th><th>입점일</th><th>7일 매출</th><th>Sell-through(7일)</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="store-intel-panel">
+              <div class="store-intel-panel-head"><h4>오늘의 MD 인사이트</h4></div>
+              <div id="vailIntelInsightList" class="store-intel-insight-list"></div>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
   <div id="productBrandOrderPopover" class="brand-order-popover" hidden></div>

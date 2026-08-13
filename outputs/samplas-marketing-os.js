@@ -18,6 +18,10 @@ const navItems = [
   { view: "ProductRegistry", label: "Product Registry", hash: "product-registry", group: "management", hidden: false },
   { view: "Settings", label: "Master Data", hash: "master-data", group: "management", hidden: false },
   { view: "Settings", label: "Settings", hash: "settings", group: "management", hidden: false },
+  // STORE-INTEL-UI-A: 기존 3개 그룹(공용 운영/관리·분석/hidden)과 별개인 새 그룹
+  // "store-intelligence" — renderNav()가 groups 배열에 이 key를 추가로 알아야 렌더된다.
+  { view: "ApgujeongIntelligence", label: "압구정 Intelligence", sublabel: "Apgujeong Store", hash: "store-apgujeong-intelligence", group: "store-intelligence", hidden: false },
+  { view: "VailIntelligence", label: "VAIL Intelligence", sublabel: "SAMPLAS VAIL", hash: "store-vail-intelligence", group: "store-intelligence", hidden: false },
   { view: "Calendar", label: "Calendar", hash: "calendar", hidden: true },
   { view: "Advertising", label: "Marketing", hash: "marketing", hidden: true },
   { view: "InventoryIntelligence", label: "Inventory Intelligence", hash: "inventory-intelligence", hidden: true },
@@ -701,7 +705,9 @@ const viewHashMap = {
   "Editorial AI": "editorial-ai",
   BrandDashboard: "brand-dashboard",
   EntityOverview: "brands",
-  PromotionSummary: "promotion-summary"
+  PromotionSummary: "promotion-summary",
+  ApgujeongIntelligence: "store-apgujeong-intelligence",
+  VailIntelligence: "store-vail-intelligence"
 };
 
 const hashViewMap = {
@@ -743,6 +749,10 @@ function setActiveView(view, options = {}) {
   if (targetView === "InventoryIntelligence") renderInventoryIntelligenceView();
   if (targetView === "Calendar") renderCalendarView();
   if (targetView === "PromotionSummary") renderPromotionSummaryView();
+  // STORE-INTEL-UI-A: UI Shell — MOCK 데이터만 그린다(기존 renderSeq/네트워크 fetch
+  // 패턴과 무관, 새로고침해도 즉시 렌더된다).
+  if (targetView === "ApgujeongIntelligence") renderApgujeongIntelligenceView();
+  if (targetView === "VailIntelligence") renderVailIntelligenceView();
   if (targetView === "Overview" && todayViewDirty && monthlyData.length) renderTodayView(selectedMonth());
   if (targetView === "Intelligence" && monthlyData.length) renderActiveDestinationCards(selectedMonth());
   if (options.updateHash === false && ["Reports", "Sales", "Settings"].includes(targetView) && monthlyData.length) renderActiveDestinationCards(selectedMonth());
@@ -767,13 +777,15 @@ function renderNav() {
   const nav = $("#nav");
   const groups = [
     { key: "public", label: "공용 운영" },
-    { key: "management", label: "관리 · 분석" }
+    { key: "management", label: "관리 · 분석" },
+    // STORE-INTEL-UI-A: 기존 두 그룹과 시각적으로 구분되는 새 section label.
+    { key: "store-intelligence", label: "STORE INTELLIGENCE" }
   ];
   nav.innerHTML = groups.map((group) => `
     <div class="nav-group">
       <p class="nav-group-label">${esc(group.label)}</p>
       ${navItems.filter((item) => item.group === group.key).map((item) => (
-        `<button type="button" data-view="${esc(item.view)}" data-route="${esc(item.hash)}">${esc(item.label)}</button>`
+        `<button type="button" data-view="${esc(item.view)}" data-route="${esc(item.hash)}">${esc(item.label)}${item.sublabel ? `<small class="nav-sublabel">${esc(item.sublabel)}</small>` : ""}</button>`
       )).join("")}
     </div>
   `).join('<div class="nav-group-divider" aria-hidden="true"></div>') + navItems.filter((item) => item.hidden).map((item) => (
@@ -803,7 +815,9 @@ function updateTopbarControls(view) {
   const monthSelect = $("#monthSelect");
   const operationsSelect = $("#operationsRange");
   const customRange = $("#operationsCustomRange");
-  const showOperations = ["Overview", "Sales", "Advertising", "Content", "Clients"].includes(view);
+  // STORE-INTEL-UI-A: 압구정/VAIL Intelligence도 "기존 period selector 디자인 재사용"
+  // 요구에 따라 showOperations에 포함한다 — 새 selector를 만들지 않는다.
+  const showOperations = ["Overview", "Sales", "Advertising", "Content", "Clients", "ApgujeongIntelligence", "VailIntelligence"].includes(view);
   if (monthSelect) monthSelect.hidden = !showOperations;
   if (operationsSelect) operationsSelect.hidden = !showOperations;
   if (customRange) customRange.hidden = !showOperations || operationsRange !== "custom";
@@ -812,6 +826,8 @@ function updateTopbarControls(view) {
   // 목록엔 없지만 Store Dimension은 지원 대상이므로 별도 목록으로 판단한다.
   const storeSelect = $("#storeFilterSelect");
   // STORE-BATCH-D: Clients/Brand Intelligence(BrandDashboard)까지 공유 Store selector 노출 확장.
+  // STORE-INTEL-UI-A: 압구정/VAIL Intelligence는 이미 특정 매장 전용 화면이므로 전역
+  // ALL/압구정/VAIL selector는 의미가 중복돼 넣지 않는다(화면 자체가 매장을 고정함).
   const showStoreFilter = ["Overview", "Reports", "Sales", "Clients", "BrandDashboard"].includes(view);
   if (storeSelect) storeSelect.hidden = !showStoreFilter;
   if (controls) controls.hidden = !showOperations && !showStoreFilter;
@@ -1101,6 +1117,223 @@ function promotionCoverageBarRow({ rank, label, sublabel, headline, share, desc 
     ${barHtml}
     <p class="inventory-intel-coverage-bar-desc">${desc}</p>
   </div>`;
+}
+
+// ============================================================================
+// STORE-INTEL-UI-A: 압구정 Intelligence / VAIL Intelligence UI Shell.
+// 이번 배치는 UI SHELL FIRST, DATA SECOND — 아래 MOCK_* 객체는 실제 ECOUNT/Clients/
+// Inventory 데이터가 아니다. 다음 배치에서 실 데이터를 연결할 때 이 MOCK 소스를
+// 실제 fetch 결과로 교체하는 것만으로 아래 render 함수들이 그대로 재사용되도록
+// 필드 구조를 실제 API 응답 형태에 최대한 가깝게 맞춰뒀다(새 계산 로직 없음).
+// ============================================================================
+const MOCK_APGUJEONG_INTELLIGENCE = {
+  kpis: [
+    { label: "오늘 매출", value: "8,420,000원", delta: "전일 대비 +12%" },
+    { label: "구매 고객 수", value: "18명", delta: "전일 대비 +3명" },
+    { label: "주문 건수", value: "22건", delta: "전일 대비 +4건" },
+    { label: "객단가", value: "382,700원", delta: "전일 대비 -2%" },
+    { label: "재구매 고객 비중", value: "41%", delta: "전월 대비 +5%p" }
+  ],
+  stylistShare: [
+    { name: "김민지", share: 34, color: "#d7a642" },
+    { name: "박서연", share: 27, color: "#285d9a" },
+    { name: "이하늘", share: 21, color: "#206f54" },
+    { name: "기타", share: 18, color: "#a9423d" }
+  ],
+  stylistRanking: [
+    { rank: 1, name: "김민지", sublabel: "스타일리스트", sales: 3120000, share: 100 },
+    { rank: 2, name: "박서연", sublabel: "스타일리스트", sales: 2480000, share: 79 },
+    { rank: 3, name: "이하늘", sublabel: "스타일리스트", sales: 1930000, share: 62 },
+    { rank: 4, name: "최도윤", sublabel: "스타일리스트", sales: 1210000, share: 39 },
+    { rank: 5, name: "정유진", sublabel: "스타일리스트", sales: 980000, share: 31 }
+  ],
+  stylistCustomerCounts: [
+    { rank: 1, name: "김민지", sublabel: null, customers: 41, share: 100 },
+    { rank: 2, name: "박서연", sublabel: null, customers: 33, share: 80 },
+    { rank: 3, name: "이하늘", sublabel: null, customers: 27, share: 66 },
+    { rank: 4, name: "최도윤", sublabel: null, customers: 19, share: 46 },
+    { rank: 5, name: "정유진", sublabel: null, customers: 15, share: 37 }
+  ],
+  stylistBrandTable: [
+    { stylist: "김민지", topBrand: "CARNET ARCHIVE", sales: "1,120,000원", share: "36%" },
+    { stylist: "박서연", topBrand: "NAMILIA", sales: "890,000원", share: "36%" },
+    { stylist: "이하늘", topBrand: "AAH MIDNIGHT CLUB", sales: "610,000원", share: "32%" },
+    { stylist: "최도윤", topBrand: "424", sales: "480,000원", share: "40%" },
+    { stylist: "정유진", topBrand: "8IGB", sales: "350,000원", share: "36%" }
+  ],
+  customerTypeDonut: [
+    { type: "스타일리스트", count: 41, share: 44, color: "#d7a642" },
+    { type: "일반 손님", count: 28, share: 30, color: "#285d9a" },
+    { type: "프레스", count: 14, share: 15, color: "#206f54" },
+    { type: "외국인", count: 10, share: 11, color: "#a9423d" }
+  ],
+  recentCustomers: [
+    { name: "최재은", date: "2026-08-13", count: 6, total: "4,820,000원", stylist: "김민지" },
+    { name: "한소희", date: "2026-08-12", count: 3, total: "1,960,000원", stylist: "박서연" },
+    { name: "윤도현", date: "2026-08-12", count: 2, total: "1,340,000원", stylist: "이하늘" },
+    { name: "강지우", date: "2026-08-11", count: 4, total: "2,110,000원", stylist: "김민지" },
+    { name: "오세훈", date: "2026-08-11", count: 1, total: "620,000원", stylist: "최도윤" }
+  ],
+  insights: [
+    "스타일리스트 매출 상승",
+    "VIP 고객 재방문",
+    "브랜드 재고 주의"
+  ]
+};
+
+const MOCK_VAIL_INTELLIGENCE = {
+  kpis: [
+    { label: "오늘 매출", value: "5,180,000원", delta: "전일 대비 +8%" },
+    { label: "판매 수량", value: "64개", delta: "전일 대비 +11개" },
+    { label: "주문 건수", value: "31건", delta: "전일 대비 +5건" },
+    { label: "객단가", value: "167,100원", delta: "전일 대비 -4%" },
+    { label: "신규 고객 비중", value: "58%", delta: "전월 대비 +9%p" }
+  ],
+  topProducts: [
+    { rank: 1, brand: "CARNET ARCHIVE", name: "Archive Wool Coat", quantity: "18개", sales: "1,980,000원" },
+    { rank: 2, brand: "NAMILIA", name: "Signature Knit Top", quantity: "15개", sales: "1,050,000원" },
+    { rank: 3, brand: "AAH MIDNIGHT CLUB", name: "Midnight Cargo Pants", quantity: "12개", sales: "960,000원" },
+    { rank: 4, brand: "424", name: "424 Graphic Hoodie", quantity: "10개", sales: "720,000원" },
+    { rank: 5, brand: "8IGB", name: "8IGB Denim Jacket", quantity: "9개", sales: "810,000원" }
+  ],
+  brandRanking: [
+    { rank: 1, name: "CARNET ARCHIVE", sublabel: null, sales: 1980000, share: 100 },
+    { rank: 2, name: "NAMILIA", sublabel: null, sales: 1050000, share: 53 },
+    { rank: 3, name: "AAH MIDNIGHT CLUB", sublabel: null, sales: 960000, share: 48 },
+    { rank: 4, name: "8IGB", sublabel: null, sales: 810000, share: 41 },
+    { rank: 5, name: "424", sublabel: null, sales: 720000, share: 36 }
+  ],
+  categoryDonut: [
+    { type: "아우터", share: 34, color: "#285d9a" },
+    { type: "상의", share: 27, color: "#d7a642" },
+    { type: "하의", share: 21, color: "#206f54" },
+    { type: "기타", share: 18, color: "#a9423d" }
+  ],
+  sellThrough: [
+    { label: "7일 이내", value: "22%" },
+    { label: "14일 이내", value: "41%" },
+    { label: "30일 이내", value: "68%" }
+  ],
+  inventory: [
+    { label: "총 재고 수량", value: "1,240개" },
+    { label: "재고 금액", value: "182,600,000원" },
+    { label: "Dead Stock", value: "37개" }
+  ],
+  newBrands: [
+    { brand: "8IGB", openDate: "2026-08-01", sales7d: "810,000원", sellThrough7d: "24%" },
+    { brand: "AE SYNCTX", openDate: "2026-08-05", sales7d: "410,000원", sellThrough7d: "16%" },
+    { brand: "604SERVICE", openDate: "2026-08-08", sales7d: "290,000원", sellThrough7d: "11%" }
+  ],
+  insights: [
+    "초기 반응이 좋은 브랜드",
+    "빠른 소진 상품",
+    "재고 보충 후보",
+    "Dead Stock 확인"
+  ]
+};
+
+// donut 조각 hover 없이 정적 conic-gradient만 그리는 최소 구현(Clients/Brand Intelligence의
+// clientsDonutGradient는 hover-active state와 결합돼 있어 여기선 새로 만들지 않고 별도 함수로
+// 둔다 — UI Shell 단계라 interactivity는 legend 목록으로만 충분하다).
+function storeIntelDonutGradient(rows) {
+  let cursor = 0;
+  return rows.map((row) => {
+    const start = cursor;
+    cursor += row.share;
+    return `${row.color} ${start}% ${cursor}%`;
+  }).join(", ");
+}
+
+function storeIntelDonutHtml(donutId, legendId, rows, centerLabel) {
+  const donut = $(`#${donutId}`);
+  const legend = $(`#${legendId}`);
+  if (donut) {
+    donut.style.background = `conic-gradient(${storeIntelDonutGradient(rows)})`;
+    const center = donut.querySelector(".clients-donut-center");
+    if (center) center.innerHTML = `<strong>${esc(rows[0]?.share ?? "--")}%</strong><span>${esc(centerLabel)}</span>`;
+  }
+  if (legend) {
+    legend.innerHTML = rows.map((row) => (
+      `<li><i style="background:${row.color}"></i>${esc(row.type || row.name)} <span class="muted">${row.share}%</span></li>`
+    )).join("");
+  }
+}
+
+function storeIntelInsightListHtml(items) {
+  return items.map((text, index) => (
+    `<div class="store-intel-insight-row"><span class="store-intel-insight-icon">${index + 1}</span><span class="store-intel-insight-text">${esc(text)}</span></div>`
+  )).join("");
+}
+
+function renderApgujeongIntelligenceView() {
+  const data = MOCK_APGUJEONG_INTELLIGENCE;
+  const kpiTarget = $("#apgujeongIntelKpiRow");
+  if (kpiTarget) kpiTarget.innerHTML = data.kpis.map((k) => salesKpiCard(k.label, k.value, k.delta)).join("");
+
+  storeIntelDonutHtml("apgujeongIntelStylistDonut", "apgujeongIntelStylistDonutLegend", data.stylistShare, "매출 비중");
+
+  const rankingTarget = $("#apgujeongIntelStylistRanking");
+  if (rankingTarget) rankingTarget.innerHTML = data.stylistRanking.map((row) => promotionCoverageBarRow({
+    rank: row.rank, label: row.name, sublabel: row.sublabel, headline: won(row.sales), share: row.share, desc: `매출 ${won(row.sales)}`
+  })).join("");
+
+  const customerBarsTarget = $("#apgujeongIntelStylistCustomerBars");
+  if (customerBarsTarget) customerBarsTarget.innerHTML = data.stylistCustomerCounts.map((row) => promotionCoverageBarRow({
+    rank: row.rank, label: row.name, sublabel: row.sublabel, headline: `${row.customers}명`, share: row.share, desc: `고객 ${row.customers}명`
+  })).join("");
+
+  const brandTableBody = $("#apgujeongIntelStylistBrandTable tbody");
+  if (brandTableBody) brandTableBody.innerHTML = data.stylistBrandTable.map((row) => (
+    `<tr><td>${esc(row.stylist)}</td><td>${esc(row.topBrand)}</td><td>${esc(row.sales)}</td><td>${esc(row.share)}</td></tr>`
+  )).join("");
+
+  storeIntelDonutHtml("apgujeongIntelCustomerTypeDonut", "apgujeongIntelCustomerTypeDonutLegend", data.customerTypeDonut, "전체 고객");
+
+  const recentTableBody = $("#apgujeongIntelRecentCustomersTable tbody");
+  if (recentTableBody) recentTableBody.innerHTML = data.recentCustomers.map((row) => (
+    `<tr><td>${esc(row.name)}</td><td>${esc(row.date)}</td><td>${row.count}건</td><td>${esc(row.total)}</td><td>${esc(row.stylist)}</td></tr>`
+  )).join("");
+
+  const insightTarget = $("#apgujeongIntelInsightList");
+  if (insightTarget) insightTarget.innerHTML = storeIntelInsightListHtml(data.insights);
+}
+
+function renderVailIntelligenceView() {
+  const data = MOCK_VAIL_INTELLIGENCE;
+  const kpiTarget = $("#vailIntelKpiRow");
+  if (kpiTarget) kpiTarget.innerHTML = data.kpis.map((k) => salesKpiCard(k.label, k.value, k.delta)).join("");
+
+  const productTarget = $("#vailIntelTopProductRow");
+  if (productTarget) productTarget.innerHTML = data.topProducts.map((p) => `
+    <article class="store-intel-product-card">
+      <span class="store-intel-product-rank">${p.rank}위</span>
+      <div class="store-intel-product-image-placeholder">이미지 준비 중</div>
+      <span class="store-intel-product-brand">${esc(p.brand)}</span>
+      <span class="store-intel-product-name">${esc(p.name)}</span>
+      <div class="store-intel-product-meta"><span>판매 ${esc(p.quantity)}</span><strong>${esc(p.sales)}</strong></div>
+    </article>
+  `).join("");
+
+  const brandRankingTarget = $("#vailIntelBrandRanking");
+  if (brandRankingTarget) brandRankingTarget.innerHTML = data.brandRanking.map((row) => promotionCoverageBarRow({
+    rank: row.rank, label: row.name, sublabel: row.sublabel, headline: won(row.sales), share: row.share, desc: `매출 ${won(row.sales)}`
+  })).join("");
+
+  storeIntelDonutHtml("vailIntelCategoryDonut", "vailIntelCategoryDonutLegend", data.categoryDonut, "매출 비중");
+
+  const sellThroughTarget = $("#vailIntelSellThroughKpi");
+  if (sellThroughTarget) sellThroughTarget.innerHTML = data.sellThrough.map((k) => salesKpiCard(k.label, k.value, "")).join("");
+
+  const inventoryTarget = $("#vailIntelInventoryKpi");
+  if (inventoryTarget) inventoryTarget.innerHTML = data.inventory.map((k) => salesKpiCard(k.label, k.value, "")).join("");
+
+  const newBrandBody = $("#vailIntelNewBrandTable tbody");
+  if (newBrandBody) newBrandBody.innerHTML = data.newBrands.map((row) => (
+    `<tr><td>${esc(row.brand)}</td><td>${esc(row.openDate)}</td><td>${esc(row.sales7d)}</td><td>${esc(row.sellThrough7d)}</td></tr>`
+  )).join("");
+
+  const insightTarget = $("#vailIntelInsightList");
+  if (insightTarget) insightTarget.innerHTML = storeIntelInsightListHtml(data.insights);
 }
 
 // STEP66-1 SECTION 1: Hero Status Badge 색 매핑. docs/DESIGN_SYSTEM.md 8번(Status
