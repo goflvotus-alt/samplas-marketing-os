@@ -1,0 +1,5 @@
+{
+  "version": "v1",
+  "note": "SAMPLAS Category Master v1 (BI-BATCH-I). manualOverrides만 여기 저장한다 — 결정론적 이름/ECOUNT suffix 규칙은 코드(outputs/samplas-marketing-os.js)에 있고 항상 재계산되므로 캐시하지 않는다. 상세 정책은 docs/BRAND_INTELLIGENCE_RULES.md 참고.",
+  "manualOverrides": []
+}

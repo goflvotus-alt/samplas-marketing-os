@@ -50,6 +50,7 @@ const learningDbFile = join(intelligenceWorkDir, "learning-db.json");
 const missionCacheFile = join(intelligenceWorkDir, "mission-cache.json");
 const productRegistryFile = join(workRoot, "product-registry.json");
 const productRegistryReviewQueueFile = join(workRoot, "product-registry-review-queue.json");
+const categoryMasterFile = join(workRoot, "category-master.json");
 const inventoryIntelligenceCandidatesFile = join(workRoot, "inventory-intelligence-candidates.json");
 // Phase 3A — Inventory Overview: ECOUNT stockQuantity를 유일한 재고 기준(Source of Truth)으로 사용한다.
 // Cafe24 inventoryQuantity는 이 라우트의 어떤 계산에도 사용하지 않는다.
@@ -212,6 +213,10 @@ async function routeIntelligenceRequest(url, req, res) {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return handleProductRegistryReviewQueueGet(res);
     }
+    if (url.pathname === "/api/intelligence/category-master") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleCategoryMasterGet(res);
+    }
     if (url.pathname === "/api/inventory/intelligence/health") {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return handleInventoryIntelligenceHealthGet(res);
@@ -299,6 +304,19 @@ async function handleProductRegistryGet(res) {
 async function handleProductRegistryReviewQueueGet(res) {
   const reviewQueue = await readProductRegistryJson(productRegistryReviewQueueFile);
   return json(res, { ok: true, reviewQueue });
+}
+
+// BI-BATCH-I: SAMPLAS Category Master v1의 manualOverrides만 읽어 노출한다(읽기 전용).
+// 파일이 아직 없으면 빈 override 목록으로 취급 — 결정론적 규칙(이름/ECOUNT suffix)은
+// 이 파일에 저장하지 않고 outputs/samplas-marketing-os.js에 코드로 존재한다.
+async function handleCategoryMasterGet(res) {
+  let master;
+  try {
+    master = await readProductRegistryJson(categoryMasterFile);
+  } catch {
+    master = { version: "v1", manualOverrides: [] };
+  }
+  return json(res, { ok: true, categoryMaster: master });
 }
 
 // Phase 2A(scripts/diagnose-inventory-reconciliation.mjs)가 생성한
