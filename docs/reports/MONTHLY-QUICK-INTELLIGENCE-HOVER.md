@@ -129,11 +129,11 @@ Verified live at 127.0.0.1:8787 (2026-08 archive):
 
 ## COMMITS
 
-(recorded after commit — see follow-up doc-fix)
+`f5550d0 feat(monthly): expand hover popovers into Quick Intelligence analysis cards` — staged only the exact 5 files for this batch, no `git add .`/`git add -A`. Pre-existing untracked BI-BATCH docs left untouched.
 
 ## FINAL HEAD
 
-(recorded after commit — see follow-up doc-fix)
+`f5550d0` (parent: `ad16673`)
 
 ## PUSH: NONE
 ## DEPLOY: NONE
