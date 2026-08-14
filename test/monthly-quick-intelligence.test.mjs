@@ -170,8 +170,8 @@ test("9b. donut rendering gate is unchanged (both APGUJEONG and VAIL must be in 
   assert.match(donutFn, /if \(!storesIncluded\.includes\("APGUJEONG"\) \|\| !storesIncluded\.includes\("VAIL"\)\) return "";/);
 });
 
-// 10. visual design: dark card language preserved, existing --green/--red semantic tokens
-// reused for delta tone (no new color system), popover width within the 260-300px range
+// 10. visual design: Daily Calendar의 white-card language를 공유하고, 기존 --green/--red
+// semantic tokens are reused for delta tone (no new color system), popover width within the 260-300px range
 // !important is required here: .monthly-report-hero-main/.side-row/.legend-row already style
 // bare <strong>/<span> broadly (e.g. the giant hero clamp() font-size) with equal selector
 // specificity — without !important those ambient rules silently leak into the popover
@@ -181,8 +181,12 @@ test("10. delta tone classes reuse the existing --green/--red tokens (no new col
   assert.match(css, /\.monthly-intel-popover-row strong\.monthly-intel-delta-negative\s*\{\s*color:\s*var\(--red\) !important;/);
 });
 
-test("10b. popover keeps the dark card background (var(--ink)) unchanged", () => {
-  assert.match(css, /\.monthly-intel-popover\s*\{[^}]*background:\s*var\(--ink\)/);
+test("10b. popover uses the Daily Calendar white-card visual contract", () => {
+  const block = css.match(/\.monthly-intel-popover\s*\{([^}]*)\}/)[1];
+  assert.match(block, /background:\s*rgba\(255, 255, 255, 0\.98\)/);
+  assert.match(block, /border:\s*1px solid rgba\(23, 23, 23, 0\.08\)/);
+  assert.match(block, /box-shadow:\s*0 18px 42px rgba\(25, 25, 20, 0\.16\)/);
+  assert.match(block, /color:\s*var\(--ink\)/);
 });
 
 // Regression guard for a real bug found+fixed during this batch's live QA: popover row

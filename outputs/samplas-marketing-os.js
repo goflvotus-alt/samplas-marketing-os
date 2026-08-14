@@ -21,7 +21,7 @@ const navItems = [
   // STORE-INTEL-UI-A: 기존 3개 그룹(공용 운영/관리·분석/hidden)과 별개인 새 그룹
   // "store-intelligence" — renderNav()가 groups 배열에 이 key를 추가로 알아야 렌더된다.
   { view: "ApgujeongIntelligence", label: "압구정 Intelligence", sublabel: "Apgujeong Store", hash: "store-apgujeong-intelligence", group: "store-intelligence", hidden: false },
-  { view: "VailIntelligence", label: "VAIL Intelligence", sublabel: "SAMPLAS VAIL", hash: "store-vail-intelligence", group: "store-intelligence", hidden: false },
+  { view: "VailIntelligence", label: "VEIL Intelligence", sublabel: "SAMPLAS VEIL", hash: "store-vail-intelligence", group: "store-intelligence", hidden: false },
   { view: "Calendar", label: "Calendar", hash: "calendar", hidden: true },
   { view: "Advertising", label: "Marketing", hash: "marketing", hidden: true },
   { view: "InventoryIntelligence", label: "Inventory Intelligence", hash: "inventory-intelligence", hidden: true },
@@ -3885,7 +3885,7 @@ function annualArchiveBrandPerformanceBlock(rows) {
 // 문구. readEcountOfflineSalesSnapshot의 store-scoped 읽기를 그대로 쓰므로(=
 // STORE-BATCH-B에서 이미 검증됨) 새 계산 없음. 온라인 매출은 매장 귀속이 불가능하므로
 // 여기서 다루지 않는다(문구로만 명시) — 총매출처럼 합산해 보여주지 않는다.
-const STORE_FILTER_LABELS = { APGUJEONG: "압구정", VAIL: "VAIL" };
+const STORE_FILTER_LABELS = { APGUJEONG: "압구정", VAIL: "VEIL" };
 async function monthlyStoreScopeNote(month, storeCode) {
   const label = STORE_FILTER_LABELS[storeCode] || storeCode;
   const data = await getJson(`/api/ecount-sales/monthly?month=${month}&store=${encodeURIComponent(storeCode)}`, 8000);
@@ -3976,7 +3976,7 @@ function monthlyStoreDonutBlock(offlineSnapshot) {
     </li>`;
   }).join("");
   return `<section class="monthly-report-block">
-    <div class="monthly-report-block-head"><h4>오프라인 매출 구성</h4><span>압구정 + VAIL = 100%</span></div>
+    <div class="monthly-report-block-head"><h4>오프라인 매출 구성</h4><span>압구정 + VEIL = 100%</span></div>
     <div class="monthly-store-donut-card">
       <div class="monthly-store-donut">
         <svg class="monthly-store-donut-svg" viewBox="0 0 132 132" aria-hidden="true">${arcs}</svg>
@@ -4265,7 +4265,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     monthlyIntelPopoverCard("이번 달 온라인 매출", monthlyIntelKpiPopoverRows("이번 달", salesOnlineAmount, summaryPreviousCommerce.paidAmount, apiWon), "Commerce")
   );
   const offlineSalesHover = hasOfflineSales
-    ? `<span class="monthly-intel-link monthly-intel-hover-only" tabindex="0"><strong>${apiWon(salesOfflineAmount)}</strong><span class="monthly-intel-popover" aria-hidden="true">${monthlyIntelPopoverCard("이번 달 오프라인 매출", [["금액", esc(apiWon(salesOfflineAmount))], ["구성", "압구정 + VAIL 합계"]], "")}</span></span>`
+    ? `<span class="monthly-intel-link monthly-intel-hover-only" tabindex="0"><strong>${apiWon(salesOfflineAmount)}</strong><span class="monthly-intel-popover" aria-hidden="true">${monthlyIntelPopoverCard("이번 달 오프라인 매출", [["금액", esc(apiWon(salesOfflineAmount))], ["구성", "압구정 + VEIL 합계"]], "")}</span></span>`
     : `<strong>데이터 없음</strong>`;
   const onlineOrdersLink = monthlyIntelLink(
     `<strong>${apiNum(commerce.orderCount)}</strong>`,

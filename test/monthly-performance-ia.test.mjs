@@ -34,6 +34,13 @@ test("store split never fabricates missing store values", () => {
   assert.match(fn, /매장별 판매 데이터 업로드 후 표시됩니다/);
 });
 
+test("VEIL is display-only while the internal VAIL contract remains unchanged", () => {
+  assert.match(html, /<option value="VAIL">VEIL<\/option>/);
+  assert.match(js, /STORE_FILTER_LABELS = \{ APGUJEONG: "압구정", VAIL: "VEIL" \}/);
+  assert.match(js, /storesIncluded\.includes\("VAIL"\)/);
+  assert.match(js, /"VailIntelligence"/);
+});
+
 test("store and brand cards reuse existing Intelligence navigation", () => {
   assert.match(js, /data-jump-view="\$\{viewName\}"/);
   assert.match(js, /monthlyIntelBrandLabelHtml\(item, brandPerformancePaidAmount\(item\)/);

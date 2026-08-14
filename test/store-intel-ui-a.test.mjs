@@ -21,8 +21,8 @@ test("1. Apgujeong Intelligence nav entry exists (navItems)", () => {
   assert.match(js, /view:\s*"ApgujeongIntelligence".*label:\s*"압구정 Intelligence"/);
 });
 
-test("2. VAIL Intelligence nav entry exists (navItems)", () => {
-  assert.match(js, /view:\s*"VailIntelligence".*label:\s*"VAIL Intelligence"/);
+test("2. VEIL Intelligence display label keeps the VailIntelligence route contract", () => {
+  assert.match(js, /view:\s*"VailIntelligence".*label:\s*"VEIL Intelligence"/);
 });
 
 test("2b. both nav entries are grouped under the new store-intelligence section (not mixed into existing groups)", () => {

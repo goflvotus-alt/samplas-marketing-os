@@ -11033,10 +11033,12 @@ body.entity-compare-on .entity-compare-trend-legend {
   margin-top: 6px;
   width: max-content;
   max-width: 280px;
-  background: var(--ink);
-  color: #fff;
+  border: 1px solid rgba(23, 23, 23, 0.08);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 42px rgba(25, 25, 20, 0.16);
+  color: var(--ink);
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 11px;
   line-height: 1.5;
   opacity: 0;
@@ -11061,10 +11063,10 @@ body.entity-compare-on .entity-compare-trend-legend {
   display: block;
   font-size: 13px;
   font-weight: 800;
-  color: #fff;
+  color: var(--ink);
   padding-bottom: 8px;
   margin-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  border-bottom: 1px solid var(--line);
 }
 
 /* MONTHLY-QUICK-INTEL: key/value 행 — label은 subdued, value는 readable(스펙 §8 font
@@ -11075,7 +11077,7 @@ body.entity-compare-on .entity-compare-trend-legend {
   gap: 4px;
   padding-bottom: 8px;
   margin-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  border-bottom: 1px solid var(--line);
 }
 
 .monthly-intel-popover-row {
@@ -11095,7 +11097,7 @@ body.entity-compare-on .entity-compare-trend-legend {
 */
 .monthly-intel-popover-row span {
   display: inline !important;
-  color: rgba(255, 255, 255, 0.62) !important;
+  color: var(--muted) !important;
   font-size: 11px !important;
   font-weight: 400 !important;
   text-transform: none !important;
@@ -11106,7 +11108,7 @@ body.entity-compare-on .entity-compare-trend-legend {
   display: inline !important;
   font-size: 12px !important;
   font-weight: 700 !important;
-  color: #fff !important;
+  color: var(--ink) !important;
   text-transform: none !important;
   margin: 0 !important;
   text-align: right;
@@ -11125,7 +11127,7 @@ body.entity-compare-on .entity-compare-trend-legend {
   font-style: normal;
   font-weight: 800;
   font-size: 10px;
-  color: #fff;
+  color: var(--ink);
 }
 
 /* 오른쪽 정렬 카드(2열 grid의 오른쪽 컬럼) 안의 popover는 왼쪽으로 넘칠 수 있어 오른쪽
