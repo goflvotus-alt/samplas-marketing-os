@@ -94,11 +94,11 @@ The Chrome automation's `screenshot` action reliably captured hover state for **
 
 ## COMMITS
 
-(recorded after commit — see follow-up doc-fix)
+`a68d619 feat(monthly): add Intelligence hover + click navigation layer` — staged only the exact 5 files for this batch, no `git add .`/`git add -A`. Pre-existing untracked BI-BATCH docs left untouched.
 
 ## FINAL HEAD
 
-(recorded after commit — see follow-up doc-fix)
+`a68d619` (parent: `761e22d`)
 
 ## PUSH: NONE
 ## DEPLOY: NONE
