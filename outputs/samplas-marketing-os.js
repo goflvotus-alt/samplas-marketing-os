@@ -2868,6 +2868,10 @@ function monthlyReportRankRows(items, options = {}) {
   const subFn = options.subFn || (() => "");
   const attrsFn = options.attrsFn || (() => "");
   const extraFn = options.extraFn || (() => "");
+  // MONTHLY-INTEL-NAV: labelHtmlFn은 optional 확장 지점이다 — 넘기지 않으면 기존과 동일하게
+  // labelFn 결과를 esc()해서 <strong> 안에 그대로 넣는다(하위 호환, 기존 호출부 전부 무변경).
+  // 넘기면 raw HTML을 그대로 쓴다(호출부가 직접 escape 책임 — monthlyIntelLink가 이미 처리).
+  const labelHtmlFn = options.labelHtmlFn || null;
   const base = Math.max(...rows.map((item) => Number(valueFn(item) || 0)), 1);
   return rows.map((item, index) => {
     const value = valueFn(item);
@@ -2875,7 +2879,7 @@ function monthlyReportRankRows(items, options = {}) {
     return `<div class="monthly-report-rank-row"${attrs ? ` ${attrs}` : ""}>
       <span class="monthly-report-rank-no">${String(index + 1).padStart(2, "0")}</span>
       <div class="monthly-report-rank-main">
-        <strong>${esc(labelFn(item))}</strong>
+        <strong>${labelHtmlFn ? labelHtmlFn(item, index) : esc(labelFn(item))}</strong>
         <span>${esc(subFn(item))}</span>
         ${options.withBar ? `<div class="monthly-report-rank-bar"><i style="width:${monthlyReportRatio(value, base)}%"></i></div>` : ""}
         ${extraFn(item, index)}
@@ -2883,6 +2887,46 @@ function monthlyReportRankRows(items, options = {}) {
       <em>${esc(options.formatValue ? options.formatValue(value, item) : apiNum(value))}</em>
     </div>`;
   }).join("");
+}
+
+// MONTHLY-INTEL-NAV: Monthly에 표시되는 데이터를 관련 Intelligence 화면으로 연결하는 공용
+// hover+click 링크. storeIntelJumpLink(STORE-INTEL-UI-B)와 동일한 검증된 메커니즘을 그대로
+// 재사용한다 — 항상 DOM에 존재하는 절대위치 popover를 hover/focus 시 opacity로만 보여주므로
+// layout shift가 절대 발생하지 않는다. jumpAttr는 호출부가 만든 data-* 속성 문자열이다
+// (예: data-jump-view="..." — 기존 델리게이트 핸들러를 그대로 타므로 새 라우팅 코드가 없다).
+function monthlyIntelLink(labelHtml, ariaLabel, jumpAttr, popoverInnerHtml) {
+  return `<button type="button" class="monthly-intel-link" ${jumpAttr} aria-label="${esc(ariaLabel)}">${labelHtml}<span class="monthly-intel-popover" aria-hidden="true">${popoverInnerHtml}</span></button>`;
+}
+
+// MONTHLY-INTEL-NAV: monthlyIntelLink의 inline 변형 — 기존 텍스트 흐름(예: rank-row의
+// <strong> 안, 결제수단 legend의 <strong> 자리) 안에 자연스럽게 섞여야 하는 곳에 쓴다.
+// wrapTag를 주면(예: "strong") 그 태그로 감싸서 반환한다 — monthlyReportRankRows처럼
+// 호출부가 이미 <strong>을 갖고 있으면 wrapTag 없이 그 안에 바로 넣는다.
+function monthlyIntelLinkInline(labelHtml, ariaLabel, jumpAttr, popoverInnerHtml, wrapTag) {
+  const button = `<button type="button" class="monthly-intel-link-inline" ${jumpAttr} aria-label="${esc(ariaLabel)}">${labelHtml}<span class="monthly-intel-popover" aria-hidden="true">${popoverInnerHtml}</span></button>`;
+  return wrapTag ? `<${wrapTag}>${button}</${wrapTag}>` : button;
+}
+
+// MONTHLY-INTEL-NAV: 브랜드 행(TOP5/상승/하락 공통) 하나를 Brand Intelligence 링크로
+// 감싼다. currentAmount/previousAmount는 호출부가 이미 계산해 둔 값을 그대로 받는다(새 계산
+// 없음). previousAmount가 없으면(전월 데이터 자체가 없는 브랜드) "비교 데이터 없음"으로 표시.
+function monthlyIntelBrandLabelHtml(item, currentAmount, previousAmount) {
+  const code = monthlyReportBrandCode(item);
+  const name = brandPerformanceDisplayName(item);
+  const deltaText = hasApiValue(previousAmount) ? monthlyReportDelta(currentAmount, previousAmount, apiWon) : "전월 비교 데이터 없음";
+  const popover = `<b>${esc(name)}</b><strong>${esc(apiWon(currentAmount))}</strong><em>${esc(deltaText)}</em><i>Brand Intelligence →</i>`;
+  return monthlyIntelLinkInline(esc(name), `${name} — Brand Intelligence로 이동`, `data-monthly-intel-brand-code="${esc(code)}"`, popover);
+}
+
+// MONTHLY-INTEL-NAV: 상품 행 하나를 상세로 감싼다. Monthly의 productSales 행은 canonical
+// productId를 갖고 있지 않고(Product Registry는 review-queue 전용 진단 화면이라 전체 상품을
+// 다루지 않음 — 조사 결과 report에 기록), 기존에 이미 존재하는 "Commerce ▸ Product"
+// 드릴다운과 동일한 목적지(Product Dashboard)로 연결한다 — 새 route를 만들지 않는다.
+function monthlyIntelProductLabelHtml(item) {
+  const name = item.productName || item.product_name || "-";
+  const brandName = brandCanonicalDisplayName(item);
+  const popover = `<b>${esc(name)}</b><strong>${esc(apiWon(canonicalPaidAmount(item)))}</strong><em>${esc(brandName)}${hasApiValue(item.quantitySold) ? ` · 수량 ${esc(apiNum(item.quantitySold))}` : ""}</em><i>Product 상세 →</i>`;
+  return monthlyIntelLinkInline(esc(name), `${name} — Product 상세로 이동`, 'data-jump-view="Product"', popover);
 }
 
 function previousMonthKey(month) {
@@ -3188,6 +3232,7 @@ function monthlyReportBrandSignalsBlock(currentRows, previousRows, trendRows = [
             valueFn: (item) => item.currentSales,
             labelFn: brandPerformanceDisplayName,
             subFn: (item) => monthlyReportDelta(item.currentSales, item.previousSales, apiWon),
+            labelHtmlFn: (item) => monthlyIntelBrandLabelHtml(item, item.currentSales, item.previousSales),
             extraFn: (item) => {
               const code = monthlyReportBrandCode(item);
               const series = trendRows.length ? monthlyReportBrandTrendFromRows(trendRows, code) : monthlyReportBrandTrendFromPair("이번", item, "전월", previousByCode.get(code));
@@ -3205,6 +3250,7 @@ function monthlyReportBrandSignalsBlock(currentRows, previousRows, trendRows = [
             valueFn: (item) => item.currentSales,
             labelFn: brandPerformanceDisplayName,
             subFn: (item) => monthlyReportDelta(item.currentSales, item.previousSales, apiWon),
+            labelHtmlFn: (item) => monthlyIntelBrandLabelHtml(item, item.currentSales, item.previousSales),
             extraFn: (item) => {
               const code = monthlyReportBrandCode(item);
               const series = trendRows.length ? monthlyReportBrandTrendFromRows(trendRows, code) : monthlyReportBrandTrendFromPair("이번", item, "전월", previousByCode.get(code));
@@ -3801,18 +3847,25 @@ async function monthlyStoreScopeNote(month, storeCode) {
   return `매장 필터: ${label} — 오프라인 매출 ${won(data.totalOfflineSales || 0)}(해당 매장 업로드분만 집계). 아래 브랜드/상품 상세는 매장 구분 없는 전체(ALL) 기준입니다. 온라인 매출은 매장별로 구분되지 않으므로 이 숫자에 합산하지 않습니다.`;
 }
 
-// PART B(STORE-BATCH-D): ALL일 때 온라인/압구정/VAIL 3축 구성 문구. 이미 fetch된
-// offlineSnapshot(merged, storeCode 보존)에서 매장별 합계를 더하기만 한다 — 새 API 호출 없음.
-function monthlyAllStoreBreakdownNote(offlineSnapshot, archive) {
-  if (offlineSnapshot?.error) return "";
+// PART B(STORE-BATCH-D): ALL일 때 온라인/압구정/VAIL 3축 구성 계산. offlineSnapshot(merged,
+// storeCode 보존)에서 매장별 합계를 더한다 — 새 API 호출 없음. MONTHLY-INTEL-NAV: 이 계산을
+// monthlyAllStoreBreakdownNote(문구)와 monthlyStoreDonutBlock(도넛) 둘 다에서 재사용하도록
+// 분리했다 — 계산 로직 자체는 그대로, 결과를 소비하는 렌더링만 두 곳으로 나뉜다.
+function computeMonthlyStoreOfflineBreakdown(offlineSnapshot) {
+  if (offlineSnapshot?.error) return { byStore: { APGUJEONG: 0, VAIL: 0 }, storesIncluded: [] };
   const lines = Array.isArray(offlineSnapshot?.salesLines) ? offlineSnapshot.salesLines : Array.isArray(offlineSnapshot?.rows) ? offlineSnapshot.rows : [];
   const storesIncluded = Array.isArray(offlineSnapshot?.storesIncluded) ? offlineSnapshot.storesIncluded : [];
-  if (!lines.length && !storesIncluded.length) return "";
   const byStore = { APGUJEONG: 0, VAIL: 0 };
   for (const line of lines) {
     if (line?.isOfflineRevenue !== true) continue;
     if (Object.prototype.hasOwnProperty.call(byStore, line?.storeCode)) byStore[line.storeCode] += Number(line.salesAmount) || 0;
   }
+  return { byStore, storesIncluded, hasLines: lines.length > 0 };
+}
+
+function monthlyAllStoreBreakdownNote(offlineSnapshot, archive) {
+  const { byStore, storesIncluded, hasLines } = computeMonthlyStoreOfflineBreakdown(offlineSnapshot);
+  if (!hasLines && !storesIncluded.length) return "";
   const onlineAmount = hasApiValue(archive?.sales?.onlineSales?.paidAmount) ? archive.sales.onlineSales.paidAmount : archive?.commerce?.paidAmount;
   // STORE-INTEL-UI-B: 온라인은 이동 대상이 없으니(Store Intelligence는 물리 매장
   // 전용) plain text로 두고, 압구정/VAIL만 storeIntelJumpLink()로 감싼다.
@@ -3823,6 +3876,61 @@ function monthlyAllStoreBreakdownNote(offlineSnapshot, archive) {
     parts.push(storeIntelJumpLink(code, text));
   }
   return `${esc("매장 구성:")} ${parts.join(" · ")}${esc(".")}`;
+}
+
+// MONTHLY-INTEL-NAV: "매장 매출 비율" 도넛 — 압구정/VAIL 두 매장이 모두 분리 업로드된
+// 달에만 렌더링한다(한쪽만 있으면 2-slice 도넛이 의미가 없으므로 렌더링을 건너뛴다 — 기존
+// "미분류" 텍스트 fallback과 동일한 보수적 원칙). 실제 canonical store offline 금액만
+// 사용하고 예시 숫자는 하드코딩하지 않는다.
+function monthlyStoreDonutBlock(offlineSnapshot) {
+  const { byStore, storesIncluded } = computeMonthlyStoreOfflineBreakdown(offlineSnapshot);
+  if (!storesIncluded.includes("APGUJEONG") || !storesIncluded.includes("VAIL")) return "";
+  const total = byStore.APGUJEONG + byStore.VAIL;
+  if (total <= 0) return "";
+  const rows = [
+    { code: "APGUJEONG", color: "var(--yellow)", amount: byStore.APGUJEONG },
+    { code: "VAIL", color: "var(--blue)", amount: byStore.VAIL }
+  ].map((row) => ({
+    ...row,
+    share: monthlyReportRatio(row.amount, total),
+    label: STORE_FILTER_LABELS[row.code] || row.code,
+    viewName: row.code === "APGUJEONG" ? "ApgujeongIntelligence" : "VailIntelligence"
+  }));
+  // 각 조각을 독립적으로 hover/click 가능하게 하려면 conic-gradient 한 장(원 전체가 하나의
+  // hit-area)이 아니라 SVG stroke-dasharray 기반 arc 2개가 필요하다 — dasharray의 "빈 구간"은
+  // 기본적으로 hover/click 대상이 되지 않으므로(브라우저 표준 hit-testing), 각 <circle>이
+  // 정확히 자기 몫의 원호에서만 반응한다. 실선 legend <button>이 완전한 키보드/스크린리더
+  // 경로를 담당하고, arc는 마우스 hover 강조 + 클릭 이동을 보조로 제공한다(arc 자체에
+  // tabindex는 주지 않는다 — 포커스만 가고 Enter로 활성화되지 않는 반쪽 접근성을 피하기 위해).
+  const radius = 48;
+  const circumference = 2 * Math.PI * radius;
+  let cursor = 0;
+  const arcs = rows.map((row) => {
+    const len = (row.share / 100) * circumference;
+    const dashoffset = -cursor;
+    cursor += len;
+    return `<circle class="monthly-store-donut-arc" data-store-arc="${esc(row.code)}" data-jump-view="${esc(row.viewName)}" role="link" aria-label="${esc(row.label)} — ${esc(pct(row.share))} · ${esc(won(row.amount))} · ${esc(row.label)} Intelligence로 이동" cx="66" cy="66" r="${radius}" fill="none" stroke="${row.color}" stroke-width="26" stroke-dasharray="${len.toFixed(2)} ${(circumference - len).toFixed(2)}" stroke-dashoffset="${dashoffset.toFixed(2)}"><title>${esc(row.label)} ${esc(pct(row.share))} · ${esc(won(row.amount))} · ${esc(row.label)} Intelligence로 이동</title></circle>`;
+  }).join("");
+  const legendItems = rows.map((row) => {
+    const popover = `<b>${esc(row.label)}</b><strong>${esc(pct(row.share))}</strong><em>${esc(won(row.amount))}</em><i>${esc(row.label)} Intelligence →</i>`;
+    return `<li>
+      <button type="button" class="monthly-intel-link monthly-store-donut-legend-row" data-jump-view="${esc(row.viewName)}" aria-label="${esc(row.label)} — ${esc(pct(row.share))} · ${esc(won(row.amount))} · ${esc(row.label)} Intelligence로 이동">
+        <i class="monthly-store-donut-swatch" style="background:${row.color}"></i>
+        <span class="monthly-store-donut-legend-text"><strong>${esc(row.label)}</strong><span>${esc(pct(row.share))} · ${esc(won(row.amount))}</span></span>
+        <span class="monthly-intel-popover" aria-hidden="true">${popover}</span>
+      </button>
+    </li>`;
+  }).join("");
+  return `<section class="monthly-report-block">
+    <div class="monthly-report-block-head"><h4>매장 매출 비율</h4><span>오프라인 · 압구정 / VAIL</span></div>
+    <div class="monthly-store-donut-card">
+      <div class="monthly-store-donut">
+        <svg class="monthly-store-donut-svg" viewBox="0 0 132 132" aria-hidden="true">${arcs}</svg>
+        <div class="clients-donut-center"><strong>${esc(pct(rows[0].share))}</strong><span>${esc(rows[0].label)}</span></div>
+      </div>
+      <ul class="clients-donut-legend monthly-store-donut-legend">${legendItems}</ul>
+    </div>
+  </section>`;
 }
 
 // STORE-BATCH-C: Annual용 — 연도 내 각 달을 store-scoped로 조회해 합산만 한다(archive
@@ -3987,6 +4095,14 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const performanceBrandSalesOnline = brandSales
     .filter((item) => !isExcludedBrandPerformance(item))
     .sort((left, right) => brandPerformanceOnlinePaidAmount(right) - brandPerformanceOnlinePaidAmount(left));
+  // MONTHLY-INTEL-NAV: 브랜드 매출 TOP5 hover popover의 "전월 대비"에 쓸 조회용 맵 —
+  // previousCommerce.brandSales를 TOP5와 동일한 온라인 기준으로 brand_code에 매핑만 한다
+  // (새 계산 없음, 기존 previousCommerce 재사용).
+  const previousBrandOnlineByCode = new Map(
+    (previousArchive.error ? [] : previousCommerce.brandSales || [])
+      .filter((item) => !isExcludedBrandPerformance(item))
+      .map((row) => [monthlyReportBrandCode(row), brandPerformanceOnlinePaidAmount(row)])
+  );
   const canonicalProductSales = [...productSales].sort((left, right) => canonicalPaidAmount(right) - canonicalPaidAmount(left));
   const archiveStatusLabel = {
     live: "Live Draft",
@@ -4051,21 +4167,55 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       ? "Cafe24 온라인 매출과 ECOUNT 오프라인 매출을 함께 합산했습니다."
       : "ECOUNT 확인 범위 기준으로 합산된 매출입니다. 일부 월 범위 확인 필요."
     : "이 archive에는 통합 매출 필드가 없어 Cafe24 온라인 매출만 표시합니다.";
+  // MONTHLY-INTEL-NAV: 총매출/온라인 매출/온라인 주문/온라인 객단가는 Level 2(매출/Commerce
+  // KPI) — 기존 Commerce 상세(Sales view)로 이동한다. 오프라인 매출은 ALL 합계라 특정 매장
+  // Intelligence 하나로 연결할 수 없으므로(어느 매장인지 특정 불가) hover-only로 둔다(억지
+  // route 금지 원칙). 계산값 자체는 전혀 건드리지 않고 기존 apiWon/monthlyReportDelta를
+  // 그대로 재사용한다.
+  const totalSalesAmountForLink = hasCanonicalTotalSales ? salesTotalAmount : salesOnlineAmount;
+  const totalSalesPreviousForLink = hasCanonicalTotalSales ? previousSalesTotalAmount : summaryPreviousCommerce.paidAmount;
+  const totalSalesLink = monthlyIntelLink(
+    `<strong>${apiWon(totalSalesAmountForLink)}</strong>`,
+    `${hasCanonicalTotalSales ? "총매출" : "온라인 매출"} 상세 — Commerce로 이동`,
+    'data-jump-view="Sales"',
+    `<b>${esc(hasCanonicalTotalSales ? "이번 달 총매출" : "이번 달 온라인 매출")}</b><strong>${apiWon(totalSalesAmountForLink)}</strong><em>${esc(monthlyReportDelta(totalSalesAmountForLink, totalSalesPreviousForLink, apiWon))}</em><i>Commerce 상세 →</i>`
+  );
+  const onlineSalesLink = monthlyIntelLink(
+    `<strong>${apiWon(salesOnlineAmount)}</strong>`,
+    "온라인 매출 상세 — Commerce로 이동",
+    'data-jump-view="Sales"',
+    `<b>이번 달 온라인 매출</b><strong>${apiWon(salesOnlineAmount)}</strong><em>${esc(monthlyReportDelta(salesOnlineAmount, summaryPreviousCommerce.paidAmount, apiWon))}</em><i>Commerce 상세 →</i>`
+  );
+  const offlineSalesHover = hasOfflineSales
+    ? `<span class="monthly-intel-link monthly-intel-hover-only" tabindex="0"><strong>${apiWon(salesOfflineAmount)}</strong><span class="monthly-intel-popover" aria-hidden="true"><b>이번 달 오프라인 매출</b><strong>${apiWon(salesOfflineAmount)}</strong><em>압구정 + VAIL 합계 · 매장별 비율은 아래 도넛 참고</em></span></span>`
+    : `<strong>데이터 없음</strong>`;
+  const onlineOrdersLink = monthlyIntelLink(
+    `<strong>${apiNum(commerce.orderCount)}</strong>`,
+    "온라인 주문수 상세 — Commerce로 이동",
+    'data-jump-view="Sales"',
+    `<b>이번 달 온라인 주문수</b><strong>${apiNum(commerce.orderCount)}</strong><i>Commerce 상세 →</i>`
+  );
+  const onlineAovLink = monthlyIntelLink(
+    `<strong>${apiWon(commerce.averageOrderValue)}</strong>`,
+    "온라인 객단가 상세 — Commerce로 이동",
+    'data-jump-view="Sales"',
+    `<b>이번 달 온라인 객단가</b><strong>${apiWon(commerce.averageOrderValue)}</strong><i>Commerce 상세 →</i>`
+  );
   const salesSummaryBlock = hasSalesSummary ? `
     <section class="monthly-report-block">
       <div class="monthly-report-block-head"><h4>Sales Summary</h4><span>${esc(hasCanonicalTotalSales ? salesCoverageLabel : "온라인 매출 기준")}</span></div>
       <div class="monthly-report-hero">
         <div class="monthly-report-hero-main">
           <span>${hasCanonicalTotalSales ? "총매출" : "온라인 매출"}</span>
-          <strong>${apiWon(hasCanonicalTotalSales ? salesTotalAmount : salesOnlineAmount)}</strong>
+          ${totalSalesLink}
           <em>${hasCanonicalTotalSales ? "Cafe24 온라인 + ECOUNT 오프라인" : "Cafe24 온라인 실제 결제 매출"}</em>
-          <em>${esc(monthlyReportDelta(hasCanonicalTotalSales ? salesTotalAmount : salesOnlineAmount, hasCanonicalTotalSales ? previousSalesTotalAmount : summaryPreviousCommerce.paidAmount, apiWon))}</em>
+          <em>${esc(monthlyReportDelta(totalSalesAmountForLink, totalSalesPreviousForLink, apiWon))}</em>
         </div>
         <div class="monthly-report-side">
-          <div class="monthly-report-side-row"><span>온라인 매출</span><strong>${apiWon(salesOnlineAmount)}</strong></div>
-          <div class="monthly-report-side-row ${hasOfflineSales ? "" : "monthly-report-muted"}"><span>오프라인 매출</span><strong>${hasOfflineSales ? apiWon(salesOfflineAmount) : "데이터 없음"}</strong></div>
-          <div class="monthly-report-side-row"><span>온라인 주문</span><strong>${apiNum(commerce.orderCount)}</strong></div>
-          <div class="monthly-report-side-row"><span>온라인 객단가</span><strong>${apiWon(commerce.averageOrderValue)}</strong></div>
+          <div class="monthly-report-side-row"><span>온라인 매출</span>${onlineSalesLink}</div>
+          <div class="monthly-report-side-row ${hasOfflineSales ? "" : "monthly-report-muted"}"><span>오프라인 매출</span>${offlineSalesHover}</div>
+          <div class="monthly-report-side-row"><span>온라인 주문</span>${onlineOrdersLink}</div>
+          <div class="monthly-report-side-row"><span>온라인 객단가</span>${onlineAovLink}</div>
           ${hasCanonicalTotalSales ? `<div class="monthly-report-side-row ${salesCoverageComplete ? "" : "monthly-report-muted"}"><span>Coverage</span><strong>${esc(salesCoverageLabel)}</strong></div>` : ""}
         </div>
       </div>
@@ -4073,6 +4223,10 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       <p class="monthly-report-fnote ${hasCanonicalTotalSales && salesCoverageComplete ? "" : "monthly-report-muted"}">${esc(salesCoverageNote)}</p>
     </section>
   ` : "";
+  // MONTHLY-INTEL-NAV: 매장 매출 비율 도넛은 ALL 모드에서만 의미가 있다(Store Focus 모드는
+  // 이미 한 매장만 보고 있으므로 비율 도넛이 필요 없다) — 기존 storeScopeNote/
+  // monthlyAllStoreBreakdownNote의 ALL-게이트와 동일한 원칙.
+  const storeDonutBlock = storeFilterState === "ALL" ? monthlyStoreDonutBlock(offlineSnapshot) : "";
   const brandSignalsBlock = brandSales.length && previousBrandSales.length
     ? monthlyReportBrandSignalsBlock(performanceBrandSales, previousBrandSales, monthlyBrandTrendRows)
     : "";
@@ -4108,6 +4262,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
         <div><p class="eyebrow">Summary</p><h3>이번 달 한눈에 보기</h3></div>
       </div>
       ${salesSummaryBlock}
+      ${storeDonutBlock}
       ${brandSignalsBlock}
     </section>
 
@@ -4119,12 +4274,17 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
       <div class="monthly-report-hero">
         <div class="monthly-report-hero-main">
           <span>온라인 실제 매출 · Cafe24 실제 결제 기준</span>
-          <strong>${apiWon(commerce.paidAmount)}</strong>
+          ${monthlyIntelLink(
+            `<strong>${apiWon(commerce.paidAmount)}</strong>`,
+            "온라인 실제 매출 상세 — Commerce로 이동",
+            'data-jump-view="Sales"',
+            `<b>이번 달 온라인 실제 매출</b><strong>${apiWon(commerce.paidAmount)}</strong><em>${esc(monthlyReportDelta(commerce.paidAmount, previousCommerce.paidAmount, apiWon))}</em><i>Commerce 상세 →</i>`
+          )}
           <em>${esc(monthlyReportDelta(commerce.paidAmount, previousCommerce.paidAmount, apiWon))}</em>
         </div>
         <div class="monthly-report-side">
-          <div class="monthly-report-side-row"><span>주문수</span><strong>${apiNum(commerce.orderCount)}</strong></div>
-          <div class="monthly-report-side-row"><span>객단가</span><strong>${apiWon(commerce.averageOrderValue)}</strong></div>
+          <div class="monthly-report-side-row"><span>주문수</span>${monthlyIntelLink(`<strong>${apiNum(commerce.orderCount)}</strong>`, "주문수 상세 — Commerce로 이동", 'data-jump-view="Sales"', `<b>이번 달 주문수</b><strong>${apiNum(commerce.orderCount)}</strong><i>Commerce 상세 →</i>`)}</div>
+          <div class="monthly-report-side-row"><span>객단가</span>${monthlyIntelLink(`<strong>${apiWon(commerce.averageOrderValue)}</strong>`, "객단가 상세 — Commerce로 이동", 'data-jump-view="Sales"', `<b>이번 달 객단가</b><strong>${apiWon(commerce.averageOrderValue)}</strong><i>Commerce 상세 →</i>`)}</div>
           <div class="monthly-report-side-row"><span>제외 주문</span><strong>${apiNum(commerce.excludedOrderCount)}</strong></div>
         </div>
       </div>
@@ -4139,7 +4299,11 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
             ${paymentMethods.length ? paymentMethods.map((item) => `<span class="${Number(item.orderAmount || 0) ? "" : "monthly-report-muted"}" style="width:${monthlyReportRatio(item.orderAmount, paymentTotal)}%"></span>`).join("") : `<span class="monthly-report-muted" style="width:100%"></span>`}
           </div>
           <div class="monthly-report-legend">
-            ${paymentMethods.length ? paymentMethods.map((item) => `<div class="monthly-report-legend-row ${Number(item.orderAmount || 0) ? "" : "monthly-report-muted"}"><strong>${esc(item.paymentMethod || "-")}</strong><span>${apiWon(item.orderAmount)} · 주문 ${apiNum(item.orderCount)}</span></div>`).join("") : `<div class="monthly-report-legend-row monthly-report-muted"><strong>데이터 없음</strong><span>저장된 결제수단 정보가 없습니다.</span></div>`}
+            ${paymentMethods.length ? paymentMethods.map((item) => {
+              const share = monthlyReportRatio(item.orderAmount, paymentTotal);
+              const popover = `<b>${esc(item.paymentMethod || "-")}</b><strong>${apiWon(item.orderAmount)}</strong><em>${esc(pct(share))} · 주문 ${apiNum(item.orderCount)}</em><i>Commerce 상세 →</i>`;
+              return `<div class="monthly-report-legend-row ${Number(item.orderAmount || 0) ? "" : "monthly-report-muted"}">${monthlyIntelLinkInline(esc(item.paymentMethod || "-"), `${item.paymentMethod || "-"} 결제수단 상세 — Commerce로 이동`, 'data-monthly-intel-scroll-view="Sales" data-monthly-intel-scroll-target="commerceSummaryPayments"', popover, "strong")}<span>${apiWon(item.orderAmount)} · 주문 ${apiNum(item.orderCount)}</span></div>`;
+            }).join("") : `<div class="monthly-report-legend-row monthly-report-muted"><strong>데이터 없음</strong><span>저장된 결제수단 정보가 없습니다.</span></div>`}
           </div>
         </section>
         <section class="monthly-report-block">
@@ -4150,7 +4314,8 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
               valueFn: brandPerformanceOnlinePaidAmount,
               labelFn: brandPerformanceDisplayName,
               subFn: (item) => item.brand_code || "",
-              formatValue: (value) => apiWon(value)
+              formatValue: (value) => apiWon(value),
+              labelHtmlFn: (item) => monthlyIntelBrandLabelHtml(item, brandPerformanceOnlinePaidAmount(item), previousBrandOnlineByCode.get(monthlyReportBrandCode(item)))
             })}
           </div>
         </section>
@@ -4163,7 +4328,8 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
             valueFn: canonicalPaidAmount,
             labelFn: (item) => item.productName || item.product_name || "-",
             subFn: (item) => brandCanonicalDisplayName(item),
-            formatValue: (value) => apiWon(value)
+            formatValue: (value) => apiWon(value),
+            labelHtmlFn: (item) => monthlyIntelProductLabelHtml(item)
           })}
         </div>
       </section>
@@ -12620,6 +12786,22 @@ function resolveRawBrandCanonical(rawCode) {
   return null;
 }
 
+// MONTHLY-INTEL-NAV: Monthly의 brandSales 행은 이미 canonical brand_code를 갖고 있다(서버
+// 파이프라인이 확정한 값 — BON CO/POP CO/SUN CO 같은 raw operational 이름이 아니다). Brand
+// Selector는 표시 NAME으로 keyed되어 있으므로, 정확히 같은 brand_code를 가진 항목을 찾아
+// 그 표시 NAME을 반환한다(문자열 유사매칭 없음 — resolveRawBrandCanonical과 동일한 "정확히
+// 일치하지 않으면 null" 원칙). 클릭 시점에 호출한다(렌더 시점에는 initBrandSelector()의
+// 비동기 fetch가 아직 안 끝났을 수 있어 race condition이 생기기 때문 — 클릭은 항상 페이지
+// 로드 한참 후에 일어나므로 이 시점엔 brandSelectorIdentityByName이 이미 채워져 있다).
+function resolveBrandCodeToSelectorName(brandCode) {
+  const normalized = String(brandCode || "").trim().toUpperCase();
+  if (!normalized) return null;
+  for (const [displayName, entry] of brandSelectorIdentityByName) {
+    if (String(monthlyReportBrandCode(entry) || "").trim().toUpperCase() === normalized) return displayName;
+  }
+  return null;
+}
+
 // STEP61-1: Brand Selector가 확정한 Identity를 Monthly Archive의 commerce.brandSales와
 // 대조해 같은 canonical brand로 이어지는지 확인한다(콘솔 로그만 — Hero/Monthly UI는 이번
 // STEP에서 손대지 않는다). Entity Period Control이 이미 갖고 있는 entityPeriodState(연/월)를
@@ -17934,6 +18116,33 @@ function bind() {
       const targetId = monthlyTocLink.getAttribute("href").slice(1);
       document.getElementById(targetId)?.scrollIntoView({ behavior: "auto", block: "start" });
       window.history.pushState(null, "", monthlyTocLink.getAttribute("href"));
+      return;
+    }
+    // MONTHLY-INTEL-NAV: 브랜드 데이터 → Brand Intelligence 이동은 view 전환 하나로 끝나지
+    // 않는다(해당 브랜드까지 선택해야 함) — 그래서 data-jump-view 대신 별도 attribute를 쓴다.
+    // brand_code → Brand Selector 표시 NAME 해석은 클릭 시점에 한다(위 주석 참고 — race
+    // condition 회피). 해석에 실패하면(Brand Master에 없는 극히 드문 경우) 조용히 아무 것도
+    //하지 않는다 — 없는 화면을 새로 만들거나 잘못된 브랜드로 이동시키지 않는다.
+    const brandLink = event.target.closest("[data-monthly-intel-brand-code]");
+    if (brandLink) {
+      const name = resolveBrandCodeToSelectorName(brandLink.dataset.monthlyIntelBrandCode);
+      if (name) {
+        setActiveView("BrandDashboard", { routeHash: "brand-dashboard" });
+        selectBrandSelectorName(name);
+      }
+      return;
+    }
+    // MONTHLY-INTEL-NAV: 결제수단처럼 "다른 화면으로 이동 + 그 화면 안의 특정 위치로 스크롤"이
+    // 필요한 경우 — data-inventory-intel-open-registry가 이미 쓰는 것과 같은 패턴(뷰 전환 후
+    // setTimeout으로 scrollIntoView)이다.
+    const scrollLink = event.target.closest("[data-monthly-intel-scroll-view]");
+    if (scrollLink) {
+      const viewName = scrollLink.dataset.monthlyIntelScrollView;
+      const targetId = scrollLink.dataset.monthlyIntelScrollTarget;
+      document.querySelector(`[data-view="${viewName}"]`)?.click();
+      if (targetId) {
+        setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: "auto", block: "start" }), 200);
+      }
       return;
     }
     const button = event.target.closest("[data-jump-view]");

@@ -111,9 +111,15 @@ test("10. Summary chapter reuses existing salesSummaryBlock/brandSignalsBlock, n
   assert.doesNotMatch(ch1, /MOCK_/);
 });
 
+// Updated by MONTHLY-INTEL-NAV: the inline ternaries this test originally matched were
+// extracted into named variables (totalSalesAmountForLink/totalSalesPreviousForLink) so the
+// hover-navigation link and the visible delta text could share one computation — same values,
+// same monthlyReportDelta call, no new calculation.
 test("10b. Summary total-sales hero reuses the existing monthlyReportDelta helper (no new calculation)", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /monthlyReportDelta\(hasCanonicalTotalSales \? salesTotalAmount : salesOnlineAmount, hasCanonicalTotalSales \? previousSalesTotalAmount : summaryPreviousCommerce\.paidAmount, apiWon\)/);
+  assert.match(fn, /const totalSalesAmountForLink = hasCanonicalTotalSales \? salesTotalAmount : salesOnlineAmount;/);
+  assert.match(fn, /const totalSalesPreviousForLink = hasCanonicalTotalSales \? previousSalesTotalAmount : summaryPreviousCommerce\.paidAmount;/);
+  assert.match(fn, /monthlyReportDelta\(totalSalesAmountForLink, totalSalesPreviousForLink, apiWon\)/);
 });
 
 // 11. Annual/Monthly visibility separation

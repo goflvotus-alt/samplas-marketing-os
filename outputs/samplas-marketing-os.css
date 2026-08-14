@@ -10839,3 +10839,195 @@ body.entity-compare-on .entity-compare-trend-legend {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* MONTHLY-INTEL-NAV: Monthly 데이터 -> Intelligence 탐색 레이어. storeIntelJumpLink와 같은
+   "항상 DOM에 존재 + opacity로만 토글" 메커니즘이라 layout shift가 없다. block 변형(hero/
+   side-row/legend 값을 통째로 감쌀 때)과 inline 변형(기존 <strong> 안에 자연스럽게 섞일 때)
+   두 가지만 두고, popover는 두 변형이 공유한다. */
+.monthly-intel-link {
+  all: unset;
+  display: block;
+  position: relative;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 120ms ease;
+}
+
+.monthly-intel-link:hover,
+.monthly-intel-link:focus-visible {
+  background: rgba(23, 23, 23, 0.05);
+}
+
+.monthly-intel-link:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.monthly-intel-link-inline {
+  all: unset;
+  display: inline;
+  position: relative;
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.monthly-intel-link-inline:hover,
+.monthly-intel-link-inline:focus-visible {
+  border-bottom-color: currentColor;
+}
+
+.monthly-intel-link-inline:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* hover-only 정보(예: 오프라인 매출 합계) — 클릭 목적지가 없으므로 배경/커서 변화 없이
+   popover만 보여준다. 진짜 클릭 가능한 것과 시각적으로 구분되도록 일부러 최소한만 스타일한다. */
+.monthly-intel-hover-only {
+  position: relative;
+  display: block;
+  cursor: default;
+}
+
+.monthly-intel-popover {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 6px;
+  width: max-content;
+  max-width: 230px;
+  background: var(--ink);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+  z-index: 40;
+  white-space: normal;
+}
+
+.monthly-intel-link:hover .monthly-intel-popover,
+.monthly-intel-link:focus-visible .monthly-intel-popover,
+.monthly-intel-link-inline:hover .monthly-intel-popover,
+.monthly-intel-link-inline:focus-visible .monthly-intel-popover,
+.monthly-intel-hover-only:hover .monthly-intel-popover,
+.monthly-intel-hover-only:focus-visible .monthly-intel-popover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.monthly-intel-popover b {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 800;
+  margin-bottom: 3px;
+}
+
+.monthly-intel-popover strong {
+  display: block;
+  font-size: 15px;
+  color: #fff;
+  margin-bottom: 3px;
+}
+
+.monthly-intel-popover em {
+  display: block;
+  font-style: normal;
+  color: rgba(255, 255, 255, 0.78);
+  margin-bottom: 5px;
+}
+
+.monthly-intel-popover i {
+  display: block;
+  font-style: normal;
+  font-weight: 800;
+  font-size: 10px;
+  color: #fff;
+}
+
+/* 오른쪽 정렬 카드(2열 grid의 오른쪽 컬럼) 안의 popover는 왼쪽으로 넘칠 수 있어 오른쪽
+   기준으로 펼친다 — viewport/카드 밖으로 잘리는 것을 막는다. */
+.monthly-report-grid2 > *:last-child .monthly-intel-popover,
+.monthly-store-donut-legend .monthly-intel-popover {
+  left: auto;
+  right: 0;
+}
+
+/* 매장 매출 비율 도넛 — clients-donut-center(기존 클래스)를 그대로 재사용하고, SVG arc
+   2개만 새로 추가한다. 각 arc는 stroke-dasharray로 자기 몫만 그려지므로 htTest(hover/click)도
+   그 구간에만 반응한다(빈 구간은 기본적으로 반응하지 않음 — 표준 SVG 동작). */
+.monthly-store-donut-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.monthly-store-donut {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  min-width: 132px;
+}
+
+.monthly-store-donut-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.monthly-store-donut-arc {
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.monthly-store-donut-arc:hover,
+.monthly-store-donut-arc:focus-visible {
+  opacity: 0.82;
+}
+
+.monthly-store-donut-legend {
+  min-width: 160px;
+}
+
+.monthly-store-donut-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.monthly-store-donut-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  border-radius: 3px;
+}
+
+.monthly-store-donut-legend-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.monthly-store-donut-legend-text strong {
+  font-size: 13px;
+}
+
+.monthly-store-donut-legend-text span {
+  font-size: 11px;
+  color: var(--muted);
+}
