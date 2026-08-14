@@ -74,8 +74,11 @@ test("3c. donut arcs use SVG stroke-dasharray so each slice is an independently 
 
 // 4. brand navigation uses canonical brand_code, resolved to the Brand Selector's display
 // name at click time (not string/name matching, not resolved at render time)
+// Updated by MONTHLY-QUICK-INTELLIGENCE-HOVER: monthlyIntelBrandLabelHtml gained
+// quantitySold/rank parameters for the richer Quick Intelligence card, same brand_code-keyed
+// resolution underneath — see test/monthly-quick-intelligence.test.mjs for the full card spec.
 test("4. brand rows carry data-monthly-intel-brand-code (canonical code, not a name string)", () => {
-  assert.match(js, /function monthlyIntelBrandLabelHtml\(item, currentAmount, previousAmount\) \{/);
+  assert.match(js, /function monthlyIntelBrandLabelHtml\(item, currentAmount, previousAmount, quantitySold, rank\) \{/);
   const fnMatch = js.match(/function monthlyIntelBrandLabelHtml\([\s\S]*?\n}/);
   assert.match(fnMatch[0], /const code = monthlyReportBrandCode\(item\);/);
   assert.match(fnMatch[0], /data-monthly-intel-brand-code="\$\{esc\(code\)\}"/);
@@ -151,10 +154,13 @@ test("8. .monthly-intel-popover is always-rendered + absolutely positioned + opa
   assert.match(css, /\.monthly-intel-link:hover \.monthly-intel-popover,[\s\S]*?opacity:\s*1;/);
 });
 
+// Updated by MONTHLY-QUICK-INTELLIGENCE-HOVER: spec explicitly allows 260-300px for the
+// richer key/value card (was 230px for the simpler single-line badge).
 test("8b. popover has a bounded max-width (not an oversized tooltip taking over the screen)", () => {
   const match = css.match(/\.monthly-intel-popover\s*\{[^}]*max-width:\s*(\d+)px/);
   assert.notEqual(match, null);
-  assert.ok(Number(match[1]) <= 260, "popover max-width should stay compact");
+  const width = Number(match[1]);
+  assert.ok(width >= 260 && width <= 300, `popover max-width ${width}px should stay within the 260-300px Quick Intelligence range`);
 });
 
 test("8c. right-column popovers flip to right-aligned to avoid viewport/card clipping", () => {

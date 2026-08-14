@@ -10891,16 +10891,21 @@ body.entity-compare-on .entity-compare-trend-legend {
   cursor: default;
 }
 
+/* MONTHLY-QUICK-INTEL: popover가 "이동 안내"에서 "작은 분석 카드"로 확장되면서 230px는
+   key/value 행에 답답해 260~300px 범위로 넓혔다(스펙 허용 범위) — 여전히 pointer-events:none
+   (§3 "안정성 우선" 결정: CTA는 클릭 가능한 별도 버튼이 아니라 destination indicator이고,
+   행/라벨 전체 클릭이 실제 이동을 담당한다 — hover가 popover 위로 이동해도 사라질 필요가
+   없으니 별도 pointer-leave 로직이 필요 없다). */
 .monthly-intel-popover {
   position: absolute;
   left: 0;
   top: 100%;
   margin-top: 6px;
   width: max-content;
-  max-width: 230px;
+  max-width: 280px;
   background: var(--ink);
   color: #fff;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: 8px;
   font-size: 11px;
   line-height: 1.5;
@@ -10924,30 +10929,69 @@ body.entity-compare-on .entity-compare-trend-legend {
 
 .monthly-intel-popover b {
   display: block;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
   font-weight: 800;
-  margin-bottom: 3px;
-}
-
-.monthly-intel-popover strong {
-  display: block;
-  font-size: 15px;
   color: #fff;
-  margin-bottom: 3px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
 }
 
-.monthly-intel-popover em {
-  display: block;
-  font-style: normal;
-  color: rgba(255, 255, 255, 0.78);
-  margin-bottom: 5px;
+/* MONTHLY-QUICK-INTEL: key/value 행 — label은 subdued, value는 readable(스펙 §8 font
+   hierarchy). 새 색상 시스템을 만들지 않고 기존 --green/--red semantic token만 델타 톤에
+   재사용한다. */
+.monthly-intel-popover-rows {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.monthly-intel-popover-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+/* !important: 이 popover는 Monthly의 여러 카드(hero-main/side-row/block-head 등) 안 어디에
+   놓이든 항상 같은 작은 카드로 보여야 한다. 그 카드들이 이미 span/strong에 넓게 걸어둔
+   font-size/display/text-transform 규칙(예: .monthly-report-hero-main strong의 거대한
+   clamp() 폰트)이 같은 우선순위에서 "이 속성을 아예 선언하지 않으면 그냥 새어 들어온다" —
+   실제로 총매출 hero 안에서 이 leak이 발생하는 것을 라이브 QA에서 확인했다. 그래서 여기서는
+   관련 속성을 전부 명시적으로 재선언한다(STORE-INTEL-UI-B의 .store-intel-link-affix가 이미
+   같은 이유로 !important를 쓴 전례와 동일한 논리).
+*/
+.monthly-intel-popover-row span {
+  display: inline !important;
+  color: rgba(255, 255, 255, 0.62) !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  text-transform: none !important;
+  white-space: nowrap;
+}
+
+.monthly-intel-popover-row strong {
+  display: inline !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #fff !important;
+  text-transform: none !important;
+  margin: 0 !important;
+  text-align: right;
+}
+
+.monthly-intel-popover-row strong.monthly-intel-delta-positive {
+  color: var(--green) !important;
+}
+
+.monthly-intel-popover-row strong.monthly-intel-delta-negative {
+  color: var(--red) !important;
 }
 
 .monthly-intel-popover i {
-  display: block;
+  display: block !important;
   font-style: normal;
   font-weight: 800;
   font-size: 10px;
