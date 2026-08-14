@@ -22,12 +22,11 @@ function monthlyReportFnBody() {
 }
 
 // 1. Mission chapter/teaser/anchor are all gone from Monthly's template
-test("1. no Monthly Intelligence chapter, no Mission teaser, no ch3 anchor anywhere in Monthly's template", () => {
+test("1. no Monthly Intelligence chapter or Mission teaser remains in Monthly", () => {
   const fn = monthlyReportFnBody();
   assert.doesNotMatch(fn, /Monthly Intelligence/);
   assert.doesNotMatch(fn, /다음 달 우선순위 Mission/);
   assert.doesNotMatch(fn, /이번 달 주요 Intelligence/);
-  assert.doesNotMatch(fn, /monthly-report-ch3/);
   assert.doesNotMatch(fn, /missionSummaryBlock/);
   assert.doesNotMatch(fn, /missionRows/);
 });
@@ -56,17 +55,20 @@ test("3b. intelligenceBriefCard (Mission card renderer) still exists and is used
 });
 
 // 4. final Monthly structure is exactly 2 chapters: Summary, Commerce — nothing after Commerce
-test("4. Monthly TOC and DOM are exactly 01 Summary / 02 Commerce, nothing more", () => {
+test("4. Monthly TOC contains the five performance IA destinations", () => {
   const fn = monthlyReportFnBody();
   const tocMatch = fn.match(/<nav class="monthly-report-toc"[\s\S]*?<\/nav>/);
   assert.notEqual(tocMatch, null);
   const links = [...tocMatch[0].matchAll(/<a href="#monthly-report-ch(\d)">(\d\d) ([^<]+)<\/a>/g)];
   assert.deepEqual(links.map((m) => [m[1], m[2], m[3]]), [
-    ["1", "01", "Summary"],
-    ["2", "02", "Commerce"]
+    ["2", "02", "Sales Structure"],
+    ["3", "03", "Store Performance"],
+    ["4", "04", "Brand Performance"],
+    ["5", "05", "Online Summary"]
   ]);
+  assert.match(tocMatch[0], /#todaySalesCalendar">01 Daily Sales/);
   const chapterCount = (fn.match(/class="monthly-report-chapter"/g) || []).length;
-  assert.equal(chapterCount, 2);
+  assert.equal(chapterCount, 4);
 });
 
 test("4b. Commerce chapter's closing </section> is the last markup before the template ends (no trailing block)", () => {
@@ -86,11 +88,11 @@ test("5. removal is a true DOM deletion, not a display:none hide", () => {
 // scrolls + pushState instead (pushState never fires hashchange/popstate, so the SPA router
 // never re-runs and Today is never shown).
 test("6. a delegated click handler intercepts .monthly-report-toc anchor clicks", () => {
-  assert.match(js, /event\.target\.closest\('\.monthly-report-toc a\[href\^="#monthly-report-ch"\]'\)/);
+  assert.match(js, /event\.target\.closest\('\.monthly-report-toc a\[href\^="#monthly-report-ch"\], \.monthly-report-toc a\[href="#todaySalesCalendar"\]'\)/);
 });
 
 test("6b. the handler prevents the native anchor jump and does not use location.hash (which would fire hashchange)", () => {
-  const handlerMatch = js.match(/const monthlyTocLink = event\.target\.closest\('\.monthly-report-toc a\[href\^="#monthly-report-ch"\]'\);\s*\n\s*if \(monthlyTocLink\) \{([\s\S]*?)\n\s*\}/);
+  const handlerMatch = js.match(/const monthlyTocLink = event\.target\.closest\([^;]+\);\s*\n\s*if \(monthlyTocLink\) \{([\s\S]*?)\n\s*\}/);
   assert.notEqual(handlerMatch, null);
   const body = handlerMatch[1];
   assert.match(body, /event\.preventDefault\(\)/);
@@ -102,7 +104,7 @@ test("6b. the handler prevents the native anchor jump and does not use location.
 // 7. reload/deep-link safety: a hard navigation to #monthly-report-chN must still resolve to
 // the Reports (Monthly) view instead of falling back to Overview via hashViewMap.
 test("7. normalizedRouteHash maps monthly-report-chN hashes back to monthly-report", () => {
-  assert.match(js, /function normalizedRouteHash\(hash\) \{\s*\n\s*return \/\^monthly-report-ch\\d\+\$\/\.test\(hash\) \? "monthly-report" : hash;\s*\n}/);
+  assert.match(js, /hash === "todaySalesCalendar" \|\| \/\^monthly-report-ch\\d\+\$\/\.test\(hash\) \? "monthly-report" : hash/);
   assert.match(js, /function viewFromHash\(\) \{\s*\n\s*return hashViewMap\[normalizedRouteHash\(currentRouteHash\(\)\)\] \|\| "Overview";\s*\n}/);
 });
 
@@ -122,12 +124,12 @@ test("8. the fix does not touch viewHashMap/hashViewMap route tables or nav clic
 });
 
 // 9. Commerce chapter content is fully preserved (regression guard, no calc/data change)
-test("9. Commerce chapter still shows payment methods / brand TOP5 / product TOP5 / order metrics (unchanged)", () => {
+test("9. Online Summary keeps order metrics and delegates detail to Commerce", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /결제수단 구성/);
-  assert.match(fn, /브랜드 매출 TOP 5/);
-  assert.match(fn, /상품 매출 TOP 5/);
-  assert.match(fn, /apiWon\(commerce\.paidAmount\)/);
+  assert.match(fn, /온라인 판매 요약/);
+  assert.match(fn, /apiNum\(commerce\.orderCount\)/);
+  assert.match(fn, /apiWon\(commerce\.averageOrderValue\)/);
+  assert.match(fn, /data-jump-view="Sales">Commerce →/);
 });
 
 // 10. Today/Annual/Store Intelligence/Store selector untouched by this batch

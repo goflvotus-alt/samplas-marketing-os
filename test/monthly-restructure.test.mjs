@@ -60,38 +60,44 @@ test("5. monthlyReportBrandSignalsBlock signature drops reconciliationLabel and 
   assert.doesNotMatch(fnMatch[0], /reconciliationLabel/);
 });
 
-test("5b. the one call site passes only (currentRows, previousRows, trendRows)", () => {
-  assert.match(js, /monthlyReportBrandSignalsBlock\(performanceBrandSales, previousBrandSales, monthlyBrandTrendRows\)/);
+test("5b. Monthly uses a compact overall canonical brand TOP5 instead of the long signal trend dump", () => {
+  const fn = monthlyReportFnBody();
+  assert.match(fn, /const overallBrandPerformanceBlock = performanceBrandSales\.length/);
+  assert.doesNotMatch(fn, /monthlyReportBrandSignalsBlock\(/);
 });
 
 // 6. chapter renumbering / TOC correctness (updated by MONTHLY CLEANUP: Monthly Intelligence/
 // Mission chapter was removed entirely — see monthly-cleanup-mission-removal.test.mjs)
-test("6. Monthly report TOC is exactly 01 Summary / 02 Commerce", () => {
+test("6. Monthly report TOC follows Daily Sales → Sales Structure → Store → Brand → Online", () => {
   const fn = monthlyReportFnBody();
   const tocMatch = fn.match(/<nav class="monthly-report-toc"[\s\S]*?<\/nav>/);
   assert.notEqual(tocMatch, null);
   const toc = tocMatch[0];
-  assert.match(toc, /<a href="#monthly-report-ch1">01 Summary<\/a>/);
-  assert.match(toc, /<a href="#monthly-report-ch2">02 Commerce<\/a>/);
+  assert.match(toc, /<a href="#todaySalesCalendar">01 Daily Sales<\/a>/);
+  assert.match(toc, /<a href="#monthly-report-ch2">02 Sales Structure<\/a>/);
+  assert.match(toc, /<a href="#monthly-report-ch3">03 Store Performance<\/a>/);
+  assert.match(toc, /<a href="#monthly-report-ch4">04 Brand Performance<\/a>/);
+  assert.match(toc, /<a href="#monthly-report-ch5">05 Online Summary<\/a>/);
   assert.doesNotMatch(toc, /Marketing/);
   assert.doesNotMatch(toc, />0\d Content</);
-  assert.doesNotMatch(toc, /monthly-report-ch3/);
 });
 
 test("7. chapter section ids/numbers match the new structure", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /<section id="monthly-report-ch1" class="monthly-report-chapter">[\s\S]{0,200}<span>01<\/span>[\s\S]{0,120}<p class="eyebrow">Summary<\/p>/);
-  assert.match(fn, /<section id="monthly-report-ch2" class="monthly-report-chapter">[\s\S]{0,200}<span>02<\/span>[\s\S]{0,120}<p class="eyebrow">Commerce<\/p>/);
-  assert.doesNotMatch(fn, /monthly-report-ch3/);
+  assert.match(fn, /<section id="monthly-report-ch2" class="monthly-report-chapter">[\s\S]{0,200}<span>02<\/span>[\s\S]{0,120}<p class="eyebrow">Sales Structure<\/p>/);
+  assert.match(fn, /<section id="monthly-report-ch3" class="monthly-report-chapter">[\s\S]{0,200}<span>03<\/span>[\s\S]{0,120}<p class="eyebrow">Store Performance<\/p>/);
+  assert.match(fn, /<section id="monthly-report-ch4" class="monthly-report-chapter">[\s\S]{0,200}<span>04<\/span>[\s\S]{0,120}<p class="eyebrow">Brand Performance<\/p>/);
+  assert.match(fn, /<section id="monthly-report-ch5" class="monthly-report-chapter">[\s\S]{0,200}<span>05<\/span>[\s\S]{0,120}<p class="eyebrow">Online Summary<\/p>/);
 });
 
 // 8. existing Commerce/Content data fields are preserved verbatim (only removed = ad UI)
-test("8. Commerce chapter still shows payment methods / brand TOP5 / product TOP5 (unchanged data)", () => {
+test("8. Monthly keeps Commerce summary and routes detail to the existing Commerce view", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /결제수단 구성/);
-  assert.match(fn, /브랜드 매출 TOP 5/);
-  assert.match(fn, /상품 매출 TOP 5/);
-  assert.match(fn, /apiWon\(commerce\.paidAmount\)/);
+  assert.match(fn, /온라인 판매 요약/);
+  assert.match(fn, /결제수단 · 브랜드 · 상품 상세는 Commerce에서 확인합니다/);
+  assert.match(fn, /data-jump-view="Sales">Commerce →/);
+  assert.doesNotMatch(fn, /결제수단 구성/);
+  assert.doesNotMatch(fn, /상품 매출 TOP 5/);
 });
 
 test("9. Monthly report ends after Commerce — no Monthly Intelligence/Mission chapter remains", () => {
@@ -101,14 +107,12 @@ test("9. Monthly report ends after Commerce — no Monthly Intelligence/Mission 
 });
 
 // 10. new Summary chapter uses only already-fetched data (no mock/placeholder values)
-test("10. Summary chapter reuses existing salesSummaryBlock/brandSignalsBlock, no new mock data", () => {
+test("10. Sales Structure reuses existing canonical sales fields, no mock data", () => {
   const fn = monthlyReportFnBody();
-  const ch1Match = fn.match(/<section id="monthly-report-ch1"[\s\S]*?<section id="monthly-report-ch2"/);
-  assert.notEqual(ch1Match, null);
-  const ch1 = ch1Match[0];
-  assert.match(ch1, /\$\{salesSummaryBlock\}/);
-  assert.match(ch1, /\$\{brandSignalsBlock\}/);
-  assert.doesNotMatch(ch1, /MOCK_/);
+  const chapter = fn.match(/<section id="monthly-report-ch2"[\s\S]*?<section id="monthly-report-ch3"/);
+  assert.notEqual(chapter, null);
+  assert.match(chapter[0], /\$\{salesSummaryBlock\}/);
+  assert.doesNotMatch(chapter[0], /MOCK_/);
 });
 
 // Updated by MONTHLY-INTEL-NAV: the inline ternaries this test originally matched were
@@ -141,14 +145,16 @@ test("11b. renderReportsMonth's dual-render call (Monthly + Annual) is unchanged
 
 // 12. Monthly/Annual DOM order — Goal Progress no longer sits above the report,
 // and moved after the whole Monthly report (Summary...Intelligence), before Annual.
-test("12. HTML: monthlyDestinationLayout comes after monthlyArchiveReport and before annualArchiveFlow", () => {
+test("12. HTML: calendar is above monthlyArchiveReport; retained goals remain below it", () => {
   const reportsMatch = html.match(/<section id="Reports" class="view">[\s\S]*?<\/section>/);
   assert.notEqual(reportsMatch, null);
   const section = reportsMatch[0];
   const archiveIdx = section.indexOf('id="monthlyArchiveReport"');
+  const calendarIdx = section.indexOf('id="monthlyCalendarSlot"');
   const destinationIdx = section.indexOf('id="monthlyDestinationLayout"');
   const annualIdx = section.indexOf('id="annualArchiveFlow"');
-  assert.ok(archiveIdx > -1 && destinationIdx > -1 && annualIdx > -1);
+  assert.ok(calendarIdx > -1 && archiveIdx > -1 && destinationIdx > -1 && annualIdx > -1);
+  assert.ok(calendarIdx < archiveIdx, "daily calendar must be the first Monthly content after selectors/freshness");
   assert.ok(archiveIdx < destinationIdx, "monthlyArchiveReport must come before monthlyDestinationLayout");
   assert.ok(destinationIdx < annualIdx, "monthlyDestinationLayout must come before annualArchiveFlow");
 });
@@ -180,4 +186,5 @@ test("15. Store Intelligence locked view section ids remain unchanged", () => {
 test("15b. Monthly store selector / ALL-mode store breakdown note helper is unchanged", () => {
   assert.match(js, /function monthlyAllStoreBreakdownNote\(offlineSnapshot, archive\) \{/);
   assert.match(js, /function monthlyStoreScopeNote\(month, storeCode\) \{/);
+  assert.match(js, /function monthlyStorePerformanceBlock\(offlineSnapshot, previousOfflineSnapshot\) \{/);
 });

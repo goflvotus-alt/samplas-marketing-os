@@ -65,25 +65,29 @@ test("4b. archive is destructured/used as a whole object (archive.content is nev
 // 5/6/7/8. updated by MONTHLY CLEANUP: Monthly Intelligence/Mission chapter (was 03) has since
 // been removed too — Monthly is now exactly 01 Summary / 02 Commerce.
 // See monthly-cleanup-mission-removal.test.mjs for the dedicated removal assertions.
-test("5. TOC and DOM both express exactly 2 chapters: Summary, Commerce", () => {
+test("5. TOC and DOM express the new performance IA without Content", () => {
   const fn = monthlyReportFnBody();
   const tocMatch = fn.match(/<nav class="monthly-report-toc"[\s\S]*?<\/nav>/);
   assert.notEqual(tocMatch, null);
   const links = [...tocMatch[0].matchAll(/<a href="#monthly-report-ch(\d)">(\d\d) ([^<]+)<\/a>/g)];
   assert.deepEqual(links.map((m) => [m[1], m[2], m[3]]), [
-    ["1", "01", "Summary"],
-    ["2", "02", "Commerce"]
+    ["2", "02", "Sales Structure"],
+    ["3", "03", "Store Performance"],
+    ["4", "04", "Brand Performance"],
+    ["5", "05", "Online Summary"]
   ]);
+  assert.match(tocMatch[0], /#todaySalesCalendar">01 Daily Sales/);
   const chapterCount = (fn.match(/class="monthly-report-chapter"/g) || []).length;
-  assert.equal(chapterCount, 2, "exactly 2 chapter sections should exist in the rendered template");
+  assert.equal(chapterCount, 4, "calendar is outside the report template; four report chapter sections should remain");
 });
 
-test("6. chapters appear in source order Summary, then Commerce", () => {
+test("6. report chapters appear in source order Sales → Store → Brand → Online", () => {
   const fn = monthlyReportFnBody();
-  const ch1Idx = fn.indexOf('<section id="monthly-report-ch1"');
   const ch2Idx = fn.indexOf('<section id="monthly-report-ch2"');
-  assert.ok(ch1Idx > -1 && ch2Idx > -1);
-  assert.ok(ch1Idx < ch2Idx, "Summary must come before Commerce");
+  const ch3Idx = fn.indexOf('<section id="monthly-report-ch3"');
+  const ch4Idx = fn.indexOf('<section id="monthly-report-ch4"');
+  const ch5Idx = fn.indexOf('<section id="monthly-report-ch5"');
+  assert.ok(ch2Idx > -1 && ch2Idx < ch3Idx && ch3Idx < ch4Idx && ch4Idx < ch5Idx);
 });
 
 test("7. Commerce chapter is the last thing in the template (true DOM removal, not display:none)", () => {
@@ -93,21 +97,17 @@ test("7. Commerce chapter is the last thing in the template (true DOM removal, n
   assert.doesNotMatch(fn, /\bhidden\b[^>]*>[\s\n]*<\/section>/);
 });
 
-test("8. Summary chapter no longer has an Intelligence teaser (Mission chapter removed)", () => {
+test("8. Monthly no longer has an Intelligence teaser (Mission chapter removed)", () => {
   const fn = monthlyReportFnBody();
   assert.doesNotMatch(fn, /이번 달 주요 Intelligence/);
-  assert.doesNotMatch(fn, /monthly-report-ch3/);
 });
 
 // 9. Commerce chapter content is fully preserved (regression guard for section 5 of the spec)
-test("9. Commerce chapter still shows payment methods / brand TOP5 / product TOP5 / order metrics (unchanged)", () => {
+test("9. Online Summary keeps core order metrics and links to Commerce detail", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /결제수단 구성/);
-  assert.match(fn, /브랜드 매출 TOP 5/);
-  assert.match(fn, /상품 매출 TOP 5/);
   assert.match(fn, /주문수/);
   assert.match(fn, /객단가/);
-  assert.match(fn, /apiWon\(commerce\.paidAmount\)/);
+  assert.match(fn, /data-jump-view="Sales">Commerce →/);
 });
 
 // 10. updated by MONTHLY CLEANUP: the Mission UI this test used to check for inside Monthly

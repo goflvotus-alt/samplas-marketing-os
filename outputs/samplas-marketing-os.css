@@ -4109,6 +4109,25 @@ td {
   }
 }
 
+/* Keep the Monthly report beside the navigation on medium-width desktop windows.
+   The generic stacked sidebar is taller than the viewport and otherwise pushes the
+   report below the fold, making a fully rendered report look empty. */
+@media (min-width: 721px) and (max-width: 1020px) {
+  .app-shell:has(#Reports.active) {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .app-shell:has(#Reports.active) .sidebar {
+    position: sticky;
+    height: 100vh;
+    padding: 16px;
+  }
+
+  .app-shell:has(#Reports.active) .nav {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 560px) {
   .main,
   .sidebar {
@@ -5045,6 +5064,10 @@ td {
   margin-bottom: 18px;
 }
 
+.monthly-calendar-primary {
+  margin: 18px 0 30px;
+}
+
 .monthly-report-header {
   display: flex;
   justify-content: space-between;
@@ -5185,6 +5208,106 @@ td {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin: 14px 0;
+}
+
+.monthly-sales-structure-grid,
+.monthly-online-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.monthly-sales-structure-card,
+.monthly-online-summary > div {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.monthly-sales-structure-card.is-total {
+  border-color: var(--ink);
+}
+
+.monthly-sales-structure-card > span,
+.monthly-sales-structure-card > em,
+.monthly-online-summary span,
+.monthly-store-performance-kpis span,
+.monthly-store-performance-head span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.monthly-sales-structure-card strong,
+.monthly-online-summary strong {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: clamp(22px, 2.5vw, 34px);
+  line-height: 1;
+}
+
+.monthly-sales-structure-card > em {
+  text-transform: none;
+}
+
+.monthly-store-performance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.monthly-store-performance-card {
+  padding: 20px;
+  border: 1px solid var(--ink);
+  background: #fff;
+}
+
+.monthly-store-performance-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.monthly-store-performance-head h4 {
+  margin: 4px 0 0;
+  font-size: 24px;
+}
+
+.monthly-store-performance-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.monthly-store-performance-kpis > div {
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.monthly-store-performance-kpis strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.monthly-store-top5 {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.monthly-store-top5 p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .annual-flow-filters {
@@ -6447,7 +6570,14 @@ td {
 
   .monthly-report-hero,
   .monthly-report-grid2,
-  .monthly-report-strip {
+  .monthly-report-strip,
+  .monthly-sales-structure-grid,
+  .monthly-online-summary,
+  .monthly-store-performance-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-store-performance-kpis {
     grid-template-columns: 1fr;
   }
 

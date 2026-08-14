@@ -75,8 +75,8 @@ test("4. rising/falling brand rows pass their own item.quantitySold and row inde
   assert.equal(occurrences, 2, "both rising and falling TOP3 rank-row calls must pass per-row quantitySold/index");
 });
 
-test("4b. brand TOP5 passes its own row's brandPerformanceOnlinePaidAmount/brand_code lookup, not a fixed value", () => {
-  assert.match(js, /labelHtmlFn: \(item, index\) => monthlyIntelBrandLabelHtml\(item, brandPerformanceOnlinePaidAmount\(item\), previousBrandOnlineByCode\.get\(monthlyReportBrandCode\(item\)\), item\.quantitySold, index\)/);
+test("4b. overall brand TOP5 passes its own canonical total and previous row, not a fixed value", () => {
+  assert.match(js, /monthlyIntelBrandLabelHtml\(item, brandPerformancePaidAmount\(item\), previous \? brandPerformancePaidAmount\(previous\) : undefined, item\.quantitySold, index\)/);
 });
 
 // 5. dynamic Brand Intelligence navigation is preserved end-to-end: click-time resolution by
@@ -112,8 +112,10 @@ test("6b. product destination is still the existing Product dashboard (data-jump
   assert.match(body, /data-jump-view="Product"/);
 });
 
-test("6c. product TOP5 passes its own row index (rank) through", () => {
-  assert.match(js, /labelHtmlFn: \(item, index\) => monthlyIntelProductLabelHtml\(item, index\)/);
+test("6c. product detail was removed from Monthly but its reusable helper remains intact", () => {
+  const monthly = js.match(/async function renderMonthlyArchiveReport[\s\S]*?\n}\n\nfunction miniMetric/)[0];
+  assert.doesNotMatch(monthly, /monthlyIntelProductLabelHtml/);
+  assert.match(js, /function monthlyIntelProductLabelHtml/);
 });
 
 // 7. Commerce/Sales KPI cards — 총매출/온라인 매출 show 증감액+증감률, 주문수/객단가 show
@@ -145,23 +147,19 @@ test("7d. offline sales (ALL-mode combined) still has no click destination — h
 });
 
 // 8. payment method card
-test("8. payment method card shows 금액/비중/주문수 rows with CTA \"Commerce 결제수단\"", () => {
-  const fnBodyMatch = js.match(/paymentMethods\.map\(\(item\) => \{[\s\S]*?\}\)\.join\(""\) : `<div class="monthly-report-legend-row monthly-report-muted">/);
-  assert.notEqual(fnBodyMatch, null, "payment methods mapping block must exist");
-  const body = fnBodyMatch[0];
-  assert.match(body, /\["금액", esc\(apiWon\(item\.orderAmount\)\)\]/);
-  assert.match(body, /\["비중", esc\(pct\(share\)\)\]/);
-  assert.match(body, /\["주문수", `\$\{esc\(apiNum\(item\.orderCount\)\)\}건`\]/);
-  assert.match(body, /"Commerce 결제수단"/);
+test("8. payment method detail is no longer duplicated in Monthly", () => {
+  const monthly = js.match(/async function renderMonthlyArchiveReport[\s\S]*?\n}\n\nfunction miniMetric/)[0];
+  assert.doesNotMatch(monthly, /paymentMethods\.map|Commerce 결제수단/);
+  assert.match(monthly, /결제수단 · 브랜드 · 상품 상세는 Commerce에서 확인합니다/);
 });
 
 // 9. store donut Quick Intelligence — only shows fields that actually exist right now
 // (매출/비중); does NOT fabricate 전월/주문수/객단가 since no store-specific fetch for those
 // exists (store upload/attribution is explicitly out of scope for this batch)
-test("9. store donut popover only includes 매출/전체 매출 비중 — no fabricated 전월/주문수/객단가", () => {
+test("9. store donut popover only includes 매출/오프라인 내 비중 — no fabricated 전월/주문수/객단가", () => {
   const donutFn = fn("monthlyStoreDonutBlock");
   assert.match(donutFn, /\["매출", esc\(won\(row\.amount\)\)\]/);
-  assert.match(donutFn, /\["전체 매출 비중", esc\(pct\(row\.share\)\)\]/);
+  assert.match(donutFn, /\["오프라인 내 비중", esc\(pct\(row\.share\)\)\]/);
   assert.doesNotMatch(donutFn, /\["주문수",/);
   assert.doesNotMatch(donutFn, /\["객단가",/);
   assert.doesNotMatch(donutFn, /\["전월",/);
@@ -251,9 +249,10 @@ test("14c. server.mjs is completely untouched by this batch (presentation layer 
 });
 
 // 15. Commerce chapter figures unchanged (regression guard)
-test("15. Commerce chapter still shows the exact same figures (paidAmount/orderCount/averageOrderValue/excludedOrderCount)", () => {
-  assert.match(js, /apiWon\(commerce\.paidAmount\)/);
+test("15. compact Online Summary still reads the same online/order/AOV fields", () => {
+  assert.match(js, /salesOnlineAmount/);
   assert.match(js, /apiNum\(commerce\.orderCount\)/);
   assert.match(js, /apiWon\(commerce\.averageOrderValue\)/);
-  assert.match(js, /apiNum\(commerce\.excludedOrderCount\)/);
+  const monthly = js.match(/async function renderMonthlyArchiveReport[\s\S]*?\n}\n\nfunction miniMetric/)[0];
+  assert.doesNotMatch(monthly, /apiNum\(commerce\.excludedOrderCount\)/);
 });

@@ -163,7 +163,8 @@ test("18. existing Today (Overview) view markup preserved", () => {
 
 test("19. existing Monthly (Reports) view markup preserved", () => {
   assert.match(html, /<section id="Reports" class="view">/);
-  assert.match(html, /월간 운영/);
+  assert.match(html, /id="monthlyCalendarSlot"/);
+  assert.match(html, /id="monthlyArchiveReport"/);
 });
 
 test("20. existing Brand Intelligence (BrandDashboard) view markup preserved", () => {

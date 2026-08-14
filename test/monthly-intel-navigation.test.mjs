@@ -51,7 +51,7 @@ test("2b. donut only renders when both APGUJEONG and VAIL are included (conserva
 
 test("2c. donut is only inserted into the template when storeFilterState is ALL", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /const storeDonutBlock = storeFilterState === "ALL" \? monthlyStoreDonutBlock\(offlineSnapshot\) : "";/);
+  assert.match(fn, /storeFilterState === "ALL" \? monthlyStoreDonutBlock\(offlineSnapshot\) : ""/);
 });
 
 // 3. store donut arcs + legend both use the existing generic data-jump-view mechanism —
@@ -117,9 +117,10 @@ test("5. product rows connect to the existing Product dashboard (data-jump-view=
 
 // 6. payment method rows connect to Commerce's own payment breakdown section by scrolling
 // after the view switch (mirrors the existing data-inventory-intel-open-registry pattern)
-test("6. payment method rows use the scroll-after-jump pattern targeting #commerceSummaryPayments", () => {
+test("6. payment details are removed from Monthly but remain available in Commerce", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /data-monthly-intel-scroll-view="Sales" data-monthly-intel-scroll-target="commerceSummaryPayments"/);
+  assert.doesNotMatch(fn, /data-monthly-intel-scroll-target="commerceSummaryPayments"/);
+  assert.match(fn, /결제수단 · 브랜드 · 상품 상세는 Commerce에서 확인합니다/);
   assert.match(html, /id="commerceSummaryPayments"/, "the scroll target must be a real existing element in Commerce/Sales view");
 });
 
@@ -132,10 +133,10 @@ test("6b. the scroll-jump click handler mirrors the existing data-inventory-inte
 // 7. Commerce KPIs (총매출/온라인매출/온라인주문/온라인객단가/온라인 실제 매출/주문수/객단가)
 // all link to the existing Sales (Commerce) view; 오프라인 매출 is hover-only (no destination
 // exists for an ALL-mode combined total — not forced to a single store)
-test("7. Sales Summary + Commerce chapter KPIs all use data-jump-view=\"Sales\" (existing route, no new route)", () => {
+test("7. Sales Structure + Online Summary KPIs use the existing Sales route", () => {
   const fn = monthlyReportFnBody();
   const salesJumpCount = (fn.match(/data-jump-view="Sales"/g) || []).length;
-  assert.ok(salesJumpCount >= 6, `expected at least 6 KPI links to Sales view, found ${salesJumpCount}`);
+  assert.ok(salesJumpCount >= 5, `expected at least 5 KPI links to Sales view, found ${salesJumpCount}`);
 });
 
 test("7b. offline sales (ALL-mode combined total) is hover-only — no data-jump-view, no fabricated single-store destination", () => {
@@ -207,17 +208,17 @@ test("11c. Store Intelligence locked view section ids and global store selector 
 });
 
 // 12. existing Monthly Commerce/Summary data fields are preserved verbatim (regression guard)
-test("12. Commerce chapter still shows the exact same figures (paidAmount/orderCount/averageOrderValue/excludedOrderCount)", () => {
+test("12. compact Online Summary preserves paidAmount/orderCount/averageOrderValue inputs", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /apiWon\(commerce\.paidAmount\)/);
+  assert.match(fn, /const salesOnlineAmount = hasApiValue\(sales\?\.onlineSales\?\.paidAmount\)/);
   assert.match(fn, /apiNum\(commerce\.orderCount\)/);
   assert.match(fn, /apiWon\(commerce\.averageOrderValue\)/);
-  assert.match(fn, /apiNum\(commerce\.excludedOrderCount\)/);
-  assert.match(fn, /브랜드 매출 TOP 5/);
-  assert.match(fn, /상품 매출 TOP 5/);
+  assert.doesNotMatch(fn, /apiNum\(commerce\.excludedOrderCount\)/);
+  assert.match(fn, /전체 브랜드 TOP 5/);
+  assert.doesNotMatch(fn, /상품 매출 TOP 5/);
 });
 
-test("12b. brand ranking sort/filter logic (performanceBrandSalesOnline, isExcludedBrandPerformance) is unchanged", () => {
+test("12b. overall brand ranking keeps canonical total-sales filtering and sorting", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /const performanceBrandSalesOnline = brandSales\s*\n\s*\.filter\(\(item\) => !isExcludedBrandPerformance\(item\)\)\s*\n\s*\.sort\(\(left, right\) => brandPerformanceOnlinePaidAmount\(right\) - brandPerformanceOnlinePaidAmount\(left\)\);/);
+  assert.match(fn, /const performanceBrandSales = brandSales\s*\n\s*\.filter\(\(item\) => !isExcludedBrandPerformance\(item\)\)\s*\n\s*\.sort\(\(left, right\) => brandPerformancePaidAmount\(right\) - brandPerformancePaidAmount\(left\)\);/);
 });
