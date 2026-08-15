@@ -167,6 +167,7 @@ test("3/4. clientWorkspaceBodyHtml renders real Brand-section totals and Recent 
     // BI-BATCH-I: clientWorkspaceBodyHtml now also renders Customer Contribution Grade v1
     // and real Category breakdown — pull in their real source too (no reimplementation).
     sourceOfFunction("entityCustomerContributionGrade"),
+    sourceOfFunction("matchCategoryByNameKeywordsDetailed"),
     sourceOfFunction("matchCategoryByNameKeywords"),
     sourceOfFunction("categoryKeywordPattern"),
     sourceOfFunction("clientWorkspaceCategoryHtml"),
@@ -185,16 +186,23 @@ test("3/4. clientWorkspaceBodyHtml renders real Brand-section totals and Recent 
     ["JEWELRY", ["necklace", "ring", "earring", "earrings", "bracelet", "bangle", "chain jewelry", "pendant"]],
     ["ACCESSORY", ["belt", "wallet", "keyring", "key chain", "scarf", "tie", "gloves", "sunglasses", "eyewear", "socks", "accessory"]]
   ];
+  // 2026-08 tail-first update: matchCategoryByNameKeywordsDetailed()가 참조하는 보조
+  // 상수(subcategory 매핑, 한글 전용 패턴) — 이 테스트는 subcategory를 검증하지 않으므로
+  // 빈 매핑으로 충분하다.
+  const CATEGORY_NAME_SUBCATEGORY_BY_KEYWORD = {};
+  const CATEGORY_HANGUL_ONLY_PATTERN = /^[가-힣]+$/;
   const CATEGORY_MASTER_V1_NAME_BY_CODE = new Map([["UNCLASSIFIED", "미분류"], ["OUTER", "아우터"]]);
   const html = Function(
     "entityClientsOverviewData", "entityClientsOverviewFetchFailed", "brandIdentityState",
     "entityCompositionColors", "entityCompositionTypeLabel", "entityCompareBrandA",
-    "entityCompositionRows", "CATEGORY_NAME_KEYWORD_RULES", "CATEGORY_MASTER_V1_NAME_BY_CODE",
+    "entityCompositionRows", "CATEGORY_NAME_KEYWORD_RULES", "CATEGORY_NAME_SUBCATEGORY_BY_KEYWORD",
+    "CATEGORY_HANGUL_ONLY_PATTERN", "CATEGORY_MASTER_V1_NAME_BY_CODE",
     `${source}; return clientWorkspaceBodyHtml;`
   )(
     { clients: [clientGroup()] }, false, { brandCode: CARNET_CODE },
     entityCompositionColors, entityCompositionTypeLabel, () => "CARNET ARCHIVE",
-    [{ name: "이종현 실장님", sales: 1000000, count: 10 }], CATEGORY_NAME_KEYWORD_RULES, CATEGORY_MASTER_V1_NAME_BY_CODE
+    [{ name: "이종현 실장님", sales: 1000000, count: 10 }], CATEGORY_NAME_KEYWORD_RULES,
+    CATEGORY_NAME_SUBCATEGORY_BY_KEYWORD, CATEGORY_HANGUL_ONLY_PATTERN, CATEGORY_MASTER_V1_NAME_BY_CODE
   )({ name: "이종현 실장님", type: "stylist", count: 10, sales: 1000000, lastPurchase: "2026-08-10" });
 
   assert.doesNotMatch(html, /고객별 브랜드 구매 데이터 연결 대기/, "old static placeholder text must be gone");

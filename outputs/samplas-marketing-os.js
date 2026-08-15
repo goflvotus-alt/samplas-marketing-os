@@ -16,6 +16,7 @@ const navItems = [
   { view: "Sales", label: "Commerce", hash: "commerce", group: "management", hidden: false },
   { view: "Content", label: "Content", hash: "content", group: "management", hidden: false },
   { view: "ProductRegistry", label: "Product Registry", hash: "product-registry", group: "management", hidden: false },
+  { view: "CategoryReview", label: "Category Review", hash: "category-review", group: "management", hidden: false },
   { view: "Settings", label: "Master Data", hash: "master-data", group: "management", hidden: false },
   { view: "Settings", label: "Settings", hash: "settings", group: "management", hidden: false },
   // STORE-INTEL-UI-A: 기존 3개 그룹(공용 운영/관리·분석/hidden)과 별개인 새 그룹
@@ -153,8 +154,10 @@ let clientsListVisibleCount = 20;
 let clientsListSearchTimer = null;
 let selectedClientId = null;
 let productRegistryRenderSeq = 0;
-let productRegistryState = { registry: null, reviewQueue: null, items: [], activeTab: "all", selectedId: null };
-let productRegistryFilters = { search: "", brand: "all", confidence: "all", status: "all", diagnostic: "all", candidateCount: "all" };
+let productRegistryState = { registry: null, reviewQueue: null, items: [], revenueItems: [], activeTab: "revenue", selectedId: null };
+let productRegistryFilters = { search: "", brand: "all", confidence: "all", status: "all", diagnostic: "all", candidateCount: "all", sort: "revenue" };
+let categoryReviewRenderSeq = 0;
+let categoryReviewState = { workspace: null, selectedBrand: "PACOSPLY", heldModelKeys: new Set(), saving: false };
 let inventoryIntelRenderSeq = 0;
 let inventoryIntelState = { raw: null, items: [], activeTab: "all", selectedId: null };
 let inventoryIntelFilters = { search: "", brand: "all", sort: "priority" };
@@ -698,6 +701,7 @@ const viewHashMap = {
   Intelligence: "intelligence",
   Clients: "clients",
   ProductRegistry: "product-registry",
+  CategoryReview: "category-review",
   InventoryOverview: "inventory-overview",
   InventoryIntelligence: "inventory-intelligence",
   Settings: "settings",
@@ -759,12 +763,12 @@ function setActiveView(view, options = {}) {
   if (targetView === "Content" && monthlyData.length) renderContentOperations(selectedMonth());
   if (targetView === "Clients") refreshClientsView();
   if (targetView === "ProductRegistry") renderProductRegistryView();
+  if (targetView === "CategoryReview") renderCategoryReviewView();
   if (targetView === "InventoryOverview") renderInventoryWorkspaceView({ reset: true });
   if (targetView === "InventoryIntelligence") renderInventoryIntelligenceView();
   if (targetView === "Calendar") renderCalendarView();
   if (targetView === "PromotionSummary") renderPromotionSummaryView();
-  // STORE-INTEL-UI-A: UI Shell — MOCK 데이터만 그린다(기존 renderSeq/네트워크 fetch
-  // 패턴과 무관, 새로고침해도 즉시 렌더된다).
+  // Store Intelligence는 동일한 read-only endpoint에서 매장 코드만 바꿔 조회한다.
   if (targetView === "ApgujeongIntelligence") renderApgujeongIntelligenceView();
   if (targetView === "VailIntelligence") renderVailIntelligenceView();
   if (targetView === "Overview" && todayViewDirty && monthlyData.length) renderTodayView(selectedMonth());
@@ -1134,117 +1138,25 @@ function promotionCoverageBarRow({ rank, label, sublabel, headline, share, desc 
 }
 
 // ============================================================================
-// STORE-INTEL-UI-A: 압구정 Intelligence / VAIL Intelligence UI Shell.
-// 이번 배치는 UI SHELL FIRST, DATA SECOND — 아래 MOCK_* 객체는 실제 ECOUNT/Clients/
-// Inventory 데이터가 아니다. 다음 배치에서 실 데이터를 연결할 때 이 MOCK 소스를
-// 실제 fetch 결과로 교체하는 것만으로 아래 render 함수들이 그대로 재사용되도록
-// 필드 구조를 실제 API 응답 형태에 최대한 가깝게 맞춰뒀다(새 계산 로직 없음).
+// Store Intelligence는 하나의 read-only composition endpoint를 공유한다. APGUJEONG/VAIL
+// renderer는 화면 구성만 다르고 매출·고객·브랜드 계산은 프런트에서 다시 만들지 않는다.
 // ============================================================================
-const MOCK_APGUJEONG_INTELLIGENCE = {
-  kpis: [
-    { label: "오늘 매출", value: "8,420,000원", delta: "전일 대비 +12%" },
-    { label: "구매 고객 수", value: "18명", delta: "전일 대비 +3명" },
-    { label: "주문 건수", value: "22건", delta: "전일 대비 +4건" },
-    { label: "객단가", value: "382,700원", delta: "전일 대비 -2%" },
-    { label: "재구매 고객 비중", value: "41%", delta: "전월 대비 +5%p" }
-  ],
-  stylistShare: [
-    { name: "김민지", share: 34, color: "#d7a642" },
-    { name: "박서연", share: 27, color: "#285d9a" },
-    { name: "이하늘", share: 21, color: "#206f54" },
-    { name: "기타", share: 18, color: "#a9423d" }
-  ],
-  stylistRanking: [
-    { rank: 1, name: "김민지", sublabel: "스타일리스트", sales: 3120000, share: 100 },
-    { rank: 2, name: "박서연", sublabel: "스타일리스트", sales: 2480000, share: 79 },
-    { rank: 3, name: "이하늘", sublabel: "스타일리스트", sales: 1930000, share: 62 },
-    { rank: 4, name: "최도윤", sublabel: "스타일리스트", sales: 1210000, share: 39 },
-    { rank: 5, name: "정유진", sublabel: "스타일리스트", sales: 980000, share: 31 }
-  ],
-  stylistCustomerCounts: [
-    { rank: 1, name: "김민지", sublabel: null, customers: 41, share: 100 },
-    { rank: 2, name: "박서연", sublabel: null, customers: 33, share: 80 },
-    { rank: 3, name: "이하늘", sublabel: null, customers: 27, share: 66 },
-    { rank: 4, name: "최도윤", sublabel: null, customers: 19, share: 46 },
-    { rank: 5, name: "정유진", sublabel: null, customers: 15, share: 37 }
-  ],
-  stylistBrandTable: [
-    { stylist: "김민지", topBrand: "CARNET ARCHIVE", sales: "1,120,000원", share: "36%" },
-    { stylist: "박서연", topBrand: "NAMILIA", sales: "890,000원", share: "36%" },
-    { stylist: "이하늘", topBrand: "AAH MIDNIGHT CLUB", sales: "610,000원", share: "32%" },
-    { stylist: "최도윤", topBrand: "424", sales: "480,000원", share: "40%" },
-    { stylist: "정유진", topBrand: "8IGB", sales: "350,000원", share: "36%" }
-  ],
-  customerTypeDonut: [
-    { type: "스타일리스트", count: 41, share: 44, color: "#d7a642" },
-    { type: "일반 손님", count: 28, share: 30, color: "#285d9a" },
-    { type: "프레스", count: 14, share: 15, color: "#206f54" },
-    { type: "외국인", count: 10, share: 11, color: "#a9423d" }
-  ],
-  recentCustomers: [
-    { name: "최재은", date: "2026-08-13", count: 6, total: "4,820,000원", stylist: "김민지" },
-    { name: "한소희", date: "2026-08-12", count: 3, total: "1,960,000원", stylist: "박서연" },
-    { name: "윤도현", date: "2026-08-12", count: 2, total: "1,340,000원", stylist: "이하늘" },
-    { name: "강지우", date: "2026-08-11", count: 4, total: "2,110,000원", stylist: "김민지" },
-    { name: "오세훈", date: "2026-08-11", count: 1, total: "620,000원", stylist: "최도윤" }
-  ],
-  insights: [
-    "스타일리스트 매출 상승",
-    "VIP 고객 재방문",
-    "브랜드 재고 주의"
-  ]
-};
+let storeIntelligenceRenderSeq = 0;
+const STORE_INTELLIGENCE_COLORS = ["#d7a642", "#285d9a", "#206f54", "#a9423d", "#8d6ecf"];
 
-const MOCK_VAIL_INTELLIGENCE = {
-  kpis: [
-    { label: "오늘 매출", value: "5,180,000원", delta: "전일 대비 +8%" },
-    { label: "판매 수량", value: "64개", delta: "전일 대비 +11개" },
-    { label: "주문 건수", value: "31건", delta: "전일 대비 +5건" },
-    { label: "객단가", value: "167,100원", delta: "전일 대비 -4%" },
-    { label: "신규 고객 비중", value: "58%", delta: "전월 대비 +9%p" }
-  ],
-  topProducts: [
-    { rank: 1, brand: "CARNET ARCHIVE", name: "Archive Wool Coat", quantity: "18개", sales: "1,980,000원" },
-    { rank: 2, brand: "NAMILIA", name: "Signature Knit Top", quantity: "15개", sales: "1,050,000원" },
-    { rank: 3, brand: "AAH MIDNIGHT CLUB", name: "Midnight Cargo Pants", quantity: "12개", sales: "960,000원" },
-    { rank: 4, brand: "424", name: "424 Graphic Hoodie", quantity: "10개", sales: "720,000원" },
-    { rank: 5, brand: "8IGB", name: "8IGB Denim Jacket", quantity: "9개", sales: "810,000원" }
-  ],
-  brandRanking: [
-    { rank: 1, name: "CARNET ARCHIVE", sublabel: null, sales: 1980000, share: 100 },
-    { rank: 2, name: "NAMILIA", sublabel: null, sales: 1050000, share: 53 },
-    { rank: 3, name: "AAH MIDNIGHT CLUB", sublabel: null, sales: 960000, share: 48 },
-    { rank: 4, name: "8IGB", sublabel: null, sales: 810000, share: 41 },
-    { rank: 5, name: "424", sublabel: null, sales: 720000, share: 36 }
-  ],
-  categoryDonut: [
-    { type: "아우터", share: 34, color: "#285d9a" },
-    { type: "상의", share: 27, color: "#d7a642" },
-    { type: "하의", share: 21, color: "#206f54" },
-    { type: "기타", share: 18, color: "#a9423d" }
-  ],
-  sellThrough: [
-    { label: "7일 이내", value: "22%" },
-    { label: "14일 이내", value: "41%" },
-    { label: "30일 이내", value: "68%" }
-  ],
-  inventory: [
-    { label: "총 재고 수량", value: "1,240개" },
-    { label: "재고 금액", value: "182,600,000원" },
-    { label: "Dead Stock", value: "37개" }
-  ],
-  newBrands: [
-    { brand: "8IGB", openDate: "2026-08-01", sales7d: "810,000원", sellThrough7d: "24%" },
-    { brand: "AE SYNCTX", openDate: "2026-08-05", sales7d: "410,000원", sellThrough7d: "16%" },
-    { brand: "604SERVICE", openDate: "2026-08-08", sales7d: "290,000원", sellThrough7d: "11%" }
-  ],
-  insights: [
-    "초기 반응이 좋은 브랜드",
-    "빠른 소진 상품",
-    "재고 보충 후보",
-    "Dead Stock 확인"
-  ]
-};
+function storeIntelligenceRange() {
+  const month = $("#monthSelect")?.value || todayDateKey().slice(0, 7);
+  return { since: `${month}-01`, until: boundedMonthUntil(month) };
+}
+
+function storeIntelUnavailableHtml(reason) {
+  return `<div class="store-intel-unavailable"><strong>데이터 연결 전</strong><span>${esc(reason)}</span></div>`;
+}
+
+function storeIntelCoverageText(data) {
+  if (!data?.coverage?.available) return "매장 데이터 미업로드";
+  return `LIVE · ECOUNT Offline · ${data.coverage.periodStart || "-"} ~ ${data.coverage.periodEnd || "-"} · 데이터 기준 ${data.coverage.periodEnd || "-"}`;
+}
 
 // donut 조각 hover 없이 정적 conic-gradient만 그리는 최소 구현(Clients/Brand Intelligence의
 // clientsDonutGradient는 hover-active state와 결합돼 있어 여기선 새로 만들지 않고 별도 함수로
@@ -1264,11 +1176,11 @@ function storeIntelDonutHtml(donutId, legendId, rows, centerLabel) {
   if (donut) {
     donut.style.background = `conic-gradient(${storeIntelDonutGradient(rows)})`;
     const center = donut.querySelector(".clients-donut-center");
-    if (center) center.innerHTML = `<strong>${esc(rows[0]?.share ?? "--")}%</strong><span>${esc(centerLabel)}</span>`;
+    if (center) center.innerHTML = `<strong>${Number.isFinite(Number(rows[0]?.share)) ? Number(rows[0].share).toFixed(1) : "--"}%</strong><span>${esc(centerLabel)}</span>`;
   }
   if (legend) {
     legend.innerHTML = rows.map((row) => (
-      `<li><i style="background:${row.color}"></i>${esc(row.type || row.name)} <span class="muted">${row.share}%</span></li>`
+      `<li><i style="background:${row.color}"></i>${esc(row.type || row.name)} <span class="muted">${Number(row.share).toFixed(1)}%</span></li>`
     )).join("");
   }
 }
@@ -1279,75 +1191,130 @@ function storeIntelInsightListHtml(items) {
   )).join("");
 }
 
-function renderApgujeongIntelligenceView() {
-  const data = MOCK_APGUJEONG_INTELLIGENCE;
-  const kpiTarget = $("#apgujeongIntelKpiRow");
-  if (kpiTarget) kpiTarget.innerHTML = data.kpis.map((k) => salesKpiCard(k.label, k.value, k.delta)).join("");
-
-  storeIntelDonutHtml("apgujeongIntelStylistDonut", "apgujeongIntelStylistDonutLegend", data.stylistShare, "매출 비중");
-
-  const rankingTarget = $("#apgujeongIntelStylistRanking");
-  if (rankingTarget) rankingTarget.innerHTML = data.stylistRanking.map((row) => promotionCoverageBarRow({
-    rank: row.rank, label: row.name, sublabel: row.sublabel, headline: won(row.sales), share: row.share, desc: `매출 ${won(row.sales)}`
-  })).join("");
-
-  const customerBarsTarget = $("#apgujeongIntelStylistCustomerBars");
-  if (customerBarsTarget) customerBarsTarget.innerHTML = data.stylistCustomerCounts.map((row) => promotionCoverageBarRow({
-    rank: row.rank, label: row.name, sublabel: row.sublabel, headline: `${row.customers}명`, share: row.share, desc: `고객 ${row.customers}명`
-  })).join("");
-
-  const brandTableBody = $("#apgujeongIntelStylistBrandTable tbody");
-  if (brandTableBody) brandTableBody.innerHTML = data.stylistBrandTable.map((row) => (
-    `<tr><td>${esc(row.stylist)}</td><td>${esc(row.topBrand)}</td><td>${esc(row.sales)}</td><td>${esc(row.share)}</td></tr>`
-  )).join("");
-
-  storeIntelDonutHtml("apgujeongIntelCustomerTypeDonut", "apgujeongIntelCustomerTypeDonutLegend", data.customerTypeDonut, "전체 고객");
-
-  const recentTableBody = $("#apgujeongIntelRecentCustomersTable tbody");
-  if (recentTableBody) recentTableBody.innerHTML = data.recentCustomers.map((row) => (
-    `<tr><td>${esc(row.name)}</td><td>${esc(row.date)}</td><td>${row.count}건</td><td>${esc(row.total)}</td><td>${esc(row.stylist)}</td></tr>`
-  )).join("");
-
-  const insightTarget = $("#apgujeongIntelInsightList");
-  if (insightTarget) insightTarget.innerHTML = storeIntelInsightListHtml(data.insights);
+async function loadStoreIntelligence(storeCode) {
+  const range = storeIntelligenceRange();
+  return getJson(`/api/intelligence/store?store=${encodeURIComponent(storeCode)}&since=${range.since}&until=${range.until}`, 30000);
 }
 
-function renderVailIntelligenceView() {
-  const data = MOCK_VAIL_INTELLIGENCE;
-  const kpiTarget = $("#vailIntelKpiRow");
-  if (kpiTarget) kpiTarget.innerHTML = data.kpis.map((k) => salesKpiCard(k.label, k.value, k.delta)).join("");
+async function renderApgujeongIntelligenceView() {
+  const seq = ++storeIntelligenceRenderSeq;
+  const note = $("#ApgujeongIntelligence .store-intel-mock-note");
+  if (note) note.textContent = "Store Intelligence 데이터를 불러오는 중입니다.";
+  const data = await loadStoreIntelligence("APGUJEONG");
+  if (seq !== storeIntelligenceRenderSeq || data?.error) {
+    if (seq === storeIntelligenceRenderSeq && note) note.textContent = `데이터 연결 실패 · ${data?.error || "알 수 없는 오류"}`;
+    return;
+  }
+  if (note) note.textContent = storeIntelCoverageText(data);
+  const sales = data.sales || {};
+  const clients = data.clients || {};
+  const kpis = [
+    { label: sales.latestDay ? `${sales.latestDay.slice(5).replace("-", "/")} 매출` : "최신 반영일 매출", value: apiWon(sales.latestDaySales), delta: `기간 누적 ${apiWon(sales.periodSales)}` },
+    { label: "구매 고객 수", value: `${apiNum(clients.summary?.totalClients)}명`, delta: "store-scoped offline" },
+    { label: "주문 건수", value: `${apiNum(sales.orderCount)}건`, delta: "전표 기준" },
+    { label: "객단가", value: apiWon(sales.avgOrderValue), delta: "Clients canonical 기준" },
+    { label: "재구매 고객 비중", value: "-", delta: data.definitions?.repeatCustomer?.reason || "정의 미확정" }
+  ];
+  $("#apgujeongIntelKpiRow").innerHTML = kpis.map((k) => salesKpiCard(k.label, k.value, k.delta)).join("");
 
-  const productTarget = $("#vailIntelTopProductRow");
-  if (productTarget) productTarget.innerHTML = data.topProducts.map((p) => `
+  const typeRows = clients.typeBreakdown || [];
+  const totalTypeSales = typeRows.reduce((sum, row) => sum + Number(row.salesAmount || 0), 0);
+  const stylistType = typeRows.find((row) => row.type === "stylist");
+  const stylistShare = totalTypeSales > 0 ? (Number(stylistType?.salesAmount || 0) / totalTypeSales) * 100 : 0;
+  storeIntelDonutHtml("apgujeongIntelStylistDonut", "apgujeongIntelStylistDonutLegend", [
+    { name: "스타일리스트 유형 고객", share: stylistShare, color: STORE_INTELLIGENCE_COLORS[0] },
+    { name: "기타 고객 유형", share: 100 - stylistShare, color: STORE_INTELLIGENCE_COLORS[1] }
+  ], "매출 비중");
+
+  const stylistRows = clients.stylistRanking || [];
+  const maxStylistSales = Math.max(0, ...stylistRows.map((row) => Number(row.salesAmount || 0)));
+  $("#apgujeongIntelStylistRanking").innerHTML = stylistRows.length ? stylistRows.map((row, index) => promotionCoverageBarRow({
+    rank: index + 1, label: row.name, sublabel: "스타일리스트 유형 고객", headline: apiWon(row.salesAmount),
+    share: maxStylistSales ? Number(row.salesAmount || 0) / maxStylistSales * 100 : 0, desc: `${apiNum(row.purchaseCount)}건 구매`
+  })).join("") : storeIntelUnavailableHtml("해당 기간 스타일리스트 유형 고객 없음");
+
+  $("#apgujeongIntelStylistCustomerBars").innerHTML = storeIntelUnavailableHtml(data.relationships.reason);
+  $("#apgujeongIntelStylistBrandTable tbody").innerHTML = `<tr><td colspan="4">${esc(data.brandClientCross.reason)}</td></tr>`;
+
+  const totalClients = typeRows.reduce((sum, row) => sum + Number(row.clientCount || 0), 0);
+  const typeColors = new Map([["stylist", 0], ["customer", 1], ["samplas_press", 2], ["foreign", 3], ["ff", 4]]);
+  const customerTypes = typeRows.filter((row) => Number(row.clientCount || 0) > 0).map((row) => ({
+    type: row.label, count: row.clientCount, share: totalClients ? Number(row.clientCount) / totalClients * 100 : 0,
+    color: STORE_INTELLIGENCE_COLORS[typeColors.get(row.type) ?? 4]
+  }));
+  if (customerTypes.length) storeIntelDonutHtml("apgujeongIntelCustomerTypeDonut", "apgujeongIntelCustomerTypeDonutLegend", customerTypes, `${apiNum(totalClients)}명`);
+
+  const recent = clients.recentClients || [];
+  $("#apgujeongIntelRecentCustomersTable tbody").innerHTML = recent.length ? recent.map((row) => (
+    `<tr><td>${esc(row.name)}</td><td>${esc(row.latestPurchaseDate || "-")}</td><td>${apiNum(row.purchaseCount)}건</td><td>${apiWon(row.totalSales)}</td><td>담당 관계 데이터 미연결</td></tr>`
+  )).join("") : `<tr><td colspan="5">최근 구매 고객 데이터 없음</td></tr>`;
+  $("#apgujeongIntelInsightList").innerHTML = storeIntelUnavailableHtml(data.insights.reason);
+}
+
+async function renderVailIntelligenceView() {
+  const seq = ++storeIntelligenceRenderSeq;
+  const note = $("#VailIntelligence .store-intel-mock-note");
+  const badge = $("#VailIntelligence .store-intel-header-badge");
+  const title = $("#VailIntelligence .home-hero h3");
+  if (badge) badge.textContent = "SAMPLAS VEIL";
+  if (title) title.textContent = "SAMPLAS VEIL INTELLIGENCE";
+  if (note) note.textContent = "Store Intelligence 데이터를 불러오는 중입니다.";
+  const data = await loadStoreIntelligence("VAIL");
+  if (seq !== storeIntelligenceRenderSeq || data?.error) {
+    if (seq === storeIntelligenceRenderSeq && note) note.textContent = `데이터 연결 실패 · ${data?.error || "알 수 없는 오류"}`;
+    return;
+  }
+  if (note) note.textContent = storeIntelCoverageText(data);
+  const sales = data.sales || {};
+  const kpis = [
+    { label: sales.latestDay ? `${sales.latestDay.slice(5).replace("-", "/")} 매출` : "최신 반영일 매출", value: apiWon(sales.latestDaySales), delta: `기간 누적 ${apiWon(sales.periodSales)}` },
+    { label: "판매 수량", value: `${apiNum(sales.quantity)}개`, delta: "ECOUNT Offline" },
+    { label: "주문 건수", value: `${apiNum(sales.orderCount)}건`, delta: "전표 기준" },
+    { label: "객단가", value: apiWon(sales.avgOrderValue), delta: "Clients canonical 기준" },
+    { label: "신규 고객 비중", value: "-", delta: data.definitions?.newCustomer?.reason || "정의 미확정" }
+  ];
+  $("#vailIntelKpiRow").innerHTML = kpis.map((k) => salesKpiCard(k.label, k.value, k.delta)).join("");
+  const products = data.products?.items || [];
+  $("#vailIntelTopProductRow").innerHTML = products.length ? products.slice(0, 5).map((product, index) => `
     <article class="store-intel-product-card">
-      <span class="store-intel-product-rank">${p.rank}위</span>
-      <div class="store-intel-product-image-placeholder">이미지 준비 중</div>
-      <span class="store-intel-product-brand">${esc(p.brand)}</span>
-      <span class="store-intel-product-name">${esc(p.name)}</span>
-      <div class="store-intel-product-meta"><span>판매 ${esc(p.quantity)}</span><strong>${esc(p.sales)}</strong></div>
+      <span class="store-intel-product-rank">${index + 1}위</span>
+      <div class="store-intel-product-image-placeholder">이미지 미연결</div>
+      <span class="store-intel-product-brand">${esc(product.brand_name || product.brand_code || "브랜드 미확인")}</span>
+      <span class="store-intel-product-name">${esc(product.product_name || product.product_code)}</span>
+      <div class="store-intel-product-meta"><span>판매 ${apiNum(product.quantitySold)}개</span><strong>${apiWon(product.salesAmount)}</strong></div>
+      <span class="muted">${apiNum(product.orderCount)}건</span>
     </article>
-  `).join("");
+  `).join("") : storeIntelUnavailableHtml(
+    data.products?.available
+      ? `확인된 canonical 상품 없음 · unresolved ${apiNum(data.products?.coverage?.unresolvedLines)}건`
+      : data.products?.reason
+  );
 
-  const brandRankingTarget = $("#vailIntelBrandRanking");
-  if (brandRankingTarget) brandRankingTarget.innerHTML = data.brandRanking.map((row) => promotionCoverageBarRow({
-    rank: row.rank, label: row.name, sublabel: row.sublabel, headline: won(row.sales), share: row.share, desc: `매출 ${won(row.sales)}`
-  })).join("");
+  const brands = data.brands?.items || [];
+  const maxBrandSales = Math.max(0, ...brands.map((row) => Number(row.salesAmount || row.canonicalPaidAmount || 0)));
+  $("#vailIntelBrandRanking").innerHTML = brands.length ? brands.map((row, index) => {
+    const amount = Number(row.salesAmount || row.canonicalPaidAmount || 0);
+    return promotionCoverageBarRow({
+      rank: index + 1, label: brandPerformanceDisplayName(row),
+      sublabel: null, headline: apiWon(amount), share: maxBrandSales ? amount / maxBrandSales * 100 : 0,
+      desc: `${apiNum(row.quantitySold)}개 · ${apiNum(row.orderCount)}건`
+    });
+  }).join("") : storeIntelUnavailableHtml(data.brands?.reason || "표시 가능한 canonical 브랜드 없음");
 
-  storeIntelDonutHtml("vailIntelCategoryDonut", "vailIntelCategoryDonutLegend", data.categoryDonut, "매출 비중");
-
-  const sellThroughTarget = $("#vailIntelSellThroughKpi");
-  if (sellThroughTarget) sellThroughTarget.innerHTML = data.sellThrough.map((k) => salesKpiCard(k.label, k.value, "")).join("");
-
-  const inventoryTarget = $("#vailIntelInventoryKpi");
-  if (inventoryTarget) inventoryTarget.innerHTML = data.inventory.map((k) => salesKpiCard(k.label, k.value, "")).join("");
-
-  const newBrandBody = $("#vailIntelNewBrandTable tbody");
-  if (newBrandBody) newBrandBody.innerHTML = data.newBrands.map((row) => (
-    `<tr><td>${esc(row.brand)}</td><td>${esc(row.openDate)}</td><td>${esc(row.sales7d)}</td><td>${esc(row.sellThrough7d)}</td></tr>`
-  )).join("");
-
-  const insightTarget = $("#vailIntelInsightList");
-  if (insightTarget) insightTarget.innerHTML = storeIntelInsightListHtml(data.insights);
+  const categories = data.categories?.items || [];
+  if (categories.length) {
+    storeIntelDonutHtml("vailIntelCategoryDonut", "vailIntelCategoryDonutLegend", categories.map((row, index) => ({
+      ...row, color: STORE_INTELLIGENCE_COLORS[index % STORE_INTELLIGENCE_COLORS.length]
+    })), data.categories.coverage?.coveragePct ? "분류 비중" : "미분류");
+  } else {
+    const categoryDonut = $("#vailIntelCategoryDonut");
+    if (categoryDonut) categoryDonut.style.background = "var(--paper)";
+    $("#vailIntelCategoryDonutLegend").innerHTML = `<li>${esc(data.categories?.reason || "카테고리 데이터 없음")}</li>`;
+  }
+  $("#vailIntelSellThroughKpi").innerHTML = storeIntelUnavailableHtml(data.sellThrough.reason);
+  $("#vailIntelInventoryKpi").innerHTML = storeIntelUnavailableHtml(data.inventory.reason);
+  $("#vailIntelNewBrandTable tbody").innerHTML = `<tr><td colspan="4">${esc(data.newBrands.reason)}</td></tr>`;
+  $("#vailIntelInsightList").innerHTML = storeIntelUnavailableHtml(data.insights.reason);
 }
 
 // STEP66-1 SECTION 1: Hero Status Badge 색 매핑. docs/DESIGN_SYSTEM.md 8번(Status
@@ -3900,15 +3867,22 @@ async function monthlyStoreScopeNote(month, storeCode) {
 // monthlyAllStoreBreakdownNote(문구)와 monthlyStoreDonutBlock(도넛) 둘 다에서 재사용하도록
 // 분리했다 — 계산 로직 자체는 그대로, 결과를 소비하는 렌더링만 두 곳으로 나뉜다.
 function computeMonthlyStoreOfflineBreakdown(offlineSnapshot) {
-  if (offlineSnapshot?.error) return { byStore: { APGUJEONG: 0, VAIL: 0 }, storesIncluded: [] };
+  if (offlineSnapshot?.error) return { byStore: { APGUJEONG: 0, VAIL: 0 }, storesIncluded: [], periods: {} };
   const lines = Array.isArray(offlineSnapshot?.salesLines) ? offlineSnapshot.salesLines : Array.isArray(offlineSnapshot?.rows) ? offlineSnapshot.rows : [];
   const storesIncluded = Array.isArray(offlineSnapshot?.storesIncluded) ? offlineSnapshot.storesIncluded : [];
   const byStore = { APGUJEONG: 0, VAIL: 0 };
+  const periods = {};
   for (const line of lines) {
+    if (Object.prototype.hasOwnProperty.call(byStore, line?.storeCode) && line?.date) {
+      const period = periods[line.storeCode] || { start: line.date, end: line.date };
+      if (line.date < period.start) period.start = line.date;
+      if (line.date > period.end) period.end = line.date;
+      periods[line.storeCode] = period;
+    }
     if (line?.isOfflineRevenue !== true) continue;
     if (Object.prototype.hasOwnProperty.call(byStore, line?.storeCode)) byStore[line.storeCode] += Number(line.salesAmount) || 0;
   }
-  return { byStore, storesIncluded, hasLines: lines.length > 0 };
+  return { byStore, storesIncluded, periods, hasLines: lines.length > 0 };
 }
 
 function monthlyAllStoreBreakdownNote(offlineSnapshot, archive) {
@@ -3987,26 +3961,38 @@ function monthlyStoreDonutBlock(offlineSnapshot) {
   </section>`;
 }
 
+function monthlyStoreCoverageLabel(period) {
+  if (!period?.start || !period?.end) return "데이터 기간 확인 불가";
+  return `${period.start.slice(5).replace("-", ".")}–${period.end.slice(5).replace("-", ".")}`;
+}
+
 function monthlyStorePerformanceBlock(offlineSnapshot, previousOfflineSnapshot) {
+  const canonicalOfflineSales = arguments[2];
   const current = computeMonthlyStoreOfflineBreakdown(offlineSnapshot);
   const previous = computeMonthlyStoreOfflineBreakdown(previousOfflineSnapshot);
-  const offlineTotal = current.byStore.APGUJEONG + current.byStore.VAIL;
+  const canonicalByStore = canonicalOfflineSales?.byStore || {};
+  const canonicalAmountsAvailable = ["APGUJEONG", "VAIL"].every((code) => hasApiValue(canonicalByStore[code]));
+  const offlineTotal = canonicalAmountsAvailable ? Number(canonicalByStore.APGUJEONG) + Number(canonicalByStore.VAIL) : null;
   const cards = ["APGUJEONG", "VAIL"].map((code) => {
     const label = STORE_FILTER_LABELS[code];
-    const included = current.storesIncluded.includes(code);
+    const included = current.storesIncluded.includes(code) && hasApiValue(canonicalByStore[code]);
     const previousIncluded = previous.storesIncluded.includes(code);
-    const amount = current.byStore[code];
+    const amount = included ? Number(canonicalByStore[code]) : null;
     const share = included && offlineTotal > 0 ? monthlyReportRatio(amount, offlineTotal) : null;
     const delta = included && previousIncluded
       ? monthlyReportDelta(amount, previous.byStore[code], apiWon)
       : "전월 비교 데이터 없음";
     const viewName = code === "APGUJEONG" ? "ApgujeongIntelligence" : "VailIntelligence";
+    const coverage = included ? monthlyStoreCoverageLabel(current.periods[code]) : "미업로드";
+    const topBrands = (offlineSnapshot?.storeBrandSales?.[code] || [])
+      .filter((item) => !isExcludedBrandPerformance(item))
+      .slice(0, 5);
     const popoverRows = included
-      ? [["매출", esc(apiWon(amount))], ["오프라인 내 비중", esc(pct(share))], ...(previousIncluded ? [["전월 대비", esc(delta)]] : [])]
+      ? [["매출", esc(apiWon(amount))], ["오프라인 내 비중", esc(pct(share))], ["데이터 기간", esc(coverage)], ...(previousIncluded ? [["전월 대비", esc(delta)]] : [])]
       : [["상태", "매장별 분리 데이터 미업로드"]];
     return `<article class="monthly-store-performance-card">
       <div class="monthly-store-performance-head">
-        <div><span>STORE</span><h4>${esc(label)}</h4></div>
+        <div><span>STORE</span><h4>${esc(label)}</h4><em class="monthly-store-coverage">${esc(coverage)}</em></div>
         ${monthlyIntelLink("Intelligence →", `${label} Intelligence로 이동`, `data-jump-view="${viewName}"`, monthlyIntelPopoverCard(esc(label), popoverRows, `${label} Intelligence`))}
       </div>
       <div class="monthly-store-performance-kpis">
@@ -4015,8 +4001,14 @@ function monthlyStorePerformanceBlock(offlineSnapshot, previousOfflineSnapshot) 
         <div><span>전월 대비</span><strong>${esc(delta)}</strong></div>
       </div>
       <div class="monthly-store-top5">
-        <div class="monthly-report-block-head"><h4>TOP BRAND 5</h4><span>canonical brand · store scoped</span></div>
-        <p>매장별 판매 데이터 업로드 후 표시됩니다</p>
+        <div class="monthly-report-block-head"><h4>TOP BRAND 5</h4><span>canonical brand · offline store scoped</span></div>
+        ${topBrands.length ? `<div class="monthly-report-rank">${monthlyReportRankRows(topBrands, {
+          valueFn: brandPerformancePaidAmount,
+          labelFn: brandPerformanceDisplayName,
+          subFn: (item) => `${apiNum(item.quantitySold || 0)}개 판매`,
+          formatValue: (value) => apiWon(value),
+          labelHtmlFn: (item, index) => monthlyIntelBrandLabelHtml(item, brandPerformancePaidAmount(item), undefined, item.quantitySold, index)
+        })}</div>` : `<p>${included ? "표시 가능한 canonical 브랜드 데이터 없음" : "매장별 분리 데이터 미업로드"}</p>`}
       </div>
     </article>`;
   }).join("");
@@ -4122,12 +4114,13 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   // MONTHLY CLEANUP: Mission teaser/chapter placeholder가 제거되어 이 render는 더 이상
   // Intelligence Service의 mission 목록을 소비하지 않는다. 엔드포인트/계산/다른 화면의
   // 사용은 그대로 둔다 — 여기서는 Monthly만의 fetch 호출을 없앤다.
-  const [archive, previousArchive, brandMasterResult, offlineSnapshot, previousOfflineSnapshot] = await Promise.all([
+  const [archive, previousArchive, brandMasterResult, offlineSnapshot, previousOfflineSnapshot, canonicalSales] = await Promise.all([
     getJson(`/api/reports/monthly?month=${month}`, 8000),
     previousMonth ? getJson(`/api/reports/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" }),
     getSharedJson("/api/brand-master", 12000),
-    getJson(`/api/ecount-sales/monthly?month=${month}`, 8000),
-    previousMonth ? getJson(`/api/ecount-sales/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" })
+    getJson(`/api/ecount-sales/monthly?month=${month}&includeStoreBrands=1`, 12000),
+    previousMonth ? getJson(`/api/ecount-sales/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" }),
+    getJson(`/api/sales/total?since=${monthStart}&until=${monthEnd}`, 12000)
   ]);
   if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
   registerBrandMasterResponse(brandMasterResult);
@@ -4354,7 +4347,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
         <span>03</span>
         <div><p class="eyebrow">Store Performance</p><h3>오프라인 매장 성과</h3></div>
       </div>
-      ${monthlyStorePerformanceBlock(offlineSnapshot, previousOfflineSnapshot)}
+      ${monthlyStorePerformanceBlock(offlineSnapshot, previousOfflineSnapshot, canonicalSales?.offlineSales)}
     </section>
 
     <section id="monthly-report-ch4" class="monthly-report-chapter">
@@ -13910,12 +13903,44 @@ function renderEntityCompositionStoreNote(data = {}) {
 
 async function refreshEntityCustomerComposition(brandCode, month) {
   const seq = ++entityCompositionSeq;
+  entityOfflineAttributionState = { brandCode, periodMonth: month, ready: false, fetchFailed: false, rows: [] };
+  rebuildEntityCategoryRows();
+  rebuildEntityColorRows();
   const compareKey = `${brandCode || ""}|${month || ""}`;
   entityCompareCompositionState.a = { key: compareKey, status: "pending", stats: {} };
   renderEntityCompareComposition();
   // STORE-BATCH-D: Customer Composition도 공유 storeFilterState를 적용한다.
   const data = await getEntityCompositionJson(`/api/brand-intelligence/${encodeURIComponent(brandCode)}/customer-composition?month=${encodeURIComponent(month)}${storeFilterState !== "ALL" ? `&store=${storeFilterState}` : ""}`);
   if (seq !== entityCompositionSeq) return; // 더 최근 브랜드/기간 변경이 이미 진행 중이면 이 결과는 버린다.
+  if (data?.error || !Array.isArray(data?.offlineAttributionRows)) {
+    entityOfflineAttributionState = { brandCode, periodMonth: month, ready: false, fetchFailed: true, rows: [] };
+  } else {
+    const [categoryOverrides, colorMaster] = await Promise.all([
+      loadEntityCategoryManualOverrides(),
+      loadEntityColorMaster()
+    ]);
+    if (seq !== entityCompositionSeq || brandIdentityState.brandCode !== brandCode || currentEntityPeriodMonthKey() !== month) return;
+    entityOfflineAttributionState = {
+      brandCode,
+      periodMonth: month,
+      ready: true,
+      fetchFailed: false,
+      rows: data.offlineAttributionRows.map((row) => {
+        const category = classifyEntityProductCategory(null, row.productName, row.productCode || null, categoryOverrides);
+        const color = classifyEntityProductColor(row.productName, colorMaster);
+        return {
+          productName: row.productName || "-",
+          revenue: Number(row.revenue || 0),
+          quantitySold: Number(row.quantitySold || 0),
+          categoryCode: category.code,
+          colorFamily: color.family,
+          colorRaw: color.raw
+        };
+      })
+    };
+  }
+  rebuildEntityCategoryRows();
+  rebuildEntityColorRows();
   const compareDataset = entityCompositionDataset(data, compareKey);
   entityCompareCompositionState.a = compareDataset;
   renderEntityCompareComposition();
@@ -14000,6 +14025,7 @@ async function refreshEntityTrendMonths() {
     renderEntityHeroKpiFromMonthlyState();
     renderEntityCompositionEmpty();
     entitySkuSalesState = { brandCode: null, periodMonth: null, rows: [], fetchFailed: false };
+    entityOfflineAttributionState = { brandCode: null, periodMonth: null, ready: false, fetchFailed: false, rows: [] };
     rebuildEntitySkuRows();
     return;
   }
@@ -15340,6 +15366,111 @@ function renderEntityTrendSection() {
 }
 
 // ====================================================================
+// Category Master — manual review workspace
+// ====================================================================
+const categoryReviewNames = {
+  TOP: "상의", BOTTOM: "하의", OUTER: "아우터", DRESS: "드레스", BAG: "가방",
+  FOOTWEAR: "신발", HEADWEAR: "모자", JEWELRY: "주얼리", ACCESSORY: "액세서리", OTHER: "기타"
+};
+
+function categoryReviewCurrentModel(workspace) {
+  return (workspace?.models || []).find((model) => (
+    model.brand === categoryReviewState.selectedBrand
+    && model.reviewStatus === "REMAINING"
+    && !categoryReviewState.heldModelKeys.has(model.modelKey)
+  )) || null;
+}
+
+function renderCategoryReviewContent() {
+  const target = $("#categoryReviewWorkspace");
+  const workspace = categoryReviewState.workspace;
+  if (!target || !workspace) return;
+  const brands = workspace.brands || [];
+  if (!brands.some((brand) => brand.brand === categoryReviewState.selectedBrand)) {
+    categoryReviewState.selectedBrand = brands.find((brand) => brand.brand === "PACOSPLY")?.brand || brands[0]?.brand || "";
+  }
+  const selected = brands.find((brand) => brand.brand === categoryReviewState.selectedBrand);
+  const model = categoryReviewCurrentModel(workspace);
+  const progress = selected?.totalModels ? Math.round((selected.completedModels / selected.totalModels) * 1000) / 10 : 0;
+  const brandOptions = brands.map((brand) => `<option value="${esc(brand.brand)}" ${brand.brand === categoryReviewState.selectedBrand ? "selected" : ""}>${esc(brand.brand)} · ${apiNum(brand.remainingModels)} remaining</option>`).join("");
+  const brandRows = brands.map((brand) => `<button type="button" class="category-review-brand${brand.brand === categoryReviewState.selectedBrand ? " active" : ""}" data-category-review-brand="${esc(brand.brand)}">
+    <strong>${esc(brand.brand)}</strong><span>${apiNum(brand.completedModels)} / ${apiNum(brand.totalModels)}</span><small>${Math.round(brand.progress * 1000) / 10}%</small>
+  </button>`).join("");
+  const modelHtml = model ? `<article class="category-review-card" data-model-key="${esc(model.modelKey)}">
+    <p class="eyebrow">현재 상태 · UNCLASSIFIED</p>
+    <h2>${esc(model.productName || "상품명 미확인")}</h2>
+    <dl class="category-review-meta">
+      <div><dt>MODEL CODE</dt><dd>${esc(model.modelKey.replace(/^CODE_PREFIX:|^SKU:/, ""))}</dd></div>
+      <div><dt>SKU</dt><dd>${apiNum(model.skuCount)}개</dd></div>
+      <div><dt>SIZE / SPEC</dt><dd>${esc((model.options || []).join(" / ") || "미확인")}</dd></div>
+      <div><dt>CURRENT STOCK</dt><dd>${apiNum(model.currentStockQuantity)}</dd></div>
+      <div class="wide"><dt>BARCODE</dt><dd>${esc((model.barcodes || []).join(", ") || "미확인")}</dd></div>
+      <div class="wide"><dt>분류 실패 이유</dt><dd>${esc((model.classifierFailureReasons || []).join(", "))}</dd></div>
+    </dl>
+    <div class="category-review-actions" aria-label="카테고리 선택">
+      ${(workspace.taxonomy || []).map((code) => `<button type="button" class="button secondary" data-category-review-code="${esc(code)}" ${categoryReviewState.saving ? "disabled" : ""}><strong>${esc(code)}</strong><span>${esc(categoryReviewNames[code] || code)}</span></button>`).join("")}
+    </div>
+    <button type="button" class="category-review-hold" data-category-review-hold ${categoryReviewState.saving ? "disabled" : ""}>보류 · 나중에 다시 보기</button>
+    <p id="categoryReviewSaveStatus" class="category-review-status" role="status"></p>
+  </article>` : `<article class="category-review-card empty-state"><strong>현재 표시할 미분류 모델이 없습니다.</strong><p>${selected?.remainingModels ? "이 세션에서 보류한 상품은 새로고침하거나 브랜드를 다시 선택하면 다시 표시됩니다." : "이 브랜드의 검토가 완료되었습니다."}</p></article>`;
+  target.innerHTML = `<div class="category-review-toolbar">
+      <label><span>브랜드 선택</span><select id="categoryReviewBrandSelect">${brandOptions}</select></label>
+      <div><strong>${esc(categoryReviewState.selectedBrand || "-")}</strong><span>${apiNum(selected?.remainingModels || 0)} MODELS TO REVIEW</span></div>
+      <div><strong>${apiNum(selected?.completedModels || 0)} / ${apiNum(selected?.totalModels || 0)}</strong><span>${progress}%</span></div>
+    </div>
+    <div class="category-review-layout"><aside class="category-review-brands">${brandRows}</aside><div>${modelHtml}</div></div>`;
+
+  $("#categoryReviewBrandSelect")?.addEventListener("change", (event) => {
+    categoryReviewState.selectedBrand = event.target.value;
+    categoryReviewState.heldModelKeys.clear();
+    renderCategoryReviewContent();
+  });
+  $$('[data-category-review-brand]').forEach((button) => button.addEventListener("click", () => {
+    categoryReviewState.selectedBrand = button.dataset.categoryReviewBrand;
+    categoryReviewState.heldModelKeys.clear();
+    renderCategoryReviewContent();
+  }));
+  $$('[data-category-review-code]').forEach((button) => button.addEventListener("click", async () => {
+    if (!model || categoryReviewState.saving) return;
+    categoryReviewState.saving = true;
+    const status = $("#categoryReviewSaveStatus");
+    if (status) status.textContent = "저장 중…";
+    $$('[data-category-review-code], [data-category-review-hold]').forEach((node) => { node.disabled = true; });
+    const saved = await patchJson("/api/intelligence/category-review", { modelKey: model.modelKey, categoryCode: button.dataset.categoryReviewCode }, 12000);
+    categoryReviewState.saving = false;
+    if (saved.error) {
+      if (status) status.textContent = `CATEGORY SAVE FAILED · ${saved.message || saved.error}`;
+      $$('[data-category-review-code], [data-category-review-hold]').forEach((node) => { node.disabled = false; });
+      return;
+    }
+    entityCategoryManualOverridesPromise = null;
+    sharedJsonRequests.delete("/api/intelligence/category-master");
+    toast(`${button.dataset.categoryReviewCode} 저장 완료`);
+    renderCategoryReviewView();
+  }));
+  $("[data-category-review-hold]")?.addEventListener("click", () => {
+    if (!model) return;
+    categoryReviewState.heldModelKeys.add(model.modelKey);
+    renderCategoryReviewContent();
+  });
+}
+
+async function renderCategoryReviewView() {
+  const target = $("#categoryReviewWorkspace");
+  if (!target) return;
+  const seq = ++categoryReviewRenderSeq;
+  target.innerHTML = `<article class="category-review-card empty-state"><strong>Category Review 불러오는 중</strong></article>`;
+  const result = await getJson("/api/intelligence/category-review", 15000);
+  if (seq !== categoryReviewRenderSeq) return;
+  if (result.error || !result.workspace) {
+    target.innerHTML = `<article class="category-review-card empty-state"><strong>CATEGORY REVIEW LOAD FAILED</strong><p>${esc(result.message || result.error || "데이터를 불러오지 못했습니다.")}</p></article>`;
+    return;
+  }
+  categoryReviewState.workspace = result.workspace;
+  renderCategoryReviewContent();
+}
+
+// ====================================================================
 // BI-BATCH-I — SAMPLAS Category Master v1 (docs/BRAND_INTELLIGENCE_RULES.md)
 // ====================================================================
 // Cafe24 categoryNos(전시/프로모션 진열용, BI-BATCH-C에서 상품 분류가 아님을 확인)는
@@ -15369,47 +15500,231 @@ const entityCategoryColors = {
 let entityCategoryMode = "revenue";
 const entityCategoryRows = [];
 let entityCategoryCoverage = null;
+let entityOfflineAttributionState = { brandCode: null, periodMonth: null, ready: false, fetchFailed: false, rows: [] };
 
-// 정확히 하나의 카테고리 키워드만 매칭되면 그 카테고리, 0개 또는 2개 이상 매칭되면 null
-// (추측 금지 → 다음 우선순위로 넘어감). 순서는 문서화 목적일 뿐 매칭 자체와 무관하다.
+// Color Intelligence — Category와 독립된 축. entityCategoryColors와 같은 스타일의 flat
+// hex map(새 디자인 시스템 아님). Color Master의 36 families에 맞춰 시각적으로 직관적인
+// 색을 배정했다 — family taxonomy 자체는 work/color-master.json이 유일한 source다.
+const entityColorSwatches = {
+  BLACK: "#171717", WHITE: "#e8e6e0", GREY: "#8a8a8a", BEIGE: "#cbb994", BROWN: "#6b4a34",
+  BLUE: "#3f6fb0", NAVY: "#1f2f52", GREEN: "#4fb082", RED: "#b0433f", PINK: "#d98caa",
+  PURPLE: "#7a5ea8", ORANGE: "#c76a35", YELLOW: "#d9b23f", CHARCOAL: "#3a3a3a", INDIGO: "#3b3a6e",
+  BURGUNDY: "#6e2436", WINE: "#5c1f2e", KHAKI: "#8a7f52", OLIVE: "#5f6b3a", GOLD: "#b08a3f",
+  SILVER: "#b6b6b6", CHROME: "#c7c9cb", GUNMETAL: "#4b4f54", SKIN: "#e0b699", NUDE: "#d8bfa3",
+  NATURAL: "#c9bfa5", CLEAR: "#dfe6e6", DENIM: "#4a6a8a", CAMO: "#5c6642", STRIPE: "#4a4a4a",
+  CHECK: "#7a6a4a", LEOPARD: "#a3702f", PRINT: "#8f6a9a", MULTI: "#9a5ea0", OTHER: "#9a9a9a",
+  UNKNOWN: "#c9c6bd"
+};
+let entityColorMode = "revenue";
+const entityColorRows = [];
+let entityColorCoverage = null;
+
+// 2026-08 업데이트: 매칭된 키워드 중 상품명에서 가장 뒤(tail)에 위치한 것을 우선한다(구
+// v1은 "정확히 1개 매칭"만 허용해 "SCAR BOOT CUT PANTS" 같은 실제 명명 관행에서 앞쪽
+// 서술어(BOOT)와 뒤쪽 실제 품목(PANTS)이 같이 매칭되면 무조건 UNCLASSIFIED로 떨어졌다).
+// 후보가 전혀 없거나 동률(같은 끝 위치)이면 추측하지 않고 null.
+// 정본은 scripts/category-classification-rules.mjs — 이 파일은 plain <script>라 import를
+// 못 써서 동일 로직을 손으로 이식한 사본이다(test/category-classification-parity.test.mjs가
+// 정합성을 검증한다).
 const CATEGORY_NAME_KEYWORD_RULES = [
-  ["TOP", ["t-shirt", "tee", "shirt", "blouse", "knit", "sweater", "cardigan", "hoodie", "sweatshirt", "jersey top", "tank top"]],
-  ["BOTTOM", ["pants", "trousers", "jeans", "denim pants", "shorts", "skirt", "slacks"]],
-  ["OUTER", ["jacket", "coat", "blazer", "vest", "parka", "bomber", "outer"]],
-  ["DRESS", ["dress", "one-piece"]],
+  ["TOP", [
+    "t-shirt", "t-shirts", "tshirt", "tshirts", "t - shirt", "t - shirts", "t-shrit", "tee", "t",
+    "short sleeve", "half sleeve", "sleeveless", "long sleeve", "longsleeve", "longtee",
+    "top", "corset", "bra", "bodysuit", "body suit", "shirt", "shirts", "blouse", "polo",
+    "tank top", "tank", "cardigan", "sweater", "sweatshirt", "crew neck", "hoodie", "knit",
+    "jersey top", "jumper", "후드", "스웨터"
+  ]],
+  ["BOTTOM", [
+    "pants", "trousers", "trouser", "trourser", "troursers", "jeans", "jean", "denim pants",
+    "shorts", "short", "micro-short", "skirt", "skort", "slacks", "sweatpants",
+    "leggings", "legging", "panty", "denim", "바지", "baji"
+  ]],
+  ["OUTER", [
+    "jacket", "자켓", "coat", "blazer", "vest", "parka", "bomber", "ma-1", "wind breaker",
+    "windbreaker", "trucker", "outer", "후리스", "후드집업", "집업", "zip-up", "zip up", "hooded zip"
+  ]],
+  ["DRESS", ["dress", "one-piece", "jumpsuit"]],
   ["BAG", ["bag", "backpack", "tote", "shopper", "pouch"]],
   ["FOOTWEAR", ["boots", "boot", "shoe", "shoes", "sneaker", "sneakers", "mule", "sandal", "sandals", "loafer"]],
-  ["HEADWEAR", ["cap", "hat", "beanie", "headwear"]],
-  ["JEWELRY", ["necklace", "ring", "earring", "earrings", "bracelet", "bangle", "chain jewelry", "pendant"]],
-  ["ACCESSORY", ["belt", "wallet", "keyring", "key chain", "scarf", "tie", "gloves", "sunglasses", "eyewear", "socks", "accessory"]]
+  ["HEADWEAR", ["cap", "hat", "beanie", "beret", "headwear"]],
+  ["JEWELRY", ["necklace", "ring", "earring", "earrings", "bracelet", "bangle", "chain jewelry", "pendant", "dog tag"]],
+  ["ACCESSORY", [
+    "belt", "wallet", "keyring", "key chain", "scarf", "tie", "gloves", "glove", "sunglasses",
+    "eyewear", "socks", "accessory", "card holder", "card case", "leg warmer", "arm warmer",
+    "hands warmers", "warmers", "mittens", "bandana", "bandanna", "stocking", "phone grip"
+  ]],
+  ["OTHER", ["underwear", "swimwear", "overall", "set up", "set-up", "setup", "set_up", "bikini"]]
 ];
 
-// BI-BATCH-I: work/product-registry.json의 verified+confirmed 103개 항목 실제 ECOUNT
-// prodCd를 감사한 결과만 활성화했다(docs/BRAND_INTELLIGENCE_RULES.md에 근거 기록).
-// BG/BT/SH/JW/FW/OT/HW는 감사한 모든 사례에서 카테고리가 하나로 일관됐다. AC(주얼리/
-// 모자/액세서리 혼재)·LT(대부분 TOP이나 예외 존재, 이름 규칙이 이미 대부분 처리)·
-// ST(TOP/DRESS 혼재)는 결정론적이지 않아 의도적으로 비활성화했다. DR은 실제 카탈로그
-// 사례가 없어 검증 불가라 비활성 상태로 둔다.
-const CATEGORY_ECOUNT_SUFFIX_MAP = { BG: "BAG", BT: "BOTTOM", SH: "TOP", JW: "JEWELRY", FW: "FOOTWEAR", OT: "OUTER", HW: "HEADWEAR" };
+// 매칭된 키워드가 명확히 하나의 표준 소분류로 이어지는 경우만 subcategoryCode를 채운다.
+const CATEGORY_NAME_SUBCATEGORY_BY_KEYWORD = {
+  "hoodie": "HOODIE", "후드": "HOODIE",
+  "long sleeve": "LONG_SLEEVE", "longsleeve": "LONG_SLEEVE", "longtee": "LONG_SLEEVE",
+  "short sleeve": "SHORT_SLEEVE", "t-shirt": "SHORT_SLEEVE", "t-shirts": "SHORT_SLEEVE",
+  "tshirt": "SHORT_SLEEVE", "t - shirt": "SHORT_SLEEVE", "t - shirts": "SHORT_SLEEVE",
+  "t-shrit": "SHORT_SLEEVE", "tee": "SHORT_SLEEVE",
+  "shirt": "SHIRT", "blouse": "SHIRT",
+  "dress": "DRESS", "one-piece": "DRESS", "jumpsuit": "DRESS",
+  "bag": "BAG", "backpack": "BAG", "tote": "BAG", "shopper": "BAG", "pouch": "BAG",
+  "underwear": "UNDERWEAR", "swimwear": "SWIMWEAR", "bikini": "SWIMWEAR",
+  "overall": "OVERALL",
+  "set up": "SET_UP", "set-up": "SET_UP", "setup": "SET_UP", "set_up": "SET_UP"
+};
 
+// 확정된 ECOUNT suffix 공식(2026-08 재고 검수). ST/LT/HD/DR/AC/ACC를 새로 활성화했다.
+const CATEGORY_ECOUNT_SUFFIX_MAP = {
+  BG: "BAG", BT: "BOTTOM", SH: "TOP", JW: "JEWELRY", FW: "FOOTWEAR", OT: "OUTER", HW: "HEADWEAR",
+  ST: "TOP", LT: "TOP", HD: "TOP", DR: "DRESS", AC: "ACCESSORY", ACC: "ACCESSORY"
+};
+const CATEGORY_ECOUNT_SUBCATEGORY_MAP = {
+  BG: "BAG", BT: "BOTTOM", SH: "SHIRT", JW: "JEWELRY", FW: "FOOTWEAR", OT: "OUTER", HW: "HEADWEAR",
+  ST: "SHORT_SLEEVE", LT: "LONG_SLEEVE", HD: "HOODIE", DR: "DRESS", AC: "ACCESSORY", ACC: "ACCESSORY"
+};
+// 424/ALIVEFORM/ADIDAS X AVAVAV의 AC-suffix 코드는 실제로 FOOTWEAR/BAG인데 소스 데이터가
+// AC로 잘못 코딩된 사례가 감사에서 확인됐다 — 이 브랜드는 AC/ACC suffix를 신뢰하지 않고
+// 이름/개별 예외 우선순위로 넘긴다(다른 브랜드의 AC 공식 자체는 무효화하지 않는다).
+const CATEGORY_AC_SUFFIX_DISTRUST_BRANDS = new Set(["424", "ALIVEFORM", "ADIDAS X AVAVAV"]);
+
+const CATEGORY_HANGUL_ONLY_PATTERN = /^[가-힣]+$/;
+
+// \b(ASCII \w 전용)는 한글에서 전혀 동작하지 않는다 — 유니코드 인식 경계로 SHIRRING의
+// RING, HORSESHOE의 SHOE 같은 부분 문자열 오검출을 막되, 순수 한글 키워드는 한국어 압축
+// 복합어(후드집업=후드+집업, 공백 없음) 특성상 무경계 부분 문자열 매칭을 쓴다.
 function categoryKeywordPattern(keyword) {
-  return new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  const esc = String(keyword).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (CATEGORY_HANGUL_ONLY_PATTERN.test(keyword)) return new RegExp(esc, "i");
+  return new RegExp(`(?<![\\p{L}\\p{N}])${esc}(?![\\p{L}\\p{N}])`, "iu");
+}
+
+function matchCategoryByNameKeywordsDetailed(productName) {
+  const normalized = String(productName || "");
+  if (!normalized.trim()) return null;
+  let best = null;
+  for (const [category, keywords] of CATEGORY_NAME_KEYWORD_RULES) {
+    for (const keyword of keywords) {
+      const match = categoryKeywordPattern(keyword).exec(normalized);
+      if (!match) continue;
+      const endIndex = match.index + match[0].length;
+      if (!best || endIndex > best.endIndex) {
+        best = { endIndex, category, subcategoryCode: CATEGORY_NAME_SUBCATEGORY_BY_KEYWORD[keyword.toLowerCase()] || null };
+      } else if (endIndex === best.endIndex && category !== best.category) {
+        best.tie = true;
+      }
+    }
+  }
+  if (!best || best.tie) return null;
+  return { code: best.category, subcategoryCode: best.subcategoryCode };
 }
 
 function matchCategoryByNameKeywords(productName) {
-  const normalized = String(productName || "");
-  if (!normalized.trim()) return null;
-  const matched = new Set();
-  CATEGORY_NAME_KEYWORD_RULES.forEach(([category, keywords]) => {
-    if (keywords.some((keyword) => categoryKeywordPattern(keyword).test(normalized))) matched.add(category);
-  });
-  return matched.size === 1 ? [...matched][0] : null;
+  return matchCategoryByNameKeywordsDetailed(productName)?.code || null;
 }
 
 function ecountCategorySuffixFromProdCd(prodCd) {
   const match = String(prodCd || "").match(/([A-Za-z]+)(\d+)$/);
   if (!match) return null;
   return CATEGORY_ECOUNT_SUFFIX_MAP[match[1].toUpperCase()] || null;
+}
+
+// 레거시 QQQ 계열 코드는 "BRAND / 상품명"이 아니라 "[BRAND : 한글이름] 상품명" 형식을
+// 쓴다 — 두 형식 모두 지원한다.
+const CATEGORY_BRACKET_BRAND_PATTERN = /^\[([^:\]]+?)(?:\s*:[^\]]*)?\]/;
+function deriveCategoryBrandFromProductName(productName) {
+  const text = String(productName || "");
+  const bracketMatch = CATEGORY_BRACKET_BRAND_PATTERN.exec(text);
+  if (bracketMatch) return bracketMatch[1].trim().toUpperCase() || "UNASSIGNED";
+  const [brand, rest] = text.split("/");
+  return rest === undefined ? "UNASSIGNED" : brand.trim().toUpperCase() || "UNASSIGNED";
+}
+
+const CATEGORY_RESURRECTION_13_BRAND = "RESURRECITON 13";
+const CATEGORY_RESURRECTION_13_CODE_MAP = { T: "TOP", B: "BOTTOM", O: "OUTER", AC: "ACCESSORY" };
+const CATEGORY_RESURRECTION_13_CODE_PATTERN = /\b(\d{2})-([A-Za-z]{1,3})(\d+)\b/;
+
+// RESURRECITON 13은 POP/QQQ 바코드 끝 suffix가 항상 RES로 잡혀 카테고리 판단에 쓸 수
+// 없다 — 상품명 안의 내부 품번(예: 25-T090)을 대신 읽는다. 이 브랜드일 때만 적용한다.
+function resurrectionThirteenInternalCode(brand, productName) {
+  if (brand !== CATEGORY_RESURRECTION_13_BRAND) return null;
+  const match = CATEGORY_RESURRECTION_13_CODE_PATTERN.exec(String(productName || ""));
+  if (!match) return null;
+  const code = CATEGORY_RESURRECTION_13_CODE_MAP[match[2].toUpperCase()];
+  return code ? { code, subcategoryCode: null } : null;
+}
+
+// 전역 규칙으로 일반화하지 않는 개별 확정 예외(2026-08 재고 검수). brand는
+// deriveCategoryBrandFromProductName() 결과와 비교하고(null이면 브랜드 무관), includes는
+// 상품명 부분 문자열(대소문자 무시) 매칭이다. scripts/category-classification-rules.mjs와
+// 동일 목록.
+const CATEGORY_INDIVIDUAL_MODEL_EXCEPTIONS = [
+  { brand: "SURGERY", includes: "process 006", code: "BOTTOM" },
+  { brand: "SURGERY", includes: "process 009", code: "BOTTOM" },
+  { brand: "SURGERY", includes: "process 013", code: "TOP" },
+  { brand: "SURGERY", includes: "process 014", code: "BOTTOM" },
+  { brand: "SURGERY", includes: "process 015", code: "TOP" },
+  { brand: "SURGERY", includes: "process 021", code: "TOP" },
+  { brand: "SURGERY", includes: "process 026", code: "BOTTOM" },
+  { brand: "SURGERY", includes: "process 027", code: "TOP" },
+  { brand: "SURGERY", includes: "process 028", code: "BOTTOM" },
+  { brand: "SURGERY", includes: "process 029", code: "TOP" },
+  { brand: "SURGERY", includes: "process 031", code: "BOTTOM" },
+  { brand: "SURGERY", includes: "process 032", code: "OUTER" },
+  { brand: null, includes: "ss008 triangle", code: "ACCESSORY" },
+  { brand: null, includes: "logo heart rong", code: "ACCESSORY" },
+  { brand: "DOMINNICO", includes: "pink moto pagoda shoulders", code: "OUTER" },
+  // 2026-08-15 사용자 확인: LACE SLEEVES는 탈부착 액세서리가 아니라 상의 구성품(TOP).
+  { brand: "DOMINNICO", includes: "lace sleeves", code: "TOP" },
+  { brand: "SUPER POSITION", includes: "pinch lm", code: "TOP", subcategoryCode: "SHIRT" },
+  { brand: "SUPER POSITION", includes: "stm", code: "TOP", subcategoryCode: "SHIRT" },
+  { brand: null, includes: "sp0834", code: "TOP", subcategoryCode: "SHORT_SLEEVE" },
+  { brand: "KIMYO", includes: "petal texture shirring overfit", code: "TOP", subcategoryCode: "SHIRT" },
+  { brand: "KIMYO", includes: "saturn layers set-up", code: "OTHER", subcategoryCode: "SET_UP" },
+  { brand: "KIMYO", includes: "tasselled multi wear", code: "ACCESSORY" },
+  { brand: "KIMYO", includes: "tech hooded zip fullsuit", code: "OTHER", subcategoryCode: "OVERALL" },
+  { brand: "SUNDAYOFFCLUB", includes: "cow leather puffy sleeve park", code: "OUTER" },
+  { brand: "SUNDAYOFFCLUB", includes: "fascination distressed t-shrit", code: "TOP", subcategoryCode: "SHORT_SLEEVE" },
+  { brand: "SUNDAYOFFCLUB", includes: "wakame studded bet", code: "ACCESSORY" },
+  { brand: "SUNDAYOFFCLUB", includes: "layered racing shirt with camouflage short", code: "BOTTOM" },
+  { brand: "SUNDAYOFFCLUB", includes: "waxed black denim", code: "BOTTOM" },
+  // 2026-08-15 사용자 확인: 목걸이가 아니라 액세서리(머니클립 체인)로 확정.
+  { brand: "SUNDAYOFFCLUB", includes: "montmartre cross moneyclip chain", code: "ACCESSORY" },
+  { brand: "604SERVICE", includes: "hard to get boxer brief", code: "OTHER", subcategoryCode: "UNDERWEAR" },
+  { brand: "604SERVICE", includes: "classic thong", code: "OTHER", subcategoryCode: "UNDERWEAR" },
+  { brand: "604SERVICE", includes: "biker banding sweat panty", code: "BOTTOM" },
+  { brand: "BONNAE", includes: "graphic bikini", code: "OTHER", subcategoryCode: "SWIMWEAR" },
+  { brand: "BONNAE", includes: "star rivet pleated skort", code: "BOTTOM" },
+  { brand: "KANGJUNGSEOK", includes: "origami circle torusers", code: "BOTTOM" },
+  { brand: "KANGJUNGSEOK", includes: "pleats hood", code: "TOP" },
+  { brand: "LOADING ROOM", includes: "dirty trucker", code: "OUTER" },
+  { brand: null, includes: "라스벳 보드 - 1", code: "ACCESSORY" },
+  { brand: null, includes: "라스벳 보드 - 2", code: "ACCESSORY" },
+  { brand: "CARNET ARCHIVE", includes: "oil-submerged arm guard", code: "ACCESSORY" },
+  // 2026-08-15 사용자 확인: 목걸이가 아니라 액세서리(체인 프래그먼트)로 확정.
+  { brand: "CARNET ARCHIVE", includes: "unearthed fragment chain", code: "ACCESSORY" },
+  { brand: "424", includes: "dragonrider", code: "FOOTWEAR" },
+  { brand: "424", includes: "marathon cowboy", code: "FOOTWEAR" },
+  { brand: "ALIVEFORM", includes: "stratum runner", code: "FOOTWEAR" },
+  { brand: "ALIVEFORM", includes: "stratum derby", code: "FOOTWEAR" },
+  { brand: "ALIVEFORM", includes: "stratum talon", code: "FOOTWEAR" },
+  { brand: "ALIVEFORM", includes: "spiralis oxford", code: "FOOTWEAR" },
+  { brand: "ALIVEFORM", includes: "flaine l", code: "FOOTWEAR" },
+  { brand: "ALIVEFORM", includes: "armis high", code: "FOOTWEAR" },
+  { brand: "ALIVEFORM", includes: "armis low", code: "FOOTWEAR" },
+  { brand: "ALIVEFORM", includes: "laptop case", code: "BAG" },
+  { brand: "ADIDAS X AVAVAV", includes: "sst vacuum", code: "FOOTWEAR" },
+  { brand: "ADIDAS X AVAVAV", includes: "bubble gb", code: "FOOTWEAR" },
+  { brand: "ADIDAS X AVAVAV", includes: "megaride", code: "FOOTWEAR" },
+  { brand: "ADIDAS X AVAVAV", includes: "band set", code: "ACCESSORY" },
+  { brand: "ADIDAS X AVAVAV", includes: "kneesocks", code: "ACCESSORY" }
+];
+
+function matchIndividualModelException(brand, productName) {
+  const name = String(productName || "").toLowerCase();
+  for (const exception of CATEGORY_INDIVIDUAL_MODEL_EXCEPTIONS) {
+    if (exception.brand && exception.brand !== brand) continue;
+    if (!name.includes(exception.includes)) continue;
+    return { code: exception.code, subcategoryCode: exception.subcategoryCode || null };
+  }
+  return null;
 }
 
 // BI-BATCH-I: work/category-master.json의 manualOverrides만 읽는다(우선순위 1, 항상
@@ -15420,24 +15735,177 @@ function loadEntityCategoryManualOverrides() {
   if (!entityCategoryManualOverridesPromise) {
     entityCategoryManualOverridesPromise = getSharedJson("/api/intelligence/category-master", 12000).then((data) => {
       const list = Array.isArray(data?.categoryMaster?.manualOverrides) ? data.categoryMaster.manualOverrides : [];
-      const map = new Map();
+      const byProductNo = new Map();
       list.forEach((item) => {
-        if (item?.productNo && item?.categoryCode) map.set(String(item.productNo), item.categoryCode);
+        if (item?.productNo && item?.categoryCode) byProductNo.set(String(item.productNo), item.categoryCode);
       });
-      return map;
-    }).catch(() => new Map());
+      const byProductCode = new Map();
+      const assignments = Array.isArray(data?.categoryMaster?.modelAssignments) ? data.categoryMaster.modelAssignments : [];
+      assignments.forEach((assignment) => {
+        (assignment?.productCodes || []).forEach((productCode) => {
+          if (productCode && assignment?.categoryCode) byProductCode.set(String(productCode), assignment.categoryCode);
+        });
+      });
+      return { byProductNo, byProductCode };
+    }).catch(() => ({ byProductNo: new Map(), byProductCode: new Map() }));
   }
   return entityCategoryManualOverridesPromise;
 }
 
+// 우선순위: 1) manual override 2) 개별 모델/상품 예외(재고 검수로 확정) 3) 확정 ECOUNT
+// suffix 또는 RESURRECITON 13 내부 품번 4) 상품명 tail-first 키워드 5) UNCLASSIFIED.
 function classifyEntityProductCategory(productNo, productName, prodCd, overrides) {
-  const override = overrides?.get(String(productNo || ""));
-  if (override) return { code: override, source: "manual_override" };
-  const nameMatch = matchCategoryByNameKeywords(productName);
-  if (nameMatch) return { code: nameMatch, source: "name_rule" };
-  const suffixMatch = ecountCategorySuffixFromProdCd(prodCd);
-  if (suffixMatch) return { code: suffixMatch, source: "ecount_suffix" };
-  return { code: "UNCLASSIFIED", source: "fallback" };
+  const override = overrides instanceof Map
+    ? overrides.get(String(productNo || ""))
+    : overrides?.byProductNo?.get(String(productNo || "")) || overrides?.byProductCode?.get(String(prodCd || ""));
+  if (override) return { code: override, subcategoryCode: null, source: "manual_override" };
+
+  const brand = deriveCategoryBrandFromProductName(productName);
+
+  const exception = matchIndividualModelException(brand, productName);
+  if (exception) return { ...exception, source: "model_exception" };
+
+  const resurrection = resurrectionThirteenInternalCode(brand, productName);
+  if (resurrection) return { ...resurrection, source: "resurrection13_internal_code" };
+
+  const suffix = String(prodCd || "").match(/([A-Za-z]+)(\d+)$/)?.[1]?.toUpperCase() || null;
+  const suffixIsAcLike = suffix === "AC" || suffix === "ACC";
+  if (suffix && !(suffixIsAcLike && CATEGORY_AC_SUFFIX_DISTRUST_BRANDS.has(brand))) {
+    const suffixCode = CATEGORY_ECOUNT_SUFFIX_MAP[suffix];
+    if (suffixCode) return { code: suffixCode, subcategoryCode: CATEGORY_ECOUNT_SUBCATEGORY_MAP[suffix] || null, source: "ecount_suffix" };
+  }
+
+  const nameMatch = matchCategoryByNameKeywordsDetailed(productName);
+  if (nameMatch) return { ...nameMatch, source: "name_rule" };
+
+  return { code: "UNCLASSIFIED", subcategoryCode: null, source: "fallback" };
+}
+
+// ====================================================================
+// SAMPLAS Color Intelligence — Category와 완전히 독립된 축(같은 entitySkuRows spine을
+// 공유할 뿐, taxonomy는 절대 합치지 않는다). work/color-master.json이 canonical source다
+// — GET /api/intelligence/color-master로만 읽는다. family/alias/특수 우선순위를 이
+// 파일에 다시 하드코딩하지 않는다(loadEntityCategoryManualOverrides와 동일한
+// getSharedJson 캐시 패턴 재사용).
+// ====================================================================
+let entityColorMasterPromise = null;
+function loadEntityColorMaster() {
+  if (!entityColorMasterPromise) {
+    entityColorMasterPromise = getSharedJson("/api/intelligence/color-master", 12000)
+      .then((data) => data?.colorMaster || null)
+      .catch(() => null);
+  }
+  return entityColorMasterPromise;
+}
+
+// 유니코드 인식 경계 매칭 — Category classifier의 categoryKeywordPattern과 동일한
+// 이유(\b는 ASCII \w 전용이라 SHIRRING 안의 RING 같은 부분 문자열을 못 걸러낸다)로
+// 같은 방식을 재사용한다(색상 alias는 전부 ASCII라 한글 무경계 분기는 필요 없다).
+function colorAliasPattern(alias) {
+  const esc = String(alias).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\p{L}\\p{N}])${esc}(?![\\p{L}\\p{N}])`, "giu");
+}
+
+// { family, alias }[] — alias 길이 내림차순(긴 alias를 우선 시도해 "SKY BLUE"가
+// "BLUE"보다 먼저 고려되도록, 다만 둘 다 같은 family라 실제 충돌은 없다).
+function buildColorAliasIndex(colorMaster) {
+  const entries = [];
+  const aliases = colorMaster?.aliases || {};
+  for (const family of Object.keys(aliases)) {
+    for (const alias of aliases[family] || []) entries.push({ family, alias });
+  }
+  entries.sort((a, b) => b.alias.length - a.alias.length);
+  return entries;
+}
+
+// 상품명 안에서 매칭되는 모든 alias 발생 위치를 찾는다(family당 여러 번 매칭될 수
+// 있음 — RAW 추출 시 가장 뒤(tail)의 발생을 우선한다, Category의 tail-first 원칙과
+// 동일).
+function matchColorFamiliesInText(text, aliasIndex) {
+  const matches = [];
+  for (const { family, alias } of aliasIndex) {
+    const pattern = colorAliasPattern(alias);
+    let match;
+    while ((match = pattern.exec(text))) {
+      matches.push({ family, alias, start: match.index, end: match.index + match[0].length, matchedText: match[0] });
+    }
+  }
+  return matches;
+}
+
+// RAW 표현에 붙는 앞단어는 "임의의 아무 단어"가 아니라 Color Phase 1 raw-review
+// audit(scripts/audit-product-color-compression.mjs)이 실제 카탈로그에서 감사로 확정한
+// 서술어 목록만 허용한다(섹션 16: "기존 raw-review audit/script가 있다면 그 정책/결과를
+// 먼저 읽고 활용한다") — 새 taxonomy가 아니라 이미 검증된 화이트리스트 재사용이다. 이
+// 목록에 없는 단어(예: "Shirt", "Cotton")는 색상 서술어로 임의 추론하지 않는다.
+const COLOR_RAW_MODIFIER_WORDS = new Set([
+  "LIGHT", "DARK", "OFF", "WASHED", "MELANGE", "OIL", "RUSTY", "DEEP", "PALE", "BRIGHT",
+  "NEON", "DUSTY", "MUTED", "VINTAGE", "FADED", "DIRTY", "ANTIQUE", "MIXED", "ICE",
+  "STONE", "ASH", "SAND", "MOSS", "SAGE", "FROSTED", "RAW", "ROYAL", "BABY", "HAND",
+  "PASTEL", "DEBOSSED", "SOLID", "DAMAGE", "DAMAGED", "SMOKY", "DEWY", "GRAYISH",
+  "GREYISH", "KHAKIISH", "BLUISH", "REDDISH", "GREENISH", "PINKISH", "WHITISH",
+  "BLACKISH", "BROWNISH"
+]);
+
+// RAW 표현 추출: 매칭된 alias 원문(대소문자 그대로)을 기본으로 하되, 바로 앞 단어가
+// 위 감사된 서술어 목록에 있고 다른 family의 alias가 아니면 함께 보존한다(예: "DIRTY
+// WHITE"에서 WHITE가 매칭되면 DIRTY도 같이 보여준다) — DIRTY 자체를 색상으로 판정하는
+// 것이 아니라 원문 표현을 그대로 보존하는 것뿐이다(섹션 16 정책).
+function extractColorRawForFamily(text, matches, family) {
+  const familyMatches = matches.filter((m) => m.family === family);
+  if (!familyMatches.length) return null;
+  const last = familyMatches.reduce((best, m) => (m.end > best.end ? m : best));
+  const before = text.slice(0, last.start);
+  const precedingWordMatch = before.match(/([A-Za-z]+)[\s-]*$/);
+  if (precedingWordMatch) {
+    const precedingWord = precedingWordMatch[1];
+    const precedingWordUpper = precedingWord.toUpperCase();
+    const belongsToOtherFamily = matches.some((m) => m.family !== family && m.matchedText.toUpperCase() === precedingWordUpper);
+    if (COLOR_RAW_MODIFIER_WORDS.has(precedingWordUpper) && !belongsToOtherFamily) return `${precedingWord} ${last.matchedText}`.trim();
+  }
+  return last.matchedText;
+}
+
+// 개념적 반환: { family, raw, matchedAliases, source }. colorMaster가 아직 로드되지
+// 않았거나 evidence가 없으면 UNKNOWN(추측 금지, 섹션 8). specialFamilyPriority(CAMO>
+// LEOPARD>CHECK>STRIPE>DENIM>PRINT)가 colorMaster.policy에서 그대로 온다 — 여기서
+// 하드코딩하지 않는다. 명시적 MULTI 표현이 없어도 special family가 없는 상태에서 실제
+// color family가 2개 이상 검출되면 MULTI(섹션 7, 첫 번째 컬러를 임의로 고르지 않는다).
+function classifyEntityProductColor(productName, colorMaster) {
+  if (!colorMaster || !Array.isArray(colorMaster.families)) return { family: "UNKNOWN", raw: null, matchedAliases: [], source: "fallback" };
+  const text = String(productName || "").normalize("NFKC");
+  if (!text.trim()) return { family: "UNKNOWN", raw: null, matchedAliases: [], source: "fallback" };
+  const aliasIndex = buildColorAliasIndex(colorMaster);
+  const matches = matchColorFamiliesInText(text, aliasIndex);
+  if (!matches.length) return { family: "UNKNOWN", raw: null, matchedAliases: [], source: "fallback" };
+
+  const matchedFamilies = new Set(matches.map((m) => m.family));
+  const aliasesForFamily = (family) => [...new Set(matches.filter((m) => m.family === family).map((m) => m.matchedText.toUpperCase()))];
+
+  if (matchedFamilies.has("MULTI")) {
+    return { family: "MULTI", raw: extractColorRawForFamily(text, matches, "MULTI"), matchedAliases: aliasesForFamily("MULTI"), source: "color_master" };
+  }
+
+  const specialPriority = Array.isArray(colorMaster.policy?.specialFamilyPriority) ? colorMaster.policy.specialFamilyPriority : [];
+  for (const specialFamily of specialPriority) {
+    if (matchedFamilies.has(specialFamily)) {
+      return { family: specialFamily, raw: extractColorRawForFamily(text, matches, specialFamily), matchedAliases: aliasesForFamily(specialFamily), source: "color_master" };
+    }
+  }
+
+  const specialSet = new Set(specialPriority);
+  const actualColorFamilies = [...matchedFamilies].filter((f) => f !== "MULTI" && f !== "OTHER" && !specialSet.has(f));
+  if (actualColorFamilies.length >= 2) {
+    return { family: "MULTI", raw: null, matchedAliases: actualColorFamilies.flatMap(aliasesForFamily), source: "color_master" };
+  }
+  if (actualColorFamilies.length === 1) {
+    const family = actualColorFamilies[0];
+    return { family, raw: extractColorRawForFamily(text, matches, family), matchedAliases: aliasesForFamily(family), source: "color_master" };
+  }
+  if (matchedFamilies.has("OTHER")) {
+    return { family: "OTHER", raw: extractColorRawForFamily(text, matches, "OTHER"), matchedAliases: aliasesForFamily("OTHER"), source: "color_master" };
+  }
+  return { family: "UNKNOWN", raw: null, matchedAliases: [], source: "fallback" };
 }
 
 // entitySkuRows(이미 계산된 온라인 매출, rebuildEntitySkuRows가 채운 categoryCode)만
@@ -15462,6 +15930,20 @@ function rebuildEntityCategoryRows() {
     bucket.skuCount += 1;
     byCode.set(row.categoryCode, bucket);
   });
+  const offlineState = typeof entityOfflineAttributionState === "undefined" ? null : entityOfflineAttributionState;
+  const offlineReady = !offlineState || (
+    offlineState.ready && !offlineState.fetchFailed && offlineState.brandCode === brandCode
+    && offlineState.periodMonth === currentEntityPeriodMonthKey()
+  );
+  if (offlineReady) {
+    (offlineState?.rows || []).forEach((row) => {
+      const bucket = byCode.get(row.categoryCode) || { code: row.categoryCode, revenue: 0, quantitySold: 0, skuCount: 0 };
+      bucket.revenue += row.revenue;
+      bucket.quantitySold += row.quantitySold;
+      // Offline에는 안정적인 Cafe24 SKU key가 없으므로 skuCount는 기존 온라인 의미를 유지한다.
+      byCode.set(row.categoryCode, bucket);
+    });
+  }
   CATEGORY_MASTER_V1.forEach((cat) => {
     const bucket = byCode.get(cat.code);
     if (bucket) entityCategoryRows.push({ code: cat.code, name: cat.name, revenue: bucket.revenue, quantitySold: bucket.quantitySold, skuCount: bucket.skuCount });
@@ -15469,8 +15951,8 @@ function rebuildEntityCategoryRows() {
   // 캐노니컬 총 매출/수량(entityTrendMonths, Hero KPI와 동일 소스) 대비 attributed(=
   // UNCLASSIFIED가 아닌 카테고리로 분류된 온라인 매출) 비중을 coverage%로 노출한다.
   const periodRow = entityTrendMonths.find((item) => item.key === currentEntityPeriodMonthKey());
-  const totalRevenue = periodRow?.revenue ?? null;
-  const totalUnits = periodRow?.quantitySold ?? null;
+  const totalRevenue = offlineReady ? (periodRow?.revenue ?? null) : null;
+  const totalUnits = offlineReady ? (periodRow?.quantitySold ?? null) : null;
   const named = entityCategoryRows.filter((row) => row.code !== "UNCLASSIFIED");
   const attributedRevenue = named.reduce((sum, row) => sum + row.revenue, 0);
   const attributedUnits = named.reduce((sum, row) => sum + row.quantitySold, 0);
@@ -15484,6 +15966,71 @@ function rebuildEntityCategoryRows() {
     coveragePct: totalRevenue ? (attributedRevenue / totalRevenue) * 100 : (totalRevenue === 0 ? 0 : null)
   };
   renderEntityCategorySection();
+}
+
+// entitySkuRows(이미 계산된 온라인 매출 + rebuildEntitySkuRows가 채운 colorFamily/
+// colorRaw)만 재사용해 컬러 family별로 합산한다 — 새 매출 계산 없음. Category와 완전히
+// 독립된 축이다(같은 entitySkuRows spine을 읽을 뿐 taxonomy는 절대 합치지 않는다).
+// UNKNOWN은 UNCLASSIFIED와 동일한 원칙으로 목록에서 숨기지 않지만 coverage%의
+// attributed에서는 제외한다. stockOnly는 이중집계 방지를 위해 집계에서 제외한다
+// (Category rebuildEntityCategoryRows와 동일 원칙).
+function rebuildEntityColorRows() {
+  entityColorRows.length = 0;
+  const brandCode = brandIdentityState.brandCode;
+  if (!brandCode || entitySkuSalesState.brandCode !== brandCode || entitySkuSalesState.fetchFailed) {
+    entityColorCoverage = null;
+    renderEntityColorSection();
+    return;
+  }
+  const byFamily = new Map();
+  entitySkuRows.forEach((row) => {
+    if (row.stockOnly) return;
+    const family = row.colorFamily || "UNKNOWN";
+    const bucket = byFamily.get(family) || { family, revenue: 0, quantitySold: 0, skuCount: 0, rawExpressions: new Set() };
+    bucket.revenue += row.revenue;
+    bucket.quantitySold += row.quantitySold;
+    bucket.skuCount += 1;
+    if (row.colorRaw) bucket.rawExpressions.add(row.colorRaw);
+    byFamily.set(family, bucket);
+  });
+  const offlineState = typeof entityOfflineAttributionState === "undefined" ? null : entityOfflineAttributionState;
+  const offlineReady = !offlineState || (
+    offlineState.ready && !offlineState.fetchFailed && offlineState.brandCode === brandCode
+    && offlineState.periodMonth === currentEntityPeriodMonthKey()
+  );
+  if (offlineReady) {
+    (offlineState?.rows || []).forEach((row) => {
+      const family = row.colorFamily || "UNKNOWN";
+      const bucket = byFamily.get(family) || { family, revenue: 0, quantitySold: 0, skuCount: 0, rawExpressions: new Set() };
+      bucket.revenue += row.revenue;
+      bucket.quantitySold += row.quantitySold;
+      if (row.colorRaw) bucket.rawExpressions.add(row.colorRaw);
+      byFamily.set(family, bucket);
+    });
+  }
+  [...byFamily.values()]
+    .sort((a, b) => b.revenue - a.revenue)
+    .forEach((bucket) => entityColorRows.push({
+      family: bucket.family, revenue: bucket.revenue, quantitySold: bucket.quantitySold,
+      skuCount: bucket.skuCount, rawExpressions: [...bucket.rawExpressions]
+    }));
+  // Category coverage와 상태를 공유하지 않는 완전히 별도의 coverage 계산(섹션 19).
+  const periodRow = entityTrendMonths.find((item) => item.key === currentEntityPeriodMonthKey());
+  const totalRevenue = offlineReady ? (periodRow?.revenue ?? null) : null;
+  const totalUnits = offlineReady ? (periodRow?.quantitySold ?? null) : null;
+  const named = entityColorRows.filter((row) => row.family !== "UNKNOWN");
+  const attributedRevenue = named.reduce((sum, row) => sum + row.revenue, 0);
+  const attributedUnits = named.reduce((sum, row) => sum + row.quantitySold, 0);
+  entityColorCoverage = {
+    totalRevenue,
+    totalUnits,
+    attributedRevenue,
+    unattributedRevenue: totalRevenue == null ? null : Math.max(0, totalRevenue - attributedRevenue),
+    attributedUnits,
+    unattributedUnits: totalUnits == null ? null : Math.max(0, totalUnits - attributedUnits),
+    coveragePct: totalRevenue ? (attributedRevenue / totalRevenue) * 100 : (totalRevenue === 0 ? 0 : null)
+  };
+  renderEntityColorSection();
 }
 
 // ====================================================================
@@ -15697,6 +16244,21 @@ function entityCategoryGradient() {
   }).join(", ");
 }
 
+// 섹션 23 CATEGORY DETAIL UX: entitySkuRows가 이미 채운 categorySubcategoryCode(확정된
+// suffix/name-tail 정책 결과, classifyEntityProductCategory의 subcategoryCode)만
+// 집계한다 — 상품명에서 즉석으로 새 subcategory를 추측하지 않는다. stockOnly는 Category
+// 매출 집계와 동일한 원칙으로 제외한다.
+function entityCategorySubcategoryBreakdown(code) {
+  const counts = new Map();
+  entitySkuRows.forEach((skuRow) => {
+    if (skuRow.stockOnly) return;
+    if (skuRow.categoryCode !== code) return;
+    if (!skuRow.categorySubcategoryCode) return;
+    counts.set(skuRow.categorySubcategoryCode, (counts.get(skuRow.categorySubcategoryCode) || 0) + 1);
+  });
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+}
+
 function entityCategoryProfileHtml(row) {
   if (!row) return `
     <div class="brand-customer-profile-head">
@@ -15705,6 +16267,11 @@ function entityCategoryProfileHtml(row) {
     <div class="entity-detail-empty"><p>공식 상품군 매핑이 연결되면 상세 지표를 표시합니다.</p></div>`;
   const aov = row.quantitySold ? Math.round(row.revenue / row.quantitySold) : 0;
   const revenueSharePct = entityCategoryRevenueSharePct(row.code);
+  // Color의 RAW COLORS와 동일한 패턴(section-title + recent-preview 재사용, 새 CSS 없음).
+  const subcategoryBreakdown = entityCategorySubcategoryBreakdown(row.code);
+  const subcategoryHtml = subcategoryBreakdown.length
+    ? `<ul class="brand-customer-profile-recent-preview">${subcategoryBreakdown.map(([sub, count]) => `<li>${esc(sub)} · ${apiNum(count)}개</li>`).join("")}</ul>`
+    : `<p class="brand-customer-profile-recent-preview">확정된 세부 분류 없음</p>`;
   return `
     <div class="brand-customer-profile-head">
       <div class="brand-customer-profile-heading">
@@ -15719,6 +16286,8 @@ function entityCategoryProfileHtml(row) {
       <div class="brand-customer-profile-row"><span>객단가</span><strong>${apiWon(aov)}</strong></div>
       <div class="brand-customer-profile-row"><span>포함 SKU 수</span><strong>${apiNum(row.skuCount)}개</strong></div>
     </div>
+    <p class="brand-customer-profile-section-title">DETAIL</p>
+    ${subcategoryHtml}
   `;
 }
 
@@ -15794,7 +16363,7 @@ function entityCategoryCoverageText() {
   const c = entityCategoryCoverage;
   if (!c || c.totalRevenue == null) return "커버리지 계산 불가(캐노니컬 매출 미확인)";
   const pct = c.coveragePct == null ? "-" : c.coveragePct.toFixed(0);
-  return `상품군 커버리지 ${pct}% · 분류 매출 ${apiWon(c.attributedRevenue)} / 미분류·오프라인 ${apiWon(c.unattributedRevenue)}`;
+  return `상품군 커버리지 ${pct}% · 분류 매출 ${apiWon(c.attributedRevenue)} / 미분류 ${apiWon(c.unattributedRevenue)}`;
 }
 
 function renderEntityCategorySection() {
@@ -15882,7 +16451,224 @@ function renderEntityCategorySection() {
   if (insight) {
     const topRevenue = [...entityCategoryRows].sort((a, b) => b.revenue - a.revenue)[0];
     const topRevenueSharePct = entityCategoryRevenueSharePct(topRevenue.code);
-    insight.innerHTML = `<p class="brand-customer-insight-main">${esc(topRevenue.name)}이(가) 온라인 분류 매출의 ${topRevenueSharePct.toFixed(0)}%를 차지합니다.</p><p class="brand-customer-insight-sub">${esc(entityCategoryCoverageText())}</p>`;
+    insight.innerHTML = `<p class="brand-customer-insight-main">${esc(topRevenue.name)}이(가) 분류 매출의 ${topRevenueSharePct.toFixed(0)}%를 차지합니다.</p><p class="brand-customer-insight-sub">${esc(entityCategoryCoverageText())}</p>`;
+  }
+}
+
+// ====================================================================
+// Color Intelligence — 위 Category 섹션과 완전히 동일한 구조/패턴(entityCategoryShares/
+// entityCategoryGradient/entityCategoryProfileCard 등)을 family 기준으로 그대로
+// 미러링한다. 새 계산/새 UI 패턴을 만들지 않는다 — entitySkuRows(rebuildEntitySkuRows가
+// 이미 채운 colorFamily/colorRaw)만 재사용한다.
+// ====================================================================
+function entityColorRevenueSharePct(family) {
+  const total = entityColorRows.reduce((sum, row) => sum + row.revenue, 0);
+  const row = entityColorRows.find((r) => r.family === family);
+  return total && row ? (row.revenue / total) * 100 : 0;
+}
+
+function entityColorShares() {
+  const key = entityColorMode === "revenue" ? "revenue" : "quantitySold";
+  const total = entityColorRows.reduce((sum, row) => sum + row[key], 0);
+  const maxValue = Math.max(1, ...entityColorRows.map((row) => row[key]));
+  return entityColorRows.map((row) => ({
+    ...row,
+    sharePct: total ? (row[key] / total) * 100 : 0,
+    barPct: (row[key] / maxValue) * 100
+  }));
+}
+
+function entityColorGradient() {
+  let cursor = 0;
+  return entityColorShares().map((row) => {
+    const start = cursor;
+    cursor += row.sharePct;
+    return `${entityColorSwatches[row.family] || entityColorSwatches.UNKNOWN} ${start}% ${cursor}%`;
+  }).join(", ");
+}
+
+// 섹션 22 COLOR RAW HOVER: normalized family 아래 실제 RAW 표현들을 보여준다. 실제
+// 존재하는 값만 보여주고(entitySkuRows가 실제로 채운 colorRaw만), 없으면 "상세 컬러
+// 표현 없음"이라고 정직하게 표시한다 — 새 표현을 만들어내지 않는다.
+function entityColorProfileHtml(row) {
+  if (!row) return `
+    <div class="brand-customer-profile-head">
+      <div class="brand-customer-profile-heading"><strong>컬러 상세</strong><span class="clients-tooltip-badge brand-customer-type-badge">연결 대기</span></div>
+    </div>
+    <div class="entity-detail-empty"><p>Color Master 연결이 준비되면 상세 지표를 표시합니다.</p></div>`;
+  const aov = row.quantitySold ? Math.round(row.revenue / row.quantitySold) : 0;
+  const revenueSharePct = entityColorRevenueSharePct(row.family);
+  // 섹션 22: 기존 Client Quick Profile의 section-title/recent-preview 클래스를 그대로
+  // 재사용한다(새 CSS 없음) — 실제 존재하는 RAW 표현만 나열하고, 없으면 정직하게
+  // "상세 컬러 표현 없음"이라고 표시한다(새 표현을 만들어내지 않는다).
+  const rawListHtml = row.rawExpressions.length
+    ? `<ul class="brand-customer-profile-recent-preview">${row.rawExpressions.map((raw) => `<li>${esc(raw)}</li>`).join("")}</ul>`
+    : `<p class="brand-customer-profile-recent-preview">상세 컬러 표현 없음</p>`;
+  return `
+    <div class="brand-customer-profile-head">
+      <div class="brand-customer-profile-heading">
+        <strong>${esc(row.family)}</strong>
+        <span class="clients-tooltip-badge brand-customer-type-badge">${esc(row.family)}</span>
+      </div>
+    </div>
+    <div class="brand-customer-profile-rows">
+      <div class="brand-customer-profile-row"><span>매출 (온라인)</span><strong>${apiWon(row.revenue)}</strong></div>
+      <div class="brand-customer-profile-row"><span>매출 비중</span><strong>${revenueSharePct.toFixed(0)}%</strong></div>
+      <div class="brand-customer-profile-row"><span>판매수량 (온라인)</span><strong>${apiNum(row.quantitySold)}개</strong></div>
+      <div class="brand-customer-profile-row"><span>객단가</span><strong>${apiWon(aov)}</strong></div>
+      <div class="brand-customer-profile-row"><span>포함 SKU 수</span><strong>${apiNum(row.skuCount)}개</strong></div>
+    </div>
+    <p class="brand-customer-profile-section-title">RAW COLORS</p>
+    ${rawListHtml}
+  `;
+}
+
+let entityColorProfileShowTimer = null;
+let entityColorProfileHideTimer = null;
+
+function cancelEntityColorProfileHide() {
+  clearTimeout(entityColorProfileHideTimer);
+  entityColorProfileHideTimer = null;
+}
+
+function scheduleEntityColorProfileHide() {
+  clearTimeout(entityColorProfileShowTimer);
+  cancelEntityColorProfileHide();
+  entityColorProfileHideTimer = setTimeout(() => {
+    const card = $("#entityColorProfileCard");
+    if (!card) return;
+    card.classList.remove("is-visible");
+    card.hidden = true;
+  }, 120);
+}
+
+function entityColorProfileNode() {
+  let card = $("#entityColorProfileCard");
+  if (!card) {
+    card = document.createElement("div");
+    card.id = "entityColorProfileCard";
+    card.className = "brand-customer-profile-card";
+    card.hidden = true;
+    card.addEventListener("mouseenter", cancelEntityColorProfileHide);
+    card.addEventListener("mouseleave", scheduleEntityColorProfileHide);
+    document.body.appendChild(card);
+  }
+  return card;
+}
+
+function positionEntityColorProfileCard(anchor, card) {
+  const margin = 16;
+  const gap = 14;
+  const rect = anchor.getBoundingClientRect();
+  const width = card.offsetWidth || 345;
+  const height = card.offsetHeight || 300;
+  const fitsRight = rect.right + gap + width + margin <= window.innerWidth;
+  let left = fitsRight ? rect.right + gap : rect.left - gap - width;
+  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin));
+  let top = rect.top - (height - rect.height) / 2;
+  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin));
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
+}
+
+function showEntityColorProfileCard(anchor, row) {
+  clearTimeout(entityColorProfileShowTimer);
+  entityColorProfileShowTimer = setTimeout(() => {
+    cancelEntityColorProfileHide();
+    const card = entityColorProfileNode();
+    card.innerHTML = entityColorProfileHtml(row);
+    card.hidden = false;
+    card.style.left = "0px";
+    card.style.top = "0px";
+    positionEntityColorProfileCard(anchor, card);
+    requestAnimationFrame(() => card.classList.add("is-visible"));
+  }, 180);
+}
+
+function hideEntityColorProfileCardSoon() {
+  scheduleEntityColorProfileHide();
+}
+
+// 섹션 19 COLOR COVERAGE: Category coverage와 상태를 공유하지 않는 완전히 별도의
+// coverage 문구.
+function entityColorCoverageText() {
+  const c = entityColorCoverage;
+  if (!c || c.totalRevenue == null) return "커버리지 계산 불가(캐노니컬 매출 미확인)";
+  const pct = c.coveragePct == null ? "-" : c.coveragePct.toFixed(0);
+  return `컬러 커버리지 ${pct}% · 분류 매출 ${apiWon(c.attributedRevenue)} / 미분류 ${apiWon(c.unattributedRevenue)}`;
+}
+
+function renderEntityColorSection() {
+  const donut = $("#entityColorDonut");
+  if (!donut) return;
+  const brandCode = brandIdentityState.brandCode;
+  const coverageNoteEl = $("#entityColorCoverageNote");
+  const setEmptyText = (title, note) => {
+    const titleEl = $("#entityColorEmpty h4");
+    const noteEl = $("#entityColorEmpty p");
+    if (titleEl) titleEl.textContent = title;
+    if (noteEl) noteEl.textContent = note;
+  };
+  if (!brandCode) {
+    $("#entityColorEmpty")?.toggleAttribute("hidden", false);
+    $("#entityColorContent")?.toggleAttribute("hidden", true);
+    setEmptyText("브랜드를 선택하세요", "브랜드를 선택하면 컬러 데이터를 확인할 수 있습니다.");
+    if (coverageNoteEl) coverageNoteEl.textContent = "";
+    return;
+  }
+  if (entitySkuSalesState.brandCode !== brandCode) {
+    $("#entityColorEmpty")?.toggleAttribute("hidden", false);
+    $("#entityColorContent")?.toggleAttribute("hidden", true);
+    setEmptyText("불러오는 중...", "");
+    if (coverageNoteEl) coverageNoteEl.textContent = "";
+    return;
+  }
+  if (entitySkuSalesState.fetchFailed) {
+    $("#entityColorEmpty")?.toggleAttribute("hidden", false);
+    $("#entityColorContent")?.toggleAttribute("hidden", true);
+    setEmptyText("이번 기간 매출 데이터를 불러오지 못했습니다.", "");
+    if (coverageNoteEl) coverageNoteEl.textContent = "";
+    return;
+  }
+  $("#entityColorEmpty")?.toggleAttribute("hidden", true);
+  $("#entityColorContent")?.toggleAttribute("hidden", false);
+  if (coverageNoteEl) coverageNoteEl.textContent = entityColorCoverageText();
+
+  if (!entityColorRows.length) {
+    donut.style.background = "none";
+    if ($("#entityColorDonutCenter")) $("#entityColorDonutCenter").textContent = "0";
+    if ($("#entityColorList")) $("#entityColorList").innerHTML = `<li class="entity-drawer-empty">이번 기간 온라인 판매 데이터가 없어 컬러를 분류할 수 없습니다.</li>`;
+    if ($("#entityColorInsight")) $("#entityColorInsight").innerHTML = `<p class="brand-customer-insight-main">이번 기간 온라인 판매 데이터가 없습니다.</p>`;
+    return;
+  }
+
+  donut.style.background = `conic-gradient(${entityColorGradient()})`;
+  const centerLabel = $("#entityColorDonutCenter");
+  if (centerLabel) {
+    centerLabel.textContent = entityColorMode === "revenue"
+      ? apiWon(entityColorRows.reduce((sum, row) => sum + row.revenue, 0))
+      : `${apiNum(entityColorRows.reduce((sum, row) => sum + row.quantitySold, 0))}개`;
+  }
+
+  const shares = entityColorShares().sort((a, b) => b[entityColorMode === "revenue" ? "revenue" : "quantitySold"] - a[entityColorMode === "revenue" ? "revenue" : "quantitySold"]);
+  const list = $("#entityColorList");
+  if (list) {
+    list.innerHTML = shares.map((row) => `
+      <li data-color-family="${esc(row.family)}" tabindex="0">
+        <div class="brand-mix-row-head">
+          <span class="brand-mix-name">${esc(row.family)}</span>
+          <span class="brand-mix-pct">${row.sharePct.toFixed(0)}%</span>
+          <strong>${entityColorMode === "revenue" ? apiWon(row.revenue) : `${apiNum(row.quantitySold)}개`}</strong>
+        </div>
+        <i class="brand-mix-bar"><b style="width:${Math.max(4, row.barPct)}%;background:${entityColorSwatches[row.family] || entityColorSwatches.UNKNOWN}"></b></i>
+      </li>`).join("");
+  }
+
+  const insight = $("#entityColorInsight");
+  if (insight) {
+    const topRevenue = [...entityColorRows].sort((a, b) => b.revenue - a.revenue)[0];
+    const topRevenueSharePct = entityColorRevenueSharePct(topRevenue.family);
+    insight.innerHTML = `<p class="brand-customer-insight-main">${esc(topRevenue.family)}이(가) 컬러 분류 매출의 ${topRevenueSharePct.toFixed(0)}%를 차지합니다.</p><p class="brand-customer-insight-sub">${esc(entityColorCoverageText())}</p>`;
   }
 }
 
@@ -15977,6 +16763,22 @@ function entitySkuStockFor(productNo, registryEntries, inventoryItems) {
   return { stock: matchedItems.reduce((sum, item) => sum + Number(item?.stockQuantity || 0), 0), matched: true };
 }
 
+// Color Intelligence 전용: entitySkuStockFor와 정확히 같은 verified+confirmed prodCd
+// 교집합 매칭을 재사용해(새 join 로직 없음, fuzzy productName join 금지 — 섹션 11) 그
+// ECOUNT item의 실제 productName을 돌려준다 — Color evidence는 Cafe24 productName이
+// 아니라 이 ECOUNT productName에서만 읽는다. 재고(inventoryItems)가 아직 준비되지
+// 않았으면 null(아직 판단 불가 — stock이 로드되면 rebuildEntitySkuRows가 다시 돈다).
+function entityEcountProductNameFor(productNo, registryEntries, inventoryItems) {
+  const entry = registryEntries.find((item) => (
+    item?.verified === true && item?.status === "confirmed" && String(item?.cafe24?.productNo || "") === String(productNo || "")
+  ));
+  if (!entry) return null;
+  const codes = new Set((entry.ecount?.matchedProducts || []).map((p) => p?.prodCd).filter(Boolean));
+  if (!codes.size) return null;
+  const matchedItem = inventoryItems.find((item) => codes.has(item?.prodCd));
+  return matchedItem?.productName || null;
+}
+
 // BI-BATCH-I: Category ECOUNT suffix fallback(우선순위 4)에 쓸 prodCd 하나만 뽑는다 —
 // entitySkuStockFor와 동일한 verified+confirmed productNo 매칭을 재사용한다(새 매칭 로직
 // 없음). 재고(inventoryItems)와 무관해 stockReady가 false여도 항상 호출 가능하다.
@@ -16014,6 +16816,7 @@ async function rebuildEntitySkuRows() {
     refreshOpenEntitySkuDrawer();
     renderEntityProductSection();
     rebuildEntityCategoryRows();
+    rebuildEntityColorRows();
     refreshEntityScore(brandCode, currentEntityPeriodMonthKey());
     return;
   }
@@ -16021,10 +16824,13 @@ async function rebuildEntitySkuRows() {
   const inventoryItems = stockReady ? entityInventoryItemsState.items : [];
   // BI-BATCH-I: Category 분류(이름 규칙/ECOUNT suffix)는 재고 준비 여부와 무관하게 항상
   // 시도한다 — loadEntityProductRegistryEntries()/loadEntityCategoryManualOverrides()는
-  // 캐시된 Promise라 항상 호출해도 비용이 낮다.
-  const [registryEntries, categoryOverrides] = await Promise.all([
+  // 캐시된 Promise라 항상 호출해도 비용이 낮다. Color Master(loadEntityColorMaster)도
+  // 같은 이유로 항상 병렬 로드한다 — 단 Color evidence 자체(ECOUNT productName)는
+  // inventoryItems가 필요해 stockReady일 때만 얻을 수 있다(아래).
+  const [registryEntries, categoryOverrides, colorMaster] = await Promise.all([
     loadEntityProductRegistryEntries(),
-    loadEntityCategoryManualOverrides()
+    loadEntityCategoryManualOverrides(),
+    loadEntityColorMaster()
   ]);
   if (brandIdentityState.brandCode !== brandCode || entitySkuSalesState.brandCode !== brandCode) return; // 대기 중 브랜드가 또 바뀌었으면 이 결과는 버린다.
   let matchedStock = 0;
@@ -16040,6 +16846,17 @@ async function rebuildEntitySkuRows() {
     }
     const prodCd = entityEcountProdCdFor(p.productNo, registryEntries);
     const category = classifyEntityProductCategory(p.productNo, p.productName, prodCd, categoryOverrides);
+    // 판매상품의 공식 Cafe24 productName을 기존 Color Master에 먼저 통과시킨다.
+    // 여기서 명시적 evidence를 찾지 못한(UNKNOWN) 경우에만 verified+confirmed
+    // Product Registry의 exact prodCd로 연결된 ECOUNT productName을 fallback evidence로
+    // 사용한다. Registry는 Color의 선행 gate가 아니라 Stock/exact SKU 연결 및
+    // 추가 Color evidence 계층으로만 사용한다.
+    let color = classifyEntityProductColor(p.productName, colorMaster);
+    if (color.family === "UNKNOWN" && stockReady) {
+      const ecountProductName = entityEcountProductNameFor(p.productNo, registryEntries, inventoryItems);
+      const ecountColor = classifyEntityProductColor(ecountProductName, colorMaster);
+      if (ecountColor.family !== "UNKNOWN") color = ecountColor;
+    }
     return {
       productNo: p.productNo,
       productCode: p.productCode || p.productNo,
@@ -16052,7 +16869,12 @@ async function rebuildEntitySkuRows() {
       stockMatched,
       stockUnavailable: !stockReady || entityInventoryItemsState.fetchFailed,
       categoryCode: category.code,
-      categorySource: category.source
+      categorySubcategoryCode: category.subcategoryCode || null,
+      categorySource: category.source,
+      colorFamily: color.family,
+      colorRaw: color.raw,
+      colorSource: color.source,
+      colorMatchedAliases: color.matchedAliases
     };
   });
   // Case C: 재고는 있지만 이번 기간 온라인 판매가 없는(=productSales에 없는) SKU.
@@ -16074,6 +16896,9 @@ async function rebuildEntitySkuRows() {
       if (result.matched) matchedStock += 1;
       const productName = entry.cafe24?.productName || item.productName || "-";
       const category = classifyEntityProductCategory(productNo, productName, entry.ecount?.matchedProducts?.[0]?.prodCd || null, categoryOverrides);
+      // item이 이미 이 SKU에 exact prodCd로 연결된 ECOUNT inventory item 그 자체라
+      // 별도 조회 없이 item.productName을 Color evidence로 바로 쓴다(섹션 11).
+      const color = classifyEntityProductColor(item.productName, colorMaster);
       caseCRows.push({
         productNo,
         productCode: entry.cafe24?.productCode || productNo,
@@ -16087,7 +16912,12 @@ async function rebuildEntitySkuRows() {
         stockUnavailable: false,
         stockOnly: true,
         categoryCode: category.code,
-        categorySource: category.source
+        categorySubcategoryCode: category.subcategoryCode || null,
+        categorySource: category.source,
+        colorFamily: color.family,
+        colorRaw: color.raw,
+        colorSource: color.source,
+        colorMatchedAliases: color.matchedAliases
       });
     });
   }
@@ -16096,6 +16926,7 @@ async function rebuildEntitySkuRows() {
   refreshOpenEntitySkuDrawer();
   renderEntityProductSection();
   rebuildEntityCategoryRows();
+  rebuildEntityColorRows();
   refreshEntityScore(brandCode, currentEntityPeriodMonthKey());
 }
 
@@ -17486,6 +18317,42 @@ function bind() {
     hideEntityCategoryProfileCardSoon();
   });
   renderEntityCategorySection();
+  // Color Intelligence — Category 바로 위 wiring과 동일한 패턴(mode toggle + quick
+  // profile card hover/focus). 새 상호작용 방식을 만들지 않는다.
+  $$("[data-entity-color-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (entityColorMode === button.dataset.entityColorMode) return;
+      entityColorMode = button.dataset.entityColorMode;
+      $$("[data-entity-color-mode]").forEach((btn) => btn.classList.toggle("active", btn === button));
+      const grid = $("#entityColorContent .brand-category-grid");
+      grid?.classList.add("is-updating");
+      renderEntityColorSection();
+      requestAnimationFrame(() => grid?.classList.remove("is-updating"));
+    });
+  });
+  $("#entityColorList")?.addEventListener("mouseover", (event) => {
+    const li = event.target.closest("[data-color-family]");
+    if (!li) return;
+    const row = entityColorRows.find((r) => r.family === li.dataset.colorFamily);
+    if (row) showEntityColorProfileCard(li, row);
+  });
+  $("#entityColorList")?.addEventListener("mouseout", (event) => {
+    const li = event.target.closest("[data-color-family]");
+    if (!li) return;
+    if (event.relatedTarget?.closest?.("#entityColorProfileCard")) return;
+    hideEntityColorProfileCardSoon();
+  });
+  $("#entityColorList")?.addEventListener("focusin", (event) => {
+    const li = event.target.closest("[data-color-family]");
+    if (!li) return;
+    const row = entityColorRows.find((r) => r.family === li.dataset.colorFamily);
+    if (row) showEntityColorProfileCard(li, row);
+  });
+  $("#entityColorList")?.addEventListener("focusout", (event) => {
+    if (!event.target.closest("[data-color-family]")) return;
+    hideEntityColorProfileCardSoon();
+  });
+  renderEntityColorSection();
   $("#entityOverviewList")?.addEventListener("mouseover", (event) => {
     const li = event.target.closest("[data-entity-overview-row]");
     if (!li) return;
@@ -18483,6 +19350,11 @@ function bind() {
     productRegistryFilters.candidateCount = event.target.value || "all";
     renderProductRegistryList();
   });
+  $("#productRegistryRevenueMonth")?.addEventListener("change", () => renderProductRegistryView());
+  $("#productRegistrySort")?.addEventListener("change", (event) => {
+    productRegistryFilters.sort = event.target.value || "revenue";
+    renderProductRegistryList();
+  });
   document.addEventListener("click", (event) => {
     const card = event.target.closest("[data-product-registry-card]");
     if (!card) return;
@@ -18496,11 +19368,21 @@ function bind() {
     productRegistryState.selectedId = card.dataset.productRegistryCard || null;
     renderProductRegistryList();
   });
-  document.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-product-registry-readonly]");
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-product-registry-approve]");
     if (!button) return;
     event.preventDefault();
-    toast("승인 기능은 Phase 2B에서 제공됩니다.");
+    const item = productRegistryState.revenueItems.find((row) => row.productNo === button.dataset.productRegistryApprove);
+    const prodCds = $$('[data-product-registry-candidate-check]:checked').map((node) => node.value);
+    if (!item || !prodCds.length) return toast("승인할 ECOUNT 후보를 선택해주세요.");
+    button.disabled = true;
+    const result = await patchJson(intelligenceUrl("/api/intelligence/product-registry/revenue-review"), { month: $("#productRegistryRevenueMonth")?.value, productNo: item.productNo, prodCds }, 15000);
+    if (result.error || result.ok === false) {
+      button.disabled = false;
+      return toast(`승인 실패: ${result.message || result.error || "응답 확인 필요"}`);
+    }
+    toast("Product Registry 연결을 승인했습니다.");
+    await renderProductRegistryView();
   });
   document.addEventListener("click", (event) => {
     const tab = event.target.closest("[data-inventory-intel-tab]");
@@ -18707,7 +19589,7 @@ function productRegistryDiagnosticTypes(item) {
 }
 
 function productRegistryCandidates(item) {
-  return item?.entry?.ecount?.matchedProducts || item?.recommendedCandidate?.ecount || [];
+  return item?.candidates || item?.entry?.ecount?.matchedProducts || item?.recommendedCandidate?.ecount || [];
 }
 
 function productRegistryTabKind(item) {
@@ -18767,11 +19649,12 @@ function productRegistryBuildItems(registry, reviewQueue) {
       cafe24: candidate.cafe24 || entry.cafe24 || {},
       confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : Number(entry.confidence || 0)
     };
-  });
+  }).filter((item) => !(item.entry?.verified === true && item.entry?.status === "confirmed"));
 }
 
 function productRegistryTabCounts(items) {
   return {
+    revenue: productRegistryState.revenueItems.length,
     all: items.length,
     family: items.filter((item) => productRegistryTabKind(item) === "family").length,
     similar: items.filter((item) => productRegistryTabKind(item) === "similar").length,
@@ -18781,10 +19664,10 @@ function productRegistryTabCounts(items) {
 
 function productRegistryMatchesFilters(item) {
   const filters = productRegistryFilters;
-  const text = `${item.brandName} ${item.productName} ${item.cafe24?.productCode || ""} ${item.cafe24?.productNo || ""}`.toLowerCase();
+  const text = `${item.brandName} ${item.productName} ${item.productCode || item.cafe24?.productCode || ""} ${item.productNo || item.cafe24?.productNo || ""} ${productRegistryCandidates(item).map((candidate) => candidate.prodCd).join(" ")}`.toLowerCase();
   if (filters.search && !text.includes(filters.search.toLowerCase())) return false;
   if (filters.brand !== "all" && item.brandName !== filters.brand) return false;
-  if (filters.status !== "all" && (item.entry?.status || "") !== filters.status) return false;
+  if (filters.status !== "all" && (item.registryStatus || item.entry?.status || "") !== filters.status) return false;
   if (filters.diagnostic !== "all" && !productRegistryDiagnosticTypes(item).includes(filters.diagnostic)) return false;
   const confidence = Number(item.confidence || 0);
   if (filters.confidence === "100" && confidence !== 100) return false;
@@ -18795,12 +19678,16 @@ function productRegistryMatchesFilters(item) {
   if (filters.candidateCount === "none" && candidateCount !== 0) return false;
   if (filters.candidateCount === "one" && candidateCount !== 1) return false;
   if (filters.candidateCount === "multi" && candidateCount < 2) return false;
-  const tab = productRegistryState.activeTab || "all";
-  if (tab !== "all" && productRegistryTabKind(item) !== tab) return false;
+  const tab = productRegistryState.activeTab || "revenue";
+  if (tab !== "all" && tab !== "revenue" && productRegistryTabKind(item) !== tab) return false;
   return true;
 }
 
 function productRegistrySortItems(items) {
+  if (productRegistryState.activeTab === "revenue") {
+    const field = productRegistryFilters.sort === "quantity" ? "quantitySold" : productRegistryFilters.sort === "orders" ? "orderCount" : "revenue";
+    return items.slice().sort((a, b) => Number(b[field] || 0) - Number(a[field] || 0) || Number(b.revenue || 0) - Number(a.revenue || 0));
+  }
   const kindRank = { none: 0, similar: 1, family: 2 };
   const diagnosticRank = (item) => {
     const types = productRegistryDiagnosticTypes(item);
@@ -18843,6 +19730,7 @@ function renderProductRegistryTabs(items) {
   if (!target) return;
   const counts = productRegistryTabCounts(items);
   const tabs = [
+    ["revenue", "Revenue Priority"],
     ["all", "자동 연결 가능"],
     ["family", "상품군 후보"],
     ["similar", "애매한 후보"],
@@ -18866,7 +19754,7 @@ function renderProductRegistryFilterOptions(items) {
     productRegistryFilters.brand = brandSelect.value;
   }
   if (statusSelect) {
-    const statuses = [...new Set(items.map((item) => item.entry?.status).filter(Boolean))].sort();
+    const statuses = [...new Set(items.map((item) => item.registryStatus || item.entry?.status).filter(Boolean))].sort();
     statusSelect.innerHTML = `<option value="all">상태 전체</option>${statuses.map((status) => `<option value="${esc(status)}">${esc(status)}</option>`).join("")}`;
     statusSelect.value = statuses.includes(productRegistryFilters.status) ? productRegistryFilters.status : "all";
     productRegistryFilters.status = statusSelect.value;
@@ -18898,8 +19786,9 @@ function productRegistryCardHtml(item) {
       <div class="product-registry-row-meta">
         <span class="product-registry-confidence ${esc(confidence.tone)}"><b>${esc(confidence.stars)}</b><small>${esc(confidence.label)}</small></span>
         <span>후보 ${apiNum(candidates.length)}</span>
-        <span>${esc(item.entry?.status || "-")}</span>
+        <span>${esc(item.registryStatus || item.entry?.status || "-")}</span>
       </div>
+      ${item.revenue != null ? `<div class="product-registry-revenue-impact"><strong>${apiWon(item.revenue)}</strong><span>REVENUE IMPACT · ${apiNum(item.quantitySold)}개 · ${apiNum(item.orderCount)}건</span></div>` : ""}
       ${preview ? `<div class="product-registry-size-preview">${preview}</div>` : `<p class="product-registry-candidate-summary">ECOUNT 후보가 아직 없습니다.</p>`}
       <div class="product-registry-diags">${types.slice(0, 2).map((type) => `<span>${esc(type)}</span>`).join("")}${consignment ? `<span>위탁 후보</span>` : ""}</div>
       <p class="hint-text">${esc(productRegistryReason(item))}</p>
@@ -18910,7 +19799,8 @@ function renderProductRegistryList() {
   const list = $("#productRegistryList");
   const empty = $("#productRegistryEmpty");
   if (!list || !empty) return;
-  const filtered = productRegistrySortItems(productRegistryState.items.filter(productRegistryMatchesFilters));
+  const sourceItems = productRegistryState.activeTab === "revenue" ? productRegistryState.revenueItems : productRegistryState.items;
+  const filtered = productRegistrySortItems(sourceItems.filter(productRegistryMatchesFilters));
   list.innerHTML = filtered.map(productRegistryCardHtml).join("");
   empty.hidden = filtered.length > 0;
   if (!filtered.some((item) => item.canonicalProductId === productRegistryState.selectedId)) {
@@ -18927,7 +19817,7 @@ function productRegistryCandidateSort(a, b) {
 function renderProductRegistryDetail() {
   const target = $("#productRegistryDetail");
   if (!target) return;
-  const item = productRegistryState.items.find((row) => row.canonicalProductId === productRegistryState.selectedId);
+  const item = [...productRegistryState.revenueItems, ...productRegistryState.items].find((row) => row.canonicalProductId === productRegistryState.selectedId);
   if (!item) {
     target.innerHTML = `<div class="sales-empty-card"><strong>상품을 선택하세요</strong><p>왼쪽 후보 카드를 선택하면 상세 비교가 표시됩니다.</p></div>`;
     return;
@@ -18937,10 +19827,11 @@ function renderProductRegistryDetail() {
   const confidence = productRegistryConfidenceVisual(item);
   const candidateHtml = candidates.length ? candidates.map((candidate) => `
     <li class="product-registry-candidate-row">
+      ${item.revenue != null ? `<input type="checkbox" data-product-registry-candidate-check value="${esc(candidate.prodCd || "")}" ${/^QQQ/i.test(candidate.prodCd || "") ? "disabled" : "checked"} aria-label="${esc(candidate.prodCd || "후보")} 선택">` : ""}
       <strong>${esc(candidate.size || "-")}</strong>
       <span>${esc(candidate.productName || "-")}</span>
       <small>prodCd ${esc(candidate.prodCd || "-")} · BAR_CODE ${esc(candidate.barcode || "-")} · supplier ${esc(candidate.supplier || "-")}</small>
-      <em>${candidate.consignment ? "위탁 후보" : "일반 후보"} · ${esc(productRegistryReason(item))}</em>
+      <em>${/^QQQ/i.test(candidate.prodCd || "") ? "QQQ / SPECIAL" : candidate.consignment ? "위탁 후보" : "일반 후보"} · ${esc(productRegistryReason(item))}</em>
     </li>
   `).join("") : `<li class="product-registry-candidate-row is-empty"><strong>ECOUNT 후보가 아직 없습니다.</strong><span>Review Queue에서 직접 검색이 필요한 Cafe24 상품입니다.</span></li>`;
   target.innerHTML = `
@@ -18954,8 +19845,9 @@ function renderProductRegistryDetail() {
     <div class="clients-tooltip-stats clients-detail-stats-grid product-registry-detail-kpis">
       <div class="clients-tooltip-stat"><span>Confidence</span><strong>${esc(confidence.stars)}</strong><small>${esc(confidence.label)}</small></div>
       <div class="clients-tooltip-stat"><span>후보 수</span><strong>${apiNum(candidates.length)}</strong></div>
-      <div class="clients-tooltip-stat"><span>Status</span><strong>${esc(entry.status || "-")}</strong></div>
+      <div class="clients-tooltip-stat"><span>Status</span><strong>${esc(item.registryStatus || entry.status || "-")}</strong></div>
     </div>
+    ${item.revenue != null ? `<div class="product-registry-detail-section product-registry-revenue-impact"><span>REVENUE IMPACT</span><strong>${apiWon(item.revenue)}</strong><small>${apiNum(item.quantitySold)}개 · ${apiNum(item.orderCount)}건 · 영향: ${esc((item.impacts || []).join(", ") || "없음")}</small></div>` : ""}
     <div class="product-registry-detail-section">
       <p class="clients-tooltip-subhead">Cafe24</p>
       <div class="clients-detail-period-block">
@@ -18978,11 +19870,11 @@ function renderProductRegistryDetail() {
       </div>
     </div>
     <div class="product-registry-detail-section">
-      <p class="clients-tooltip-subhead">Phase 2B Actions</p>
+      <p class="clients-tooltip-subhead">Human Approval</p>
       <div class="product-registry-actions">
-        ${["상품군으로 승인", "선택 후보 승인", "온라인 전용", "직접 검색", "보류"].map((label) => `<button class="button secondary" type="button" data-product-registry-readonly>${esc(label)}</button>`).join("")}
+        ${item.revenue != null && candidates.some((candidate) => !/^QQQ/i.test(candidate.prodCd || "")) ? `<button class="button secondary" type="button" data-product-registry-approve="${esc(item.productNo || item.cafe24?.productNo || "")}">선택 후보로 승인</button>` : ""}
       </div>
-      <p class="hint-text">승인 기능은 Phase 2B에서 제공됩니다.</p>
+      <p class="hint-text">명시적 승인 전에는 Product Registry가 변경되지 않습니다. QQQ / SPECIAL은 자동 선택할 수 없습니다.</p>
     </div>`;
 }
 
@@ -18994,27 +19886,35 @@ async function renderProductRegistryView() {
     status.textContent = "Product Registry 로딩 중...";
   }
   try {
-    const [registryResp, queueResp] = await Promise.all([
+    const monthInput = $("#productRegistryRevenueMonth");
+    if (monthInput && !monthInput.value) monthInput.value = selectedMonth().month;
+    const month = monthInput?.value || selectedMonth().month;
+    const [registryResp, queueResp, revenueResp] = await Promise.all([
       getJson(intelligenceUrl("/api/intelligence/product-registry"), 12000),
-      getJson(intelligenceUrl("/api/intelligence/product-registry/review-queue"), 12000)
+      getJson(intelligenceUrl("/api/intelligence/product-registry/review-queue"), 12000),
+      getJson(intelligenceUrl(`/api/intelligence/product-registry/revenue-review?month=${encodeURIComponent(month)}`), 30000)
     ]);
     if (seq !== productRegistryRenderSeq) return;
-    if (registryResp.error || queueResp.error || registryResp.ok === false || queueResp.ok === false) throw new Error(registryResp.message || queueResp.message || registryResp.error || queueResp.error || "Product Registry 로딩 실패");
+    if (registryResp.error || queueResp.error || revenueResp.error || registryResp.ok === false || queueResp.ok === false || revenueResp.ok === false) throw new Error(registryResp.message || queueResp.message || revenueResp.message || registryResp.error || queueResp.error || revenueResp.error || "Product Registry 로딩 실패");
     productRegistryState.registry = registryResp.registry;
     productRegistryState.reviewQueue = queueResp.reviewQueue;
     productRegistryState.items = productRegistryBuildItems(registryResp.registry, queueResp.reviewQueue);
-    if (!productRegistryState.activeTab) productRegistryState.activeTab = "all";
+    productRegistryState.revenueItems = Array.isArray(revenueResp.reviewItems) ? revenueResp.reviewItems.map((item) => {
+      const entry = (registryResp.registry?.entries || []).find((candidate) => String(candidate?.cafe24?.productNo) === String(item.productNo)) || {};
+      return { ...item, entry, cafe24: { productNo: item.productNo, productCode: item.productCode, productName: item.productName }, confidence: Number(entry.confidence || 0) };
+    }) : [];
+    if (!productRegistryState.activeTab) productRegistryState.activeTab = "revenue";
     if (status) {
       status.className = "ad-status-banner good";
-      status.textContent = `Read-only · Review Queue ${apiNum(productRegistryState.items.length)}개`;
+      status.textContent = `Revenue Priority ${apiNum(productRegistryState.revenueItems.length)}개 · Human Approval Only`;
     }
     renderBetaFreshnessBadge("productRegistryFreshnessHeader", {
       lastUpdated: registryResp.registry?.generatedAt,
-      note: "Phase 1 진단 전용 화면입니다. 승인/저장 기능이 없어 운영 데이터로 사용하지 않습니다."
+      note: "매출 발생 미확정 상품을 우선 검토합니다. 명시적 승인 전에는 Product Registry가 변경되지 않습니다."
     });
     renderProductRegistrySummary(registryResp.registry, queueResp.reviewQueue);
     renderProductRegistryTabs(productRegistryState.items);
-    renderProductRegistryFilterOptions(productRegistryState.items);
+    renderProductRegistryFilterOptions([...productRegistryState.items, ...productRegistryState.revenueItems]);
     renderProductRegistryList();
   } catch (error) {
     if (seq !== productRegistryRenderSeq) return;

@@ -1,5 +1,111 @@
 {
   "version": "v1",
   "note": "SAMPLAS Category Master v1 (BI-BATCH-I). manualOverrides만 여기 저장한다 — 결정론적 이름/ECOUNT suffix 규칙은 코드(outputs/samplas-marketing-os.js)에 있고 항상 재계산되므로 캐시하지 않는다. 상세 정책은 docs/BRAND_INTELLIGENCE_RULES.md 참고.",
-  "manualOverrides": []
+  "manualOverrides": [],
+  "modelAssignments": [
+    {
+      "modelKey": "CODE_PREFIX:PAC253LT005",
+      "categoryCode": "TOP",
+      "productCodes": [
+        "PAC253LT00501",
+        "PAC253LT00502"
+      ],
+      "brand": "PACOSPLY",
+      "productName": "PACOSPLY / OLD THRONE LONG SLEEVE BLURRY GREEN",
+      "affectedSkuCount": 2,
+      "source": "category_review_manual",
+      "approvedAt": "2026-08-15T02:59:56.695Z"
+    },
+    {
+      "modelKey": "CODE_PREFIX:PAC253LT006",
+      "categoryCode": "TOP",
+      "productCodes": [
+        "PAC253LT00601",
+        "PAC253LT00602"
+      ],
+      "brand": "PACOSPLY",
+      "productName": "PACOSPLY / OLD THRONE LONG SLEEVE BLURRY BLACK",
+      "affectedSkuCount": 2,
+      "source": "category_review_manual",
+      "approvedAt": "2026-08-15T03:02:23.072Z"
+    },
+    {
+      "modelKey": "CODE_PREFIX:PAC253LT007",
+      "categoryCode": "TOP",
+      "productCodes": [
+        "PAC253LT00701",
+        "PAC253LT00702"
+      ],
+      "brand": "PACOSPLY",
+      "productName": "PACOSPLY / GRAMMY LONG SLEEVE BLACK",
+      "affectedSkuCount": 2,
+      "source": "category_review_manual",
+      "approvedAt": "2026-08-15T03:02:31.139Z"
+    },
+    {
+      "modelKey": "CODE_PREFIX:PAC253LT008",
+      "categoryCode": "TOP",
+      "productCodes": [
+        "PAC253LT00801",
+        "PAC253LT00802"
+      ],
+      "brand": "PACOSPLY",
+      "productName": "PACOSPLY / GRAMMY LONG SLEEVE WHITE",
+      "affectedSkuCount": 2,
+      "source": "category_review_manual",
+      "approvedAt": "2026-08-15T03:02:33.391Z"
+    },
+    {
+      "modelKey": "CODE_PREFIX:PAC261LT014",
+      "categoryCode": "TOP",
+      "productCodes": [
+        "PAC261LT01401",
+        "PAC261LT01402"
+      ],
+      "brand": "PACOSPLY",
+      "productName": "PACOSPLY / SKINS LONG SLEEVE BLACK",
+      "affectedSkuCount": 2,
+      "source": "category_review_manual",
+      "approvedAt": "2026-08-15T03:02:34.892Z"
+    },
+    {
+      "modelKey": "CODE_PREFIX:PAC261LT015",
+      "categoryCode": "TOP",
+      "productCodes": [
+        "PAC261LT01501",
+        "PAC261LT01502"
+      ],
+      "brand": "PACOSPLY",
+      "productName": "PACOSPLY / SKINS LONG SLEEVE WHITE",
+      "affectedSkuCount": 2,
+      "source": "category_review_manual",
+      "approvedAt": "2026-08-15T03:02:59.077Z"
+    },
+    {
+      "modelKey": "CODE_PREFIX:PAC261LT016",
+      "categoryCode": "TOP",
+      "productCodes": [
+        "PAC261LT01601",
+        "PAC261LT01602"
+      ],
+      "brand": "PACOSPLY",
+      "productName": "PACOSPLY / Tour Gabriel long sleeve BLACK",
+      "affectedSkuCount": 2,
+      "source": "category_review_manual",
+      "approvedAt": "2026-08-15T03:03:01.408Z"
+    },
+    {
+      "modelKey": "SKU:PAC261LT01701",
+      "categoryCode": "TOP",
+      "productCodes": [
+        "PAC261LT01701"
+      ],
+      "brand": "PACOSPLY",
+      "productName": "PACOSPLY / Tour Gabriel long sleeve WHITE",
+      "affectedSkuCount": 1,
+      "source": "category_review_manual",
+      "approvedAt": "2026-08-15T03:03:03.178Z"
+    }
+  ],
+  "updatedAt": "2026-08-15T03:03:03.178Z"
 }

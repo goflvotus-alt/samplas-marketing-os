@@ -1,0 +1,283 @@
+{
+  "version": "v1",
+  "updatedAt": "2026-08-15T06:42:44.082Z",
+  "note": "SAMPLAS Color Master v1. 메인 UI에서는 family를 사용하고, 상세/hover에서는 실제 raw color 표현을 보존한다. 애매한 브랜드 고유 컬러명은 자동 추측하지 않는다.",
+  "policy": {
+    "preserveRawColor": true,
+    "familyForPrimaryUI": true,
+    "rawColorForHoverDetail": true,
+    "denimIndependent": true,
+    "camoIndependent": true,
+    "ambiguousColorGuessing": false,
+    "specialFamilyPriority": [
+      "CAMO",
+      "LEOPARD",
+      "CHECK",
+      "STRIPE",
+      "DENIM",
+      "PRINT"
+    ],
+    "specialFamilyPriorityRule": "When multiple special families match one product, the first matching family in specialFamilyPriority wins.",
+    "multipleActualColorsRule": "When two or more actual color families match and no special family wins, classify as MULTI.",
+    "explicitMultiRule": "Explicit MULTI/MULTICOLOR expressions classify as MULTI.",
+    "unknownRule": "If no deterministic color evidence exists, preserve UNKNOWN. Never infer a color from product type, brand, image, or unrelated wording.",
+    "rawColorPolicy": "Preserve the original detailed/raw color expression for secondary hover/detail UI even when the primary UI uses a normalized family."
+  },
+  "families": [
+    "BLACK",
+    "WHITE",
+    "GREY",
+    "BEIGE",
+    "BROWN",
+    "BLUE",
+    "NAVY",
+    "GREEN",
+    "RED",
+    "PINK",
+    "PURPLE",
+    "ORANGE",
+    "YELLOW",
+    "CHARCOAL",
+    "INDIGO",
+    "BURGUNDY",
+    "WINE",
+    "KHAKI",
+    "OLIVE",
+    "GOLD",
+    "SILVER",
+    "CHROME",
+    "GUNMETAL",
+    "SKIN",
+    "NUDE",
+    "NATURAL",
+    "CLEAR",
+    "DENIM",
+    "CAMO",
+    "STRIPE",
+    "CHECK",
+    "LEOPARD",
+    "PRINT",
+    "MULTI",
+    "OTHER",
+    "UNKNOWN"
+  ],
+  "aliases": {
+    "BLACK": [
+      "BLACK",
+      "BK",
+      "BLK"
+    ],
+    "WHITE": [
+      "WHITE",
+      "WH",
+      "WHT",
+      "WHIT",
+      "WHTITE",
+      "IVORY",
+      "CREAM",
+      "CREAME",
+      "ECRU",
+      "VANILLA",
+      "BONE",
+      "CHALK",
+      "SNOW",
+      "ICE",
+      "EGG SHELL"
+    ],
+    "GREY": [
+      "GREY",
+      "GRAY",
+      "GRY",
+      "CGRY",
+      "LGRY",
+      "GARY",
+      "MELANGE",
+      "ASH",
+      "CARBON",
+      "ANTHRACITE",
+      "STONE",
+      "CEMENT"
+    ],
+    "BEIGE": [
+      "BEIGE",
+      "BEI",
+      "SAND",
+      "OATMEAL",
+      "TAUPE",
+      "TRAVERTINE",
+      "WHEAT"
+    ],
+    "BROWN": [
+      "BROWN",
+      "BRW",
+      "CHOCOLATE",
+      "MOCHA",
+      "CAMEL",
+      "TAN",
+      "EARTH",
+      "MUD",
+      "ESPRESSO",
+      "MAHOGANY",
+      "OAK",
+      "TOBACCO"
+    ],
+    "BLUE": [
+      "BLUE",
+      "BLU",
+      "BULE",
+      "SKY BLUE",
+      "ICE BLUE",
+      "MINT BLUE",
+      "TURQUOISE"
+    ],
+    "NAVY": [
+      "NAVY",
+      "NVY",
+      "MARINE"
+    ],
+    "GREEN": [
+      "GREEN",
+      "GRN",
+      "MINT",
+      "LIME",
+      "SAGE",
+      "JADE",
+      "MOSS"
+    ],
+    "RED": [
+      "RED",
+      "BRICK"
+    ],
+    "PINK": [
+      "PINK",
+      "PNK",
+      "ROSE"
+    ],
+    "PURPLE": [
+      "PURPLE",
+      "LILAC",
+      "LYLAC",
+      "LAVENDER",
+      "VIOLET"
+    ],
+    "ORANGE": [
+      "ORANGE",
+      "RUST",
+      "RUSTY"
+    ],
+    "YELLOW": [
+      "YELLOW",
+      "MUSTARD",
+      "LEMON"
+    ],
+    "CHARCOAL": [
+      "CHARCOAL",
+      "CHARCOL"
+    ],
+    "INDIGO": [
+      "INDIGO"
+    ],
+    "BURGUNDY": [
+      "BURGUNDY",
+      "MAROON"
+    ],
+    "WINE": [
+      "WINE"
+    ],
+    "KHAKI": [
+      "KHAKI"
+    ],
+    "OLIVE": [
+      "OLIVE"
+    ],
+    "GOLD": [
+      "GOLD"
+    ],
+    "SILVER": [
+      "SILVER"
+    ],
+    "CHROME": [
+      "CHROME"
+    ],
+    "GUNMETAL": [
+      "GUNMETAL",
+      "GUN METAL"
+    ],
+    "SKIN": [
+      "SKIN"
+    ],
+    "NUDE": [
+      "NUDE"
+    ],
+    "NATURAL": [
+      "NATURAL"
+    ],
+    "CLEAR": [
+      "CLEAR",
+      "TRANSPARENT",
+      "TRANSLUCENT"
+    ],
+    "DENIM": [
+      "DENIM"
+    ],
+    "CAMO": [
+      "CAMO",
+      "CAMOUFLAGE",
+      "WOODLAND"
+    ],
+    "STRIPE": [
+      "STRIPE",
+      "STRIPED"
+    ],
+    "CHECK": [
+      "CHECK",
+      "CHECKED",
+      "PLAID",
+      "TARTAN",
+      "GINGHAM"
+    ],
+    "LEOPARD": [
+      "LEOPARD",
+      "CHEETAH"
+    ],
+    "PRINT": [
+      "PRINT",
+      "PRINTED"
+    ],
+    "MULTI": [
+      "MULTI",
+      "MULTICOLOR",
+      "MULTI COLOR",
+      "MULTI-COLOR"
+    ],
+    "OTHER": [
+      "RECYCLE",
+      "RECYCLED",
+      "VINTAGE",
+      "RAW"
+    ]
+  },
+  "ambiguousRawColors": [
+    "NASTY",
+    "POISON",
+    "FLAME",
+    "PHANTOM",
+    "MUSK",
+    "DARK",
+    "FLOCK",
+    "DEPTH",
+    "OIL",
+    "SUNSET",
+    "RUBIA",
+    "SCORCHED",
+    "ARTISANAL",
+    "GR",
+    "LG",
+    "DG",
+    "PR",
+    "BR",
+    "SAX",
+    "ZEBRA",
+    "ZEEBRA"
+  ]
+}

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SAMPLAS Instagram Marketing OS</title>
-  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260722-inventory-overview-phase3a2" />
+  <title>SAMPLAS INTELLIGENCE</title>
+  <link rel="stylesheet" href="./samplas-marketing-os.css?v=20260815-category-color-intelligence" />
   <style id="clients-detail-critical-style">
     .clients-detail-modal { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; }
     .clients-detail-modal[hidden] { display: none; }
@@ -58,7 +58,7 @@
         <div class="brand-mark">S</div>
         <div>
           <p class="eyebrow">SAMPLAS</p>
-          <h1>Marketing OS</h1>
+          <h1>SAMPLAS INTELLIGENCE</h1>
         </div>
       </div>
       <nav id="nav" class="nav"></nav>
@@ -118,7 +118,7 @@
         </div>
 
         <div class="refresh-footer">
-          <span class="refresh-footer-label">Marketing OS Data Health</span>
+          <span class="refresh-footer-label">SAMPLAS INTELLIGENCE Data Health</span>
           <span class="refresh-footer-value">96%</span>
           <span class="refresh-footer-coverage">Coverage · Partial</span>
         </div>
@@ -931,7 +931,7 @@
             <h3>Product Registry</h3>
           </div>
         </div>
-        <p class="hint-text">Cafe24 상품과 ECOUNT 품목의 연결 후보를 검수하는 화면입니다. Phase 2A에서는 승인/저장 없이 read-only 비교만 제공합니다.</p>
+        <p class="hint-text">Cafe24 상품과 ECOUNT 품목의 연결 후보를 검수하고, 사람이 선택한 후보만 승인하는 화면입니다.</p>
         <div id="productRegistryFreshnessHeader" class="freshness-header-slot"></div>
 
         <div class="section-block">
@@ -945,6 +945,7 @@
           </div>
           <div id="productRegistryTabs" class="product-action-filters"></div>
           <div class="product-action-filters product-registry-filters">
+            <input id="productRegistryRevenueMonth" type="month" aria-label="Revenue Priority 월">
             <input id="productRegistrySearch" type="search" placeholder="브랜드명 / Cafe24 상품명 / productCode / productNo 검색">
             <select id="productRegistryBrandFilter" aria-label="Product Registry 브랜드 필터"></select>
             <select id="productRegistryConfidenceFilter" aria-label="Product Registry confidence 필터">
@@ -961,6 +962,11 @@
               <option value="none">후보 없음</option>
               <option value="one">후보 1개</option>
               <option value="multi">후보 2개 이상</option>
+            </select>
+            <select id="productRegistrySort" aria-label="Revenue Priority 정렬">
+              <option value="revenue">매출 높은 순</option>
+              <option value="quantity">판매수량 높은 순</option>
+              <option value="orders">주문수 높은 순</option>
             </select>
           </div>
           <div class="product-registry-layout">
@@ -1255,6 +1261,18 @@
           </label>
           <div id="scoreWeightsForm" class="score-weights-form"></div>
         </div>
+      </section>
+
+      <section id="CategoryReview" class="view">
+        <div class="page-header category-review-header">
+          <div>
+            <p class="eyebrow">Category Master</p>
+            <h1>Category Review</h1>
+            <p class="hint-text">미분류 SKU를 deterministic product model 단위로 검토합니다. 선택한 카테고리는 같은 model의 모든 SKU에 적용됩니다.</p>
+          </div>
+          <span class="badge">MANUAL APPROVAL ONLY</span>
+        </div>
+        <div id="categoryReviewWorkspace"></div>
       </section>
 
       <!-- STEP54-2A/2B: Brand Intelligence Dashboard Hero Section. UI/레이아웃/Hover만
@@ -1853,7 +1871,7 @@
               <div class="brand-monthly-trend-chart-card brand-category-donut-card">
                 <div class="brand-mix-list-head">
                   <span>Category 비중</span>
-                  <em>온라인 매출 기준 · SAMPLAS Category Master v1</em>
+                  <em>온라인 + 오프라인 매출 기준 · SAMPLAS Category Master v1</em>
                 </div>
                 <div id="entityCategoryDonut" class="brand-customer-donut" role="img" aria-label="상품군 구성 비율">
                   <div class="clients-donut-center brand-customer-donut-center">
@@ -1874,6 +1892,61 @@
             <article class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card">
               <span>AI Insight</span>
               <div id="entityCategoryInsight" class="brand-customer-insight-body"></div>
+            </article>
+          </div>
+        </div>
+
+        <!-- BI-CATEGORY-COLOR-COMPLETION: Color Intelligence — Category와 완전히 독립된
+             축(같은 entitySkuRows spine만 공유). 구조/클래스는 위 Category Intelligence
+             블록을 그대로 재사용한다(section-title/product-action-filters/brand-customer-
+             grid/brand-customer-donut/brand-customer-top5/intelligence-action-summary —
+             전부 이미 여러 섹션에서 재사용 중인 범용 클래스, 새 디자인 시스템 아님). Compare
+             Mode 비교 행은 이번 배치 범위 밖이라 만들지 않았다. -->
+        <div class="section-block brand-color-section">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Color Intelligence</p>
+              <h3>컬러 인텔리전스</h3>
+            </div>
+            <div id="entityColorToggle" class="product-action-filters" role="group" aria-label="집계 기준">
+              <button type="button" class="product-action-filter active" data-entity-color-mode="revenue">매출</button>
+              <button type="button" class="product-action-filter" data-entity-color-mode="quantity">판매수량</button>
+            </div>
+          </div>
+          <p id="entityColorPeriodNote" class="hint-text entity-period-note"></p>
+          <p id="entityColorCoverageNote" class="hint-text entity-period-note"></p>
+
+          <div id="entityColorEmpty" class="entity-detail-empty">
+            <span class="entity-detail-empty-icon" aria-hidden="true">🎨</span>
+            <h4>브랜드를 선택하세요</h4>
+            <p>브랜드를 선택하면 컬러 데이터를 확인할 수 있습니다.</p>
+          </div>
+
+          <div id="entityColorContent">
+            <div class="brand-customer-grid brand-category-grid">
+              <div class="brand-monthly-trend-chart-card brand-category-donut-card">
+                <div class="brand-mix-list-head">
+                  <span>Color 비중</span>
+                  <em>온라인 + 오프라인 매출 기준 · SAMPLAS Color Master v1</em>
+                </div>
+                <div id="entityColorDonut" class="brand-customer-donut" role="img" aria-label="컬러 구성 비율">
+                  <div class="clients-donut-center brand-customer-donut-center">
+                    <strong id="entityColorDonutCenter">-</strong>
+                    <span>전체</span>
+                  </div>
+                </div>
+              </div>
+              <div class="brand-customer-top5">
+                <div class="brand-customer-top5-head">
+                  <p class="brand-customer-top5-title">Color TOP</p>
+                </div>
+                <ul id="entityColorList" class="brand-customer-top5-list"></ul>
+              </div>
+            </div>
+
+            <article class="intelligence-action-summary brand-hero-action-box brand-customer-insight-card">
+              <span>AI Insight</span>
+              <div id="entityColorInsight" class="brand-customer-insight-body"></div>
             </article>
           </div>
         </div>
@@ -2107,7 +2180,7 @@
           <div>
             <span class="store-intel-header-badge">Apgujeong Store</span>
             <h3>압구정 INTELLIGENCE</h3>
-            <p class="topbar-subtitle">스타일리스트와 고객 관계 중심의 인사이트</p>
+            <p class="topbar-subtitle">스타일리스트 유형 고객 중심의 인사이트</p>
           </div>
         </div>
         <p class="store-intel-mock-note">MOCK / UI SHELL — placeholder 데이터입니다. 실제 매출·고객 데이터는 다음 배치에서 연결됩니다.</p>
@@ -2118,11 +2191,11 @@
 
         <div class="section-block">
           <div class="section-title compact">
-            <div><p class="eyebrow">Stylist Performance</p><h3>스타일리스트 매출 성과</h3></div>
+            <div><p class="eyebrow">Stylist-type Client Performance</p><h3>스타일리스트 유형 고객 매출 성과</h3></div>
           </div>
           <div class="store-intel-grid-3">
             <div class="store-intel-panel">
-              <div class="store-intel-panel-head"><h4>스타일리스트 매출 비중</h4></div>
+              <div class="store-intel-panel-head"><h4>스타일리스트 유형 고객 매출 비중</h4></div>
               <div class="clients-donut-card" style="border:0;box-shadow:none;padding:0;">
                 <div id="apgujeongIntelStylistDonut" class="clients-donut" role="img" aria-label="스타일리스트 매출 비중">
                   <div class="clients-donut-center"><strong>--</strong><span>매출 비중</span></div>
@@ -2132,7 +2205,7 @@
             </div>
             <div class="store-intel-panel">
               <div class="store-intel-panel-head">
-                <h4>TOP 스타일리스트 (매출)</h4>
+                <h4>스타일리스트 유형 고객 TOP (매출)</h4>
                 <button type="button" class="store-intel-more-link" data-store-intel-more="apgujeong-stylist-ranking">더보기 &gt;</button>
               </div>
               <div id="apgujeongIntelStylistRanking" class="inventory-intel-coverage-bars"></div>
@@ -2265,6 +2338,6 @@
   </div>
   <div id="productBrandOrderPopover" class="brand-order-popover" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260807-step63-3-clients-identity-pipeline"></script>
+  <script src="./samplas-marketing-os.js?v=20260815-category-color-intelligence"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { URL, fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
+import { KNOWN_STORE_CODES, readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 import { refreshMonthlySales } from "./scripts/refresh-monthly-sales.mjs";
 import { enrichMetaProductBreakdown, applyRuntimeAutoEnrichment } from "./scripts/meta-product-registry-link.mjs";
 import {
@@ -53,6 +53,7 @@ import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
 // 떨어진 상품에 한해서만 STEP63-2B Integrated Pipeline을 보조 조회로 사용한다(새 Resolver
 // 작성 금지, 기존 자산 재사용).
 import { resolveIdentity, loadResolverContext } from "./scripts/unified-identity-resolver.mjs";
+import { buildStoreProductIdentityIndex, resolveStoreProductIdentity } from "./scripts/store-product-identity.mjs";
 // STEP67 cross-brand-partial-period P1: 진행 중인 base 기간과 완결된 comparison 기간을
 // "같은 경과일"로 정규화하는 순수 날짜 계산만 담당(판매 계산 로직 없음, docs/reports/
 // NEXT-CROSS-BRAND-PARTIAL-PERIOD-plan.md §6 그대로 구현).
@@ -461,6 +462,14 @@ const server = isMainModule ? createServer(async (req, res) => {
       try {
         const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir, storeCode });
         if (!snapshot) return json(res, { error: "ECOUNT offline sales snapshot not found", month, storeCode: storeCode || null }, 404);
+        if (url.searchParams.get("includeStoreBrands") === "1" && !storeCode) {
+          const identityContext = await loadResolverContext();
+          snapshot.storeBrandSales = buildStoreOfflineBrandSales(snapshot, {
+            since: `${month}-01`,
+            until: monthEndKey(month),
+            identityContext
+          });
+        }
         return json(res, snapshot);
       } catch (error) {
         const message = safeErrorMessage(error);
@@ -636,14 +645,37 @@ const server = isMainModule ? createServer(async (req, res) => {
         return json(res, { ok: false, error: "Internal Server Error", message: safeErrorMessage(error) }, 500);
       }
     }
+    if (url.pathname === "/api/intelligence/store") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      const storeCode = String(url.searchParams.get("store") || "").trim();
+      const since = url.searchParams.get("since");
+      const until = url.searchParams.get("until");
+      try {
+        return json(res, { ok: true, ...await buildStoreIntelligencePayload({ storeCode, since, until }) });
+      } catch (error) {
+        const message = safeErrorMessage(error);
+        return json(res, { ok: false, error: message }, error.status === 400 ? 400 : 500);
+      }
+    }
     if (
       url.pathname.startsWith("/api/intelligence/") ||
       url.pathname.startsWith("/api/inventory/intelligence/") ||
       url.pathname === "/api/inventory/overview"
     ) {
+      // Human review PATCH는 로컬 요청(isLocalRequest)에 한해 내부 인증을 우회한다.
+      // Category Review와 Revenue Priority Review만 허용하며,
+      // 다른 모든 intelligence POST/PATCH(Cafe24/Naver 등)는 isAuthorizedInternalRequest를 그대로 요구한다.
+      const isLocalHumanReviewPatch =
+        req.method === "PATCH" &&
+        (
+          url.pathname === "/api/intelligence/category-review" ||
+          url.pathname === "/api/intelligence/product-registry/revenue-review"
+        ) &&
+        isLocalRequest(req);
       if (
         (req.method === "POST" || req.method === "PATCH") &&
-        !isAuthorizedInternalRequest(req)
+        !isAuthorizedInternalRequest(req) &&
+        !isLocalHumanReviewPatch
       ) {
         return json(res, { error: "Unauthorized" }, 401);
       }
@@ -4060,6 +4092,156 @@ async function buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSourc
   return { brandSales, sourceImportedAt: snapshot?.importedAt || null };
 }
 
+// Monthly Store Performance breakdown 전용 어댑터. 새 브랜드 계산을 만들지 않고
+// STEP67-3의 공식 mergeOfflineBrandSales + Unified Identity 결과를 매장별 salesLines에
+// 그대로 적용한다. 온라인 seed는 비워 Store TOP BRAND를 offline-only로 유지한다.
+export function buildStoreOfflineBrandSales(snapshot, { since = "", until = "", identityContext } = {}) {
+  const lines = Array.isArray(snapshot?.salesLines)
+    ? snapshot.salesLines
+    : Array.isArray(snapshot?.rows)
+      ? snapshot.rows
+      : [];
+  return Object.fromEntries(KNOWN_STORE_CODES.map((storeCode) => [storeCode, mergeOfflineBrandSales({
+    brandSales: [],
+    onlinePaidAmount: 0,
+    offlineLines: lines.filter((line) => line?.storeCode === storeCode),
+    since,
+    until,
+    identityContext
+  })]));
+}
+
+export function buildStoreProductIntelligence(lines = [], productRegistry = {}, brandRegistry = null) {
+  const identityIndex = buildStoreProductIdentityIndex(productRegistry);
+  const items = new Map();
+  let resolvedLines = 0;
+  let unresolvedLines = 0;
+  const resolvedBy = {};
+  const unresolvedBy = {};
+  for (const line of lines.filter((item) => item?.isOfflineRevenue === true)) {
+    const resolution = resolveStoreProductIdentity(line, identityIndex, brandRegistry);
+    if (resolution.status !== "resolved") {
+      unresolvedLines += 1;
+      unresolvedBy[resolution.reason] = (unresolvedBy[resolution.reason] || 0) + 1;
+      continue;
+    }
+    const entry = resolution.entry;
+    resolvedLines += 1;
+    resolvedBy[resolution.method] = (resolvedBy[resolution.method] || 0) + 1;
+    const current = items.get(entry.canonicalProductId) || {
+      product_code: entry.canonicalProductId,
+      product_name: entry.canonicalProductName,
+      brand_code: entry.brandId,
+      brand_name: entry.brandName,
+      quantitySold: 0,
+      salesAmount: 0,
+      orderKeys: new Set(),
+      matchingEvidence: new Set()
+    };
+    current.quantitySold += Number(line?.quantity || 0);
+    current.salesAmount += Number(line?.salesAmount || 0);
+    current.orderKeys.add(`${line?.date || ""}|${line?.documentNo || line?.slipNo || ""}`);
+    for (const evidence of resolution.evidence) current.matchingEvidence.add(evidence);
+    items.set(entry.canonicalProductId, current);
+  }
+
+  return {
+    available: true,
+    items: [...items.values()].map(({ orderKeys, matchingEvidence, ...item }) => ({ ...item, orderCount: orderKeys.size, matchingEvidence: [...matchingEvidence] }))
+      .filter((item) => item.quantitySold !== 0 || item.salesAmount !== 0)
+      .sort((left, right) => right.quantitySold - left.quantitySold || right.salesAmount - left.salesAmount || left.product_name.localeCompare(right.product_name)),
+    coverage: { resolvedLines, unresolvedLines, resolvedBy, unresolvedBy }
+  };
+}
+
+export function composeStoreIntelligencePayload({ store, since, until, snapshots = [], canonicalSales, clients, identityContext }) {
+  const lines = snapshots.flatMap((snapshot) => (
+    Array.isArray(snapshot?.salesLines) ? snapshot.salesLines : Array.isArray(snapshot?.rows) ? snapshot.rows : []
+  )).filter((line) => line?.storeCode === store.storeCode && String(line?.date || "") >= since && String(line?.date || "") <= until);
+  const dailyRows = snapshots.flatMap((snapshot) => Array.isArray(snapshot?.dailySales) ? snapshot.dailySales : [])
+    .filter((row) => String(row?.date || "") >= since && String(row?.date || "") <= until)
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)));
+  const latestDay = dailyRows.at(-1) || null;
+  const brandItems = mergeOfflineBrandSales({
+    brandSales: [], onlinePaidAmount: 0, offlineLines: lines, since, until, identityContext
+  }).filter((item) => Number(item?.salesAmount || item?.canonicalPaidAmount || 0) !== 0);
+  const clientRows = Array.isArray(clients?.clients) ? clients.clients : [];
+  const recentClients = clientRows.slice().sort((left, right) => (
+    String(right.latestPurchaseDate || "").localeCompare(String(left.latestPurchaseDate || "")) ||
+    Number(right.totalSales || 0) - Number(left.totalSales || 0)
+  )).slice(0, 5).map((client) => ({
+    clientId: client.clientId,
+    name: client.name,
+    clientType: client.clientType,
+    latestPurchaseDate: client.latestPurchaseDate,
+    purchaseCount: client.purchaseCount,
+    totalSales: client.totalSales
+  }));
+  const missingMonths = instagramRangeMonthKeys(since, until).filter((month) => !snapshots.some((snapshot) => snapshot?.month === month));
+  const products = buildStoreProductIntelligence(lines, identityContext?.productRegistry, identityContext?.brandRegistry);
+  const offlineSales = Number(canonicalSales?.offlineSales?.offlineSalesAmount || 0);
+  return {
+    store: { code: store.storeCode, displayName: store.storeCode === "VAIL" ? "VEIL" : store.displayName },
+    coverage: {
+      available: snapshots.length > 0,
+      periodStart: snapshots.map((snapshot) => snapshot?.periodStart).filter(Boolean).sort()[0] || null,
+      periodEnd: snapshots.map((snapshot) => snapshot?.periodEnd).filter(Boolean).sort().at(-1) || null,
+      importedAt: snapshots.map((snapshot) => snapshot?.importedAt).filter(Boolean).sort().at(-1) || null,
+      sourceFileNames: snapshots.map((snapshot) => snapshot?.sourceFileName).filter(Boolean),
+      missingMonths
+    },
+    sales: snapshots.length ? {
+      available: true,
+      periodSales: Number(canonicalSales?.offlineSales?.offlineSalesAmount || 0),
+      latestDay: latestDay?.date || null,
+      latestDaySales: latestDay ? Number(latestDay.offlineSalesAmount || 0) : null,
+      quantity: Number(clients?.summary?.offlineQuantity || 0),
+      orderCount: Number(clients?.summary?.offlineOrderCount || 0),
+      avgOrderValue: Number(clients?.summary?.avgOrderValue || 0)
+    } : { available: false, reason: "매장 매출 데이터 미업로드" },
+    brands: snapshots.length ? { available: true, items: brandItems } : { available: false, reason: "매장 매출 데이터 미업로드", items: [] },
+    clients: snapshots.length ? {
+      available: true,
+      summary: clients?.summary || {},
+      typeBreakdown: clients?.typeBreakdown || [],
+      stylistRanking: clients?.stylistTop10 || [],
+      recentClients
+    } : { available: false, reason: "매장 고객 데이터 미업로드" },
+    products: snapshots.length ? products : { available: false, reason: "매장 매출 데이터 미업로드", items: [] },
+    categories: snapshots.length ? {
+      available: true,
+      items: [{ code: "UNKNOWN", name: "미분류", salesAmount: offlineSales, share: offlineSales ? 100 : 0 }],
+      coverage: { classifiedSales: 0, unclassifiedSales: offlineSales, coveragePct: 0 },
+      reason: "canonical category 데이터 미연결"
+    } : { available: false, reason: "매장 매출 데이터 미업로드", items: [] },
+    inventory: { available: false, reason: "매장별 재고 데이터 미연결" },
+    sellThrough: { available: false, reason: "입고 데이터 미연결" },
+    newBrands: { available: false, reason: "입점일 데이터 미연결" },
+    insights: { available: false, reason: "인사이트 규칙 미정의" },
+    relationships: { available: false, reason: "담당 관계 데이터 미연결" },
+    brandClientCross: { available: false, reason: "브랜드 교차 집계 연결 대기" },
+    definitions: { repeatCustomer: { available: false, reason: "정의 미확정" }, newCustomer: { available: false, reason: "정의 미확정" } }
+  };
+}
+
+export async function buildStoreIntelligencePayload({ storeCode: storeCodeValue, since: sinceValue, until: untilValue } = {}) {
+  const since = assertInstagramRangeDate(sinceValue, "since");
+  const until = assertInstagramRangeDate(untilValue, "until");
+  if (since > until) throw Object.assign(new Error("since must be before or equal to until"), { status: 400 });
+  const stores = await loadStoreMaster();
+  const store = stores.find((item) => item?.storeCode === storeCodeValue);
+  if (!store) throw Object.assign(new Error(`Unknown store: ${storeCodeValue || "(empty)"}`), { status: 400 });
+  const snapshots = (await Promise.all(instagramRangeMonthKeys(since, until).map((month) => (
+    readEcountOfflineSalesSnapshot(month, { workDir, storeCode: store.storeCode })
+  )))).filter(Boolean);
+  const [canonicalSales, clients, identityContext] = await Promise.all([
+    buildCanonicalTotalSales({ since, until, storeCode: store.storeCode }),
+    buildClientsOverview({ since, until, cafe24Orders: [], storeCode: store.storeCode }),
+    loadResolverContext()
+  ]);
+  return composeStoreIntelligencePayload({ store, since, until, snapshots, canonicalSales, clients, identityContext });
+}
+
 // STEP67 cross-brand-partial-period P1: 정규화된(day-cutoff 포함 가능) 기간 하나에
 // 대해 브랜드별 매출/수량/주문 집계 하나를 만든다. buildMonthlyArchive()가 쓰는 무거운
 // Meta Ads/Instagram 계산은 전혀 포함하지 않는다 — Brand Comparison에 필요한 commerce
@@ -4198,6 +4380,9 @@ export async function buildBrandCustomerComposition(brandCode, month, commerceSo
   // 여기서 이미 브랜드/기간을 필터링해 순회하는 김에 오프라인 distinct productName도 함께 센다
   // (고객 식별 여부와 무관하게, 매장방문고객 등 포함 — 새 API 호출 없음).
   const offlineProductNames = new Set();
+  // Category/Color는 Product/SKU의 온라인 전용 의미를 유지해야 하므로, 이미 이 함수가
+  // Unified Identity로 선택 브랜드에 확정한 오프라인 상품 라인만 별도 응답한다.
+  const offlineAttributionRows = [];
   // PART F(Brand Revenue): storeCode 필터와 무관하게 브랜드의 매장별 오프라인 매출을
   // 항상 함께 집계한다 — ALL에서 "온라인/압구정/VAIL" 3축을 보여주고, Store Focus에서
   // Brand Store Share(분모=canonical ALL) 계산에 재사용하기 위함(추가 API 호출 없음).
@@ -4209,10 +4394,21 @@ export async function buildBrandCustomerComposition(brandCode, month, commerceSo
     const identity = resolveIdentity({ productName: line.productName, brandGroup: line.brandGroup }, identityContext);
     if (!identity.resolved || identity.brand.brandCode !== brandCode) continue;
     const amount = Number(line.salesAmount);
-    if (!Number.isFinite(amount) || amount <= 0) continue; // Clients와 동일 정책: 환불/0원 라인은 "구매 건수"로 세지 않음
+    if (!Number.isFinite(amount)) continue;
+    const productName = String(line.productName || "").trim();
+    if (!storeCode || line?.storeCode === storeCode) {
+      offlineAttributionRows.push({
+        productName,
+        productCode: line.prodCd || line.productCode || null,
+        revenue: amount,
+        quantitySold: Number.isFinite(Number(line.quantity)) ? Number(line.quantity) : 0,
+        date,
+        storeCode: line.storeCode || null
+      });
+    }
+    if (amount <= 0) continue; // Clients와 동일 정책: 환불/0원 라인은 "구매 건수"로 세지 않음
     if (Object.prototype.hasOwnProperty.call(revenueByStore, line?.storeCode)) revenueByStore[line.storeCode] += amount;
     if (storeCode && line?.storeCode !== storeCode) continue;
-    const productName = String(line.productName || "").trim();
     if (productName) offlineProductNames.add(productName);
     const rawName = String(line.customerName || "").trim();
     if (!rawName) continue;
@@ -4240,6 +4436,7 @@ export async function buildBrandCustomerComposition(brandCode, month, commerceSo
     typeStats: [...typeBuckets.values()].sort((a, b) => b.sales - a.sales),
     topCustomers: [...customerBuckets.values()].sort((a, b) => b.sales - a.sales).slice(0, 10),
     offlineProductCount: offlineProductNames.size,
+    offlineAttributionRows,
     storeCode,
     storeHasData,
     revenueByStore,

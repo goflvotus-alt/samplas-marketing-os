@@ -6,10 +6,11 @@ const detailDatePattern = /^(\d{4})\/(\d{2})\/(\d{2})\s*-\s*(\d+)$/;
 
 export function loadEcountOfflineSalesExcel(filePath, options = {}) {
   if (!filePath) throw new Error("ECOUNT Excel file path is required");
-  const sheetName = options.sheetName || "판매현황";
   const workbook = readWorkbook(filePath);
-  const sheet = workbook.sheets.find((item) => item.name === sheetName);
-  if (!sheet) throw new Error(`Sheet not found: ${sheetName}`);
+  const supportedSheetNames = options.sheetName ? [options.sheetName] : ["판매현황내역", "판매현황"];
+  const sheet = supportedSheetNames.map((name) => workbook.sheets.find((item) => item.name === name)).find(Boolean);
+  if (!sheet) throw new Error(`Sheet not found: ${supportedSheetNames.join(", ")}`);
+  const sheetName = sheet.name;
   const sharedStrings = readSharedStrings(filePath);
   const rows = readSheetRows(filePath, sheet.path, sharedStrings);
   const header = findHeader(rows);

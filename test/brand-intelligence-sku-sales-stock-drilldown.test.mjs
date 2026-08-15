@@ -61,6 +61,7 @@ const SKU_JOIN_SOURCE = [
   sourceOfFunction("entitySkuStockFor"),
   sourceOfFunction("entityRegistryEntryByProdCd"),
   sourceOfFunction("entityEcountProdCdFor"),
+  sourceOfFunction("entityEcountProductNameFor"),
   sourceOfFunction("loadEntityProductRegistryEntries"),
   sourceOfFunction("rebuildEntitySkuRows"),
   sourceOfFunction("refreshEntitySkuSales"),
@@ -111,6 +112,7 @@ function loadSkuJoin({ brandCode, sharedJsonResponses = {}, drawerOpen = false }
   const fn = Function(
     "brandIdentityState", "getSharedJson", "entityDrawerState", "renderEntityDrawerBody", "renderEntityProductSection",
     "loadEntityCategoryManualOverrides", "classifyEntityProductCategory", "rebuildEntityCategoryRows",
+    "loadEntityColorMaster", "classifyEntityProductColor", "rebuildEntityColorRows",
     "refreshEntityScore", "currentEntityPeriodMonthKey",
     `
     let entitySkuSalesState = { brandCode: null, periodMonth: null, rows: [], fetchFailed: false };
@@ -136,7 +138,10 @@ function loadSkuJoin({ brandCode, sharedJsonResponses = {}, drawerOpen = false }
     () => { renderCalls.count += 1; },
     () => {},
     async () => new Map(),
-    () => ({ code: "UNCLASSIFIED", source: "fallback" }),
+    () => ({ code: "UNCLASSIFIED", subcategoryCode: null, source: "fallback" }),
+    () => {},
+    async () => null,
+    () => ({ family: "UNKNOWN", raw: null, matchedAliases: [], source: "fallback" }),
     () => {},
     () => {},
     () => "2026-08"

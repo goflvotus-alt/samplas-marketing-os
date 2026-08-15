@@ -846,6 +846,185 @@ select,
   font-weight: 800;
 }
 
+.category-review-header,
+.category-review-toolbar,
+.category-review-toolbar label,
+.category-review-toolbar > div,
+.category-review-brand,
+.category-review-actions button {
+  display: flex;
+  align-items: center;
+}
+
+.category-review-header,
+.category-review-toolbar {
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.category-review-toolbar {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.category-review-toolbar label,
+.category-review-toolbar > div {
+  gap: 8px;
+}
+
+.category-review-toolbar label span,
+.category-review-toolbar > div span,
+.category-review-brand small,
+.category-review-meta dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.category-review-toolbar select {
+  min-width: 240px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 9px 34px 9px 10px;
+  font: inherit;
+}
+
+.category-review-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.category-review-brands {
+  max-height: 680px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.category-review-brand {
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.category-review-brand.active {
+  background: var(--paper);
+  box-shadow: inset 3px 0 0 var(--text);
+}
+
+.category-review-brand strong {
+  flex: 1;
+}
+
+.category-review-card {
+  min-height: 420px;
+  padding: clamp(22px, 4vw, 42px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.category-review-card h2 {
+  max-width: 800px;
+  margin: 8px 0 24px;
+  font-size: clamp(24px, 4vw, 42px);
+  line-height: 1.08;
+}
+
+.category-review-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 0 26px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.category-review-meta div {
+  padding: 13px;
+  background: #fff;
+}
+
+.category-review-meta .wide {
+  grid-column: 1 / -1;
+}
+
+.category-review-meta dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
+.category-review-actions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.category-review-actions button {
+  min-height: 58px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+.category-review-actions button span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.category-review-hold {
+  margin-top: 14px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.category-review-status {
+  min-height: 20px;
+  margin: 10px 0 0;
+  color: var(--red);
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .category-review-toolbar,
+  .category-review-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .category-review-toolbar {
+    display: grid;
+  }
+
+  .category-review-brands {
+    max-height: 220px;
+  }
+
+  .category-review-actions {
+    grid-template-columns: repeat(2, minmax(110px, 1fr));
+  }
+}
+
 .product-dashboard-wrap td {
   vertical-align: top;
 }
@@ -5278,6 +5457,16 @@ td {
   font-size: 24px;
 }
 
+.monthly-store-coverage {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
 .monthly-store-performance-kpis {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5308,6 +5497,11 @@ td {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.monthly-store-top5 .monthly-report-rank-row {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  padding: 10px 0;
 }
 
 .annual-flow-filters {
@@ -7250,6 +7444,32 @@ body.clients-detail-modal-open {
   font-weight: 750;
 }
 
+.product-registry-revenue-impact {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #e7d49a;
+  border-radius: 10px;
+  background: #fff9e8;
+}
+
+.product-registry-revenue-impact > strong {
+  font-size: 22px;
+}
+
+.product-registry-revenue-impact > span,
+.product-registry-revenue-impact > small {
+  color: #6f5a20;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.product-registry-candidate-row input[type="checkbox"] {
+  margin-right: 8px;
+}
+
 .product-registry-detail {
   position: sticky;
   top: 18px;
@@ -7848,9 +8068,11 @@ body.clients-detail-modal-open {
    먹히므로 규칙을 추가하지 않는다. */
 #entityCompositionToggle[hidden],
 #entityCategoryToggle[hidden],
+#entityColorToggle[hidden],
 #entityCompositionEmpty[hidden],
 #entityTrendEmpty[hidden],
-#entityCategoryEmpty[hidden] {
+#entityCategoryEmpty[hidden],
+#entityColorEmpty[hidden] {
   display: none;
 }
 
@@ -10309,6 +10531,9 @@ body.entity-compare-on #entityHeroKpiGrid {
 #BrandDashboard > #entityHeroScoreBlock,
 #BrandDashboard > .brand-category-section { order: 11; } /* SCORE + CATEGORY INTELLIGENCE */
 #BrandDashboard > #entityFutureBlockedStatus { order: 11; } /* Sell-through만 남은 BLOCKED 상태 */
+/* Color Intelligence — Category와 완전히 독립된 axis지만 같은 order(11)로 두고 HTML
+   소스 순서(Category 바로 뒤)로 tie-break해 시각적으로 Category 다음에 오게 한다. */
+#BrandDashboard > .brand-color-section { order: 11; } /* COLOR INTELLIGENCE */
 #BrandDashboard > .brand-hero-status-row { order: 12; } /* SYSTEM STATUS — 항상 맨 아래 */
 
 /* STEP67-9G-1B: Period Performance Independent Section. STEP67-9G-1A가 실측한
@@ -10878,6 +11103,31 @@ body.entity-compare-on .entity-compare-trend-legend {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
+}
+
+.store-intel-unavailable {
+  grid-column: 1 / -1;
+  min-height: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--muted);
+  text-align: center;
+}
+
+.store-intel-unavailable strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.store-intel-unavailable span {
+  font-size: 11px;
 }
 
 @media (max-width: 1080px) {

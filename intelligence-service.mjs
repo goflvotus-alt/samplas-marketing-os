@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
 import { createHash, createHmac } from "node:crypto";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -37,6 +38,15 @@ import {
 // 이 공용 리더로 교체한다 — 매장별 분리 스냅샷을 병합해 기존과 동일한 ALL 라인 집합을
 // 얻는 로직(그리고 storeCode 보존)을 여기서 새로 구현하지 않고 그대로 재사용한다.
 import { readEcountOfflineSalesSnapshot, KNOWN_STORE_CODES } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
+import {
+  loadCategoryReviewWorkspace,
+  saveCategoryReviewAssignment
+} from "./scripts/category-review.mjs";
+import {
+  approveRevenueReviewItem,
+  buildRevenueReviewQueue,
+  inventoryCandidatesForSale
+} from "./scripts/product-registry-revenue-review.mjs";
 
 const root = resolve(".");
 const env = await loadEnv();
@@ -55,6 +65,8 @@ const missionCacheFile = join(intelligenceWorkDir, "mission-cache.json");
 const productRegistryFile = join(workRoot, "product-registry.json");
 const productRegistryReviewQueueFile = join(workRoot, "product-registry-review-queue.json");
 const categoryMasterFile = join(workRoot, "category-master.json");
+const colorMasterFile = join(workRoot, "color-master.json");
+const categoryReviewAuditFile = join(workRoot, "category-unclassified-model-audit.json");
 const inventoryIntelligenceCandidatesFile = join(workRoot, "inventory-intelligence-candidates.json");
 // Phase 3A — Inventory Overview: ECOUNT stockQuantity를 유일한 재고 기준(Source of Truth)으로 사용한다.
 // Cafe24 inventoryQuantity는 이 라우트의 어떤 계산에도 사용하지 않는다.
@@ -69,6 +81,8 @@ const marketingOsTimeoutMs = 12000;
 const missionCacheTtlMs = 30000;
 const missionResultCache = new Map();
 const missionRefreshPromises = new Map();
+let categoryReviewWriteQueue = Promise.resolve();
+let productRegistryReviewWriteQueue = Promise.resolve();
 // STEP 47A — Intelligence Service Dependency Hardening: 이 값은 프런트엔드가 이미 사용 중인
 // 가장 긴 클라이언트 타임아웃(brief/missions = 40000ms, samplas-marketing-os.js getJson 호출부
 // 참고)보다 반드시 커야 한다. 정상적으로 느린 응답을 여기서 먼저 끊어버리면 안 되고, 이 값은
@@ -217,9 +231,23 @@ async function routeIntelligenceRequest(url, req, res) {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return handleProductRegistryReviewQueueGet(res);
     }
+    if (url.pathname === "/api/intelligence/product-registry/revenue-review") {
+      if (req.method === "GET") return await handleProductRegistryRevenueReviewGet(url, res);
+      if (req.method === "PATCH") return await handleProductRegistryRevenueReviewPatch(req, res);
+      return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+    }
     if (url.pathname === "/api/intelligence/category-master") {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return handleCategoryMasterGet(res);
+    }
+    if (url.pathname === "/api/intelligence/color-master") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleColorMasterGet(res);
+    }
+    if (url.pathname === "/api/intelligence/category-review") {
+      if (req.method === "GET") return handleCategoryReviewGet(res);
+      if (req.method === "PATCH") return await handleCategoryReviewPatch(req, res);
+      return json(res, { ok: false, error: "Method Not Allowed" }, 405);
     }
     if (url.pathname === "/api/inventory/intelligence/health") {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
@@ -257,7 +285,7 @@ async function routeIntelligenceRequest(url, req, res) {
   }
 }
 
-const isDirectRun = import.meta.url === `file://${process.argv[1]}`;
+const isDirectRun = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectRun) {
   const server = createServer(handleIntelligenceRequest);
@@ -310,6 +338,39 @@ async function handleProductRegistryReviewQueueGet(res) {
   return json(res, { ok: true, reviewQueue });
 }
 
+async function handleProductRegistryRevenueReviewGet(url, res) {
+  const month = String(url.searchParams.get("month") || todayKey().slice(0, 7));
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return json(res, { ok: false, error: "Bad Request", message: "month must be YYYY-MM" }, 400);
+  const [registry, reviewQueue, report, inventoryProducts] = await Promise.all([
+    readProductRegistryJson(productRegistryFile),
+    readProductRegistryJson(productRegistryReviewQueueFile),
+    fetchMarketingOsJson(`/api/reports/monthly?month=${encodeURIComponent(month)}`),
+    readProductRegistryJson(ecountInventoryLatestFile).catch(() => [])
+  ]);
+  if (!report.ok) return json(res, { ok: false, error: "Source Unavailable", message: report.message }, 503);
+  const queue = buildRevenueReviewQueue({ productSales: report.data?.commerce?.productSales || [], registry, reviewQueue, inventoryProducts });
+  return json(res, { ok: true, month, ...queue });
+}
+
+async function handleProductRegistryRevenueReviewPatch(req, res) {
+  const parsedBody = await readJsonBody(req);
+  if (!parsedBody.ok) return json(res, { ok: false, error: "Bad Request", message: parsedBody.message }, 400);
+  const body = parsedBody.value || {};
+  const operation = productRegistryReviewWriteQueue.then(async () => {
+    const [report, inventoryProducts] = await Promise.all([
+      fetchMarketingOsJson(`/api/reports/monthly?month=${encodeURIComponent(String(body.month || todayKey().slice(0, 7)))}`),
+      readProductRegistryJson(ecountInventoryLatestFile)
+    ]);
+    if (!report.ok) throw new Error(report.message);
+    const product = (report.data?.commerce?.productSales || []).find((item) => String(item.productNo) === String(body.productNo));
+    const candidates = inventoryCandidatesForSale(product, inventoryProducts);
+    return approveRevenueReviewItem({ registryPath: productRegistryFile, productNo: body.productNo, prodCds: body.prodCds, product, candidateProducts: candidates });
+  });
+  productRegistryReviewWriteQueue = operation.catch(() => {});
+  const result = await operation;
+  return json(res, { ok: true, entry: result.entry });
+}
+
 // BI-BATCH-I: SAMPLAS Category Master v1의 manualOverrides만 읽어 노출한다(읽기 전용).
 // 파일이 아직 없으면 빈 override 목록으로 취급 — 결정론적 규칙(이름/ECOUNT suffix)은
 // 이 파일에 저장하지 않고 outputs/samplas-marketing-os.js에 코드로 존재한다.
@@ -321,6 +382,47 @@ async function handleCategoryMasterGet(res) {
     master = { version: "v1", manualOverrides: [] };
   }
   return json(res, { ok: true, categoryMaster: master });
+}
+
+// SAMPLAS Color Master v1.
+// Canonical deterministic color-family policy를 읽기 전용으로 노출한다.
+// 이 API는 분류를 수행하거나 master 파일을 수정하지 않는다.
+async function handleColorMasterGet(res) {
+  let master;
+  try {
+    master = await readProductRegistryJson(colorMasterFile);
+  } catch {
+    master = {
+      version: "v1",
+      families: [],
+      aliases: {},
+      policy: {}
+    };
+  }
+  return json(res, { ok: true, colorMaster: master });
+}
+
+async function handleCategoryReviewGet(res) {
+  const workspace = await loadCategoryReviewWorkspace({
+    auditPath: categoryReviewAuditFile,
+    masterPath: categoryMasterFile
+  });
+  return json(res, { ok: true, workspace });
+}
+
+async function handleCategoryReviewPatch(req, res) {
+  const parsedBody = await readJsonBody(req);
+  if (!parsedBody.ok) return json(res, { ok: false, error: "Bad Request", message: parsedBody.message }, 400);
+  const body = parsedBody.value || {};
+  const operation = categoryReviewWriteQueue.then(() => saveCategoryReviewAssignment({
+    auditPath: categoryReviewAuditFile,
+    masterPath: categoryMasterFile,
+    modelKey: String(body?.modelKey || ""),
+    categoryCode: String(body?.categoryCode || "")
+  }));
+  categoryReviewWriteQueue = operation.catch(() => {});
+  const result = await operation;
+  return json(res, { ok: true, assignment: result.assignment });
 }
 
 // Phase 2A(scripts/diagnose-inventory-reconciliation.mjs)가 생성한
