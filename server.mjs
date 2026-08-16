@@ -185,6 +185,17 @@ const server = isMainModule ? createServer(async (req, res) => {
       );
       return json(res, data);
     }
+    const cafe24DiscountPriceMatch = url.pathname.match(/^\/api\/cafe24\/products\/(\d+)\/discountprice$/);
+    if (cafe24DiscountPriceMatch) {
+      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      const productNo = cafe24DiscountPriceMatch[1];
+      try {
+        const discountprice = await fetchCafe24ProductDiscountPrice(productNo);
+        return json(res, { discountprice });
+      } catch (error) {
+        return json(res, { error: safeErrorMessage(error) }, error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
+      }
+    }
     if (url.pathname.startsWith("/api/cafe24/products/")) {
       if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
       const productNo = decodeURIComponent(url.pathname.slice("/api/cafe24/products/".length)).trim();
@@ -2277,6 +2288,36 @@ async function fetchCafe24ProductDetail(productNo) {
   if (body.error) throw body.error;
   return body.product || {};
 }
+
+async function fetchCafe24ProductDiscountPrice(productNo) {
+  if (env.CAFE24_PROXY_BASE_URL) {
+    const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
+    const url = new URL(`${base}/api/cafe24/products/${encodeURIComponent(productNo)}/discountprice`);
+    const response = await fetch(url, { headers: cafe24ProxyHeaders() });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      const error = new Error(`Cafe24 discountprice proxy가 JSON이 아닌 응답을 보냈습니다: ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    if (!response.ok || body.error) {
+      const error = new Error(body.error || body.message || `Cafe24 discountprice proxy error ${response.status}`);
+      error.status = response.status;
+      error.body = body;
+      throw error;
+    }
+    return body.discountprice ?? body.discountprices ?? body;
+  }
+
+  const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products/${encodeURIComponent(productNo)}/discountprice`);
+  const body = await cafe24FetchJson(url);
+  if (body.error) throw body.error;
+  return body.discountprice ?? body.discountprices ?? body;
+}
+
 
 async function fetchCafe24ProductVariantsWithInventory(productNo) {
   const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products/${productNo}/variants`);
