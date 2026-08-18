@@ -74,6 +74,75 @@ function apiVersion(env) {
   return env.CAFE24_API_VERSION || env.CAFE24_ADMIN_API_VERSION || "2025-06-01";
 }
 
+function cafe24ProxyHeaders(env) {
+  const headers = {};
+  if (env.CAFE24_PROXY_SECRET) {
+    headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
+  }
+  if (env.CAFE24_PROXY_BASIC_AUTH) {
+    headers.Authorization =
+      `Basic ${Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64")}`;
+  }
+  return headers;
+}
+
+async function cafe24GetFullCatalogPageFromProxy(
+  env,
+  { limit, offset },
+  { fetchImpl = fetch } = {}
+) {
+  const base = String(env.CAFE24_PROXY_BASE_URL || "").replace(/\/$/, "");
+  if (!base) {
+    throw Object.assign(
+      new Error("missing_proxy_base_url"),
+      { category: "environment_missing" }
+    );
+  }
+
+  const url = new URL(`${base}/api/cafe24/products/full-catalog`);
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("offset", String(offset));
+
+  const response = await fetchImpl(url, {
+    method: "GET",
+    headers: cafe24ProxyHeaders(env)
+  });
+
+  const text = await response.text();
+  let body;
+  try {
+    body = JSON.parse(text || "{}");
+  } catch {
+    body = { message: text.slice(0, 500) };
+  }
+
+  if (!response.ok || body.error) {
+    const message =
+      body.error?.message ||
+      body.error ||
+      body.message ||
+      `Cafe24 full catalog proxy error ${response.status}`;
+
+    const category =
+      response.status === 401
+        ? "authentication_failed"
+        : response.status === 403
+          ? "endpoint_access_denied"
+          : response.status === 404
+            ? "endpoint_not_found"
+            : response.status === 429
+              ? "rate_limited"
+              : "api_error";
+
+    throw Object.assign(
+      new Error(String(message)),
+      { category, httpStatus: response.status }
+    );
+  }
+
+  return body;
+}
+
 async function cafe24Get(env, path, params = {}, { fetchImpl = fetch } = {}) {
   if (!env.CAFE24_MALL_ID) throw Object.assign(new Error("missing_mall_id"), { category: "environment_missing" });
   const accessToken = await ensureAccessToken(env);
@@ -118,14 +187,28 @@ export async function fetchAllCafe24ProductsFullCatalog(options = {}) {
   let pagesFetched = 0;
   let stoppedReason = "empty_page";
   for (let offset = 0; pagesFetched < maxPages; offset += pageSize) {
-    const body = await cafe24Get(env, "/products", { limit: pageSize, offset }, { fetchImpl });
+    const body = env.CAFE24_PROXY_BASE_URL
+      ? await cafe24GetFullCatalogPageFromProxy(
+          env,
+          { limit: pageSize, offset },
+          { fetchImpl }
+        )
+      : await cafe24Get(
+          env,
+          "/products",
+          { limit: pageSize, offset },
+          { fetchImpl }
+        );
+
     const page = body.products || [];
     pagesFetched += 1;
     products.push(...page);
+
     if (page.length < pageSize) {
       stoppedReason = page.length === 0 ? "empty_page" : "partial_page";
       break;
     }
+
     if (pagesFetched >= maxPages) {
       stoppedReason = "max_pages_reached";
     }

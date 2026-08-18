@@ -191,11 +191,26 @@ const server = isMainModule ? createServer(async (req, res) => {
       }
 
       try {
-        const products = await fetchCafe24FullProductCatalog();
+        const limit = Math.max(
+          1,
+          Math.min(100, Number(url.searchParams.get("limit")) || 100)
+        );
+        const offset = Math.max(
+          0,
+          Number(url.searchParams.get("offset")) || 0
+        );
+
+        const products = await fetchCafe24FullProductCatalog({
+          limit,
+          offset
+        });
 
         return json(res, {
           ok: true,
           count: products.length,
+          limit,
+          offset,
+          hasMore: products.length === limit,
           products
         });
       } catch (error) {
@@ -2102,13 +2117,19 @@ async function fetchCafe24ProductList(options = {}) {
   return products;
 }
 
-// Cafe24 전체 상품 카탈로그를 pagination 끝까지 읽는다.
+// Cafe24 전체 상품 카탈로그를 페이지 단위로 읽는다.
 // display/selling 상태로 필터링하지 않는다.
-// 기존 Cafe24 OAuth / refresh / proxy 인증 구조를 그대로 재사용한다.
-async function fetchCafe24FullProductCatalog() {
+// 전체 페이지 순회는 호출하는 로컬 스크립트가 담당해 Render 장시간 요청을 피한다.
+async function fetchCafe24FullProductCatalog(options = {}) {
+  const limit = Math.max(1, Math.min(100, Number(options.limit) || 100));
+  const offset = Math.max(0, Number(options.offset) || 0);
+
   if (env.CAFE24_PROXY_BASE_URL) {
     const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
     const url = new URL(`${base}/api/cafe24/products/full-catalog`);
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
+
     const response = await fetch(url, { headers: cafe24ProxyHeaders() });
     const text = await response.text();
 
@@ -2135,27 +2156,16 @@ async function fetchCafe24FullProductCatalog() {
     return body.products || [];
   }
 
-  const products = [];
-  const pageSize = 100;
+  const url = new URL(
+    `https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products`
+  );
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("offset", String(offset));
 
-  for (let offset = 0; ; offset += pageSize) {
-    const url = new URL(
-      `https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products`
-    );
+  const body = await cafe24FetchJson(url);
+  if (body.error) throw body.error;
 
-    url.searchParams.set("limit", String(pageSize));
-    url.searchParams.set("offset", String(offset));
-
-    const body = await cafe24FetchJson(url);
-    if (body.error) throw body.error;
-
-    const page = body.products || [];
-    products.push(...page);
-
-    if (page.length < pageSize) break;
-  }
-
-  return products;
+  return body.products || [];
 }
 
 async function fetchCafe24BrandList() {
