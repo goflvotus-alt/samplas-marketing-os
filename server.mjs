@@ -185,6 +185,30 @@ const server = isMainModule ? createServer(async (req, res) => {
       );
       return json(res, data);
     }
+    if (url.pathname === "/api/cafe24/products/full-catalog") {
+      if (!isAuthorizedInternalRequest(req)) {
+        return json(res, { error: "Unauthorized" }, 401);
+      }
+
+      try {
+        const products = await fetchCafe24FullProductCatalog();
+
+        return json(res, {
+          ok: true,
+          count: products.length,
+          products
+        });
+      } catch (error) {
+        return json(
+          res,
+          { error: safeErrorMessage(error) },
+          error.status && Number(error.status) >= 400
+            ? Number(error.status)
+            : 500
+        );
+      }
+    }
+
     const cafe24DiscountPriceMatch = url.pathname.match(/^\/api\/cafe24\/products\/(\d+)\/discountprice$/);
     if (cafe24DiscountPriceMatch) {
       if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
@@ -2075,6 +2099,62 @@ async function fetchCafe24ProductList(options = {}) {
     products.push(...page);
     if (page.length < pageSize) break;
   }
+  return products;
+}
+
+// Cafe24 전체 상품 카탈로그를 pagination 끝까지 읽는다.
+// display/selling 상태로 필터링하지 않는다.
+// 기존 Cafe24 OAuth / refresh / proxy 인증 구조를 그대로 재사용한다.
+async function fetchCafe24FullProductCatalog() {
+  if (env.CAFE24_PROXY_BASE_URL) {
+    const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
+    const url = new URL(`${base}/api/cafe24/products/full-catalog`);
+    const response = await fetch(url, { headers: cafe24ProxyHeaders() });
+    const text = await response.text();
+
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      const error = new Error(
+        `Cafe24 full catalog proxy가 JSON이 아닌 응답을 보냈습니다: ${response.status}`
+      );
+      error.status = response.status;
+      throw error;
+    }
+
+    if (!response.ok || body.error) {
+      const error = new Error(
+        body.error || body.message || `Cafe24 full catalog proxy error ${response.status}`
+      );
+      error.status = response.status;
+      error.body = body;
+      throw error;
+    }
+
+    return body.products || [];
+  }
+
+  const products = [];
+  const pageSize = 100;
+
+  for (let offset = 0; ; offset += pageSize) {
+    const url = new URL(
+      `https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products`
+    );
+
+    url.searchParams.set("limit", String(pageSize));
+    url.searchParams.set("offset", String(offset));
+
+    const body = await cafe24FetchJson(url);
+    if (body.error) throw body.error;
+
+    const page = body.products || [];
+    products.push(...page);
+
+    if (page.length < pageSize) break;
+  }
+
   return products;
 }
 
