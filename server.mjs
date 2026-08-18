@@ -195,21 +195,34 @@ const server = isMainModule ? createServer(async (req, res) => {
           1,
           Math.min(100, Number(url.searchParams.get("limit")) || 100)
         );
-        const offset = Math.max(
-          0,
-          Number(url.searchParams.get("offset")) || 0
-        );
+
+        const sinceProductNoRaw = url.searchParams.get("since_product_no");
+        const sinceProductNo = sinceProductNoRaw === null
+          ? null
+          : Math.max(0, Number(sinceProductNoRaw) || 0);
+
+        const offset = sinceProductNo === null
+          ? Math.max(0, Number(url.searchParams.get("offset")) || 0)
+          : 0;
 
         const products = await fetchCafe24FullProductCatalog({
           limit,
-          offset
+          offset,
+          sinceProductNo
         });
+
+        const lastProductNo = products.length
+          ? Number(products[products.length - 1]?.product_no)
+          : null;
 
         return json(res, {
           ok: true,
           count: products.length,
           limit,
-          offset,
+          offset: sinceProductNo === null ? offset : null,
+          sinceProductNo,
+          nextSinceProductNo:
+            Number.isFinite(lastProductNo) ? lastProductNo : null,
           hasMore: products.length === limit,
           products
         });
@@ -2123,12 +2136,21 @@ async function fetchCafe24ProductList(options = {}) {
 async function fetchCafe24FullProductCatalog(options = {}) {
   const limit = Math.max(1, Math.min(100, Number(options.limit) || 100));
   const offset = Math.max(0, Number(options.offset) || 0);
+  const sinceProductNo = options.sinceProductNo === null ||
+    options.sinceProductNo === undefined
+    ? null
+    : Math.max(0, Number(options.sinceProductNo) || 0);
 
   if (env.CAFE24_PROXY_BASE_URL) {
     const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
     const url = new URL(`${base}/api/cafe24/products/full-catalog`);
     url.searchParams.set("limit", String(limit));
-    url.searchParams.set("offset", String(offset));
+
+    if (sinceProductNo !== null) {
+      url.searchParams.set("since_product_no", String(sinceProductNo));
+    } else {
+      url.searchParams.set("offset", String(offset));
+    }
 
     const response = await fetch(url, { headers: cafe24ProxyHeaders() });
     const text = await response.text();
@@ -2160,7 +2182,12 @@ async function fetchCafe24FullProductCatalog(options = {}) {
     `https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products`
   );
   url.searchParams.set("limit", String(limit));
-  url.searchParams.set("offset", String(offset));
+
+  if (sinceProductNo !== null) {
+    url.searchParams.set("since_product_no", String(sinceProductNo));
+  } else {
+    url.searchParams.set("offset", String(offset));
+  }
 
   const body = await cafe24FetchJson(url);
   if (body.error) throw body.error;

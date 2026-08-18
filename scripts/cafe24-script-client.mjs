@@ -88,7 +88,7 @@ function cafe24ProxyHeaders(env) {
 
 async function cafe24GetFullCatalogPageFromProxy(
   env,
-  { limit, offset },
+  { limit, sinceProductNo },
   { fetchImpl = fetch } = {}
 ) {
   const base = String(env.CAFE24_PROXY_BASE_URL || "").replace(/\/$/, "");
@@ -101,7 +101,7 @@ async function cafe24GetFullCatalogPageFromProxy(
 
   const url = new URL(`${base}/api/cafe24/products/full-catalog`);
   url.searchParams.set("limit", String(limit));
-  url.searchParams.set("offset", String(offset));
+  url.searchParams.set("since_product_no", String(sinceProductNo));
 
   const response = await fetchImpl(url, {
     method: "GET",
@@ -186,11 +186,13 @@ export async function fetchAllCafe24ProductsFullCatalog(options = {}) {
   const products = [];
   let pagesFetched = 0;
   let stoppedReason = "empty_page";
+  let sinceProductNo = 0;
+
   for (let offset = 0; pagesFetched < maxPages; offset += pageSize) {
     const body = env.CAFE24_PROXY_BASE_URL
       ? await cafe24GetFullCatalogPageFromProxy(
           env,
-          { limit: pageSize, offset },
+          { limit: pageSize, sinceProductNo },
           { fetchImpl }
         )
       : await cafe24Get(
@@ -207,6 +209,22 @@ export async function fetchAllCafe24ProductsFullCatalog(options = {}) {
     if (page.length < pageSize) {
       stoppedReason = page.length === 0 ? "empty_page" : "partial_page";
       break;
+    }
+
+    if (env.CAFE24_PROXY_BASE_URL) {
+      const nextSinceProductNo = Number(page[page.length - 1]?.product_no);
+
+      if (
+        !Number.isFinite(nextSinceProductNo) ||
+        nextSinceProductNo <= sinceProductNo
+      ) {
+        throw Object.assign(
+          new Error("full_catalog_cursor_did_not_advance"),
+          { category: "pagination_failed" }
+        );
+      }
+
+      sinceProductNo = nextSinceProductNo;
     }
 
     if (pagesFetched >= maxPages) {
