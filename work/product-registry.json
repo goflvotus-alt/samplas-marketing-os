@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T05:26:48.361Z",
+  "generatedAt": "2026-08-20T16:37:17.705Z",
   "mode": "product_registry_phase1_diagnostic_only",
   "source": {
     "diagnostic": "work/cafe24-ecount-product-matching-diagnostic.json",
@@ -12,14 +12,14 @@
   },
   "summary": {
     "registryCount": 3596,
-    "verifiedCount": 254,
+    "verifiedCount": 344,
     "reviewQueueCount": 727,
     "confidenceDistribution": {
-      "100": 254,
+      "100": 344,
       "95-99": 987,
       "80-94": 25,
       "60-79": 2023,
-      "0-59": 307
+      "0-59": 217
     },
     "cafe24AnchorCoverage": {
       "cafe24AnchorCount": 824,
@@ -3652,29 +3652,59 @@
       "brandId": "B00000PM",
       "brandName": "노페이스스튜디오",
       "canonicalProductName": "DUSTLAND SELVEDGE BOOTCUT DENIM",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14617",
         "productCode": "P0000VQF",
         "productName": "[NO/FAITH STUDIOS : 노페이스스튜디오] DUSTLAND SELVEDGE BOOTCUT DENIM"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "NOF261BT00802",
+            "barcode": "NOF261BT00802",
+            "productName": "NO FAITH STUDIOS / DUSTLAND SELVEDGE BOOTCUT DENIM",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NOF261BT00803",
+            "barcode": "NOF261BT00803",
+            "productName": "NO FAITH STUDIOS / DUSTLAND SELVEDGE BOOTCUT DENIM",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NOF261BT00804",
+            "barcode": "NOF261BT00804",
+            "productName": "NO FAITH STUDIOS / DUSTLAND SELVEDGE BOOTCUT DENIM",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14514",
@@ -3737,29 +3767,51 @@
       "brandId": "B00000PM",
       "brandName": "노페이스스튜디오",
       "canonicalProductName": "SHADOW SLEEVE T-SHIRT GREY",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14627",
         "productCode": "P0000VQP",
         "productName": "[NO/FAITH STUDIOS : 노페이스스튜디오] SHADOW SLEEVE T-SHIRT GREY"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "NOF261ST00501",
+            "barcode": "NOF261ST00501",
+            "productName": "NO FAITH STUDIOS / SHADOW SLEEVE T-SHIRT GREY",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "NOF261ST00502",
+            "barcode": "NOF261ST00502",
+            "productName": "NO FAITH STUDIOS / SHADOW SLEEVE T-SHIRT GREY",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-9209",
@@ -5706,33 +5758,51 @@
       "updatedAt": "2026-07-19T05:08:29.788Z"
     },
     {
-      "canonicalProductId": "CP-C24-14560",
+      "canonicalProductId": "CP-C24-14887",
       "brandId": "B00000MJ",
       "brandName": "레저렉션13",
       "canonicalProductName": "26-AC011 CREAM",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
-        "productNo": "14560",
-        "productCode": "P0000VOA",
+        "productNo": "14887",
+        "productCode": "P0000WAP",
         "productName": "[RESURRECITON 13 : 레저렉션13] 26-AC011 CREAM(CANVAS)"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "RES261AC00500",
+            "barcode": "RES261AC00500",
+            "productName": "RESURRECITON 13 / 26-AC011 cream(canvas)",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence",
+          "cafe24_product_replacement_14560_to_14887",
+          "fresh_full_catalog_verified",
+          "full_ecount_exact_one_to_one"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-20T18:18:45.995Z"
     },
     {
       "canonicalProductId": "CP-C24-14563",
@@ -5813,116 +5883,236 @@
       "brandId": "B00000MJ",
       "brandName": "레저렉션13",
       "canonicalProductName": "26-T013 BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14561",
         "productCode": "P0000VOB",
         "productName": "[RESURRECITON 13 : 레저렉션13] 26-T013 BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "RES261ST00302",
+            "barcode": "RES261ST00302",
+            "productName": "RESURRECITON 13 / 26-T013 black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES261ST00303",
+            "barcode": "RES261ST00303",
+            "productName": "RESURRECITON 13 / 26-T013 black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES261ST00304",
+            "barcode": "RES261ST00304",
+            "productName": "RESURRECITON 13 / 26-T013 black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14562",
       "brandId": "B00000MJ",
       "brandName": "레저렉션13",
       "canonicalProductName": "26-T013 CREAM",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14562",
         "productCode": "P0000VOC",
         "productName": "[RESURRECITON 13 : 레저렉션13] 26-T013 CREAM"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "RES261ST00402",
+            "barcode": "RES261ST00402",
+            "productName": "RESURRECITON 13 / 26-T013 cream",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES261ST00403",
+            "barcode": "RES261ST00403",
+            "productName": "RESURRECITON 13 / 26-T013 cream",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES261ST00404",
+            "barcode": "RES261ST00404",
+            "productName": "RESURRECITON 13 / 26-T013 cream",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14565",
       "brandId": "B00000MJ",
       "brandName": "레저렉션13",
       "canonicalProductName": "26-T015 BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14565",
         "productCode": "P0000VOF",
         "productName": "[RESURRECITON 13 : 레저렉션13] 26-T015 BLUE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "RES261ST00602",
+            "barcode": "RES261ST00602",
+            "productName": "RESURRECITON 13 / 26-T015 blue",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES261ST00603",
+            "barcode": "RES261ST00603",
+            "productName": "RESURRECITON 13 / 26-T015 blue",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES261ST00604",
+            "barcode": "RES261ST00604",
+            "productName": "RESURRECITON 13 / 26-T015 blue",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14564",
       "brandId": "B00000MJ",
       "brandName": "레저렉션13",
       "canonicalProductName": "26-T015 BROWN",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14564",
         "productCode": "P0000VOE",
         "productName": "[RESURRECITON 13 : 레저렉션13] 26-T015 BROWN"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "RES261ST00702",
+            "barcode": "RES261ST00702",
+            "productName": "RESURRECITON 13 / 26-T015 brown",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES261ST00703",
+            "barcode": "RES261ST00703",
+            "productName": "RESURRECITON 13 / 26-T015 brown",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RES261ST00704",
+            "barcode": "RES261ST00704",
+            "productName": "RESURRECITON 13 / 26-T015 brown",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13086",
@@ -6755,29 +6945,43 @@
       "brandId": "B0000BCK",
       "brandName": "밍가",
       "canonicalProductName": "Courtney Lace-Up Top - White",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14765",
         "productCode": "P0000VVX",
         "productName": "[MINGA : 밍가] Courtney Lace-Up Top - White"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "MIN263ST00501",
+            "barcode": "MIN263ST00501",
+            "productName": "MINGA / Courtney Lace-Up Top - White",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14767",
@@ -7053,174 +7257,354 @@
       "brandId": "B0000BCK",
       "brandName": "밍가",
       "canonicalProductName": "Elowen Off Shoulder Top - Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14763",
         "productCode": "P0000VVV",
         "productName": "[MINGA : 밍가] Elowen Off Shoulder Top - Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "MIN263ST00901",
+            "barcode": "MIN263ST00901",
+            "productName": "MINGA / Elowen Off Shoulder Top - Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263ST00902",
+            "barcode": "MIN263ST00902",
+            "productName": "MINGA / Elowen Off Shoulder Top - Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263ST00903",
+            "barcode": "MIN263ST00903",
+            "productName": "MINGA / Elowen Off Shoulder Top - Black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263ST00904",
+            "barcode": "MIN263ST00904",
+            "productName": "MINGA / Elowen Off Shoulder Top - Black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14764",
       "brandId": "B0000BCK",
       "brandName": "밍가",
       "canonicalProductName": "Forgive Me Not Top - White",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14764",
         "productCode": "P0000VVW",
         "productName": "[MINGA : 밍가] Forgive Me Not Top - White"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "MIN263ST00801",
+            "barcode": "MIN263ST00801",
+            "productName": "MINGA / Forgive Me Not Top - White",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263ST00802",
+            "barcode": "MIN263ST00802",
+            "productName": "MINGA / Forgive Me Not Top - White",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14775",
       "brandId": "B0000BCK",
       "brandName": "밍가",
       "canonicalProductName": "Hilda Libertine Zip Up Hoodie - Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14775",
         "productCode": "P0000VWH",
         "productName": "[MINGA : 밍가] Hilda Libertine Zip Up Hoodie - Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "MIN263OT00201",
+            "barcode": "MIN263OT00201",
+            "productName": "MINGA / Hilda Libertine Zip Up Hoodie - Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263OT00202",
+            "barcode": "MIN263OT00202",
+            "productName": "MINGA / Hilda Libertine Zip Up Hoodie - Black",
+            "size": "S/M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263OT00204",
+            "barcode": "MIN263OT00204",
+            "productName": "MINGA / Hilda Libertine Zip Up Hoodie - Black",
+            "size": "L/XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14776",
       "brandId": "B0000BCK",
       "brandName": "밍가",
       "canonicalProductName": "Hilda Military Jacket - Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14776",
         "productCode": "P0000VWI",
         "productName": "[MINGA : 밍가] Hilda Military Jacket - Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "MIN263OT00102",
+            "barcode": "MIN263OT00102",
+            "productName": "MINGA / Hilda Military Jacket - Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263OT00103",
+            "barcode": "MIN263OT00103",
+            "productName": "MINGA / Hilda Military Jacket - Black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263OT00104",
+            "barcode": "MIN263OT00104",
+            "productName": "MINGA / Hilda Military Jacket - Black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14774",
       "brandId": "B0000BCK",
       "brandName": "밍가",
       "canonicalProductName": "Lithium Lace Up Blouse - White",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14774",
         "productCode": "P0000VWG",
         "productName": "[MINGA : 밍가] Lithium Lace Up Blouse - White"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "MIN263LT00401",
+            "barcode": "MIN263LT00401",
+            "productName": "MINGA / Lithium Lace Up Blouse - White",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263LT00402",
+            "barcode": "MIN263LT00402",
+            "productName": "MINGA / Lithium Lace Up Blouse - White",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263LT00403",
+            "barcode": "MIN263LT00403",
+            "productName": "MINGA / Lithium Lace Up Blouse - White",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14771",
       "brandId": "B0000BCK",
       "brandName": "밍가",
       "canonicalProductName": "Perdition Layered Top - Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14771",
         "productCode": "P0000VWD",
         "productName": "[MINGA : 밍가] Perdition Layered Top - Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "MIN263LT00301",
+            "barcode": "MIN263LT00301",
+            "productName": "MINGA / Perdition Layered Top - Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263LT00302",
+            "barcode": "MIN263LT00302",
+            "productName": "MINGA / Perdition Layered Top - Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263LT00303",
+            "barcode": "MIN263LT00303",
+            "productName": "MINGA / Perdition Layered Top - Black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14446",
@@ -7284,58 +7668,118 @@
       "brandId": "B0000BCK",
       "brandName": "밍가",
       "canonicalProductName": "Rumour Layered Top - Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14766",
         "productCode": "P0000VVY",
         "productName": "[MINGA : 밍가] Rumour Layered Top - Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "MIN263ST00301",
+            "barcode": "MIN263ST00301",
+            "productName": "MINGA / Rumour Layered Top - Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263ST00302",
+            "barcode": "MIN263ST00302",
+            "productName": "MINGA / Rumour Layered Top - Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263ST00303",
+            "barcode": "MIN263ST00303",
+            "productName": "MINGA / Rumour Layered Top - Black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14772",
       "brandId": "B0000BCK",
       "brandName": "밍가",
       "canonicalProductName": "Salute Button Blouse - Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14772",
         "productCode": "P0000VWE",
         "productName": "[MINGA : 밍가] Salute Button Blouse - Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "MIN263LT00101",
+            "barcode": "MIN263LT00101",
+            "productName": "MINGA / Salute Button Blouse - Black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263LT00102",
+            "barcode": "MIN263LT00102",
+            "productName": "MINGA / Salute Button Blouse - Black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263LT00103",
+            "barcode": "MIN263LT00103",
+            "productName": "MINGA / Salute Button Blouse - Black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14440",
@@ -7430,29 +7874,51 @@
       "brandId": "B0000BCK",
       "brandName": "밍가",
       "canonicalProductName": "Sweet Ruin Striped Blouse - White",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14773",
         "productCode": "P0000VWF",
         "productName": "[MINGA : 밍가] Sweet Ruin Striped Blouse - White"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "MIN263LT00201",
+            "barcode": "MIN263LT00201",
+            "productName": "MINGA / Sweet Ruin Striped Blouse - White",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "MIN263LT00202",
+            "barcode": "MIN263LT00202",
+            "productName": "MINGA / Sweet Ruin Striped Blouse - White",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14769",
@@ -14401,29 +14867,51 @@
       "brandId": "B00000HD",
       "brandName": "선데이오프클럽",
       "canonicalProductName": "Adrenaline Thrashed Zip Hoodie - Washed Purple",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12155",
         "productCode": "P0000RZN",
         "productName": "[SUNDAYOFFCLUB : 선데이오프클럽] Adrenaline Thrashed Zip Hoodie - Washed Purple"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUN253LT00401",
+            "barcode": "SUN253LT00401",
+            "productName": "SUNDAY OFF CLUB / ADRENALINE THRASHED ZIP HOODIE WASHED PURPLE",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SUN253LT00402",
+            "barcode": "SUN253LT00402",
+            "productName": "SUNDAY OFF CLUB / ADRENALINE THRASHED ZIP HOODIE WASHED PURPLE",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "brand_scoped_fuzzy_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "brand_scoped_candidate",
+          "high_name_similarity",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-12149",
@@ -14471,58 +14959,94 @@
       "brandId": "B00000HD",
       "brandName": "선데이오프클럽",
       "canonicalProductName": "Bonnie & Clyde Roll-Neck T-Shirt - Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12150",
         "productCode": "P0000RZI",
         "productName": "[SUNDAYOFFCLUB : 선데이오프클럽] Bonnie & Clyde Roll-Neck T-Shirt - Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUN253LT00301",
+            "barcode": "SUN253LT00301",
+            "productName": "SUNDAY OFF CLUB / BONNIE & CLYDE ROLL-NECK T SHIRT BLACK",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SUN253LT00302",
+            "barcode": "SUN253LT00302",
+            "productName": "SUNDAY OFF CLUB / BONNIE & CLYDE ROLL-NECK T SHIRT BLACK",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "brand_scoped_fuzzy_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "brand_scoped_candidate",
+          "high_name_similarity",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-10912",
       "brandId": "B00000HD",
       "brandName": "선데이오프클럽",
       "canonicalProductName": "Cigarette Holder Necklace - Antique Silver",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10912",
         "productCode": "P0000QDS",
         "productName": "[SUNDAYOFFCLUB : 선데이오프클럽] Cigarette Holder Necklace - Antique Silver"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUN251AC00600",
+            "barcode": "SUN251AC00600",
+            "productName": "SUNDAY OFF CLUB / Cigarette Holder Necklace - Antique Silver",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13796",
@@ -14585,29 +15109,51 @@
       "brandId": "B00000HD",
       "brandName": "선데이오프클럽",
       "canonicalProductName": "House Of Love T-Shirt - Off White",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12144",
         "productCode": "P0000RZC",
         "productName": "[SUNDAYOFFCLUB : 선데이오프클럽] House Of Love T-Shirt - Off White"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUN253LT00101",
+            "barcode": "SUN253LT00101",
+            "productName": "SUNDAY OFF CLUB / HOUSE OF LOVE T SHIRT OFF WHITE",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SUN253LT00102",
+            "barcode": "SUN253LT00102",
+            "productName": "SUNDAY OFF CLUB / HOUSE OF LOVE T SHIRT OFF WHITE",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "brand_scoped_fuzzy_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "brand_scoped_candidate",
+          "high_name_similarity",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13795",
@@ -14659,29 +15205,51 @@
       "brandId": "B00000HD",
       "brandName": "선데이오프클럽",
       "canonicalProductName": "Märchen 45 Sleeveless - Off White",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10924",
         "productCode": "P0000QEE",
         "productName": "[SUNDAYOFFCLUB : 선데이오프클럽] Märchen 45 Sleeveless - Off White"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUN251ST00801",
+            "barcode": "SUN251ST00801",
+            "productName": "SUNDAY OFF CLUB / Märchen 45 Sleeveless - Off White",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SUN251ST00802",
+            "barcode": "SUN251ST00802",
+            "productName": "SUNDAY OFF CLUB / Märchen 45 Sleeveless - Off White",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-10928",
@@ -14810,29 +15378,51 @@
       "brandId": "B00000HD",
       "brandName": "선데이오프클럽",
       "canonicalProductName": "R*AFF Boxer Brief Sweatpants - Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12151",
         "productCode": "P0000RZJ",
         "productName": "[SUNDAYOFFCLUB : 선데이오프클럽] R*AFF Boxer Brief Sweatpants - Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUN253BT00101",
+            "barcode": "SUN253BT00101",
+            "productName": "SUNDAY OFF CLUB / R*AFF BOXER BRIEF SWEATPANTS BLACK",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SUN253BT00102",
+            "barcode": "SUN253BT00102",
+            "productName": "SUNDAY OFF CLUB / R*AFF BOXER BRIEF SWEATPANTS BLACK",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "brand_scoped_fuzzy_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "brand_scoped_candidate",
+          "high_name_similarity",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13789",
@@ -15020,29 +15610,43 @@
       "brandId": "B00000HD",
       "brandName": "선데이오프클럽",
       "canonicalProductName": "VTG Patches Backpack - Washed Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10916",
         "productCode": "P0000QDW",
         "productName": "[SUNDAYOFFCLUB : 선데이오프클럽] VTG Patches Backpack - Washed Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUN251AC00200",
+            "barcode": "SUN251AC00200",
+            "productName": "SUNDAY OFF CLUB / VTG Patches Backpack - Washed Black",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13104",
@@ -15256,58 +15860,112 @@
       "brandId": "B0000BCN",
       "brandName": "소마",
       "canonicalProductName": "HUNK JACKET FADED BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14505",
         "productCode": "P0000VLX",
         "productName": "[SOMAR : 소마] HUNK JACKET FADED BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SOM261OT00102",
+            "barcode": "SOM261OT00102",
+            "productName": "SOMAR / HUNK JACKET FADED BLACK",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SOM261OT00103",
+            "barcode": "SOM261OT00103",
+            "productName": "SOMAR / HUNK JACKET FADED BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SOM261OT00104",
+            "barcode": "SOM261OT00104",
+            "productName": "SOMAR / HUNK JACKET FADED BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SOM261OT00105",
+            "barcode": "SOM261OT00105",
+            "productName": "SOMAR / HUNK JACKET FADED BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14500",
       "brandId": "B0000BCN",
       "brandName": "소마",
       "canonicalProductName": "TRIGGER FINGER GLOVE BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14500",
         "productCode": "P0000VLS",
         "productName": "[SOMAR : 소마] TRIGGER FINGER GLOVE BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SOM261AC00300",
+            "barcode": "SOM261AC00300",
+            "productName": "SOMAR / TRIGGER FINGER GLOVE BLACK",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-11726",
@@ -19958,58 +20616,118 @@
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.8 01 DOWN JACKET BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12141",
         "productCode": "P0000RYZ",
         "productName": "[XLIM : 엑슬림] EP.8 01 DOWN JACKET BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI253OT00202",
+            "barcode": "XLI253OT00202",
+            "productName": "XLIM / EP.8 01 DOWN JACKET BLACK",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI253OT00203",
+            "barcode": "XLI253OT00203",
+            "productName": "XLIM / EP.8 01 DOWN JACKET BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI253OT00204",
+            "barcode": "XLI253OT00204",
+            "productName": "XLIM / EP.8 01 DOWN JACKET BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI253OT00205",
+            "barcode": "XLI253OT00205",
+            "productName": "XLIM / EP.8 01 DOWN JACKET BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-12136",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.8 01 KNIT BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12136",
         "productCode": "P0000RYU",
         "productName": "[XLIM : 엑슬림] EP.8 01 KNIT BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI253LT00104",
+            "barcode": "XLI253LT00104",
+            "productName": "XLIM / EP.8 01 KNIT BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI253LT00105",
+            "barcode": "XLI253LT00105",
+            "productName": "XLIM / EP.8 01 KNIT BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-12123",
@@ -20045,464 +20763,832 @@
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.8 05 TROUSERS BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12132",
         "productCode": "P0000RYQ",
         "productName": "[XLIM : 엑슬림] EP.8 05 TROUSERS BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI253BT00701",
+            "barcode": "XLI253BT00701",
+            "productName": "XLIM / EP.8 05 TROUSERS BLACK",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI253BT00702",
+            "barcode": "XLI253BT00702",
+            "productName": "XLIM / EP.8 05 TROUSERS BLACK",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI253BT00703",
+            "barcode": "XLI253BT00703",
+            "productName": "XLIM / EP.8 05 TROUSERS BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI253BT00704",
+            "barcode": "XLI253BT00704",
+            "productName": "XLIM / EP.8 05 TROUSERS BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI253BT00705",
+            "barcode": "XLI253BT00705",
+            "productName": "XLIM / EP.8 05 TROUSERS BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-12765",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.8 SYNOPSIS 01 FUR BAG GRAY",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12765",
         "productCode": "P0000SWZ",
         "productName": "[XLIM : 엑슬림] EP.8 SYNOPSIS 01 FUR BAG GRAY"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI253AC00900",
+            "barcode": "XLI253AC00900",
+            "productName": "XLIM / EP.8 SYNOPSIS 01 FUR BAG GRAY",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-12772",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.8 SYNOPSIS 01 WALLET WASHED BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12772",
         "productCode": "P0000SXG",
         "productName": "[XLIM : 엑슬림] EP.8 SYNOPSIS 01 WALLET WASHED BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI253AC01600",
+            "barcode": "XLI253AC01600",
+            "productName": "XLIM / EP.8 SYNOPSIS 01 WALLET WASHED BLACK",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-12768",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.8 SYNOPSIS 01 WALLET WASHED BROWN",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12768",
         "productCode": "P0000SXC",
         "productName": "[XLIM : 엑슬림] EP.8 SYNOPSIS 01 WALLET WASHED BROWN"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI253AC01700",
+            "barcode": "XLI253AC01700",
+            "productName": "XLIM / EP.8 SYNOPSIS 01 WALLET WASHED BROWN",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-12761",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.8 SYNOPSIS 01 WATCH STRAP RED",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12761",
         "productCode": "P0000SWV",
         "productName": "[XLIM : 엑슬림] EP.8 SYNOPSIS 01 WATCH STRAP RED"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI253AC01938",
+            "barcode": "XLI253AC01938",
+            "productName": "XLIM / EP.8 SYNOPSIS 01 WATCH STRAP RED",
+            "size": "38",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI253AC01942",
+            "barcode": "XLI253AC01942",
+            "productName": "XLIM / EP.8 SYNOPSIS 01 WATCH STRAP RED",
+            "size": "42",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13478",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 01 HOODIE ZIP UP BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13478",
         "productCode": "P0000TYK",
         "productName": "[XLIM : 엑슬림] EP.9 01 HOODIE ZIP UP BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261LT00201",
+            "barcode": "XLI261LT00201",
+            "productName": "XLIM / EP.9 01 HOODIE ZIP UP BLACK",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT00203",
+            "barcode": "XLI261LT00203",
+            "productName": "XLIM / EP.9 01 HOODIE ZIP UP BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT00204",
+            "barcode": "XLI261LT00204",
+            "productName": "XLIM / EP.9 01 HOODIE ZIP UP BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT00205",
+            "barcode": "XLI261LT00205",
+            "productName": "XLIM / EP.9 01 HOODIE ZIP UP BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13482",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 01 JERSEY BLACK BROWN",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13482",
         "productCode": "P0000TYO",
         "productName": "[XLIM : 엑슬림] EP.9 01 JERSEY BLACK BROWN"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261LT01101",
+            "barcode": "XLI261LT01101",
+            "productName": "XLIM / EP.9 01 JERSEY BLACK BROWN",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT01102",
+            "barcode": "XLI261LT01102",
+            "productName": "XLIM / EP.9 01 JERSEY BLACK BROWN",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT01103",
+            "barcode": "XLI261LT01103",
+            "productName": "XLIM / EP.9 01 JERSEY BLACK BROWN",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT01104",
+            "barcode": "XLI261LT01104",
+            "productName": "XLIM / EP.9 01 JERSEY BLACK BROWN",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13476",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 01 KNIT GRAY",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13476",
         "productCode": "P0000TYI",
         "productName": "[XLIM : 엑슬림] EP.9 01 KNIT GRAY"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261LT01404",
+            "barcode": "XLI261LT01404",
+            "productName": "XLIM / EP.9 01 KNIT GRAY",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13473",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 01 POLO SHIRT BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13473",
         "productCode": "P0000TYF",
         "productName": "[XLIM : 엑슬림] EP.9 01 POLO SHIRT BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261LT01503",
+            "barcode": "XLI261LT01503",
+            "productName": "XLIM / EP.9 01 POLO SHIRT BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT01504",
+            "barcode": "XLI261LT01504",
+            "productName": "XLIM / EP.9 01 POLO SHIRT BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT01505",
+            "barcode": "XLI261LT01505",
+            "productName": "XLIM / EP.9 01 POLO SHIRT BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13474",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 01 POLO SHIRT CHARCOAL",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13474",
         "productCode": "P0000TYG",
         "productName": "[XLIM : 엑슬림] EP.9 01 POLO SHIRT CHARCOAL"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261LT01601",
+            "barcode": "XLI261LT01601",
+            "productName": "XLIM / EP.9 01 POLO SHIRT CHARCOAL",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT01602",
+            "barcode": "XLI261LT01602",
+            "productName": "XLIM / EP.9 01 POLO SHIRT CHARCOAL",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT01603",
+            "barcode": "XLI261LT01603",
+            "productName": "XLIM / EP.9 01 POLO SHIRT CHARCOAL",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT01604",
+            "barcode": "XLI261LT01604",
+            "productName": "XLIM / EP.9 01 POLO SHIRT CHARCOAL",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13450",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 01 SCARF BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13450",
         "productCode": "P0000TXI",
         "productName": "[XLIM : 엑슬림] EP.9 01 SCARF BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261AC01100",
+            "barcode": "XLI261AC01100",
+            "productName": "XLIM / EP.9 01 SCARF BLACK",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13452",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 01 SCARF COBALT BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13452",
         "productCode": "P0000TXK",
         "productName": "[XLIM : 엑슬림] EP.9 01 SCARF COBALT BLUE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261AC01300",
+            "barcode": "XLI261AC01300",
+            "productName": "XLIM / EP.9 01 SCARF COBALT BLUE",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13467",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 01 T-SHIRT NAVY",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13467",
         "productCode": "P0000TXZ",
         "productName": "[XLIM : 엑슬림] EP.9 01 T-SHIRT NAVY"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261ST00303",
+            "barcode": "XLI261ST00303",
+            "productName": "XLIM / EP.9 01 T-SHIRT NAVY",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261ST00304",
+            "barcode": "XLI261ST00304",
+            "productName": "XLIM / EP.9 01 T-SHIRT NAVY",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261ST00305",
+            "barcode": "XLI261ST00305",
+            "productName": "XLIM / EP.9 01 T-SHIRT NAVY",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13454",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 02 BAG DARK BROWN",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13454",
         "productCode": "P0000TXM",
         "productName": "[XLIM : 엑슬림] EP.9 02 BAG DARK BROWN"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261AC00400",
+            "barcode": "XLI261AC00400",
+            "productName": "XLIM / EP.9 02 BAG DARK BROWN",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13455",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 02 BAG ROYAL BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13455",
         "productCode": "P0000TXN",
         "productName": "[XLIM : 엑슬림] EP.9 02 BAG ROYAL BLUE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261AC00200",
+            "barcode": "XLI261AC00200",
+            "productName": "XLIM / EP.9 02 BAG ROYAL BLUE",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13468",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 02 T-SHIRT BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13468",
         "productCode": "P0000TYA",
         "productName": "[XLIM : 엑슬림] EP.9 02 T-SHIRT BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261ST00403",
+            "barcode": "XLI261ST00403",
+            "productName": "XLIM / EP.9 02 T-SHIRT BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13469",
@@ -20546,116 +21632,212 @@
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 02 TROUSERS BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13458",
         "productCode": "P0000TXQ",
         "productName": "[XLIM : 엑슬림] EP.9 02 TROUSERS BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261BT00203",
+            "barcode": "XLI261BT00203",
+            "productName": "XLIM / EP.9 02 TROUSERS BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261BT00204",
+            "barcode": "XLI261BT00204",
+            "productName": "XLIM / EP.9 02 TROUSERS BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13488",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 03 JACKET GRAY",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13488",
         "productCode": "P0000TYU",
         "productName": "[XLIM : 엑슬림] EP.9 03 JACKET GRAY"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261LT00802",
+            "barcode": "XLI261LT00802",
+            "productName": "XLIM / EP.9 03 JACKET GRAY",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT00803",
+            "barcode": "XLI261LT00803",
+            "productName": "XLIM / EP.9 03 JACKET GRAY",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261LT00804",
+            "barcode": "XLI261LT00804",
+            "productName": "XLIM / EP.9 03 JACKET GRAY",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13463",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 06 TROUSERS BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13463",
         "productCode": "P0000TXV",
         "productName": "[XLIM : 엑슬림] EP.9 06 TROUSERS BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261BT00703",
+            "barcode": "XLI261BT00703",
+            "productName": "XLIM / EP.9 06 TROUSERS BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261BT00704",
+            "barcode": "XLI261BT00704",
+            "productName": "XLIM / EP.9 06 TROUSERS BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13464",
       "brandId": "B00000LC",
       "brandName": "엑슬림",
       "canonicalProductName": "EP.9 06 TROUSERS INDIGO",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13464",
         "productCode": "P0000TXW",
         "productName": "[XLIM : 엑슬림] EP.9 06 TROUSERS INDIGO"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "XLI261BT00803",
+            "barcode": "XLI261BT00803",
+            "productName": "XLIM / EP.9 06 TROUSERS INDIGO",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "XLI261BT00804",
+            "barcode": "XLI261BT00804",
+            "productName": "XLIM / EP.9 06 TROUSERS INDIGO",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14350",
@@ -23254,29 +24436,59 @@
       "brandId": "B0000BAO",
       "brandName": "토가",
       "canonicalProductName": "VIRILIS 26S AJ1483 - BLACK HARD LEATHER",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13272",
         "productCode": "P0000TQM",
         "productName": "[TOGA : 토가] VIRILIS 26S AJ1483 - BLACK HARD LEATHER"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "TOG261AC004041",
+            "barcode": "TOG261AC004041",
+            "productName": "TOGA / VIRILIS 26S AJ1483 - BLACK HARD LEATHER",
+            "size": "41",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "TOG261AC004042",
+            "barcode": "TOG261AC004042",
+            "productName": "TOGA / VIRILIS 26S AJ1483 - BLACK HARD LEATHER",
+            "size": "42",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "TOG261AC004043",
+            "barcode": "TOG261AC004043",
+            "productName": "TOGA / VIRILIS 26S AJ1483 - BLACK HARD LEATHER",
+            "size": "43",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14292",
@@ -28140,29 +29352,43 @@
       "brandId": "B0000BAL",
       "brandName": "ALA TIANAN",
       "canonicalProductName": "DOG-KISSING PRINTED BRIMMED BEANIE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14641",
         "productCode": "P0000VRD",
         "productName": "[ALA TIANAN : 알라 티아난] DOG-KISSING PRINTED BRIMMED BEANIE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "ALA263AC00100",
+            "barcode": "ALA263AC00100",
+            "productName": "ALA TAIANAN / DOG-KISSING PRINTED BRIMMED BEANIE",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14099",
@@ -39062,87 +40288,180 @@
       "brandId": "B0000BAI",
       "brandName": "PHTMNE",
       "canonicalProductName": "BIKER HOODIE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14806",
         "productCode": "P0000VXM",
         "productName": "[PHTMNE : 피에이치티엠엔이] BIKER HOODIE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PHT263OT00203",
+            "barcode": "PHT263OT00203",
+            "productName": "PHTMNE / BIKER HOODIE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263OT00204",
+            "barcode": "PHT263OT00204",
+            "productName": "PHTMNE / BIKER HOODIE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263OT00205",
+            "barcode": "PHT263OT00205",
+            "productName": "PHTMNE / BIKER HOODIE",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14811",
       "brandId": "B0000BAI",
       "brandName": "PHTMNE",
       "canonicalProductName": "BLK AMERIKA MOTO JACKET",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14811",
         "productCode": "P0000VXR",
         "productName": "[PHTMNE : 피에이치티엠엔이] BLK AMERIKA MOTO JACKET"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PHT263OT00303",
+            "barcode": "PHT263OT00303",
+            "productName": "PHTMNE / BLK AMERIKA MOTO JACKET",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263OT00304",
+            "barcode": "PHT263OT00304",
+            "productName": "PHTMNE / BLK AMERIKA MOTO JACKET",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14810",
       "brandId": "B0000BAI",
       "brandName": "PHTMNE",
       "canonicalProductName": "BLK AMERIKA PANTS",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14810",
         "productCode": "P0000VXQ",
         "productName": "[PHTMNE : 피에이치티엠엔이] BLK AMERIKA PANTS"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PHT263BT00503",
+            "barcode": "PHT263BT00503",
+            "productName": "PHTMNE / BLK AMERIKA PANTS",
+            "size": "30",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263BT00504",
+            "barcode": "PHT263BT00504",
+            "productName": "PHTMNE / BLK AMERIKA PANTS",
+            "size": "32",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263BT00505",
+            "barcode": "PHT263BT00505",
+            "productName": "PHTMNE / BLK AMERIKA PANTS",
+            "size": "34",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263BT00506",
+            "barcode": "PHT263BT00506",
+            "productName": "PHTMNE / BLK AMERIKA PANTS",
+            "size": "40",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14807",
@@ -39206,29 +40525,60 @@
       "brandId": "B0000BAI",
       "brandName": "PHTMNE",
       "canonicalProductName": "MECH CARGOS",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14801",
         "productCode": "P0000VXH",
         "productName": "[PHTMNE : 피에이치티엠엔이] MECH CARGOS"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PHT263BT00603",
+            "barcode": "PHT263BT00603",
+            "productName": "PHTMNE / MECH CARGOS",
+            "size": "30",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263BT00604",
+            "barcode": "PHT263BT00604",
+            "productName": "PHTMNE / MECH CARGOS",
+            "size": "32",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263BT00605",
+            "barcode": "PHT263BT00605",
+            "productName": "PHTMNE / MECH CARGOS",
+            "size": "34",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14800",
@@ -39342,29 +40692,60 @@
       "brandId": "B0000BAI",
       "brandName": "PHTMNE",
       "canonicalProductName": "RIOT PANTS WHITE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14809",
         "productCode": "P0000VXP",
         "productName": "[PHTMNE : 피에이치티엠엔이] RIOT PANTS WHITE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PHT263BT00203",
+            "barcode": "PHT263BT00203",
+            "productName": "PHTMNE / RIOT PANTS WHITE",
+            "size": "30",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263BT00204",
+            "barcode": "PHT263BT00204",
+            "productName": "PHTMNE / RIOT PANTS WHITE",
+            "size": "32",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263BT00205",
+            "barcode": "PHT263BT00205",
+            "productName": "PHTMNE / RIOT PANTS WHITE",
+            "size": "34",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14813",
@@ -39421,29 +40802,60 @@
       "brandId": "B0000BAI",
       "brandName": "PHTMNE",
       "canonicalProductName": "STAR SELVEDGE CARPENTER DENIM",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14802",
         "productCode": "P0000VXI",
         "productName": "[PHTMNE : 피에이치티엠엔이] STAR SELVEDGE CARPENTER DENIM"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PHT263BT00303",
+            "barcode": "PHT263BT00303",
+            "productName": "PHTMNE / STAR SELVEDGE CARPENTER DENIM",
+            "size": "30",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263BT00304",
+            "barcode": "PHT263BT00304",
+            "productName": "PHTMNE / STAR SELVEDGE CARPENTER DENIM",
+            "size": "32",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PHT263BT00305",
+            "barcode": "PHT263BT00305",
+            "productName": "PHTMNE / STAR SELVEDGE CARPENTER DENIM",
+            "size": "34",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14794",
@@ -39695,116 +41107,196 @@
       "brandId": "B00000UC",
       "brandName": "PONDER.ER",
       "canonicalProductName": "BETULA PLEATED DENIM TROUSERS BLEACHED",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14787",
         "productCode": "P0000VWT",
         "productName": "[PONDER.ER : 폰더] BETULA PLEATED DENIM TROUSERS BLEACHED"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PON263BT00203",
+            "barcode": "PON263BT00203",
+            "productName": "PONDER.ER / BETULA PLEATED DENIM TROUSERS BLEACHED",
+            "size": "30",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PON263BT00204",
+            "barcode": "PON263BT00204",
+            "productName": "PONDER.ER / BETULA PLEATED DENIM TROUSERS BLEACHED",
+            "size": "32",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14783",
       "brandId": "B00000UC",
       "brandName": "PONDER.ER",
       "canonicalProductName": "KIT DENIM BELT BAG BLEACHED",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14783",
         "productCode": "P0000VWP",
         "productName": "[PONDER.ER : 폰더] KIT DENIM BELT BAG BLEACHED"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PON263AC00100",
+            "barcode": "PON263AC00100",
+            "productName": "PONDER.ER / KIT DENIM BELT BAG BLEACHED",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14788",
       "brandId": "B00000UC",
       "brandName": "PONDER.ER",
       "canonicalProductName": "LINGER GATHERED DENIM TROUSERS BLEACHED",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14788",
         "productCode": "P0000VWU",
         "productName": "[PONDER.ER : 폰더] LINGER GATHERED DENIM TROUSERS BLEACHED"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PON263BT00402",
+            "barcode": "PON263BT00402",
+            "productName": "PONDER.ER / LINGER GATHERED DENIM TROUSERS BLEACHED",
+            "size": "28",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PON263BT00404",
+            "barcode": "PON263BT00404",
+            "productName": "PONDER.ER / LINGER GATHERED DENIM TROUSERS BLEACHED",
+            "size": "32",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14793",
       "brandId": "B00000UC",
       "brandName": "PONDER.ER",
       "canonicalProductName": "LOCK GATHERED-SLEEVE DENIM JACKET BLEACHED",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14793",
         "productCode": "P0000VWZ",
         "productName": "[PONDER.ER : 폰더] LOCK GATHERED-SLEEVE DENIM JACKET BLEACHED"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PON263OT00303",
+            "barcode": "PON263OT00303",
+            "productName": "PONDER.ER / LOCK GATHERED-SLEEVE DENIM JACKET BLEACHED",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PON263OT00304",
+            "barcode": "PON263OT00304",
+            "productName": "PONDER.ER / LOCK GATHERED-SLEEVE DENIM JACKET BLEACHED",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13154",
@@ -39860,58 +41352,102 @@
       "brandId": "B00000UC",
       "brandName": "PONDER.ER",
       "canonicalProductName": "PATINA FLOAT STITCH KNITTED ZIP-UP CARDIGAN BROWN-TURQUOISE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14795",
         "productCode": "P0000VXB",
         "productName": "[PONDER.ER : 폰더] PATINA FLOAT STITCH KNITTED ZIP-UP CARDIGAN BROWN-TURQUOISE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PON263OT00504",
+            "barcode": "PON263OT00504",
+            "productName": "PONDER.ER / PATINA FLOAT STITCH KNITTED ZIP-UP CARDIGAN BROWN-TURQUOISE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PON263OT00505",
+            "barcode": "PON263OT00505",
+            "productName": "PONDER.ER / PATINA FLOAT STITCH KNITTED ZIP-UP CARDIGAN BROWN-TURQUOISE",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14796",
       "brandId": "B00000UC",
       "brandName": "PONDER.ER",
       "canonicalProductName": "PATINA FLOAT STITCH KNITTED ZIP-UP CARDIGAN WHITE-BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14796",
         "productCode": "P0000VXC",
         "productName": "[PONDER.ER : 폰더] PATINA FLOAT STITCH KNITTED ZIP-UP CARDIGAN WHITE-BLUE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PON263OT00404",
+            "barcode": "PON263OT00404",
+            "productName": "PONDER.ER / PATINA FLOAT STITCH KNITTED ZIP-UP CARDIGAN WHITE-BLUE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PON263OT00405",
+            "barcode": "PON263OT00405",
+            "productName": "PONDER.ER / PATINA FLOAT STITCH KNITTED ZIP-UP CARDIGAN WHITE-BLUE",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14785",
@@ -40055,87 +41591,137 @@
       "brandId": "B00000UC",
       "brandName": "PONDER.ER",
       "canonicalProductName": "SWAY PLEATED MINI-SHORTS BLEACHED",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14784",
         "productCode": "P0000VWQ",
         "productName": "[PONDER.ER : 폰더] SWAY PLEATED MINI-SHORTS BLEACHED"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PON263BT00502",
+            "barcode": "PON263BT00502",
+            "productName": "PONDER.ER / SWAY PLEATED MINI-SHORTS BLEACHED",
+            "size": "28",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PON263BT00503",
+            "barcode": "PON263BT00503",
+            "productName": "PONDER.ER / SWAY PLEATED MINI-SHORTS BLEACHED",
+            "size": "30",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14789",
       "brandId": "B00000UC",
       "brandName": "PONDER.ER",
       "canonicalProductName": "TWEAK TURTLENECK BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14789",
         "productCode": "P0000VWV",
         "productName": "[PONDER.ER : 폰더] TWEAK TURTLENECK BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PON263LT00405",
+            "barcode": "PON263LT00405",
+            "productName": "PONDER.ER / TWEAK TURTLENECK BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14790",
       "brandId": "B00000UC",
       "brandName": "PONDER.ER",
       "canonicalProductName": "TWEAK TURTLENECK WHITE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14790",
         "productCode": "P0000VWW",
         "productName": "[PONDER.ER : 폰더] TWEAK TURTLENECK WHITE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PON263LT00305",
+            "barcode": "PON263LT00305",
+            "productName": "PONDER.ER / TWEAK TURTLENECK WHITE",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-14786",
@@ -40216,29 +41802,59 @@
       "brandId": "B00000UC",
       "brandName": "PONDER.ER",
       "canonicalProductName": "WRING PLEATED DENIM JACKET BLEACHED",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14797",
         "productCode": "P0000VXD",
         "productName": "[PONDER.ER : 폰더] WRING PLEATED DENIM JACKET BLEACHED"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "PON263OT00101",
+            "barcode": "PON263OT00101",
+            "productName": "PONDER.ER / WRING PLEATED DENIM JACKET BLEACHED",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PON263OT00102",
+            "barcode": "PON263OT00102",
+            "productName": "PONDER.ER / WRING PLEATED DENIM JACKET BLEACHED",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "PON263OT00103",
+            "barcode": "PON263OT00103",
+            "productName": "PONDER.ER / WRING PLEATED DENIM JACKET BLEACHED",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-9366",
@@ -41665,435 +43281,692 @@
       "brandId": "B00000PG",
       "brandName": "SUPER+POSITION",
       "canonicalProductName": "PINCH LM 004",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14823",
         "productCode": "P0000VYD",
         "productName": "[SUPER+POSITION : 슈퍼 포지션] PINCH LM 004"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUP261ST02200",
+            "barcode": "SUP261ST02200",
+            "productName": "SUPER+POSITION / PINCH LM 004",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14814",
       "brandId": "B00000PG",
       "brandName": "SUPER+POSITION",
       "canonicalProductName": "SP0134",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14814",
         "productCode": "P0000VXU",
         "productName": "[SUPER+POSITION : 슈퍼 포지션] SP0134"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUP261ST01400",
+            "barcode": "SUP261ST01400",
+            "productName": "SUPER+POSITION / SP0134",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14815",
       "brandId": "B00000PG",
       "brandName": "SUPER+POSITION",
       "canonicalProductName": "SP0195",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14815",
         "productCode": "P0000VXV",
         "productName": "[SUPER+POSITION : 슈퍼 포지션] SP0195"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUP261ST01500",
+            "barcode": "SUP261ST01500",
+            "productName": "SUPER+POSITION / SP0195",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14816",
       "brandId": "B00000PG",
       "brandName": "SUPER+POSITION",
       "canonicalProductName": "SP0409",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14816",
         "productCode": "P0000VXW",
         "productName": "[SUPER+POSITION : 슈퍼 포지션] SP0409"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUP261ST01600",
+            "barcode": "SUP261ST01600",
+            "productName": "SUPER+POSITION / SP0409",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14817",
       "brandId": "B00000PG",
       "brandName": "SUPER+POSITION",
       "canonicalProductName": "SP0418",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14817",
         "productCode": "P0000VXX",
         "productName": "[SUPER+POSITION : 슈퍼 포지션] SP0418"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUP261ST01700",
+            "barcode": "SUP261ST01700",
+            "productName": "SUPER+POSITION / SP0418",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14818",
       "brandId": "B00000PG",
       "brandName": "SUPER+POSITION",
       "canonicalProductName": "SP0480",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14818",
         "productCode": "P0000VXY",
         "productName": "[SUPER+POSITION : 슈퍼 포지션] SP0480"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUP261ST01800",
+            "barcode": "SUP261ST01800",
+            "productName": "SUPER+POSITION / SP0480",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14822",
       "brandId": "B00000PG",
       "brandName": "SUPER+POSITION",
       "canonicalProductName": "SP0684",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14822",
         "productCode": "P0000VYC",
         "productName": "[SUPER+POSITION : 슈퍼 포지션] SP0684"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUP261ST01900",
+            "barcode": "SUP261ST01900",
+            "productName": "SUPER+POSITION / SP0684",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14819",
       "brandId": "B00000PG",
       "brandName": "SUPER+POSITION",
       "canonicalProductName": "SP0781",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14819",
         "productCode": "P0000VXZ",
         "productName": "[SUPER+POSITION : 슈퍼 포지션] SP0781"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUP261ST02000",
+            "barcode": "SUP261ST02000",
+            "productName": "SUPER+POSITION / SP0781",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14820",
       "brandId": "B00000PG",
       "brandName": "SUPER+POSITION",
       "canonicalProductName": "SP0793",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14820",
         "productCode": "P0000VYA",
         "productName": "[SUPER+POSITION : 슈퍼 포지션] SP0793"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUP261ST02100",
+            "barcode": "SUP261ST02100",
+            "productName": "SUPER+POSITION / SP0793",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14821",
       "brandId": "B00000PG",
       "brandName": "SUPER+POSITION",
       "canonicalProductName": "SP0807",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14821",
         "productCode": "P0000VYB",
         "productName": "[SUPER+POSITION : 슈퍼 포지션] SP0807"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SUP261ST02300",
+            "barcode": "SUP261ST02300",
+            "productName": "SUPER+POSITION / SP0807",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14781",
       "brandId": "B0000BDD",
       "brandName": "TAE GLOBAL",
       "canonicalProductName": "3D EMBOSSED ZIP HOODIE BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14781",
         "productCode": "P0000VWN",
         "productName": "[TAEGLOBAL : 타에글로벌] 3D EMBOSSED ZIP HOODIE BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "TAE263OT00903",
+            "barcode": "TAE263OT00903",
+            "productName": "TAE GLOBAL / 3D EMBOSSED ZIP HOODIE BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14780",
       "brandId": "B0000BDD",
       "brandName": "TAE GLOBAL",
       "canonicalProductName": "3D PRINTED DETACHABLE BAG TROUSERS BLACK&WHITE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14780",
         "productCode": "P0000VWM",
         "productName": "[TAEGLOBAL : 타에글로벌] 3D PRINTED DETACHABLE BAG TROUSERS BLACK&WHITE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "TAE263BT00403",
+            "barcode": "TAE263BT00403",
+            "productName": "TAE GLOBAL / 3D PRINTED DETACHABLE BAG TROUSERS BALCK&WHITE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "TAE263BT00404",
+            "barcode": "TAE263BT00404",
+            "productName": "TAE GLOBAL / 3D PRINTED DETACHABLE BAG TROUSERS BALCK&WHITE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14777",
       "brandId": "B0000BDD",
       "brandName": "TAE GLOBAL",
       "canonicalProductName": "3D PRINTED ZIP POCKET TROUSERS ARMY GREEN",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14777",
         "productCode": "P0000VWJ",
         "productName": "[TAEGLOBAL : 타에글로벌] 3D PRINTED ZIP POCKET TROUSERS ARMY GREEN"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "TAE263BT00203",
+            "barcode": "TAE263BT00203",
+            "productName": "TAE GLOBAL / 3D PRINTED ZIP POCKET TROUSERS ARMY GREEN",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "TAE263BT00204",
+            "barcode": "TAE263BT00204",
+            "productName": "TAE GLOBAL / 3D PRINTED ZIP POCKET TROUSERS ARMY GREEN",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14778",
       "brandId": "B0000BDD",
       "brandName": "TAE GLOBAL",
       "canonicalProductName": "3D PRINTED ZIP POCKET TROUSERS MATCHA GREEN",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14778",
         "productCode": "P0000VWK",
         "productName": "[TAEGLOBAL : 타에글로벌] 3D PRINTED ZIP POCKET TROUSERS MATCHA GREEN"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "TAE263BT00303",
+            "barcode": "TAE263BT00303",
+            "productName": "TAE GLOBAL / 3D PRINTED ZIP POCKET TROUSERS MATCHA GREEN",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "TAE263BT00304",
+            "barcode": "TAE263BT00304",
+            "productName": "TAE GLOBAL / 3D PRINTED ZIP POCKET TROUSERS MATCHA GREEN",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-14779",
       "brandId": "B0000BDD",
       "brandName": "TAE GLOBAL",
       "canonicalProductName": "3D PRINTED ZIP-TRANSFORM TROUSERS CHARCOAL",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14779",
         "productCode": "P0000VWL",
         "productName": "[TAEGLOBAL : 타에글로벌] 3D PRINTED ZIP-TRANSFORM TROUSERS CHARCOAL"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "TAE263BT00103",
+            "barcode": "TAE263BT00103",
+            "productName": "TAE GLOBAL / 3D PRINTED ZIP-TRANSFORM TROUSERS CHARCOAL",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "TAE263BT00104",
+            "barcode": "TAE263BT00104",
+            "productName": "TAE GLOBAL / 3D PRINTED ZIP-TRANSFORM TROUSERS CHARCOAL",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe24",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T16:37:17.705Z"
     },
     {
       "canonicalProductId": "CP-C24-12386",
@@ -42622,29 +44495,43 @@
       "brandId": "B00000SG",
       "brandName": "VAIN",
       "canonicalProductName": "<3 Cap Dusty White",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10953",
         "productCode": "P0000QFH",
         "productName": "[VAIN : 베인] <3 Cap Dusty White"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "VAI251AC00700",
+            "barcode": "VAI251AC00700",
+            "productName": "VAIN / <3 Cap Dusty White",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-10417",
@@ -42680,116 +44567,236 @@
       "brandId": "B00000SG",
       "brandName": "VAIN",
       "canonicalProductName": "Blood Spill T-shirt White",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13619",
         "productCode": "P0000UDV",
         "productName": "[VAIN : 베인] Blood Spill T-shirt White"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "VAI261ST00503",
+            "barcode": "VAI261ST00503",
+            "productName": "VAIN / Blood Spill T-shirt WHITE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "VAI261ST00504",
+            "barcode": "VAI261ST00504",
+            "productName": "VAIN / Blood Spill T-shirt WHITE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "VAI261ST00505",
+            "barcode": "VAI261ST00505",
+            "productName": "VAIN / Blood Spill T-shirt WHITE",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-10424",
       "brandId": "B00000SG",
       "brandName": "VAIN",
       "canonicalProductName": "DRAWSTRING PANTS - MARRIEDTO THE VAIN",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10424",
         "productCode": "P0000PKY",
         "productName": "[VAIN : 베인] DRAWSTRING PANTS - MARRIEDTO THE VAIN"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "VAI251BT00302",
+            "barcode": "VAI251BT00302",
+            "productName": "VAIN / DRAWSTRING PANTS - MARRIEDTO THE VAIN",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "VAI251BT00303",
+            "barcode": "VAI251BT00303",
+            "productName": "VAIN / DRAWSTRING PANTS - MARRIEDTO THE VAIN",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "VAI251BT00304",
+            "barcode": "VAI251BT00304",
+            "productName": "VAIN / DRAWSTRING PANTS - MARRIEDTO THE VAIN",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-13617",
       "brandId": "B00000SG",
       "brandName": "VAIN",
       "canonicalProductName": "Elias T-Shirt Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13617",
         "productCode": "P0000UDT",
         "productName": "[VAIN : 베인] Elias T-Shirt Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "VAI261ST00603",
+            "barcode": "VAI261ST00603",
+            "productName": "VAIN / Elias T-Shirt Black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "VAI261ST00604",
+            "barcode": "VAI261ST00604",
+            "productName": "VAIN / Elias T-Shirt Black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "VAI261ST00605",
+            "barcode": "VAI261ST00605",
+            "productName": "VAIN / Elias T-Shirt Black",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-10467",
       "brandId": "B00000SG",
       "brandName": "VAIN",
       "canonicalProductName": "Heart Signature Basic Shorts Coated Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10467",
         "productCode": "P0000PMP",
         "productName": "[VAIN : 베인] Heart Signature Basic Shorts Coated Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "VAI251BT00103",
+            "barcode": "VAI251BT00103",
+            "productName": "VAIN / Heart Signature Basic Shorts Coated Black",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "VAI251BT00104",
+            "barcode": "VAI251BT00104",
+            "productName": "VAIN / Heart Signature Basic Shorts Coated Black",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "VAI251BT00105",
+            "barcode": "VAI251BT00105",
+            "productName": "VAIN / Heart Signature Basic Shorts Coated Black",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-10423",
@@ -42825,58 +44832,102 @@
       "brandId": "B00000SG",
       "brandName": "VAIN",
       "canonicalProductName": "VAATEKAUPPA CAP",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10418",
         "productCode": "P0000PKS",
         "productName": "[VAIN : 베인] VAATEKAUPPA CAP"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "VAI251HW00500",
+            "barcode": "VAI251HW00500",
+            "productName": "VAIN / VAATEKAUPPA CAP",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-8019",
       "brandId": "B00000SG",
       "brandName": "VAIN",
       "canonicalProductName": "VAATEKAUPPA T-SHIRT BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "8019",
         "productCode": "P0000LWL",
         "productName": "[VAIN : 베인] VAATEKAUPPA T-SHIRT BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "VAI251ST00203",
+            "barcode": "VAI251ST00203",
+            "productName": "VAIN / VAATEKAUPPA T-SHIRT BLACK",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "VAI251ST00204",
+            "barcode": "VAI251ST00204",
+            "productName": "VAIN / VAATEKAUPPA T-SHIRT BLACK",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "VAI251ST00205",
+            "barcode": "VAI251ST00205",
+            "productName": "VAIN / VAATEKAUPPA T-SHIRT BLACK",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-10442",
@@ -42912,58 +44963,86 @@
       "brandId": "B00000SG",
       "brandName": "VAIN",
       "canonicalProductName": "VANITY CAP BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10419",
         "productCode": "P0000PKT",
         "productName": "[VAIN : 베인] VANITY CAP BLACK"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "VAI251HW00400",
+            "barcode": "VAI251HW00400",
+            "productName": "VAIN / VANITY CAP BLACK",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-10416",
       "brandId": "B00000SG",
       "brandName": "VAIN",
       "canonicalProductName": "VANITY CAP TWO TONE STICHING",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10416",
         "productCode": "P0000PKQ",
         "productName": "[VAIN : 베인] VANITY CAP TWO TONE STICHING"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "VAI251HW00700",
+            "barcode": "VAI251HW00700",
+            "productName": "VAIN / VANITY CAP TWO TONE STICHING",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "normalized_product_exact_manual_safe_apply",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "normalized_product_name",
+          "ecount_exact_name",
+          "uniform_sales_price",
+          "pure_brand_prefix_scope",
+          "sku_family_verified",
+          "size_variation_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-20T09:13:10.386Z"
     },
     {
       "canonicalProductId": "CP-C24-11915",

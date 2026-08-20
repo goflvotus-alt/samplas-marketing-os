@@ -192,13 +192,30 @@ export async function buildPriceAudit(options = {}) {
   const baseUrl = (env.INTELLIGENCE_MARKETING_OS_BASE_URL || env.MARKETING_OS_BASE_URL || `http://127.0.0.1:${env.PORT || 8787}`).replace(/\/$/, "");
   const headers = proxyHeaders(env);
 
-  const [registry, latestInventory, commercialPolicy, brandMaster] = await Promise.all([
+  const [registry, latestInventory, fullProductMasterRaw, commercialPolicy, brandMaster] = await Promise.all([
     readJson(join(workDir, "product-registry.json")),
     readJson(join(workDir, "ecount-inventory", "latest.json")),
+    readJson(join(workDir, "ecount-inventory", "full-products-candidate.json")),
     readJson(join(workDir, "brand-commercial-policy.json")).catch(() => ({ policies: [] })),
     readJson(join(workDir, "brand-master.json")).catch(() => ({ brands: [] }))
   ]);
+
   const inventoryByCode = new Map(latestInventory.map((row) => [row.productCode, row]));
+
+  const fullProductMaster = Array.isArray(fullProductMasterRaw)
+    ? fullProductMasterRaw
+    : Array.isArray(fullProductMasterRaw?.products)
+      ? fullProductMasterRaw.products
+      : [];
+
+  const fullProductByCode = new Map(
+    fullProductMaster
+      .map((row) => [
+        String(row?.PROD_CD ?? row?.productCode ?? "").trim(),
+        row
+      ])
+      .filter(([productCode]) => productCode)
+  );
   const policies = Array.isArray(commercialPolicy?.policies) ? commercialPolicy.policies : [];
   const brandNameByCode = new Map(
     (Array.isArray(brandMaster) ? brandMaster : brandMaster?.brands || [])
@@ -207,13 +224,37 @@ export async function buildPriceAudit(options = {}) {
   );
 
   const eligible = (registry.entries || []).filter((e) => e?.cafe24?.productNo);
-  const targets = options.limit ? eligible.slice(0, options.limit) : eligible;
+  const requestedProductNos = Array.isArray(options.productNos)
+    ? new Set(options.productNos.map((value) => String(value)))
+    : null;
+  const selected = requestedProductNos
+    ? eligible.filter((entry) => requestedProductNos.has(String(entry.cafe24.productNo)))
+    : eligible;
+  const targets = options.limit ? selected.slice(0, options.limit) : selected;
 
   console.error(`[price-audit] ${targets.length} registry entries with a Cafe24 productNo (of ${eligible.length} total, ${registry.entries.length} in registry)`);
 
   const rows = await mapWithConcurrency(targets, CONCURRENCY, async (entry) => {
     const productNo = entry.cafe24.productNo;
-    const ecountSkus = entry.ecount.matchedProducts.map((m) => ({ ...m, current: inventoryByCode.get(m.prodCd) || null }));
+
+    const ecountSkus = entry.ecount.matchedProducts.map((m) => {
+      const current = inventoryByCode.get(m.prodCd) || null;
+      const master = fullProductByCode.get(String(m.prodCd || "")) || null;
+      const rawMasterPrice = master?.OUT_PRICE ?? master?.salesPrice ?? null;
+      const parsedMasterPrice =
+        rawMasterPrice === null || rawMasterPrice === undefined || rawMasterPrice === ""
+          ? null
+          : Number(rawMasterPrice);
+
+      return {
+        ...m,
+        current,
+        master,
+        masterSalesPrice: Number.isFinite(parsedMasterPrice)
+          ? parsedMasterPrice
+          : null
+      };
+    });
 
     const validEcountPrice = (value) =>
       typeof value === "number" &&
@@ -222,10 +263,10 @@ export async function buildPriceAudit(options = {}) {
 
     const ecountPriceComplete =
       ecountSkus.length > 0 &&
-      ecountSkus.every((s) => validEcountPrice(s.current?.salesPrice));
+      ecountSkus.every((s) => validEcountPrice(s.masterSalesPrice));
 
     const ecountPrices = ecountSkus
-      .map((s) => s.current?.salesPrice)
+      .map((s) => s.masterSalesPrice)
       .filter(validEcountPrice);
 
     const ecountPriceConsistent =
@@ -307,7 +348,17 @@ export async function buildPriceAudit(options = {}) {
       registryStatus: entry.status,
       registryConfidence: entry.confidence,
       registryVerified: Boolean(entry.verified),
-      ecountSkus: ecountSkus.map((s) => ({ prodCd: s.prodCd, productName: s.current?.productName || s.productName || null, size: s.size, salesPrice: s.current?.salesPrice ?? null })),
+      ecountSkus: ecountSkus.map((s) => ({
+        prodCd: s.prodCd,
+        productName:
+          s.master?.PROD_DES ||
+          s.master?.productName ||
+          s.current?.productName ||
+          s.productName ||
+          null,
+        size: s.size,
+        salesPrice: s.masterSalesPrice
+      })),
       ecountPrice,
       ecountPriceConsistent,
       cafe24Price,
