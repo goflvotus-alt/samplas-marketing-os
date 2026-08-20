@@ -116,6 +116,38 @@ test("16. Clients identity is not duplicated per store — one client, offline l
   assert.equal(matches[0].totalSales, 90000);
 }));
 
+test("Clients ALL removes only cross-store copies of the same ECOUNT source lines", () => withTemp(async (dir) => {
+  const workDir = join(dir, "work");
+  const sourceLines = [
+    offlineLineFixture({ date: "2026-08-09", storeCode: "APGUJEONG", amount: 222400, customerName: "인규님", slipNo: "7", brandProductName: "TROUBLED WATERS / Void Henley Shirt Washed Black" }),
+    offlineLineFixture({ date: "2026-08-09", storeCode: "APGUJEONG", amount: 318400, customerName: "인규님", slipNo: "7", brandProductName: "TROUBLED WATERS / Nomad Vest Washed Black" }),
+    offlineLineFixture({ date: "2026-08-09", storeCode: "APGUJEONG", amount: 374400, customerName: "인규님", slipNo: "7", brandProductName: "TROUBLED WATERS / Hybrid Pants Black" })
+  ];
+  await writeStoreSnapshot(workDir, "2026-08", "APGUJEONG", sourceLines);
+  await writeStoreSnapshot(workDir, "2026-08", "VAIL", sourceLines.map((line) => ({ ...line, storeCode: "VAIL" })));
+
+  const all = await buildClientsOverview({ since: "2026-08-01", until: "2026-08-31", workDir });
+  const ingyu = all.clients.find((client) => client.aliases.includes("인규님"));
+  assert.equal(ingyu.purchaseDetails.length, 3);
+  assert.deepEqual(ingyu.purchaseDetails.map((line) => [line.productName, line.quantity, line.salesAmount]), [
+    ["TROUBLED WATERS / Void Henley Shirt Washed Black", 1, 222400],
+    ["TROUBLED WATERS / Nomad Vest Washed Black", 1, 318400],
+    ["TROUBLED WATERS / Hybrid Pants Black", 1, 374400]
+  ]);
+}));
+
+test("Clients ALL preserves same product/date/amount purchases when ECOUNT slips differ", () => withTemp(async (dir) => {
+  const workDir = join(dir, "work");
+  const product = "TROUBLED WATERS / Void Henley Shirt Washed Black";
+  await writeStoreSnapshot(workDir, "2026-08", "APGUJEONG", [offlineLineFixture({ date: "2026-08-09", storeCode: "APGUJEONG", amount: 222400, customerName: "인규님", slipNo: "7", brandProductName: product })]);
+  await writeStoreSnapshot(workDir, "2026-08", "VAIL", [offlineLineFixture({ date: "2026-08-09", storeCode: "VAIL", amount: 222400, customerName: "인규님", slipNo: "8", brandProductName: product })]);
+
+  const all = await buildClientsOverview({ since: "2026-08-01", until: "2026-08-31", workDir });
+  const ingyu = all.clients.find((client) => client.aliases.includes("인규님"));
+  assert.equal(ingyu.purchaseDetails.length, 2);
+  assert.deepEqual(ingyu.purchaseDetails.map((line) => line.orderId).sort(), ["7", "8"]);
+}));
+
 test("17/18. Clients APGUJEONG/VAIL filters offline activity to that store only", () => withTemp(async (dir) => {
   const workDir = join(dir, "work");
   await writeStoreSnapshot(workDir, "2026-08", "APGUJEONG", [offlineLineFixture({ date: "2026-08-01", storeCode: "APGUJEONG", amount: 50000, customerName: "김협 실장님", slipNo: "1" })]);

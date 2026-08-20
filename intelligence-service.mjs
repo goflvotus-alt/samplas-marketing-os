@@ -2696,6 +2696,43 @@ export function isGiftSalesLine(line) {
   return String(line?.customerName || "").includes("기프트");
 }
 
+// Store-separated snapshots can accidentally contain the same original ECOUNT line in
+// more than one store file. Clients ALL counts that source once, while repeated rows in
+// one store and distinct slips remain separate purchases.
+function dedupeCrossStoreEcountSourceLines(lines = []) {
+  const storesBySource = new Map();
+  const sourceKey = (line) => {
+    const documentNo = String(line?.slipNo || line?.documentNo || "").trim();
+    const storeCode = String(line?.storeCode || "").trim();
+    if (!documentNo || !storeCode) return null;
+    return JSON.stringify([
+      line?.date || "", documentNo, line?.poNo || "", line?.customerName || "",
+      line?.productName || "", line?.specification || "",
+      Number.isFinite(Number(line?.quantity)) ? Number(line.quantity) : null,
+      Number.isFinite(Number(line?.salesAmount)) ? Number(line.salesAmount) : null
+    ]);
+  };
+
+  for (const line of lines) {
+    const key = sourceKey(line);
+    if (!key) continue;
+    const storeCode = String(line.storeCode).trim();
+    const stores = storesBySource.get(key) || new Map();
+    stores.set(storeCode, (stores.get(storeCode) || 0) + 1);
+    storesBySource.set(key, stores);
+  }
+
+  const ownerBySource = new Map();
+  for (const [key, stores] of storesBySource) {
+    if (stores.size > 1) ownerBySource.set(key, [...stores].sort((a, b) => b[1] - a[1])[0][0]);
+  }
+
+  return lines.filter((line) => {
+    const key = sourceKey(line);
+    return !key || !ownerBySource.has(key) || ownerBySource.get(key) === String(line.storeCode).trim();
+  });
+}
+
 // TASK4: 이름 끝에 직책으로 "이사"(또는 "이사님")가 붙은 경우만 스타일리스트로 인정한다.
 // 전체 문자열이 "이름 + (공백) + 이사(님)?" 형태일 때만 매치되도록 앵커(^...$)를 둬서
 // "대표 지인 이전 시즌이라 수수료 20%" 같은 일반 문장이나 회사명이 섞인 텍스트는 걸리지 않는다.
@@ -2888,12 +2925,12 @@ export async function buildClientsOverview(options = {}) {
 
     // storeCode 지정 시 그 매장 라인만 남긴다. 레거시(store-unclassified, storeCode:null)
     // 라인은 어느 storeCode와도 일치하지 않아 자연히 제외된다(추정 귀속 없음).
-    const offlineLinesInPeriodRaw = group.lines.filter((line) => (
+    const offlineLinesInPeriodRaw = dedupeCrossStoreEcountSourceLines(group.lines.filter((line) => (
       line?.isOfflineRevenue === true &&
       String(line?.date || "") >= since &&
       String(line?.date || "") <= until &&
       (!storeCode || line?.storeCode === storeCode)
-    ));
+    )));
     // TASK3(2026-07-17 최종 정정): 기프트는 거래처/고객 단위가 아니라 "판매행 자신"의 실제 필드
     // (이 데이터 스키마에서는 customerName 하나뿐 — 실측 확인, 아래 isGiftSalesLine 주석 참고)로만
     // 판정해 그 판매행 1건만 집계에서 제외한다. 같은 그룹(mergeKey)에 속한 다른 정상 판매행에는
