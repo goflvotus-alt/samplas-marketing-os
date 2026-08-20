@@ -387,11 +387,22 @@ test("19. Category Drawer config reuses entityCategoryRows directly — no separ
 
 // 20. Category → SKU drill-down filters by the clicked category's code
 test("20. Category row click threads categoryCode into drawer context, and the SKU drawer filters entitySkuRows by it", () => {
-  assert.match(js, /categoryCode: entityDrawerState\.type === "category" \? row\.dataset\.entityId : \(entityDrawerState\.context\?\.categoryCode \|\| null\)/);
+  assert.match(js, /openEntityDrawer\("sku", \{ label: row\.name, categoryCode: row\.code \}\)/);
   const skuMarker = js.indexOf('sku: {');
   const region = js.slice(skuMarker, skuMarker + 1500);
   assert.match(region, /entityDrawerState\.context\?\.categoryCode/);
   assert.match(region, /entitySkuRows\.filter\(\(row\) => row\.categoryCode === categoryCode\)/);
+});
+
+test("21. Category and Color rows open the existing SKU drawer by click/keyboard and preserve direct all-SKU fallback", () => {
+  assert.match(js, /#entityCategoryList[\s\S]*?addEventListener\("click"[\s\S]*?openEntityDrawer\("sku", \{ label: row\.name, categoryCode: row\.code \}\)/);
+  assert.match(js, /#entityCategoryList[\s\S]*?addEventListener\("keydown"[\s\S]*?event\.key !== "Enter" && event\.key !== " "/);
+  assert.match(js, /#entityColorList[\s\S]*?addEventListener\("click"[\s\S]*?openEntityDrawer\("sku", \{ label: row\.family, colorFamily: row\.family \}\)/);
+  assert.match(js, /#entityColorList[\s\S]*?addEventListener\("keydown"[\s\S]*?event\.key !== "Enter" && event\.key !== " "/);
+  const skuMarker = js.indexOf('sku: {');
+  const region = js.slice(skuMarker, skuMarker + 1800);
+  assert.match(region, /entitySkuRows\.filter\(\(row\) => row\.colorFamily === colorFamily\)/);
+  assert.match(region, /return entitySkuRows;/, "opening SKU directly must still show every SKU");
 });
 
 // Part 9 QA — registry-wide classification coverage (real catalog, not a sample).

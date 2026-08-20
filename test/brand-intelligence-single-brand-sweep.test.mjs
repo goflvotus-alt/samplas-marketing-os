@@ -99,9 +99,10 @@ test("customer drawer config: onRowClick is a no-op when the clicked label match
   assert.equal(opened, false);
 });
 
-test("click/keydown dispatch: config.onRowClick is wired as a fallback tier between config.next and the generic toast", () => {
-  const onRowClickCount = (js.match(/else if \(config\.onRowClick\) config\.onRowClick\(row\);/g) || []).length;
-  assert.equal(onRowClickCount, 2, "both the mouse click handler and the Enter/Space keydown handler must check onRowClick");
+test("click/keydown dispatch: both paths reuse the shared row activation handler", () => {
+  assert.equal((js.match(/activateEntityDrawerRow\(row\);/g) || []).length, 2);
+  const activationSource = sourceOfFunction("activateEntityDrawerRow");
+  assert.match(activationSource, /if \(config\.onRowClick\) config\.onRowClick\(row\);/);
 });
 
 // --- Gap 2/3/4: honest, failure-aware empty-state text ------------------------------------
@@ -156,13 +157,11 @@ test("clientOrders drawer config: clickToast copy-paste bug fixed (was the SKU d
   assert.doesNotMatch(configSource, /clickToast: "SKU Intelligence 연결 예정"/);
 });
 
-// --- Regression: order drawer (still genuinely unconnected) keeps the original honest
-// "not connected" wording. Category gained a real source in BI-BATCH-I (SAMPLAS Category
-// Master v1) — see test/brand-intelligence-category-master.test.mjs for its coverage.
-
-test("order drawer (still genuinely unconnected) keeps the default 'data connection pending' text, unchanged", () => {
+test("order drawer distinguishes loading, fetch failure, and a genuine empty SKU period", () => {
   const orderSource = sourceOfObjectProperty(DRAWER_CONFIG_MARKER, "order");
-  assert.doesNotMatch(orderSource, /emptyText/, "Order has no real source — must not gain a fake 'this period only' empty state");
+  assert.match(orderSource, /entityOrderState\.loading/);
+  assert.match(orderSource, /entityOrderState\.fetchFailed/);
+  assert.match(orderSource, /이번 기간 해당 SKU 주문이 없습니다/);
 });
 
 test("BI-BATCH-I: category drawer now has an honest, function-valued emptyText distinguishing fetch-failure from genuine zero (NULL != ZERO)", () => {

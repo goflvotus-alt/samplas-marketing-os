@@ -183,7 +183,11 @@ const server = isMainModule ? createServer(async (req, res) => {
         url.searchParams.get("end_date") || todayKey(),
         { limit: url.searchParams.get("limit") || undefined }
       );
-      return json(res, data);
+      return json(res, {
+        ...data,
+        skuOrderRows: buildCafe24SkuOrderRows(data.orders),
+        skuOrderRowsComplete: !(data.orders || []).some((order) => order?.itemFetchError)
+      });
     }
     if (url.pathname === "/api/cafe24/products/full-catalog") {
       if (!isAuthorizedInternalRequest(req)) {
@@ -2042,6 +2046,44 @@ function summarizeCafe24Orders(orders = []) {
     topProducts: [...productMap.values()].sort((left, right) => right.itemAmount - left.itemAmount).slice(0, 50),
     paymentMethods: [...paymentMap.values()].sort((left, right) => right.orderAmount - left.orderAmount)
   };
+}
+
+// Brand Intelligence SKU → Orders가 기존 /api/cafe24/orders 응답을 그대로 재사용할 수
+// 있도록, 서버의 canonical 취소/환불·item 금액 규칙으로만 SKU별 주문 행을 덧붙인다.
+// productNo exact 외의 이름/fuzzy 매칭은 하지 않는다.
+function buildCafe24SkuOrderRows(orders = []) {
+  const rows = new Map();
+  for (const order of orders) {
+    if (isCafe24CanceledOrRefunded(order)) continue;
+    const orderId = String(order?.order_id || order?.orderId || "").trim();
+    if (!orderId) continue;
+    const date = trustedCafe24OrderDate(order);
+    for (const item of cafe24OrderItems(order)) {
+      if (isCafe24CanceledItem(item)) continue;
+      const productNo = String(item?.product_no || item?.productNo || "").trim();
+      if (!productNo) continue;
+      const quantity = cafe24ItemQuantity(item);
+      const key = `${orderId}:${productNo}`;
+      const current = rows.get(key) || {
+        id: orderId,
+        date,
+        clientName: order?.billing_name || order?.member_name || order?.member_id || order?.member_email || "",
+        clientType: null,
+        quantity: 0,
+        amount: 0,
+        status: "",
+        productNo,
+        productCode: item?.product_code || item?.productCode || "",
+        productName: item?.product_name || item?.productName || ""
+      };
+      current.quantity += quantity;
+      current.amount += cafe24ItemAmount(item, quantity);
+      const status = String(item?.status_text || item?.statusText || item?.status_code || order?.status_text || order?.order_status || order?.status || "").trim();
+      if (status && !current.status.split(" · ").includes(status)) current.status = current.status ? `${current.status} · ${status}` : status;
+      rows.set(key, current);
+    }
+  }
+  return [...rows.values()];
 }
 
 function computeCafe24OrderTotals(orders = []) {
@@ -4540,9 +4582,15 @@ export async function buildBrandCustomerComposition(brandCode, month, commerceSo
   // 여기서 이미 브랜드/기간을 필터링해 순회하는 김에 오프라인 distinct productName도 함께 센다
   // (고객 식별 여부와 무관하게, 매장방문고객 등 포함 — 새 API 호출 없음).
   const offlineProductNames = new Set();
-  // Category/Color는 Product/SKU의 온라인 전용 의미를 유지해야 하므로, 이미 이 함수가
-  // Unified Identity로 선택 브랜드에 확정한 오프라인 상품 라인만 별도 응답한다.
-  const offlineAttributionRows = [];
+  // Brand Intelligence Product Intelligence용 오프라인 상품 집계.
+  // ECOUNT salesLines는 거래 라인 단위이므로 그대로 UI에 전달하면 동일 상품이
+  // 여러 번 노출된다. 여기서는 선택 브랜드/기간/매장 안에서 동일 상품명을
+  // 하나의 상품 bucket으로 합쳐 매출과 판매수량을 누적한다.
+  //
+  // 주의: 현재 ECOUNT loader에는 신뢰 가능한 canonical productCode가 없으므로
+  // 이름만으로 Cafe24 SKU와 임의 병합하지 않는다. 온라인/오프라인 canonical
+  // product identity 통합은 별도 단계에서 처리한다.
+  const offlineAttributionBuckets = new Map();
   // PART F(Brand Revenue): storeCode 필터와 무관하게 브랜드의 매장별 오프라인 매출을
   // 항상 함께 집계한다 — ALL에서 "온라인/압구정/VAIL" 3축을 보여주고, Store Focus에서
   // Brand Store Share(분모=canonical ALL) 계산에 재사용하기 위함(추가 API 호출 없음).
@@ -4557,14 +4605,19 @@ export async function buildBrandCustomerComposition(brandCode, month, commerceSo
     if (!Number.isFinite(amount)) continue;
     const productName = String(line.productName || "").trim();
     if (!storeCode || line?.storeCode === storeCode) {
-      offlineAttributionRows.push({
-        productName,
+      const productKey = productName || "(상품명 없음)";
+      const quantitySold = Number.isFinite(Number(line.quantity)) ? Number(line.quantity) : 0;
+      const existing = offlineAttributionBuckets.get(productKey) || {
+        productName: productKey,
         productCode: line.prodCd || line.productCode || null,
-        revenue: amount,
-        quantitySold: Number.isFinite(Number(line.quantity)) ? Number(line.quantity) : 0,
-        date,
-        storeCode: line.storeCode || null
-      });
+        revenue: 0,
+        quantitySold: 0,
+        lineCount: 0
+      };
+      existing.revenue += amount;
+      existing.quantitySold += quantitySold;
+      existing.lineCount += 1;
+      offlineAttributionBuckets.set(productKey, existing);
     }
     if (amount <= 0) continue; // Clients와 동일 정책: 환불/0원 라인은 "구매 건수"로 세지 않음
     if (Object.prototype.hasOwnProperty.call(revenueByStore, line?.storeCode)) revenueByStore[line.storeCode] += amount;
@@ -4596,7 +4649,8 @@ export async function buildBrandCustomerComposition(brandCode, month, commerceSo
     typeStats: [...typeBuckets.values()].sort((a, b) => b.sales - a.sales),
     topCustomers: [...customerBuckets.values()].sort((a, b) => b.sales - a.sales).slice(0, 10),
     offlineProductCount: offlineProductNames.size,
-    offlineAttributionRows,
+    offlineAttributionRows: [...offlineAttributionBuckets.values()]
+      .sort((a, b) => b.revenue - a.revenue),
     storeCode,
     storeHasData,
     revenueByStore,

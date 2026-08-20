@@ -1575,18 +1575,25 @@
         <div id="entityProductSection" class="section-block brand-product-section">
           <div class="section-title compact">
             <div>
-              <p class="eyebrow">Product Intelligence · Online Only</p>
-              <h3>주요 판매 상품 (온라인)</h3>
+              <p class="eyebrow">Product Intelligence</p>
+              <h3>주요 판매 상품</h3>
             </div>
             <span id="entityProductSkuCount" class="clients-tooltip-badge">-</span>
           </div>
           <div class="brand-customer-top5">
             <div class="brand-customer-top5-head">
-              <p class="brand-customer-top5-title">온라인 매출 TOP</p>
+              <div>
+                <p id="entityProductChannelTitle" class="brand-customer-top5-title">전체 매출 TOP</p>
+                <div id="entityProductChannelToggle" class="entity-product-channel-toggle" role="group" aria-label="상품 판매 채널">
+                  <button type="button" data-entity-product-channel="all" class="active">전체</button>
+                  <button type="button" data-entity-product-channel="online">온라인</button>
+                  <button type="button" data-entity-product-channel="offline">오프라인</button>
+                </div>
+              </div>
               <button type="button" id="entityProductDrawerBtn" class="entity-drawer-open-btn">전체 보기</button>
             </div>
             <ul id="entityProductList" class="brand-customer-top5-list">
-              <li class="entity-drawer-empty">브랜드를 선택하면 온라인 판매 상품을 확인할 수 있습니다.</li>
+              <li class="entity-drawer-empty">브랜드를 선택하면 판매 상품을 확인할 수 있습니다.</li>
             </ul>
           </div>
           <p id="entityProductInsight" class="entity-hero-source-note"></p>

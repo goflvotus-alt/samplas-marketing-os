@@ -295,7 +295,7 @@ test("12. brand switch — SKU rows are cleared, not leaked, when the active bra
 // SKU Drawer at the very start, mirroring BATCH A's clientOrders guard exactly.
 test("13. refreshEntityTrendMonths closes an open SKU Drawer at its very start (brand/period switch stale-data guard)", () => {
   const fnSource = sourceOfFunction("refreshEntityTrendMonths");
-  const guardIndex = fnSource.indexOf('if (entityDrawerState.open && entityDrawerState.type === "sku") closeEntityDrawer();');
+  const guardIndex = fnSource.indexOf('if (entityDrawerState.open && ["sku", "order"].includes(entityDrawerState.type)) closeEntityDrawer();');
   const brandCheckIndex = fnSource.indexOf("if (!brandIdentityState.brandCode)");
   assert.notEqual(guardIndex, -1);
   assert.ok(guardIndex < brandCheckIndex, "the SKU stale-data guard must run before any brand/period branching, i.e. on every single invocation");
@@ -309,9 +309,10 @@ test("14. entityDrawerSkuRowHtml renders real fields, not the old id/name/mom pl
     sourceOfFunction("hasApiValue"),
     sourceOfFunction("apiNum"),
     sourceOfFunction("apiWon"),
+    sourceOfFunction("entityProductDisplayName"),
     sourceOfFunction("entityDrawerSkuRowHtml")
   ].join("\n\n");
-  const fn = Function(`${source}; return entityDrawerSkuRowHtml;`)();
+  const fn = Function("brandSelectorActiveName", `${source}; return entityDrawerSkuRowHtml;`)("CARNET ARCHIVE");
   const matched = fn({ productNo: "1001", productCode: "CAR-1001", productName: "Test Jacket", revenue: 126400, quantitySold: 3, orderCount: 2, stock: 12 }, 0);
   assert.match(matched, /Test Jacket/);
   assert.match(matched, /126,400원/);

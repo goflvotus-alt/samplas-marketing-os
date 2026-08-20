@@ -163,6 +163,7 @@ test("3/4. clientWorkspaceBodyHtml renders real Brand-section totals and Recent 
     sourceOfFunction("entityClientOverviewMatchFor"),
     sourceOfFunction("entityClientPurchaseLinesFor"),
     sourceOfFunction("entityClientPurchaseStateHtml"),
+    sourceOfFunction("entityProductDisplayName"),
     sourceOfFunction("clientWorkspaceOrderRowHtml"),
     // BI-BATCH-I: clientWorkspaceBodyHtml now also renders Customer Contribution Grade v1
     // and real Category breakdown — pull in their real source too (no reimplementation).
@@ -196,13 +197,14 @@ test("3/4. clientWorkspaceBodyHtml renders real Brand-section totals and Recent 
     "entityClientsOverviewData", "entityClientsOverviewFetchFailed", "brandIdentityState",
     "entityCompositionColors", "entityCompositionTypeLabel", "entityCompareBrandA",
     "entityCompositionRows", "CATEGORY_NAME_KEYWORD_RULES", "CATEGORY_NAME_SUBCATEGORY_BY_KEYWORD",
-    "CATEGORY_HANGUL_ONLY_PATTERN", "CATEGORY_MASTER_V1_NAME_BY_CODE",
+    "CATEGORY_HANGUL_ONLY_PATTERN", "CATEGORY_MASTER_V1_NAME_BY_CODE", "brandSelectorActiveName",
     `${source}; return clientWorkspaceBodyHtml;`
   )(
     { clients: [clientGroup()] }, false, { brandCode: CARNET_CODE },
     entityCompositionColors, entityCompositionTypeLabel, () => "CARNET ARCHIVE",
     [{ name: "이종현 실장님", sales: 1000000, count: 10 }], CATEGORY_NAME_KEYWORD_RULES,
-    CATEGORY_NAME_SUBCATEGORY_BY_KEYWORD, CATEGORY_HANGUL_ONLY_PATTERN, CATEGORY_MASTER_V1_NAME_BY_CODE
+    CATEGORY_NAME_SUBCATEGORY_BY_KEYWORD, CATEGORY_HANGUL_ONLY_PATTERN, CATEGORY_MASTER_V1_NAME_BY_CODE,
+    "CARNET ARCHIVE"
   )({ name: "이종현 실장님", type: "stylist", count: 10, sales: 1000000, lastPurchase: "2026-08-10" });
 
   assert.doesNotMatch(html, /고객별 브랜드 구매 데이터 연결 대기/, "old static placeholder text must be gone");
@@ -220,9 +222,10 @@ test("6. clientOrders drawer row template (entityDrawerClientOrderRowHtml) rende
     sourceOfFunction("hasApiValue"),
     sourceOfFunction("apiNum"),
     sourceOfFunction("apiWon"),
+    sourceOfFunction("entityProductDisplayName"),
     sourceOfFunction("entityDrawerClientOrderRowHtml")
   ].join("\n\n");
-  const fn = Function(`${source}; return entityDrawerClientOrderRowHtml;`)();
+  const fn = Function("brandSelectorActiveName", `${source}; return entityDrawerClientOrderRowHtml;`)("CARNET ARCHIVE");
   const html = fn(purchaseLine(), 0);
   assert.match(html, /Test Jacket/);
   assert.match(html, /126,400원/);

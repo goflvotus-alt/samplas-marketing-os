@@ -14233,9 +14233,10 @@ function positionEntityCompositionProfileCard(anchor, card) {
 function entityCompositionProfileHtml(row) {
   const aov = row.count ? Math.round(row.sales / row.count) : 0;
   const brandLines = entityClientPurchaseLinesFor(row);
-  const recentHtml = entityClientPurchaseStateHtml(brandLines) || brandLines.slice(0, 3).map((line) => (
-    `<div class="brand-customer-profile-row"><span>${esc(line.date || "-")}</span><strong>${esc(line.productName || "제품 정보 없음")} · ${apiWon(line.salesAmount)}</strong></div>`
-  )).join("");
+  const recentHtml = entityClientPurchaseStateHtml(brandLines) || brandLines.slice(0, 3).map((line) => {
+    const productLabel = entityProductDisplayName(line.productName || "제품 정보 없음");
+    return `<div class="brand-customer-profile-row"><span>${esc(line.date || "-")}</span><strong class="brand-customer-profile-recent-order-name" title="${esc(productLabel)}">${esc(productLabel)} · ${apiWon(line.salesAmount)}</strong></div>`;
+  }).join("");
   return `
     <div class="brand-customer-profile-head">
       <div class="brand-customer-profile-heading">
@@ -14299,12 +14300,12 @@ let clientWorkspacePreviousFocus = null;
 // BATCH A: row는 실제 purchaseDetails 라인(entityDrawerClientOrderRowHtml과 동일한 필드
 // 이름/의미 — 옛 product/amount/variant placeholder 필드는 실제 payload에 없어 제거).
 function clientWorkspaceOrderRowHtml(row, index) {
-  const productLabel = row.productName || "제품 정보 없음";
+  const productLabel = entityProductDisplayName(row.productName || "제품 정보 없음");
   const channelLabel = row.source === "online" ? "온라인" : row.source === "offline" ? "오프라인" : "-";
   return `
     <li class="client-workspace-order-row">
       <span class="entity-drawer-rank">${index + 1}</span>
-      <span class="entity-drawer-name">${esc(productLabel)}<i class="entity-drawer-code">${esc(channelLabel)}</i></span>
+      <span class="entity-drawer-name entity-drawer-product-name" title="${esc(productLabel)}"><span class="entity-drawer-product-label">${esc(productLabel)}</span><i class="entity-drawer-code">${esc(channelLabel)}</i></span>
       <span class="entity-drawer-stat"><span>구매일</span><strong>${esc(row.date || "-")}</strong></span>
       <span class="entity-drawer-stat"><span>금액</span><strong>${apiWon(row.salesAmount)}</strong></span>
     </li>`;
@@ -14656,6 +14657,7 @@ async function refreshEntityCustomerComposition(brandCode, month) {
         const color = classifyEntityProductColor(row.productName, colorMaster);
         return {
           productName: row.productName || "-",
+          productCode: row.productCode || null,
           revenue: Number(row.revenue || 0),
           quantitySold: Number(row.quantitySold || 0),
           categoryCode: category.code,
@@ -14732,6 +14734,9 @@ function currentEntityPeriodMonthKey() {
 
 async function refreshEntityTrendMonths() {
   const seq = ++entityTrendRefreshSeq;
+  entityOrderRefreshSeq += 1;
+  entityOrderRows.length = 0;
+  entityOrderState = { loading: false, fetchFailed: false, productNo: null, periodMonth: null };
   // BATCH A: 브랜드/기간이 바뀌는 시점(이 함수가 유일한 트리거)에 이전 브랜드/기간의
   // Customer Detail 데이터가 화면에 남지 않도록 열려 있는 Workspace/clientOrders Drawer를
   // 닫는다(Phase 10 stale-data 방지) — 아직 새 브랜드의 purchase 데이터가 없는 시점에
@@ -14740,7 +14745,7 @@ async function refreshEntityTrendMonths() {
   if (entityDrawerState.open && entityDrawerState.type === "clientOrders") closeEntityDrawer();
   // BATCH B: SKU Drawer가 열려 있는 상태로 브랜드/기간이 바뀌면 이전 브랜드의 SKU 목록이
   // 그대로 보이지 않도록 닫는다(entitySkuRows는 rebuildEntitySkuRows가 곧 다시 채운다).
-  if (entityDrawerState.open && entityDrawerState.type === "sku") closeEntityDrawer();
+  if (entityDrawerState.open && ["sku", "order"].includes(entityDrawerState.type)) closeEntityDrawer();
   if (!brandIdentityState.brandCode) {
     entityTrendMonths = [];
     entityTrendCompareMonths = [];
@@ -17674,6 +17679,67 @@ function refreshOpenEntitySkuDrawer() {
   if (entityDrawerState.open && entityDrawerState.type === "sku") renderEntityDrawerBody();
 }
 
+// Brand Intelligence 표시 전용 상품명.
+// Cafe24 원본 productName은 Category/Color 분류, SKU 매칭, 검색 등에 그대로 보존하고
+// 화면에 출력할 때만 선두의 "[영문 브랜드명 : 한글 브랜드명]" 표기를 제거한다.
+function entityProductDisplayName(productName = "") {
+  const original = String(productName || "").trim();
+  if (!original) return "-";
+
+  // Cafe24 형식:
+  // [CARNET ARCHIVE : 카르넷 아카이브] PRODUCT
+  let cleaned = original.replace(/^\s*\[[^\]]+\]\s*/, "").trim();
+
+  // ECOUNT / Clients 형식:
+  // CARNET ARCHIVE / PRODUCT
+  // Brand Intelligence에서는 이미 선택 브랜드가 명확하므로
+  // 현재 선택된 브랜드명 prefix만 표시 단계에서 제거한다.
+  const activeBrand = String(brandSelectorActiveName || "").trim();
+  if (activeBrand) {
+    const escapedBrand = activeBrand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    cleaned = cleaned.replace(new RegExp(`^\\s*${escapedBrand}\\s*\\/\\s*`, "i"), "").trim();
+  }
+
+  return cleaned || original;
+}
+
+// Brand Intelligence Product Intelligence의 전체 채널 병합 전용 exact key.
+// 표시 helper가 제거하는 확인된 선두 브랜드 prefix 외에는 trim/공백/대소문자만
+// 정규화한다. 부분 일치·fuzzy·alias 추론은 하지 않는다.
+function entityProductExactKey(productName = "") {
+  if (!String(productName || "").trim()) return "";
+  return entityProductDisplayName(productName).replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function entityProductIsSaleRow(row) {
+  return Number(row?.revenue || 0) > 0 || Number(row?.quantitySold || 0) > 0;
+}
+
+function mergeEntityProductChannelRows(onlineRows, offlineRows) {
+  const merged = new Map();
+  [...onlineRows, ...offlineRows].forEach((row) => {
+    const key = entityProductExactKey(row.productName);
+    if (!key) return;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...row, productChannel: "all", productChannelLabel: "전체" });
+      return;
+    }
+    const online = existing.productNo ? existing : row.productNo ? row : existing;
+    merged.set(key, {
+      ...existing,
+      ...online,
+      productName: online.productName || existing.productName,
+      revenue: Number(existing.revenue || 0) + Number(row.revenue || 0),
+      quantitySold: Number(existing.quantitySold || 0) + Number(row.quantitySold || 0),
+      orderCount: Number(existing.orderCount || 0) + Number(row.orderCount || 0),
+      productChannel: "all",
+      productChannelLabel: "전체"
+    });
+  });
+  return [...merged.values()];
+}
+
 // BI-BATCH-H: 05 PRODUCT. entitySkuRows(BATCH B/B2가 이미 계산해 둔 온라인 매출 + 재고
 // join 결과, SKU Drawer가 쓰는 것과 정확히 같은 배열)를 매출 순으로 상위 몇 개만 뽑아
 // 메인 페이지에 노출한다 — 새 계산/새 소스 없음. 행 클릭·"전체 보기"는 기존 SKU Drawer를
@@ -17681,96 +17747,263 @@ function refreshOpenEntitySkuDrawer() {
 // 원칙(로딩 중/fetch 실패/진짜 없음을 구분, NULL != ZERO)을 그대로 재사용한다.
 const ENTITY_PRODUCT_SECTION_TOP_N = 5;
 
+// Product Intelligence 채널 표시 상태.
+// 실제 온라인/오프라인/통합 데이터 계산은 다음 단계에서 연결한다.
+let entityProductChannelState = "all";
+
+function setEntityProductChannel(channel) {
+  if (!["all", "online", "offline"].includes(channel)) return;
+  entityProductChannelState = channel;
+
+  document.querySelectorAll("[data-entity-product-channel]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.entityProductChannel === channel);
+  });
+
+  const title = $("#entityProductChannelTitle");
+  if (title) {
+    title.textContent =
+      channel === "online"
+        ? "온라인 매출 TOP"
+        : channel === "offline"
+          ? "오프라인 매출 TOP"
+          : "전체 매출 TOP";
+  }
+
+  renderEntityProductSection();
+}
+
+function entityProductRowsForChannel(channel = entityProductChannelState) {
+  const onlineRows = entitySkuRows
+    .filter(entityProductIsSaleRow)
+    .map((row) => ({
+      ...row,
+      productChannel: "online",
+      productChannelLabel: "온라인"
+    }));
+
+  const offlineReady =
+    entityOfflineAttributionState.ready &&
+    entityOfflineAttributionState.brandCode === brandIdentityState.brandCode &&
+    entityOfflineAttributionState.periodMonth === currentEntityPeriodMonthKey();
+
+  const offlineRows = offlineReady
+    ? entityOfflineAttributionState.rows
+        .filter(entityProductIsSaleRow)
+        .map((row, index) => ({
+          ...row,
+          productNo: null,
+          productCode: row.productCode || "",
+          orderCount: null,
+          stock: null,
+          stockMatched: false,
+          stockUnavailable: true,
+          productChannel: "offline",
+          productChannelLabel: "오프라인",
+          offlineRowKey: `offline-${index}`
+        }))
+    : [];
+
+  if (channel === "online") return onlineRows;
+  if (channel === "offline") return offlineRows;
+  return mergeEntityProductChannelRows(onlineRows, offlineRows);
+}
+
 function renderEntityProductSection() {
   const listEl = $("#entityProductList");
   const insightEl = $("#entityProductInsight");
   const countEl = $("#entityProductSkuCount");
   if (!listEl) return;
+
   const emptyLi = (text) => `<li class="entity-drawer-empty">${esc(text)}</li>`;
   const brandCode = brandIdentityState.brandCode;
+
   if (!brandCode) {
-    listEl.innerHTML = emptyLi("브랜드를 선택하면 온라인 판매 상품을 확인할 수 있습니다.");
+    listEl.innerHTML = emptyLi("브랜드를 선택하면 판매 상품을 확인할 수 있습니다.");
     if (insightEl) insightEl.textContent = "";
     if (countEl) countEl.textContent = "-";
     return;
   }
-  if (entitySkuSalesState.brandCode !== brandCode) {
+
+  const onlinePending =
+    entitySkuSalesState.brandCode !== brandCode;
+
+  const offlinePending =
+    !entityOfflineAttributionState.ready &&
+    !entityOfflineAttributionState.fetchFailed;
+
+  if (
+    (entityProductChannelState === "online" && onlinePending) ||
+    (entityProductChannelState === "offline" && offlinePending) ||
+    (entityProductChannelState === "all" && (onlinePending || offlinePending))
+  ) {
     listEl.innerHTML = emptyLi("불러오는 중...");
     if (insightEl) insightEl.textContent = "";
     if (countEl) countEl.textContent = "-";
     return;
   }
-  if (entitySkuSalesState.fetchFailed) {
-    listEl.innerHTML = emptyLi("이번 기간 매출 데이터를 불러오지 못했습니다.");
+
+  if (
+    entityProductChannelState === "online" &&
+    entitySkuSalesState.fetchFailed
+  ) {
+    listEl.innerHTML = emptyLi("온라인 매출 데이터를 불러오지 못했습니다.");
     if (insightEl) insightEl.textContent = "";
     if (countEl) countEl.textContent = "-";
     return;
   }
-  if (!entitySkuRows.length) {
-    listEl.innerHTML = emptyLi("이번 기간 온라인 판매 또는 확인된 재고가 없습니다.");
+
+  if (
+    entityProductChannelState === "offline" &&
+    entityOfflineAttributionState.fetchFailed
+  ) {
+    listEl.innerHTML = emptyLi("오프라인 매출 데이터를 불러오지 못했습니다.");
     if (insightEl) insightEl.textContent = "";
-    if (countEl) countEl.textContent = "0개";
+    if (countEl) countEl.textContent = "-";
     return;
   }
-  const sorted = [...entitySkuRows].sort((a, b) => b.revenue - a.revenue);
+
+  if (
+    entityProductChannelState === "all" &&
+    (entitySkuSalesState.fetchFailed || entityOfflineAttributionState.fetchFailed)
+  ) {
+    listEl.innerHTML = emptyLi("전체 상품 데이터를 불러오지 못했습니다.");
+    if (insightEl) insightEl.textContent = "";
+    if (countEl) countEl.textContent = "-";
+    return;
+  }
+
+  const rows = entityProductRowsForChannel();
+  if (!rows.length) {
+    const label =
+      entityProductChannelState === "online"
+        ? "온라인"
+        : entityProductChannelState === "offline"
+          ? "오프라인"
+          : "전체";
+    listEl.innerHTML = emptyLi(`이번 기간 ${label} 판매 상품이 없습니다.`);
+    if (insightEl) insightEl.textContent = "";
+    if (countEl) countEl.textContent = "0종";
+    return;
+  }
+
+  const sorted = [...rows].sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0));
   const top = sorted.slice(0, ENTITY_PRODUCT_SECTION_TOP_N);
-  const maxRevenue = Math.max(1, ...top.map((row) => row.revenue));
+  const maxRevenue = Math.max(1, ...top.map((row) => Number(row.revenue || 0)));
+
   listEl.innerHTML = top.map((row, index) => {
-    const stockText = row.stock == null ? "-" : `${apiNum(row.stock)}개`;
-    const barPct = Math.max(2, Math.round((row.revenue / maxRevenue) * 100));
+    const barPct = Math.max(2, Math.round((Number(row.revenue || 0) / maxRevenue) * 100));
+    const channelLabel = row.productChannelLabel || (row.productChannel === "offline" ? "오프라인" : "온라인");
+    const stockText =
+      row.productNo
+        ? ` · 현재 재고 ${row.stock == null ? "-" : `${apiNum(row.stock)}개`}`
+        : "";
+
     return `
-      <li data-entity-product-row="${index}" tabindex="0">
+      <li
+        data-entity-product-row="${index}"
+        data-entity-product-channel="${esc(row.productChannel || "online")}"
+        data-entity-product-no="${esc(row.productNo || "")}"
+        tabindex="0"
+      >
         <div class="brand-customer-top5-row-head">
           <span class="brand-customer-top5-rank">${index + 1}</span>
-          <span class="brand-customer-top5-name">${esc(row.productName)}</span>
+          <span class="brand-customer-top5-name" title="${esc(entityProductDisplayName(row.productName))}">${esc(entityProductDisplayName(row.productName))}</span>
           <strong>${apiWon(row.revenue)}</strong>
         </div>
         <i class="brand-customer-top5-bar"><b style="width:${barPct}%"></b></i>
-        <p class="entity-product-row-sub">온라인 ${apiNum(row.quantitySold)}개 · 현재 재고 ${stockText}</p>
+        <p class="entity-product-row-sub">${channelLabel} ${apiNum(row.quantitySold)}개${stockText}</p>
       </li>`;
   }).join("");
-  // 이번 기간 온라인 판매 상품 수는 entityTrendMonths[].skuCount(STEP67-6, 이미 계산됨)를
-  // 표시용으로 다시 읽을 뿐이다(새 계산 없음).
-  const periodRow = entityTrendMonths.find((item) => item.key === currentEntityPeriodMonthKey());
-  if (countEl) countEl.textContent = periodRow?.skuCount != null ? `${apiNum(periodRow.skuCount)}개` : "-";
-  const topSeller = sorted.find((row) => row.revenue > 0);
+
+  const onlineCount = entityProductRowsForChannel("online").length;
+  const offlineCount = entityProductRowsForChannel("offline").length;
+
+  if (countEl) {
+    countEl.textContent =
+      entityProductChannelState === "online"
+        ? `${apiNum(onlineCount)}종`
+        : entityProductChannelState === "offline"
+          ? `${apiNum(offlineCount)}종`
+          : `${apiNum(rows.length)}종 · 온라인 ${apiNum(onlineCount)}종 · 오프라인 ${apiNum(offlineCount)}종`;
+  }
+
+  const topSeller = sorted[0];
   if (insightEl) {
-    insightEl.textContent = topSeller
-      ? `온라인 매출 1위 상품: ${topSeller.productName}`
-      : "이번 기간 온라인 매출이 확인된 상품이 없습니다.";
+    if (!topSeller) {
+      insightEl.textContent = "이번 기간 판매가 확인된 상품이 없습니다.";
+    } else {
+      const prefix =
+        entityProductChannelState === "online"
+          ? "온라인"
+          : entityProductChannelState === "offline"
+            ? "오프라인"
+            : "전체 채널";
+      insightEl.textContent =
+        `${prefix} 매출 1위 상품: ${entityProductDisplayName(topSeller.productName)} · ${topSeller.productChannelLabel || ""}`;
+    }
   }
 }
 
 function entityDrawerSkuRowHtml(row, index) {
   const aov = row.quantitySold ? Math.round(row.revenue / row.quantitySold) : 0;
   const stockText = row.stock == null ? "-" : `${apiNum(row.stock)}개`;
+  const productLabel = entityProductDisplayName(row.productName);
+  const channelLabel = row.productChannelLabel || "온라인";
   return `
-    <li class="entity-drawer-row" data-entity-type="sku" data-entity-id="${esc(row.productNo)}" data-entity-label="${esc(row.productName)}" tabindex="0">
+    <li class="entity-drawer-row" data-entity-type="sku" data-entity-id="${esc(row.productNo || "")}" data-entity-label="${esc(productLabel)}" data-entity-sku-routable="${row.productNo ? "true" : "false"}" tabindex="0">
       <span class="entity-drawer-rank">${index + 1}</span>
-      <span class="entity-drawer-name">${esc(row.productName)}<i class="entity-drawer-code">${esc(row.productCode)}</i></span>
-      <span class="entity-drawer-stat"><span>온라인 매출</span><strong>${apiWon(row.revenue)}</strong></span>
-      <span class="entity-drawer-stat"><span>온라인 판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></span>
-      <span class="entity-drawer-stat"><span>온라인 객단가</span><strong>${apiWon(aov)}</strong></span>
+      <span class="entity-drawer-name entity-drawer-product-name" title="${esc(productLabel)}"><span class="entity-drawer-product-label">${esc(productLabel)}</span><i class="entity-drawer-code">${esc(row.productCode)}</i></span>
+      <span class="entity-drawer-stat"><span>${esc(channelLabel)} 매출</span><strong>${apiWon(row.revenue)}</strong></span>
+      <span class="entity-drawer-stat"><span>${esc(channelLabel)} 판매수량</span><strong>${apiNum(row.quantitySold)}개</strong></span>
+      <span class="entity-drawer-stat"><span>${esc(channelLabel)} 객단가</span><strong>${apiWon(aov)}</strong></span>
       <span class="entity-drawer-stat"><span>현재 재고</span><strong>${stockText}</strong></span>
     </li>`;
 }
 
-// 어떤 SKU에서 진입해도 동일한 Placeholder 주문 3건(#24015/#24018/#24103)을 보여준다.
-// 고객명은 entityCompositionRows에 이미 존재하는 이름만 재사용해(새 인물 발명 금지)
-// Order → Client 진입 시 'customer' 타입(entityCompositionRows)과 자연스럽게 연결되게
-// 했다.
 const entityOrderRows = [];
+let entityOrderRefreshSeq = 0;
+let entityOrderState = { loading: false, fetchFailed: false, productNo: null, periodMonth: null };
+
+async function refreshEntityOrdersForSku(productNo) {
+  const seq = ++entityOrderRefreshSeq;
+  const periodMonth = currentEntityPeriodMonthKey();
+  const brandCode = brandIdentityState.brandCode;
+  entityOrderRows.length = 0;
+  entityOrderState = { loading: true, fetchFailed: false, productNo, periodMonth };
+  if (entityDrawerState.open && entityDrawerState.type === "order") renderEntityDrawerBody();
+  const today = todayDateKey();
+  const until = periodMonth === today.slice(0, 7) ? today : monthEnd(periodMonth);
+  try {
+    const response = await getSharedJson(`/api/cafe24/orders?start_date=${periodMonth}-01&end_date=${until}&limit=500`, 30000);
+    if (seq !== entityOrderRefreshSeq || brandIdentityState.brandCode !== brandCode || currentEntityPeriodMonthKey() !== periodMonth) return;
+    if (response?.error || !Array.isArray(response?.skuOrderRows)) throw new Error(response?.error || "Invalid Cafe24 order response");
+    entityOrderRows.push(...response.skuOrderRows.filter((row) => String(row?.productNo || "") === String(productNo || "")));
+    entityOrderState = {
+      loading: false,
+      fetchFailed: !entityOrderRows.length && response.skuOrderRowsComplete === false,
+      productNo,
+      periodMonth
+    };
+  } catch {
+    if (seq !== entityOrderRefreshSeq || brandIdentityState.brandCode !== brandCode || currentEntityPeriodMonthKey() !== periodMonth) return;
+    entityOrderRows.length = 0;
+    entityOrderState = { loading: false, fetchFailed: true, productNo, periodMonth };
+  }
+  if (entityDrawerState.open && entityDrawerState.type === "order" && String(entityDrawerState.context?.productNo || "") === String(productNo || "")) {
+    renderEntityDrawerBody();
+  }
+}
 
 function entityDrawerOrderRowHtml(row, index) {
   return `
     <li class="entity-drawer-row" data-entity-type="order" data-entity-id="${esc(row.id)}" data-entity-label="${esc(row.clientName)}" tabindex="0">
       <span class="entity-drawer-rank">${index + 1}</span>
       <span class="entity-drawer-name">#${esc(row.id)}<i class="entity-drawer-code">${esc(row.date)}</i></span>
-      <span class="entity-drawer-stat"><span>고객</span><strong>${esc(row.clientName)}</strong></span>
-      <span class="clients-tooltip-badge brand-customer-type-badge" style="border-color:${entityCompositionColors[row.clientType]}22;color:${entityCompositionColors[row.clientType]}">${esc(entityCompositionTypeLabel[row.clientType] || "-")}</span>
+      <span class="entity-drawer-stat"><span>고객</span><strong>${esc(row.clientName || "-")}</strong></span>
+      ${row.clientType ? `<span class="clients-tooltip-badge brand-customer-type-badge" style="border-color:${entityCompositionColors[row.clientType]}22;color:${entityCompositionColors[row.clientType]}">${esc(entityCompositionTypeLabel[row.clientType] || "-")}</span>` : ""}
       <span class="entity-drawer-stat"><span>수량</span><strong>${apiNum(row.quantity)}개</strong></span>
       <span class="entity-drawer-stat"><span>금액</span><strong>${apiWon(row.amount)}</strong></span>
-      <span class="entity-drawer-stat"><span>상태</span><strong>${esc(row.status)}</strong></span>
+      <span class="entity-drawer-stat"><span>상태</span><strong>${esc(row.status || "-")}</strong></span>
     </li>`;
 }
 
@@ -17883,12 +18116,12 @@ const entityClientWorkspaceOrders = [];
 // variant 필드명은 실제 payload에 없으므로 제거하고(Phase 2 실측 필드명), 없는 값(옵션 등)을
 // 지어내지 않는다. source(online/offline)는 실제로 존재하는 채널 정보라 대신 표시한다.
 function entityDrawerClientOrderRowHtml(row, index) {
-  const productLabel = row.productName || "제품 정보 없음";
+  const productLabel = entityProductDisplayName(row.productName || "제품 정보 없음");
   const channelLabel = row.source === "online" ? "온라인" : row.source === "offline" ? "오프라인" : "-";
   return `
     <li class="entity-drawer-row" data-entity-type="clientOrders" data-entity-id="${esc(String(row.orderId ?? index))}" data-entity-label="${esc(productLabel)}" tabindex="0">
       <span class="entity-drawer-rank">${index + 1}</span>
-      <span class="entity-drawer-name">${esc(productLabel)}<i class="entity-drawer-code">${esc(channelLabel)}</i></span>
+      <span class="entity-drawer-name entity-drawer-product-name" title="${esc(productLabel)}"><span class="entity-drawer-product-label">${esc(productLabel)}</span><i class="entity-drawer-code">${esc(channelLabel)}</i></span>
       <span class="entity-drawer-stat"><span>구매일</span><strong>${esc(row.date || "-")}</strong></span>
       <span class="entity-drawer-stat"><span>수량</span><strong>${apiNum(row.quantity)}개</strong></span>
       <span class="entity-drawer-stat"><span>금액</span><strong>${apiWon(row.salesAmount)}</strong></span>
@@ -17988,12 +18221,12 @@ const entityDrawerConfig = {
   },
   sku: {
     title: "SKU",
-    description: "선택한 브랜드의 온라인 판매 SKU 목록 (매출/수량/주문 · 재고는 항상 현재 시점 스냅샷)",
+    description: "선택한 브랜드의 판매 상품 목록 (재고는 Cafe24 identity가 확인된 상품만 현재 시점 스냅샷)",
     searchPlaceholder: "상품명 또는 상품코드 검색",
     sortOptions: [
-      { value: "revenue_desc", label: "온라인 매출 높은 순" },
-      { value: "qty_desc", label: "온라인 판매수량 높은 순" },
-      { value: "orders_desc", label: "온라인 주문수 높은 순" },
+      { value: "revenue_desc", label: "매출 높은 순" },
+      { value: "qty_desc", label: "판매수량 높은 순" },
+      { value: "orders_desc", label: "주문수 높은 순" },
       { value: "stock_desc", label: "재고 많은 순" }
     ],
     // BI-BATCH-I: Category → SKU drill-down. entityDrawerState.context.categoryCode가
@@ -18002,8 +18235,14 @@ const entityDrawerConfig = {
     // 매핑이 허용하는 한도 내에서" 요구사항을 그대로 만족한다. 그 외 진입(SKU Drawer를
     // 직접 열었을 때)은 기존과 동일하게 전체 목록을 보여준다.
     rows: () => {
+      if (entityDrawerState.context?.sourceType === "product") {
+        return entityProductRowsForChannel(entityDrawerState.context.productChannel || entityProductChannelState);
+      }
       const categoryCode = entityDrawerState.context?.categoryCode;
-      return categoryCode ? entitySkuRows.filter((row) => row.categoryCode === categoryCode) : entitySkuRows;
+      const colorFamily = entityDrawerState.context?.colorFamily;
+      if (categoryCode) return entitySkuRows.filter((row) => row.categoryCode === categoryCode);
+      if (colorFamily) return entitySkuRows.filter((row) => row.colorFamily === colorFamily);
+      return entitySkuRows;
     },
     matchesQuery: (row, query) => row.productName.toLowerCase().includes(query) || String(row.productCode || "").toLowerCase().includes(query),
     sortFns: {
@@ -18034,7 +18273,7 @@ const entityDrawerConfig = {
       { value: "quantity_desc", label: "수량 높은 순" }
     ],
     rows: () => entityOrderRows,
-    matchesQuery: (row, query) => row.id.toLowerCase().includes(query) || row.clientName.toLowerCase().includes(query),
+    matchesQuery: (row, query) => String(row.id || "").toLowerCase().includes(query) || String(row.clientName || "").toLowerCase().includes(query),
     sortFns: {
       date_desc: (a, b) => (b.date || "").localeCompare(a.date || ""),
       amount_desc: (a, b) => b.amount - a.amount,
@@ -18042,6 +18281,11 @@ const entityDrawerConfig = {
     },
     rowHtml: entityDrawerOrderRowHtml,
     clickToast: "Order Intelligence 연결 예정",
+    emptyText: () => (entityOrderState.loading
+      ? "주문 데이터를 불러오는 중입니다."
+      : entityOrderState.fetchFailed
+        ? "주문 데이터를 불러오지 못했습니다."
+        : "이번 기간 해당 SKU 주문이 없습니다."),
     // Order → Client은 새 타입을 만들지 않고 기존 'customer'(entityCompositionRows)를
     // 터미널 노드로 그대로 재사용한다.
     next: "customer"
@@ -18199,6 +18443,8 @@ function renderEntityDrawerBody() {
 function applyEntityDrawerLevel() {
   const config = entityDrawerConfig[entityDrawerState.type];
   if (!config) return;
+  const panel = $("#entityDrawer .entity-drawer-panel");
+  if (panel) panel.dataset.entityDrawerType = entityDrawerState.type;
   $("#entityDrawerTitle").textContent = config.title;
   // STEP59-2: Drawer 전용 기간 state를 새로 만들지 않고 entityPeriodState를 그대로 읽어
   // Header 설명에 기준 기간을 덧붙인다(Customer/Category/Overview 공통, 타입별 분기 없음).
@@ -18332,6 +18578,35 @@ function pushEntityDrawerLevel(type, label, context = null) {
   entityDrawerState = { type, open: true, query: "", sort: config.sortOptions[0].value, context: nextContext };
   const searchInput = applyEntityDrawerLevel();
   searchInput?.focus();
+}
+
+function activateEntityDrawerRow(row) {
+  const config = entityDrawerConfig[entityDrawerState.type];
+  if (!config) return;
+  if (!config.next) {
+    if (config.onRowClick) config.onRowClick(row);
+    else toast(config.clickToast);
+    return;
+  }
+  const nextContext = {
+    sourceType: row.dataset.entityContextSource || entityDrawerState.type,
+    label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title,
+    categoryCode: entityDrawerState.type === "category" ? row.dataset.entityId : (entityDrawerState.context?.categoryCode || null),
+    colorFamily: entityDrawerState.context?.colorFamily || null,
+    productNo: entityDrawerState.type === "sku" ? row.dataset.entityId : (entityDrawerState.context?.productNo || null)
+  };
+  if (entityDrawerState.type === "sku") {
+    if (row.dataset.entitySkuRoutable !== "true") {
+      toast("Cafe24 identity가 없는 오프라인 상품은 주문 상세로 이동할 수 없습니다.");
+      return;
+    }
+    entityOrderRows.length = 0;
+    entityOrderState = { loading: true, fetchFailed: false, productNo: nextContext.productNo, periodMonth: currentEntityPeriodMonthKey() };
+    pushEntityDrawerLevel(config.next, nextContext.label, nextContext);
+    void refreshEntityOrdersForSku(nextContext.productNo);
+    return;
+  }
+  pushEntityDrawerLevel(config.next, nextContext.label, nextContext);
 }
 
 // Breadcrumb 클릭 시 그 위치까지 스택을 되돌린다(-1은 Brand 루트 — Drawer를 닫고 상단
@@ -18868,9 +19143,24 @@ function bind() {
   $("#entityOverviewDrawerBtn")?.addEventListener("click", () => openEntityDrawer("overview"));
   // BI-BATCH-H: 05 PRODUCT. 행 클릭/"전체 보기" 모두 별도 상세 시스템을 만들지 않고
   // 기존 SKU Drawer(openEntityDrawer("sku"))를 그대로 연다(Phase 12).
-  $("#entityProductDrawerBtn")?.addEventListener("click", () => openEntityDrawer("sku"));
+  $("#entityProductDrawerBtn")?.addEventListener("click", () => openEntityDrawer("sku", {
+    sourceType: "product",
+    label: `${entityProductChannelState === "all" ? "전체" : entityProductChannelState === "online" ? "온라인" : "오프라인"} 상품`,
+    productChannel: entityProductChannelState
+  }));
+  $("#entityProductChannelToggle")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-entity-product-channel]");
+    if (!button) return;
+    setEntityProductChannel(button.dataset.entityProductChannel);
+  });
   $("#entityProductList")?.addEventListener("click", (event) => {
-    if (event.target.closest("[data-entity-product-row]")) openEntityDrawer("sku");
+    const row = event.target.closest("[data-entity-product-row]");
+    if (!row) return;
+    openEntityDrawer("sku", {
+      sourceType: "product",
+      label: `${entityProductChannelState === "all" ? "전체" : entityProductChannelState === "online" ? "온라인" : "오프라인"} 상품`,
+      productChannel: entityProductChannelState
+    });
   });
   renderEntityProductSection();
   renderEntityScore();
@@ -18883,18 +19173,7 @@ function bind() {
   document.addEventListener("click", (event) => {
     const row = event.target.closest(".entity-drawer-row");
     if (!row) return;
-    const config = entityDrawerConfig[entityDrawerState.type];
-    if (!config) return;
-    if (config.next) pushEntityDrawerLevel(config.next, row.dataset.entityLabel, {
-      sourceType: row.dataset.entityContextSource || entityDrawerState.type,
-      label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title,
-      // BI-BATCH-I: Category → SKU drill-down 필터에 쓸 카테고리 코드. Category 레벨에서
-      // 클릭했을 때만 새로 채우고, 그 외(예: 이미 필터된 SKU→Order)에는 기존 context의
-      // categoryCode를 그대로 이어간다.
-      categoryCode: entityDrawerState.type === "category" ? row.dataset.entityId : (entityDrawerState.context?.categoryCode || null)
-    });
-    else if (config.onRowClick) config.onRowClick(row);
-    else toast(config.clickToast);
+    activateEntityDrawerRow(row);
   });
   // Breadcrumb 크럼(뒤로가기 포함) + Related Entity/Next Question 단축 이동은 전부
   // popEntityDrawerTo/pushEntityDrawerLevel 두 함수만 호출한다(전용 로직 없음).
@@ -18947,15 +19226,7 @@ function bind() {
     const row = event.target.closest?.(".entity-drawer-row");
     if (row && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
-      const config = entityDrawerConfig[entityDrawerState.type];
-      if (!config) return;
-      if (config.next) pushEntityDrawerLevel(config.next, row.dataset.entityLabel, {
-        sourceType: row.dataset.entityContextSource || entityDrawerState.type,
-        label: row.dataset.entityLabel || entityDrawerState.context?.label || config.title,
-        categoryCode: entityDrawerState.type === "category" ? row.dataset.entityId : (entityDrawerState.context?.categoryCode || null)
-      });
-      else if (config.onRowClick) config.onRowClick(row);
-      else toast(config.clickToast);
+      activateEntityDrawerRow(row);
       return;
     }
     const el = $("#entityDrawer");
@@ -19042,6 +19313,19 @@ function bind() {
     if (!event.target.closest("[data-category-code], [data-category-unavailable]")) return;
     hideEntityCategoryProfileCardSoon();
   });
+  $("#entityCategoryList")?.addEventListener("click", (event) => {
+    const li = event.target.closest("[data-category-code]");
+    const row = li && entityCategoryRows.find((item) => item.code === li.dataset.categoryCode);
+    if (row) openEntityDrawer("sku", { label: row.name, categoryCode: row.code });
+  });
+  $("#entityCategoryList")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const li = event.target.closest("[data-category-code]");
+    const row = li && entityCategoryRows.find((item) => item.code === li.dataset.categoryCode);
+    if (!row) return;
+    event.preventDefault();
+    openEntityDrawer("sku", { label: row.name, categoryCode: row.code });
+  });
   renderEntityCategorySection();
   // Color Intelligence — Category 바로 위 wiring과 동일한 패턴(mode toggle + quick
   // profile card hover/focus). 새 상호작용 방식을 만들지 않는다.
@@ -19077,6 +19361,19 @@ function bind() {
   $("#entityColorList")?.addEventListener("focusout", (event) => {
     if (!event.target.closest("[data-color-family]")) return;
     hideEntityColorProfileCardSoon();
+  });
+  $("#entityColorList")?.addEventListener("click", (event) => {
+    const li = event.target.closest("[data-color-family]");
+    const row = li && entityColorRows.find((item) => item.family === li.dataset.colorFamily);
+    if (row) openEntityDrawer("sku", { label: row.family, colorFamily: row.family });
+  });
+  $("#entityColorList")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const li = event.target.closest("[data-color-family]");
+    const row = li && entityColorRows.find((item) => item.family === li.dataset.colorFamily);
+    if (!row) return;
+    event.preventDefault();
+    openEntityDrawer("sku", { label: row.family, colorFamily: row.family });
   });
   renderEntityColorSection();
   $("#entityOverviewList")?.addEventListener("mouseover", (event) => {

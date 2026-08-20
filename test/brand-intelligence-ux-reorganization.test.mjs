@@ -67,12 +67,13 @@ test("KPI cards (#entityHeroKpiGrid) are ordered Revenue, Units, Orders, AOV, In
   assert.ok(stockIdx < sellthroughIdx, "Inventory before Sell-through");
 });
 
-test("05 PRODUCT section reuses entitySkuRows (BATCH B/B2 online sales + current-stock join) — no new source, no new calculation", () => {
-  const fnStart = js.indexOf("function renderEntityProductSection()");
-  assert.notEqual(fnStart, -1, "renderEntityProductSection missing");
-  const fnRegion = js.slice(fnStart, fnStart + 3000);
-  assert.match(fnRegion, /entitySkuRows/, "must read the existing SKU rows array, not a new source");
-  assert.doesNotMatch(fnRegion, /fetch\(|getSharedJson\(/, "must not perform its own new network fetch — only reuse already-fetched entitySkuRows");
+test("05 PRODUCT section reuses existing online SKU and offline attribution rows without a new fetch", () => {
+  const fnStart = js.indexOf("function entityProductRowsForChannel(");
+  const fnEnd = js.indexOf("\n}\n", fnStart) + 3;
+  const fnRegion = js.slice(fnStart, fnEnd);
+  assert.match(fnRegion, /entitySkuRows/);
+  assert.match(fnRegion, /entityOfflineAttributionState\.rows/);
+  assert.doesNotMatch(fnRegion, /fetch\(|getSharedJson\(/);
 });
 
 test("05 PRODUCT section is explicitly labeled online-only", () => {
@@ -88,9 +89,9 @@ test("05 PRODUCT row current-stock semantics: null stays '-' (NULL != ZERO), nev
   assert.match(fnRegion, /row\.stock == null \? "-" : /);
 });
 
-test("05 PRODUCT row click and '전체 보기' both open the existing SKU Drawer — no second SKU detail system", () => {
-  assert.match(js, /\$\("#entityProductDrawerBtn"\)\?\.addEventListener\("click", \(\) => openEntityDrawer\("sku"\)\);/);
-  assert.match(js, /\$\("#entityProductList"\)\?\.addEventListener\("click", \(event\) => \{\s*if \(event\.target\.closest\("\[data-entity-product-row\]"\)\) openEntityDrawer\("sku"\);/);
+test("05 PRODUCT row click and '전체 보기' pass the selected channel to the existing SKU Drawer", () => {
+  assert.match(js, /entityProductDrawerBtn[\s\S]*?openEntityDrawer\("sku", \{[\s\S]*?productChannel: entityProductChannelState/);
+  assert.match(js, /entityProductList[\s\S]*?openEntityDrawer\("sku", \{[\s\S]*?productChannel: entityProductChannelState/);
 });
 
 test("rebuildEntitySkuRows() renders the new Product section at both of its existing exit points (mirrors the established refreshOpenEntitySkuDrawer dual-call-site pattern)", () => {

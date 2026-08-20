@@ -8793,6 +8793,16 @@ body.clients-detail-modal-open {
   color: var(--ink);
 }
 
+.brand-customer-profile-row .brand-customer-profile-recent-order-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 /* STEP60-2B: Client Quick Profile. Header→KPI(brand-customer-profile-rows, 위 3개 규칙
    그대로 재사용)→최근 Activity→Related→Explore 패턴. 섹션 제목 스타일 하나를 공유하고
    Related/Explore 미니 칩은 Entity Drawer의 칩과 같은 느낌(아이콘 + 짧은 텍스트)으로
@@ -9658,6 +9668,24 @@ body.clients-detail-modal-open {
   overflow-y: auto;
 }
 
+/* Recent Orders keeps its controls/footer fixed while only the order list scrolls. */
+.entity-drawer-panel[data-entity-drawer-type="clientOrders"] {
+  overflow: hidden;
+}
+
+.entity-drawer-panel[data-entity-drawer-type="clientOrders"] .entity-drawer-body {
+  min-height: 0;
+  align-content: start;
+  padding-right: 4px;
+}
+
+.entity-drawer-panel[data-entity-drawer-type="clientOrders"] .entity-drawer-header,
+.entity-drawer-panel[data-entity-drawer-type="clientOrders"] .entity-drawer-toolbar,
+.entity-drawer-panel[data-entity-drawer-type="clientOrders"] .entity-drawer-footer,
+.entity-drawer-panel[data-entity-drawer-type="clientOrders"] .entity-drawer-related {
+  flex: none;
+}
+
 /* "테이블과 카드의 중간" 요구사항 — 순위+이름은 고정, 나머지 지표는 label/value 쌍으로
    촘촘하게 나열해 Quick Profile Card보다 정보 밀도를 높인다. */
 .entity-drawer-row {
@@ -9694,6 +9722,24 @@ body.clients-detail-modal-open {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.entity-drawer-product-name {
+  flex-basis: 180px;
+  white-space: normal;
+}
+
+.entity-drawer-product-label {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+}
+
+.entity-drawer-product-name .entity-drawer-code {
+  display: block;
+  margin: 3px 0 0;
 }
 
 .entity-drawer-code {
@@ -10497,6 +10543,38 @@ body.entity-compare-on #entityHeroKpiGrid {
    온라인 판매수량/현재 재고 서브라인 한 줄만 추가한다. */
 #entityProductList li[data-entity-product-row] {
   cursor: pointer;
+}
+
+.entity-product-channel-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.entity-product-channel-toggle button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.entity-product-channel-toggle button:hover,
+.entity-product-channel-toggle button:focus-visible {
+  border-color: rgba(23, 23, 23, 0.3);
+  outline: none;
+}
+
+.entity-product-channel-toggle button.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+#entityProductSkuCount {
+  white-space: nowrap;
 }
 
 .entity-product-row-sub {
