@@ -1565,15 +1565,20 @@ async function renderOverviewLiveData(data, renderSeq) {
   renderSettingsCacheStatus({ instagram: contentData, meta, cafe });
 
   if (todayViewActive()) {
-    // STEP48A: "총매출" 카드(todaySummarySalesInfo)가 Cafe24 LIVE 온라인 매출과 ECOUNT
-    // 오프라인 SNAPSHOT을 합산하고, 광고비/ROAS는 Meta 캐시, 콘텐츠 지표는 Instagram 캐시
-    // 기준이라 화면 전체를 LIVE 단일 상태로 표시하면 오해를 줄 수 있어 MIXED로 표시한다.
-    renderFreshnessHeader("todayFreshnessHeader", {
-      status: "mixed",
-      dataAsOf: range.label || "오늘",
-      lastUpdated: new Date().toISOString(),
-      note: "온라인 매출·광고·콘텐츠는 지금 다시 조회한 값이지만, 광고비는 Meta 캐시, 콘텐츠는 Instagram 캐시, 총매출은 여기에 오프라인(매장) ECOUNT 스냅샷까지 합산한 값입니다. 오프라인 매출은 Commerce/Clients 화면의 ECOUNT 동기화 시각까지만 반영됩니다."
-    });
+    // TODAY-OPS-CLEANUP: 이전의 큰 freshness 안내 카드(#todayFreshnessHeader) 대신
+    // 한 줄짜리 상태 표시로 축소한다. 존재가 확인된 필드만 쓴다 — 온라인/광고/콘텐츠는
+    // 이 렌더가 지금 막 다시 조회한 값이라 "LIVE"가 사실이고, 시각은 실제 렌더 시각이다.
+    // ECOUNT 동기화 시각처럼 프론트에 아직 노출되지 않는 필드는 지어내지 않는다.
+    renderTodayStatusLine(range);
+    // Price Audit은 미리 계산된 캐시(work/price-audit.json)만 읽는 별도 GET이라
+    // 위 Promise.all(라이브 Cafe24/Meta/Instagram 조회)과 분리해 fire-and-forget으로
+    // 호출한다 — TODAY 초기 로딩을 이 호출이 막지 않는다.
+    refreshPriceAudit();
+    refreshProductSyncIssues();
+    // SAMPLAS DESK Today OPS도 동일하게 캐시성 GET 하나만 부르는 fire-and-forget 호출이다
+    // — 위 라이브 Cafe24/Meta/Instagram Promise.all과 절대 합류시키지 않는다(DESK가 죽어도
+    // 총매출/Price Audit/Product Sync 렌더링에 전혀 영향이 없어야 함).
+    refreshDeskOps();
   }
 
   if (commerceDestinationViewActive()) {
@@ -1639,6 +1644,633 @@ function renderTodayOverviewCards() {
     homeMonthSupportCard("팔로워 증가", hasApiValue(followerDelta) ? `${apiNum(followerDelta)}명` : "계산 불가", `현재 ${apiNum(a.followers)}명`, cardBadge("instagram", contentData, hasApiValue(followerDelta))),
     homeMonthSupportCard("콘텐츠 개수", contentRangeError ? "확인 필요" : `${apiNum(postCount)}개`, contentRangeError ? "선택 기간 게시물 데이터 오류" : data.postsScope === "recent_media_fallback" ? "최근 미디어 기준" : "선택 기간 기준", cardBadge("instagram", contentData, postCount > 0 && !contentRangeError))
   ].join(""));
+}
+
+// TODAY Price Audit(온라인 ↔ ECOUNT 가격 불일치). scripts/build-price-audit.mjs가
+// work/price-audit.json에 미리 계산해 둔 결과를 읽기만 한다(TODAY 로드 시 Cafe24를
+// 상품마다 호출하지 않음). READ-ONLY — 여기서 가격이나 Registry를 수정하지 않는다.
+// TODAY-UI-REDESIGN: 기본 진입 필터를 PRICE_MISMATCH(ECOUNT_HIGHER+LOWER)로 바꾸고
+// search/page 상태를 추가한다. 계산 로직(rows 자체)은 그대로, 화면 쪽 상태만 확장.
+let priceAuditState = { rows: [], summary: null, generatedAt: null, filter: "PRICE_MISMATCH", search: "", page: 0, loaded: false, error: null };
+
+const PRICE_AUDIT_PAGE_SIZE = 20;
+
+function priceOpsCategory(row) {
+  if (!(row.status === "ECOUNT_HIGHER" || row.status === "ECOUNT_LOWER")) return null;
+
+  const sale = Number(row.cafe24Price);
+  const retail = Number(row.cafe24RetailPrice);
+  const ecount = Number(row.ecountPrice);
+  const valid =
+    Number.isFinite(sale) &&
+    Number.isFinite(retail) &&
+    Number.isFinite(ecount) &&
+    sale > 0 &&
+    retail > 0 &&
+    ecount > 0;
+
+  if (!valid) return "NOT_COMPARABLE";
+
+  const trusted = row.registryVerified === true || row.registryStatus === "confirmed";
+  if (!trusted) return "PRODUCT_MATCH_SUSPECT";
+
+  const tolerance = 100;
+  const near = (a, b) => Math.abs(a - b) <= tolerance;
+  const cafeDiscounted = sale < retail - tolerance;
+  const cafeAtRetail = near(sale, retail);
+  const ecountAtRetail = near(ecount, retail);
+
+  if (cafeDiscounted && ecountAtRetail) return "ECOUNT_DISCOUNT_MISSING";
+  if (cafeAtRetail && ecount < retail - tolerance) return "CAFE24_DISCOUNT_MISSING";
+  return "PRODUCT_MATCH_SUSPECT";
+}
+
+const PRICE_AUDIT_FILTERS = [
+  { key: "PRICE_MISMATCH", label: "가격 불일치", match: (r) => ["ECOUNT_DISCOUNT_MISSING", "CAFE24_DISCOUNT_MISSING", "PRODUCT_MATCH_SUSPECT"].includes(priceOpsCategory(r)) },
+  { key: "ECOUNT_DISCOUNT_MISSING", label: "ECOUNT 할인 미적용", match: (r) => priceOpsCategory(r) === "ECOUNT_DISCOUNT_MISSING" },
+  { key: "CAFE24_DISCOUNT_MISSING", label: "Cafe24 할인 미적용", match: (r) => priceOpsCategory(r) === "CAFE24_DISCOUNT_MISSING" },
+  { key: "PRODUCT_MATCH_SUSPECT", label: "상품 매칭 오류 의심", match: (r) => priceOpsCategory(r) === "PRODUCT_MATCH_SUSPECT" },
+  { key: "MATCH_REQUIRED", label: "상품 매칭 필요", match: (r) => r.status === "MATCH_REQUIRED" },
+  { key: "REVIEW_REQUIRED", label: "추가 확인", match: (r) => r.status === "REVIEW_REQUIRED" }
+];
+
+// "다시 확인" 버튼은 scripts/build-price-audit.mjs 전체 재실행(Cafe24 API 약 7,176회,
+// 9~16분)이 아니라 이미 계산되어 저장된 work/price-audit.json 캐시를 다시 읽어오는
+// 것뿐이다 — 라벨/버튼 동작 모두 이 사실과 정확히 맞춘다(가벼운 refresh처럼 보이되
+// 실제로도 가볍다).
+let productSyncIssuesState = {
+  summary: null,
+  cafe24UpdateRequired: [],
+  newProductPending: [],
+  activeType: null,
+  loaded: false,
+  error: null
+};
+
+// SAMPLAS DESK Today OPS 연동 — READ ONLY 조회 레이어. DESK가 source of truth이며 여기서는
+// INTELLIGENCE backend(/api/intelligence/desk-ops)가 프록시한 요약만 표시한다. DESK
+// 데이터를 여기서 수정/삭제하는 기능은 만들지 않는다. refreshDeskOps()는 독립
+// fire-and-forget 호출이라(renderOverviewLiveData의 총매출 Promise.all과 절대 합류하지
+// 않음) DESK 연결이 죽어도 다른 Today 카드는 정상 렌더된다.
+let deskOpsState = { loaded: false, error: null, stores: null, activeCategory: null };
+
+// DESK 화면에는 서로 다른 분류 체계 두 개가 있다(둘 다 DESK API가 index.html의 실제
+// 기준을 그대로 옮긴 값 — 새로 정의하지 않음): "오늘 일정"(todayOps, 날짜 기준 4분류)과
+// "현재 운영"(currentOps, DESK 스케줄링 보드 컬럼 기준 6분류). 두 그룹은 판정 기준
+// 자체가 달라 합계를 내지 않으며, 카테고리 키가 서로 겹치지 않아 하나의 activeCategory로
+// 어느 그룹인지 DESK_OPS_CATEGORY_GROUP만으로 항상 구분 가능하다.
+const DESK_TODAY_OPS_KEYS = ["TODAY_PICKUP", "PICKUP_DELAYED", "TODAY_RETURN", "RETURN_DELAYED"];
+const DESK_CURRENT_OPS_KEYS = ["UNPAID", "FITTING_PURCHASE", "HOLDING", "PICKUP_SCHEDULED", "SPONSOR_ACTIVE", "PROCESSING_PENDING"];
+const DESK_OPS_CATEGORY_LABELS = {
+  TODAY_PICKUP: "오늘 픽업",
+  PICKUP_DELAYED: "픽업 지연",
+  TODAY_RETURN: "오늘 반납",
+  RETURN_DELAYED: "반납 지연",
+  UNPAID: "미결제",
+  FITTING_PURCHASE: "피팅 후 구매",
+  HOLDING: "홀딩",
+  PICKUP_SCHEDULED: "픽업 예정",
+  SPONSOR_ACTIVE: "협찬 진행",
+  PROCESSING_PENDING: "처리 대기"
+};
+const DESK_OPS_CATEGORY_GROUP = {};
+DESK_TODAY_OPS_KEYS.forEach((key) => { DESK_OPS_CATEGORY_GROUP[key] = "todayOps"; });
+DESK_CURRENT_OPS_KEYS.forEach((key) => { DESK_OPS_CATEGORY_GROUP[key] = "currentOps"; });
+const DESK_APP_URL = "https://samplas-desk-app.vercel.app/";
+
+// 기존 공유 storeFilterState(APGUJEONG/VAIL/ALL — Cafe24·ECOUNT 매출 화면 전역 상태)를
+// DESK 응답의 store 키(SAMPLAS/VEIL)로 매핑한다. DESK는 매장이 SAMPLAS/VEIL 2개뿐이고
+// VEIL은 이름이 그대로 대응되며, 나머지 하나(APGUJEONG, 압구정 매장)가 DESK의 SAMPLAS
+// 매장에 대응된다고 보고 매핑했다. 새 store state는 만들지 않고 기존 상태만 읽는다.
+function deskStoreKeyForFilter() {
+  if (storeFilterState === "VAIL") return "VEIL";
+  if (storeFilterState === "APGUJEONG") return "SAMPLAS";
+  return "TOTAL";
+}
+
+// 현재 storeFilterState 기준으로 카테고리 1개(todayOps 또는 currentOps 중 어느 쪽인지는
+// DESK_OPS_CATEGORY_GROUP으로 판정)의 count/items를 반환한다. DESK API는 TOTAL에
+// items를 담지 않으므로(중복 전송 방지) TOTAL 선택 시에는 SAMPLAS+VEIL의 items를 같은
+// 그룹 안에서만 합친다 — DESK 응답 자체에는 TOTAL items를 추가하지 않는다.
+function deskOpsBucketForCategory(category) {
+  const stores = deskOpsState.stores;
+  if (!stores) return { count: 0, items: [] };
+  const group = DESK_OPS_CATEGORY_GROUP[category];
+  const key = deskStoreKeyForFilter();
+  if (key === "TOTAL") {
+    const samplasItems = stores.SAMPLAS?.[group]?.items?.[category] || [];
+    const veilItems = stores.VEIL?.[group]?.items?.[category] || [];
+    return { count: stores.TOTAL?.[group]?.counts?.[category] || 0, items: [...samplasItems, ...veilItems] };
+  }
+  const bucket = stores[key]?.[group];
+  return { count: bucket?.counts?.[category] || 0, items: bucket?.items?.[category] || [] };
+}
+
+function groupProductSyncRows(rows = []) {
+  const grouped = new Map();
+
+  for (const row of rows) {
+    const productName = row.productName || row.rawName || row.prodCd || "Unknown";
+    const key = productName.trim();
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        productName,
+        brandName: row.brandName || "",
+        decision: row.decision || "",
+        reason: row.reason || "",
+        action: row.action || "",
+        severity: row.severity || "",
+        skus: []
+      });
+    }
+
+    grouped.get(key).skus.push({
+      prodCd: row.prodCd || "",
+      specification: row.specification || ""
+    });
+  }
+
+  return [...grouped.values()];
+}
+
+async function refreshProductSyncIssues() {
+  if (!todayViewActive()) return;
+
+  const response = await getSharedJson(
+    "/api/intelligence/product-sync-issues",
+    15000
+  );
+
+  if (!todayViewActive()) return;
+
+  if (response.error || !response.issues) {
+    productSyncIssuesState = {
+      summary: null,
+      loaded: true,
+      error: response.error || "not_available"
+    };
+    return;
+  }
+
+  productSyncIssuesState = {
+    ...productSyncIssuesState,
+    summary: response.issues.summary || null,
+    cafe24UpdateRequired: response.issues.cafe24UpdateRequired || [],
+    newProductPending: response.issues.newProductPending || [],
+    loaded: true,
+    error: null
+  };
+
+  renderTodayOpsCheck();
+}
+
+// DESK 연결 실패/timeout도 정상 응답으로 내려온다(intelligence-service.mjs가 항상
+// {ok:false, error} 형태로 감싸므로 여기서 try/catch가 필요 없음) — DESK가 죽어 있어도
+// 이 함수가 예외를 던지지 않고, 다른 Today 카드 렌더링을 절대 막지 않는다.
+async function refreshDeskOps() {
+  if (!todayViewActive()) return;
+
+  const response = await getSharedJson("/api/intelligence/desk-ops", 12000);
+
+  if (!todayViewActive()) return;
+
+  if (response.error || !response.ops) {
+    deskOpsState = { ...deskOpsState, stores: null, loaded: true, error: response.error || "desk_unreachable" };
+    renderTodayOpsCheck();
+    return;
+  }
+
+  deskOpsState = { ...deskOpsState, stores: response.ops.stores || null, loaded: true, error: null };
+  renderTodayOpsCheck();
+}
+
+async function refreshPriceAudit() {
+  if (!todayViewActive()) return;
+  setTodayHtml("#todayOpsCheck", `<article class="action-item sales-compare-card"><span>확인</span><strong>확인 필요 계산 중</strong><p>Product Registry · ECOUNT · Cafe24 가격을 대조하고 있습니다.</p></article>`);
+  const response = await getSharedJson("/api/intelligence/price-audit", 15000);
+  if (!todayViewActive()) return;
+  if (response.error || !response.audit) {
+    priceAuditState = { ...priceAuditState, rows: [], summary: null, loaded: true, error: response.error || "not_available" };
+  } else {
+    const audit = response.audit;
+    priceAuditState = { ...priceAuditState, rows: audit.rows || [], summary: audit.summary || null, generatedAt: audit.generatedAt || null, page: 0, loaded: true, error: null };
+  }
+  renderPriceAudit();
+}
+
+function priceAuditSearchMatch(row, needle) {
+  if (!needle) return true;
+  const haystack = [
+    row.brandName, row.brandId, row.canonicalProductName, row.cafe24ProductNo,
+    ...(row.ecountSkus || []).map((s) => s.prodCd)
+  ].filter(Boolean).join(" ").toUpperCase();
+  return haystack.includes(needle);
+}
+
+// 가격 불일치 계열 탭은 절대 차액이 큰 순으로 정렬해 가장 심각한 오류가 먼저 보이게
+// 한다. MATCH_REQUIRED/REVIEW_REQUIRED는 정렬 기준이 없으므로 audit이 만든 원래
+// 순서를 유지한다(섹션 13 지시대로).
+function priceAuditRowsForFilter(filter) {
+  const def = PRICE_AUDIT_FILTERS.find((f) => f.key === filter) || PRICE_AUDIT_FILTERS[0];
+  const needle = priceAuditState.search.trim().toUpperCase();
+  const rows = priceAuditState.rows.filter((r) => def.match(r) && priceAuditSearchMatch(r, needle));
+  if (["PRICE_MISMATCH", "ECOUNT_DISCOUNT_MISSING", "CAFE24_DISCOUNT_MISSING", "PRODUCT_MATCH_SUSPECT"].includes(filter)) {
+    return [...rows].sort((a, b) => Math.abs(b.priceDiff || 0) - Math.abs(a.priceDiff || 0));
+  }
+  return rows;
+}
+
+// 내부 reason 코드를 사람이 읽는 문장으로만 바꾼다(코드 그대로 노출 금지, 섹션 16).
+// PRICE-OPS-UX: priceOpsCategory(row)가 null이 아니면(가격 비교 가능한 3분류) 그
+// 어휘를 쓰고, null인 경우(MATCH_REQUIRED/REVIEW_REQUIRED 등)는 기존 분기를 그대로
+// 유지한다 — priceOpsCategory 자체는 절대 수정하지 않는다.
+function priceAuditCauseText(row) {
+  if (row.policyNote?.causeHint) return row.policyNote.causeHint;
+  const category = priceOpsCategory(row);
+  if (category === "ECOUNT_DISCOUNT_MISSING") return "온라인 할인 중 · ECOUNT 정가 → ECOUNT 가격 확인";
+  if (category === "CAFE24_DISCOUNT_MISSING") return "ECOUNT 할인 중 · Cafe24 정가 판매 → Cafe24 판매가 확인";
+  if (category === "PRODUCT_MATCH_SUSPECT") return "가격보다 연결 확인 우선 → Product Registry 검수";
+  if (row.status === "MATCH_REQUIRED") return "Product Registry 연결 필요";
+  if (row.reason === "low_confidence_registry_match_with_price_diff") return "Registry 연결 신뢰도 낮음";
+  if (row.reason === "ecount_sku_prices_disagree") return "ECOUNT SKU 가격 불일치";
+  if (row.reason === "cafe24_price_fetch_failed") return "Cafe24 가격 조회 실패";
+  return "확인 필요";
+}
+
+function priceAuditStatusLabel(row) {
+  const category = priceOpsCategory(row);
+  if (category === "ECOUNT_DISCOUNT_MISSING") return "ECOUNT 할인 미적용";
+  if (category === "CAFE24_DISCOUNT_MISSING") return "Cafe24 할인 미적용";
+  if (category === "PRODUCT_MATCH_SUSPECT") return "매칭 오류 의심";
+  if (row.status === "MATCH_REQUIRED") return "매칭 필요";
+  if (row.status === "REVIEW_REQUIRED") return "추가 확인";
+  return row.status;
+}
+
+// 상태 강조는 문제 성격별로 다르게: ECOUNT 할인 미적용만 강하게(urgent, 실제 운영
+// 오류 가능성 높음), Cafe24 할인 미적용은 별도 톤(info, 온라인 담당 확인), 매칭
+// 오류 의심/상품 매칭 필요는 중간(warn, 가격보다 연결 확인 우선), 추가 확인은
+// 약하게(neutral) — 모든 row를 같은 색 박스로 칠하지 않는다(섹션 11).
+function priceAuditStatusTone(row) {
+  const category = priceOpsCategory(row);
+  if (category === "ECOUNT_DISCOUNT_MISSING") return "urgent";
+  if (category === "CAFE24_DISCOUNT_MISSING") return "info";
+  if (category === "PRODUCT_MATCH_SUSPECT") return "warn";
+  if (row.status === "MATCH_REQUIRED") return "warn";
+  return "neutral";
+}
+
+// Desktop 기준 compact table row. ONLINE/ECOUNT/차이는 숫자 정렬이 쉽도록 우측 정렬
+// 클래스(.num)를 쓴다. MATCH_REQUIRED/REVIEW_REQUIRED는 가격이 없을 수 있어 "-"만
+// 반복하는 대신 원인 칸(마지막 열)에 사람이 읽는 사유를 크게 보여준다.
+function priceAuditTableRow(row, hasPolicyColumn) {
+  const tone = priceAuditStatusTone(row);
+  const sku = row.ecountSkus?.[0]?.prodCd ? `${row.ecountSkus[0].prodCd}${row.ecountSkus.length > 1 ? ` 외 ${row.ecountSkus.length - 1}` : ""}` : "-";
+  const cafe24Text = hasApiValue(row.cafe24Price) ? won(row.cafe24Price) : "-";
+  const ecountText = hasApiValue(row.ecountPrice) ? won(row.ecountPrice) : "-";
+  const diffText = hasApiValue(row.priceDiff) ? `${row.priceDiff > 0 ? "+" : ""}${won(row.priceDiff)}` : "-";
+  const policyText = row.policyNote?.effectiveDiscountPercent !== undefined && row.policyNote?.effectiveDiscountPercent !== null
+    ? `${row.policyNote.effectiveDiscountPercent}%`
+    : "-";
+  // ONLINE 셀: 판매가와 정가가 실제로 다를 때만 정가를 보조 정보로 덧붙인다.
+  const showRetail = hasApiValue(row.cafe24Price) && hasApiValue(row.cafe24RetailPrice) && Number(row.cafe24Price) !== Number(row.cafe24RetailPrice);
+  const onlineCell = showRetail
+    ? `${esc(cafe24Text)}<br><span class="price-audit-online-retail">정가 ${esc(won(row.cafe24RetailPrice))}</span>`
+    : esc(cafe24Text);
+  return `<tr>
+    <td><span class="price-audit-status-badge ${tone}">${esc(priceAuditStatusLabel(row))}</span></td>
+    <td class="price-audit-id-cell"><em>${esc(row.brandName || row.brandId || "-")}</em><strong>${esc(row.canonicalProductName || "-")}</strong></td>
+    <td class="price-audit-sku-cell">${esc(row.cafe24ProductNo || "-")}<br><span>SKU ${esc(sku)}</span></td>
+    <td class="num">${onlineCell}</td>
+    <td class="num">${esc(ecountText)}</td>
+    <td class="num price-audit-diff-cell">${esc(diffText)}</td>
+    ${hasPolicyColumn ? `<td class="num">${esc(policyText)}</td>` : ""}
+    <td class="price-audit-cause-cell">${esc(priceAuditCauseText(row))}</td>
+  </tr>`;
+}
+
+// TODAY-UI-REDESIGN: 하나로 뭉쳐 있던 "확인 필요" 카드를 중요도가 다른 3개 카드로
+// 분리한다(가격 불일치 > 상품 매칭 필요 > 추가 확인). 값은 priceAuditState.summary를
+// 그대로 쓴다 — 새 계산 없음.
+function renderTodayOpsCheck() {
+  const target = $("#todayOpsCheck");
+  if (!target) return;
+  if (priceAuditState.error) {
+    target.innerHTML = `<article class="action-item sales-compare-card"><span>확인</span><strong>확인 필요 데이터 없음</strong><p>scripts/build-price-audit.mjs 실행이 필요합니다.</p></article>`;
+    return;
+  }
+  const s = priceAuditState.summary || {};
+  const priceOpsCounts = {
+    ECOUNT_DISCOUNT_MISSING: 0,
+    CAFE24_DISCOUNT_MISSING: 0,
+    PRODUCT_MATCH_SUSPECT: 0
+  };
+  for (const row of priceAuditState.rows) {
+    const category = priceOpsCategory(row);
+    if (category in priceOpsCounts) priceOpsCounts[category] += 1;
+  }
+  const priceMismatch =
+    priceOpsCounts.ECOUNT_DISCOUNT_MISSING +
+    priceOpsCounts.CAFE24_DISCOUNT_MISSING +
+    priceOpsCounts.PRODUCT_MATCH_SUSPECT;
+  const matchRequired = s.MATCH_REQUIRED || 0;
+  const reviewRequired = s.REVIEW_REQUIRED || 0;
+  const cafe24UpdateProducts = groupProductSyncRows(
+    productSyncIssuesState.cafe24UpdateRequired || []
+  );
+  const newProductPendingProducts = groupProductSyncRows(
+    productSyncIssuesState.newProductPending || []
+  );
+  const cafe24UpdateRequired = cafe24UpdateProducts.length;
+  const newProductPending = newProductPendingProducts.length;
+
+  target.innerHTML = [
+    `<article class="today-ops-card ops-primary" data-price-audit-filter="PRICE_MISMATCH">
+      <span>가격 불일치</span><strong>${apiNum(priceMismatch)}건</strong>
+      <div class="today-ops-subpills">
+        <button type="button" class="today-ops-subpill" data-price-audit-filter="ECOUNT_DISCOUNT_MISSING">ECOUNT 할인 ${apiNum(priceOpsCounts.ECOUNT_DISCOUNT_MISSING)}</button>
+        <button type="button" class="today-ops-subpill" data-price-audit-filter="CAFE24_DISCOUNT_MISSING">Cafe24 할인 ${apiNum(priceOpsCounts.CAFE24_DISCOUNT_MISSING)}</button>
+        <button type="button" class="today-ops-subpill" data-price-audit-filter="PRODUCT_MATCH_SUSPECT">매칭 의심 ${apiNum(priceOpsCounts.PRODUCT_MATCH_SUSPECT)}</button>
+      </div>
+    </article>`,
+    `<article class="today-ops-card ops-secondary" data-price-audit-filter="MATCH_REQUIRED">
+      <span>상품 매칭 필요</span><strong>${apiNum(matchRequired)}건</strong>
+      <p>Product Registry 연결 필요</p>
+    </article>`,
+    `<article class="today-ops-card ops-tertiary" data-price-audit-filter="REVIEW_REQUIRED">
+      <span>추가 확인 필요</span><strong>${apiNum(reviewRequired)}건</strong>
+      <p>낮은 신뢰도 매칭 · 데이터 확인</p>
+    </article>`,
+    `<article class="today-ops-card ops-secondary" data-product-sync-type="CAFE24_UPDATE">
+      <span>Cafe24 업데이트 필요</span><strong>${apiNum(cafe24UpdateRequired)}건</strong>
+      <p>261 시즌 · Cafe24 등록/수정 확인</p>
+    </article>`,
+    `<article class="today-ops-card ops-tertiary" data-product-sync-type="NEW_PRODUCT">
+      <span>신상품 등록 대기</span><strong>${apiNum(newProductPending)}건</strong>
+      <p>263 시즌 · Cafe24 등록 대기</p>
+    </article>`
+  ].join("");
+
+  // DESK 운영은 더 이상 이 카드 그리드의 일부가 아니라 아래 가로 전체 폭 독립 패널
+  // (#deskOpsPanel)이다 — "데이터 검수" 카드들과 성격이 다른 "실시간 매장 운영"
+  // 정보라 같은 급으로 묻히면 안 된다는 지시에 따라 분리했다. 트리거 시점은 그대로
+  // 유지(이 함수가 불릴 때마다 같이 다시 그림 — refreshPriceAudit/refreshProductSyncIssues/
+  // refreshDeskOps/store filter 변경 전부 기존과 동일하게 재렌더된다).
+  renderDeskOpsPanel();
+}
+
+// DESK 화면과 동일하게 "오늘 일정"(날짜 기준 4분류)과 "현재 운영"(스케줄링 컬럼 기준
+// 6분류)을 서로 다른 그리드 2개로 분리해 그린다 — 절대 하나의 합계 줄로 섞지 않는다.
+// DESK 연결 실패 시 urgent(빨강) 대신 neutral 톤으로 표시한다 — DESK 장애는 매출/Price
+// Audit과 급이 다른 신호라 과도하게 경고성으로 보이면 안 된다. 아직 로딩 중이면 0건으로
+// 잘못 보이지 않도록 별도 안내를 보여준다.
+function renderDeskOpsPanel() {
+  const todayTarget = $("#deskOpsTodayPanel");
+  const currentTarget = $("#deskOpsCurrentPanel");
+  if (!todayTarget || !currentTarget) return;
+
+  if (deskOpsState.error) {
+    setTodayHtml("#deskOpsLiveBadge", "");
+    todayTarget.innerHTML = `<div class="desk-ops-panel-empty"><strong>연결 확인 필요</strong><p>SAMPLAS DESK 연결 상태를 확인해주세요.</p></div>`;
+    currentTarget.innerHTML = "";
+    return;
+  }
+  if (!deskOpsState.loaded || !deskOpsState.stores) {
+    setTodayHtml("#deskOpsLiveBadge", "");
+    todayTarget.innerHTML = `<div class="desk-ops-panel-empty"><strong>확인 중</strong><p>SAMPLAS DESK 운영 현황을 불러오고 있습니다.</p></div>`;
+    currentTarget.innerHTML = "";
+    return;
+  }
+  setTodayHtml("#deskOpsLiveBadge", "<i></i>실시간");
+
+  todayTarget.innerHTML = DESK_TODAY_OPS_KEYS.map((key) => deskOpsCellHtml(key, deskTodayOpsTone(key))).join("");
+  currentTarget.innerHTML = DESK_CURRENT_OPS_KEYS.map((key) => deskOpsCellHtml(key, deskCurrentOpsTone(key))).join("");
+}
+
+function deskOpsCellHtml(key, tone) {
+  const count = deskOpsBucketForCategory(key).count;
+  const classes = [
+    "desk-ops-cell",
+    `tone-${tone}`,
+    count === 0 ? "zero" : "",
+    deskOpsState.activeCategory === key ? "active" : ""
+  ].filter(Boolean).join(" ");
+  return `<button type="button" class="${classes}" data-desk-ops-filter="${key}">
+      <span>${esc(DESK_OPS_CATEGORY_LABELS[key])}</span>
+      <strong>${apiNum(count)}건</strong>
+    </button>`;
+}
+
+// "오늘 일정" 4분류 시각 우선순위: 오늘 픽업=info(파랑)/오늘 반납=good(초록)/
+// 픽업 지연·반납 지연=urgent(빨강). 0건일 때의 neutral 처리는 .zero 클래스가 톤과
+// 별개로 덮어써서 담당한다(deskOpsCellHtml).
+function deskTodayOpsTone(key) {
+  if (key === "TODAY_PICKUP") return "info";
+  if (key === "TODAY_RETURN") return "good";
+  return "urgent"; // PICKUP_DELAYED, RETURN_DELAYED
+}
+
+// "현재 운영" 6분류 시각 우선순위: 미결제=urgent(빨강)/피팅 후 구매=brown(주황·갈색)/
+// 홀딩=warn(노랑)/픽업 예정=info(파랑)/협찬 진행=purple(보라)/처리 대기=neutral(회색).
+function deskCurrentOpsTone(key) {
+  if (key === "UNPAID") return "urgent";
+  if (key === "FITTING_PURCHASE") return "brown";
+  if (key === "HOLDING") return "warn";
+  if (key === "PICKUP_SCHEDULED") return "info";
+  if (key === "SPONSOR_ACTIVE") return "purple";
+  return "neutral"; // PROCESSING_PENDING
+}
+
+// pill 클릭 시 하단 상세 테이블에 표시할 실장님/팀원/아티스트 중 대표 이름 1개(client
+// 우선, 없으면 team, 그마저 없으면 artist) + 나머지 값을 보조 텍스트로 반환한다.
+function deskOpsItemNameParts(item) {
+  const primary = item.client || item.team || item.artist || "-";
+  const usedField = item.client ? "client" : item.team ? "team" : item.artist ? "artist" : null;
+  const secondary = [
+    usedField !== "team" ? item.team : null,
+    usedField !== "artist" ? item.artist : null
+  ].filter(Boolean).join(" · ");
+  return { primary, secondary };
+}
+
+function renderDeskOpsDetail() {
+  const section = $("#deskOpsDetailSection");
+  const title = $("#deskOpsDetailTitle");
+  const list = $("#deskOpsDetailList");
+  if (!section || !title || !list) return;
+
+  const category = deskOpsState.activeCategory;
+  if (!category) {
+    section.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+
+  const { items } = deskOpsBucketForCategory(category);
+  title.textContent = `${DESK_OPS_CATEGORY_LABELS[category] || category} · ${apiNum(items.length)}건`;
+
+  if (!items.length) {
+    list.innerHTML = `<article class="home-activity-card good"><div><span>확인할 항목 없음</span><strong>-</strong><p>현재 해당 항목이 없습니다.</p></div></article>`;
+    section.hidden = false;
+    return;
+  }
+
+  const rows = items.map((item) => {
+    const { primary, secondary } = deskOpsItemNameParts(item);
+    const productsText = item.products || "-";
+    return `<tr>
+      <td class="price-audit-id-cell"><em>${esc(item.store || "-")}</em><strong>${esc(primary)}</strong>${secondary ? `<br><span>${esc(secondary)}</span>` : ""}</td>
+      <td class="desk-ops-note-cell" title="${esc(productsText)}">${esc(productsText)}</td>
+      <td class="num">${esc(item.pickupDate || "-")}</td>
+      <td class="num">${esc(item.returnDate || "-")}</td>
+      <td class="price-audit-cause-cell">${esc(item.status || "-")}</td>
+      <td><a href="${esc(DESK_APP_URL)}" target="_blank" rel="noopener" class="today-jump-button">DESK에서 열기</a></td>
+    </tr>`;
+  }).join("");
+
+  list.innerHTML = `<table class="price-audit-table">
+    <thead>
+      <tr>
+        <th>실장님 / 매장</th>
+        <th>상품</th>
+        <th class="num">픽업일</th>
+        <th class="num">반납일</th>
+        <th>상태</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  section.hidden = false;
+}
+
+function renderProductSyncDetail() {
+  const section = $("#productSyncDetailSection");
+  const title = $("#productSyncDetailTitle");
+  const list = $("#productSyncDetailList");
+
+  if (!section || !title || !list) return;
+
+  const type = productSyncIssuesState.activeType;
+
+  if (!type) {
+    section.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+
+  const rows = type === "CAFE24_UPDATE"
+    ? productSyncIssuesState.cafe24UpdateRequired
+    : productSyncIssuesState.newProductPending;
+
+  const grouped = groupProductSyncRows(rows);
+
+  title.textContent = type === "CAFE24_UPDATE"
+    ? `Cafe24 업데이트 필요 · ${apiNum(grouped.length)}상품`
+    : `신상품 등록 대기 · ${apiNum(grouped.length)}상품`;
+
+  if (!grouped.length) {
+    list.innerHTML = `<article class="home-activity-card good"><div><span>확인할 항목 없음</span><strong>-</strong><p>현재 해당 상품이 없습니다.</p></div></article>`;
+    section.hidden = false;
+    return;
+  }
+
+  const body = grouped.map((item) => {
+    const skuText = item.skus
+      .map((sku) => `${sku.prodCd}${sku.specification ? ` (${sku.specification})` : ""}`)
+      .join("<br>");
+
+    const reason = type === "CAFE24_UPDATE"
+      ? (item.reason === "No valid Cafe24 candidate" ? "Cafe24 등록 상품 없음" : item.reason || "Cafe24 확인 필요")
+      : "263 시즌 · Cafe24 등록 대기";
+
+    return `<tr>
+      <td class="price-audit-id-cell">
+        <em>${esc(item.brandName || "-")}</em>
+        <strong>${esc(item.productName)}</strong>
+      </td>
+      <td class="price-audit-sku-cell">${skuText}</td>
+      <td class="price-audit-cause-cell">${esc(reason)}</td>
+    </tr>`;
+  }).join("");
+
+  list.innerHTML = `<table class="price-audit-table">
+    <thead>
+      <tr>
+        <th>상품</th>
+        <th>SKU / 옵션</th>
+        <th>상태</th>
+      </tr>
+    </thead>
+    <tbody>${body}</tbody>
+  </table>`;
+
+  section.hidden = false;
+}
+
+function priceAuditGeneratedAtText() {
+  if (!priceAuditState.generatedAt) return "";
+  const d = new Date(priceAuditState.generatedAt);
+  if (Number.isNaN(d.getTime())) return "";
+  const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `마지막 계산 ${d.getMonth() + 1}/${d.getDate()} ${hhmm}`;
+}
+
+function renderPriceAudit() {
+  if (!todayViewActive()) return;
+  renderTodayOpsCheck();
+  setTodayHtml("#priceAuditGeneratedAt", esc(priceAuditGeneratedAtText()));
+  if (priceAuditState.error) {
+    setTodayHtml("#priceAuditFilters", "");
+    setTodayHtml("#priceAuditList", "");
+    setTodayHtml("#priceAuditPager", "");
+    return;
+  }
+
+  const counts = Object.fromEntries(PRICE_AUDIT_FILTERS.map((f) => [f.key, priceAuditState.rows.filter(f.match).length]));
+  setTodayHtml("#priceAuditFilters", PRICE_AUDIT_FILTERS.map((f) => `<button class="segment${priceAuditState.filter === f.key ? " active" : ""}" data-price-audit-filter="${f.key}" type="button">${esc(f.label)} ${apiNum(counts[f.key])}</button>`).join(""));
+
+  const filtered = priceAuditRowsForFilter(priceAuditState.filter);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PRICE_AUDIT_PAGE_SIZE));
+  const page = Math.min(priceAuditState.page, pageCount - 1);
+  if (page !== priceAuditState.page) priceAuditState.page = page;
+  const pageStart = page * PRICE_AUDIT_PAGE_SIZE;
+  const pageRows = filtered.slice(pageStart, pageStart + PRICE_AUDIT_PAGE_SIZE);
+
+  if (!filtered.length) {
+    setTodayHtml("#priceAuditList", `<article class="home-activity-card good"><div><span>확인할 항목 없음</span><strong>-</strong><p>이 필터/검색어에 해당하는 상품이 없습니다.</p></div></article>`);
+    setTodayHtml("#priceAuditPager", "");
+    return;
+  }
+
+  // 정책 할인 컬럼은 이 페이지에 실제로 policyNote가 있는 row가 하나라도 있을 때만
+  // 보여준다(섹션 9 지시대로 없으면 억지로 추가하지 않음).
+  const hasPolicyColumn = pageRows.some((r) => r.policyNote?.effectiveDiscountPercent !== undefined && r.policyNote?.effectiveDiscountPercent !== null);
+  const headerCells = [
+    "<th>상태</th>",
+    "<th>브랜드 / 상품명</th>",
+    "<th>productNo / SKU</th>",
+    '<th class="num">ONLINE</th>',
+    '<th class="num">ECOUNT</th>',
+    '<th class="num">차이</th>',
+    hasPolicyColumn ? '<th class="num">정책 할인</th>' : "",
+    "<th>원인 / 확인 대상</th>"
+  ].filter(Boolean).join("");
+  const bodyRows = pageRows.map((row) => priceAuditTableRow(row, hasPolicyColumn)).join("");
+  setTodayHtml("#priceAuditList", `<table class="price-audit-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`);
+
+  const rangeEnd = Math.min(filtered.length, pageStart + PRICE_AUDIT_PAGE_SIZE);
+  const pagerParts = [`<span class="hint-text">총 ${apiNum(filtered.length)}건 · ${apiNum(pageStart + 1)}–${apiNum(rangeEnd)} 표시</span>`];
+  if (pageCount > 1) {
+    pagerParts.push(`<div class="price-audit-pager-buttons">
+      <button type="button" class="today-jump-button" data-price-audit-page="prev" ${page === 0 ? "disabled" : ""}>이전</button>
+      <span class="hint-text">${page + 1} / ${pageCount}</span>
+      <button type="button" class="today-jump-button" data-price-audit-page="next" ${page >= pageCount - 1 ? "disabled" : ""}>다음</button>
+    </div>`);
+  }
+  setTodayHtml("#priceAuditPager", pagerParts.join(""));
 }
 
 function buildTodayBriefing({ data, meta, cafe, cardnewsStatus, account, topSaved, topCampaign, topProduct, roas }) {
@@ -7393,6 +8025,16 @@ function storeIntelJumpLink(storeCode, text) {
   return `<button type="button" class="store-intel-inline-link" data-jump-view="${esc(viewName)}" aria-label="${esc(text)} — ${esc(label)} Intelligence로 이동">${esc(text)}<span class="store-intel-link-affix" aria-hidden="true">${esc(label)} Intelligence →</span></button>`;
 }
 
+// TODAY-OPS-CLEANUP: 이전 큰 freshness 카드를 대체하는 한 줄 상태 표시. 새 API를
+// 만들지 않고, 이 렌더가 실제로 다시 불러온 값이라는 사실과 실제 렌더 시각만 쓴다.
+function renderTodayStatusLine(range) {
+  const target = $("#todayStatusLine");
+  if (!target) return;
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  target.textContent = `기준 ${range?.label || "-"} · ONLINE LIVE · 업데이트 ${hhmm}`;
+}
+
 function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = null) {
   const onlineRaw = hasApiValue(totalSales?.onlineSales?.paidAmount)
     ? totalSales.onlineSales.paidAmount
@@ -7433,7 +8075,11 @@ function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = nul
         : "이 기간에는 매장별로 분리 업로드된 오프라인 매출이 없습니다(미업로드).",
       ready: storeHasData && offlineAvailable,
       share,
-      shareLabel: share ? "전체 회사 매출 대비" : null
+      shareLabel: share ? "전체 회사 매출 대비" : null,
+      // TODAY-UI-REDESIGN: 이미 위에서 계산한 값을 그대로 담은 compact strip용 세그먼트.
+      // 새 집계 없음 — Store Focus에서는 항목 하나뿐(매장 필터 자체가 이미 좁힌 값이라
+      // 온라인/타매장 세그먼트를 억지로 만들지 않는다).
+      segments: [{ key: storeCode, label: `오프라인 (${label})`, value: storeHasData && offlineAvailable ? apiWon(offlineSales) : "데이터 없음" }]
     };
   }
   // PART 3: ALL 화면에서 가능하면 온라인/압구정/VAIL 3축을 함께 보여준다 — 각 store가
@@ -7449,13 +8095,28 @@ function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = nul
       return storeIntelJumpLink(code, text);
     }).join(" · ")
     : "";
+  // TODAY-UI-REDESIGN: 아래 각 분기의 segments는 이미 계산된 값만 다시 담는다(새 계산
+  // 없음). storesIncluded에 없는 매장은 "미분류"로 정직하게 표시하고 0원으로 단정하지
+  // 않는다(위 storeBreakdown과 동일 원칙).
   if (totalAvailable) {
+    const storeSegments = byStore
+      ? ["APGUJEONG", "VAIL"].map((code) => ({
+        key: code,
+        label: STORE_FILTER_LABELS[code] || code,
+        value: storesIncluded.includes(code) ? apiWon(byStore[code] || 0) : "미분류"
+      }))
+      : [];
     return {
       label: "총매출",
       value: apiWon(canonicalTotal),
       note: `온라인 ${onlineAvailable ? apiWon(onlineSales) : "데이터 없음"} · 오프라인 ${offlineAvailable ? apiWon(offlineSales) : "데이터 없음"}`,
       storeBreakdown,
-      ready: true
+      ready: true,
+      segments: [
+        { key: "total", label: "총매출", value: apiWon(canonicalTotal), primary: true },
+        { key: "online", label: "온라인", value: onlineAvailable ? apiWon(onlineSales) : "데이터 없음" },
+        ...storeSegments
+      ]
     };
   }
   if (onlineAvailable && offlineAvailable) {
@@ -7463,7 +8124,12 @@ function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = nul
       label: "총매출",
       value: apiWon(onlineSales + offlineSales),
       note: `온라인 ${apiWon(onlineSales)} · 오프라인 ${apiWon(offlineSales)}`,
-      ready: true
+      ready: true,
+      segments: [
+        { key: "total", label: "총매출", value: apiWon(onlineSales + offlineSales), primary: true },
+        { key: "online", label: "온라인", value: apiWon(onlineSales) },
+        { key: "offline", label: "오프라인", value: apiWon(offlineSales) }
+      ]
     };
   }
   if (onlineAvailable) {
@@ -7471,7 +8137,8 @@ function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = nul
       label: "온라인 매출",
       value: apiWon(onlineSales),
       note: "오프라인 매출 데이터 없음",
-      ready: true
+      ready: true,
+      segments: [{ key: "online", label: "온라인 매출", value: apiWon(onlineSales), primary: true }]
     };
   }
   if (offlineAvailable) {
@@ -7479,14 +8146,16 @@ function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = nul
       label: "오프라인 매출",
       value: apiWon(offlineSales),
       note: "온라인 매출 확인 필요",
-      ready: true
+      ready: true,
+      segments: [{ key: "offline", label: "오프라인 매출", value: apiWon(offlineSales), primary: true }]
     };
   }
   return {
     label: "매출",
     value: "확인 필요",
     note: totalSales?.error || "온라인 / 오프라인 매출 확인 필요",
-    ready: false
+    ready: false,
+    segments: [{ key: "unavailable", label: "매출", value: "확인 필요", primary: true }]
   };
 }
 
@@ -7534,6 +8203,15 @@ function renderTodaySummary({ data, cafe, meta, comparison, marketing, totalSale
     salesInfo.storeBreakdown || "",
     salesInfo.share ? esc(`${salesInfo.shareLabel} ${salesInfo.share}`) : ""
   ].filter(Boolean).join(" · ");
+  // TODAY-UI-REDESIGN: todaySummarySalesInfo()가 이미 계산해 둔 segments만 그대로
+  // 나열한다(새 집계 없음, 전월 대비 등 존재하지 않는 값은 만들지 않음). 총매출(primary)만
+  // 강조하고 나머지는 보조 텍스트로 한 줄에 배치한다.
+  const salesSummaryTarget = $("#todaySalesSummary");
+  if (salesSummaryTarget && todayViewActive()) {
+    const segments = salesInfo.segments || [{ key: "total", label: salesInfo.label, value: salesInfo.value, primary: true }];
+    salesSummaryTarget.innerHTML = segments.map((seg) => `<div class="today-sales-segment${seg.primary ? " primary" : ""}"><span>${esc(seg.label)}</span><strong>${esc(seg.value)}</strong></div>`).join("");
+  }
+
   if (sectionsTarget && todayViewActive()) sectionsTarget.innerHTML = [
     `<article class="action-item sales-compare-card"><span>${esc(salesInfo.label)}</span><strong>${esc(salesInfo.value)}</strong><p>${esc(salesInfo.note)}${salesInfoExtra ? ` · ${salesInfoExtra}` : ""}</p><button class="today-jump-button" type="button" data-jump-view="Sales">Commerce 보기</button></article>`,
     `<article class="action-item sales-compare-card"><span>Reports</span><strong>Monthly Report</strong><p>월간 확정 스냅샷</p><button class="today-jump-button" type="button" data-jump-view="Reports">월간 리포트 보기</button></article>`
@@ -19454,6 +20132,53 @@ function bind() {
     event.preventDefault();
     setInventoryWorkspaceTab(tabButton.dataset.inventoryWorkspaceTab);
   });
+  document.addEventListener("click", (event) => {
+    const syncButton = event.target.closest("[data-product-sync-type]");
+    if (!syncButton) return;
+
+    event.preventDefault();
+    productSyncIssuesState.activeType = syncButton.dataset.productSyncType || null;
+    renderProductSyncDetail();
+
+    const section = $("#productSyncDetailSection");
+    section?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  document.addEventListener("click", (event) => {
+    const deskButton = event.target.closest("[data-desk-ops-filter]");
+    if (!deskButton) return;
+
+    event.preventDefault();
+    deskOpsState.activeCategory = deskButton.dataset.deskOpsFilter || null;
+    renderDeskOpsPanel();
+    renderDeskOpsDetail();
+
+    const section = $("#deskOpsDetailSection");
+    section?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  $("#deskOpsReloadBtn")?.addEventListener("click", () => refreshDeskOps());
+
+  document.addEventListener("click", (event) => {
+    const filterButton = event.target.closest("[data-price-audit-filter]");
+    if (!filterButton) return;
+    event.preventDefault();
+    priceAuditState.filter = filterButton.dataset.priceAuditFilter;
+    priceAuditState.page = 0;
+    renderPriceAudit();
+  });
+  document.addEventListener("click", (event) => {
+    const pageButton = event.target.closest("[data-price-audit-page]");
+    if (!pageButton || pageButton.disabled) return;
+    event.preventDefault();
+    priceAuditState.page += pageButton.dataset.priceAuditPage === "prev" ? -1 : 1;
+    renderPriceAudit();
+  });
+  $("#priceAuditSearch")?.addEventListener("input", (event) => {
+    priceAuditState.search = event.target.value || "";
+    priceAuditState.page = 0;
+    renderPriceAudit();
+  });
+  $("#priceAuditReloadBtn")?.addEventListener("click", () => refreshPriceAudit());
   $("#inventoryOverviewReloadBtn")?.addEventListener("click", () => {
     if (inventoryWorkspaceTab !== "store") setInventoryWorkspaceTab("store");
     else renderInventoryOverviewView();

@@ -2498,6 +2498,8 @@ const brandSourcingMasterFile = () => join(workDir, "brand-sourcing-master.json"
 const productBrandMapFile = () => join(workDir, "product-brand-map.json");
 const workDataUploadPaths = new Set([
   "brand-master.json",
+  "price-audit.json",
+  "today-product-sync-issues.json",
   "intelligence/brand-master-list.json",
   "intelligence/brand-aliases.json",
   "ecount-inventory/latest.json",

@@ -155,35 +155,84 @@
       </section>
 
       <section id="Overview" class="view active">
-        <div class="section-title home-hero">
-          <div>
-            <p class="eyebrow">GOOD MORNING</p>
-            <h3>오늘 운영 홈</h3>
-          </div>
+        <div class="section-title compact today-compact-hero">
+          <div><h3>Today</h3></div>
         </div>
-        <div id="todayFreshnessHeader" class="freshness-header-slot"></div>
+        <div id="todayStatusLine" class="today-status-line"></div>
+        <div id="todayFreshnessHeader" class="freshness-header-slot" hidden></div>
         <div class="section-block">
-          <div class="section-title compact">
-            <div>
-              <p class="eyebrow">Today Summary</p>
-              <h3>오늘 운영 요약</h3>
-            </div>
-          </div>
-          <div id="todaySummaryBriefing" class="cards"></div>
-          <div id="todaySummarySections" class="cards"></div>
+          <div id="todaySalesSummary" class="today-sales-strip"></div>
         </div>
         <div class="section-block">
           <div class="section-title compact">
             <div>
-              <p class="eyebrow">Today Briefing</p>
-              <h3>오늘 해야 할 일</h3>
+              <p class="eyebrow">Ops Check</p>
+              <h3>확인 필요</h3>
             </div>
-            <button id="todayBriefReset" class="button secondary" type="button">오늘 초기화</button>
           </div>
-          <div id="todayBriefProgress" class="today-brief-progress"></div>
-          <div id="todayBriefing" class="today-briefing-list"></div>
+          <div id="todayOpsCheck" class="today-ops-check-grid"></div>
         </div>
-        <details class="section-block director-more">
+
+        <div class="section-block desk-ops-panel-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">SAMPLAS DESK</p>
+              <h3>DESK 운영</h3>
+            </div>
+            <div class="price-audit-header-actions">
+              <span id="deskOpsLiveBadge" class="desk-ops-live-badge"></span>
+              <button id="deskOpsReloadBtn" type="button" class="today-jump-button">DESK 새로고침</button>
+            </div>
+          </div>
+          <div class="desk-ops-group">
+            <p class="desk-ops-group-label">오늘 일정</p>
+            <div id="deskOpsTodayPanel" class="desk-ops-panel-grid desk-ops-panel-grid-4"></div>
+          </div>
+          <div class="desk-ops-group">
+            <p class="desk-ops-group-label">현재 운영</p>
+            <div id="deskOpsCurrentPanel" class="desk-ops-panel-grid desk-ops-panel-grid-6"></div>
+          </div>
+        </div>
+
+        <div id="deskOpsDetailSection" class="section-block" hidden>
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">DESK 상세</p>
+              <h3 id="deskOpsDetailTitle">DESK 운영 확인</h3>
+            </div>
+          </div>
+          <div id="deskOpsDetailList" class="table-wrap price-audit-table-wrap"></div>
+        </div>
+
+        <div id="productSyncDetailSection" class="section-block" hidden>
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Product Sync</p>
+              <h3 id="productSyncDetailTitle">상품 동기화 확인</h3>
+            </div>
+          </div>
+          <div id="productSyncDetailList" class="table-wrap price-audit-table-wrap"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title compact">
+            <div>
+              <p class="eyebrow">Price Audit</p>
+              <h3>가격 Audit · 온라인 ↔ ECOUNT</h3>
+            </div>
+            <div class="price-audit-header-actions">
+              <span id="priceAuditGeneratedAt" class="hint-text"></span>
+              <button id="priceAuditReloadBtn" type="button" class="today-jump-button">캐시 다시 불러오기</button>
+            </div>
+          </div>
+          <div class="price-audit-toolbar">
+            <div id="priceAuditFilters" class="segmented" role="tablist" aria-label="가격 Audit 필터"></div>
+            <input id="priceAuditSearch" type="search" placeholder="상품명, SKU, productNo 검색">
+          </div>
+          <div id="priceAuditList" class="table-wrap price-audit-table-wrap"></div>
+          <div id="priceAuditPager" class="price-audit-pager"></div>
+        </div>
+        <details class="section-block director-more" hidden>
           <summary>세부 지표 더 보기 <span>Action Center</span></summary>
           <div class="section-block">
             <div class="section-title compact">

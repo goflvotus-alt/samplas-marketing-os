@@ -17,6 +17,7 @@ import {
   normalizeBrandCode,
   normalizeBrandName,
   normalizeBrandKey,
+  buildBrandRegistry,
   resolveBrand as resolveBrandFromEngine
 } from "./scripts/brand-engine.mjs";
 // STEP63-3: Clients purchaseDetails에 canonical brand identity를 "추가 필드"로만 붙이기
@@ -63,6 +64,11 @@ const decisionHistoryFile = join(intelligenceWorkDir, "decision-history.json");
 const learningDbFile = join(intelligenceWorkDir, "learning-db.json");
 const missionCacheFile = join(intelligenceWorkDir, "mission-cache.json");
 const productRegistryFile = join(workRoot, "product-registry.json");
+// TODAY 온라인 ↔ ECOUNT 가격 Audit. scripts/build-price-audit.mjs가 미리 계산해 저장한
+// 결과를 그대로 읽기만 한다(work/brand-commercial-policy.json과 동일한 "script가 빌드 →
+// GET route가 캐시 파일만 읽는다" 패턴, TODAY 로드마다 Cafe24를 수백 번 호출하지 않기 위함).
+const priceAuditFile = join(workRoot, "price-audit.json");
+const todayProductSyncIssuesFile = join(workRoot, "today-product-sync-issues.json");
 const productRegistryReviewQueueFile = join(workRoot, "product-registry-review-queue.json");
 const categoryMasterFile = join(workRoot, "category-master.json");
 const colorMasterFile = join(workRoot, "color-master.json");
@@ -76,6 +82,12 @@ const ecountInventoryDiagnosticFile = join(ecountInventoryDir, "diagnostic.json"
 const ecountSalesDir = join(workRoot, "ecount-sales");
 const naverAdsBaseUrl = env.NAVER_ADS_BASE_URL || "https://api.searchad.naver.com";
 const naverAdsTimeoutMs = 10000;
+// SAMPLAS DESK Today OPS 연동 — READ ONLY. DESK 저장/실시간 동기화 로직은 절대 건드리지
+// 않고, DESK가 자체 노출하는 read-only 서버리스 endpoint(api/ops-summary.js)만 호출한다.
+// 토큰은 서버 환경변수에서만 읽고 프런트엔드로 절대 전달하지 않는다.
+const deskOpsBaseUrl = env.DESK_OPS_BASE_URL || "https://samplas-desk-recovery.vercel.app";
+const deskOpsApiToken = env.DESK_OPS_API_TOKEN || "";
+const deskOpsTimeoutMs = 10000;
 const marketingOsBaseUrl = env.INTELLIGENCE_MARKETING_OS_BASE_URL || env.MARKETING_OS_BASE_URL || `http://127.0.0.1:${env.PORT || 8787}`;
 const marketingOsTimeoutMs = 12000;
 const missionCacheTtlMs = 30000;
@@ -236,6 +248,18 @@ async function routeIntelligenceRequest(url, req, res) {
       if (req.method === "PATCH") return await handleProductRegistryRevenueReviewPatch(req, res);
       return json(res, { ok: false, error: "Method Not Allowed" }, 405);
     }
+    if (url.pathname === "/api/intelligence/price-audit") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handlePriceAuditGet(res);
+    }
+    if (url.pathname === "/api/intelligence/desk-ops") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleDeskOpsGet(res);
+    }
+    if (url.pathname === "/api/intelligence/product-sync-issues") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleProductSyncIssuesGet(res);
+    }
     if (url.pathname === "/api/intelligence/category-master") {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return handleCategoryMasterGet(res);
@@ -331,6 +355,68 @@ async function readProductRegistryJson(filePath) {
 async function handleProductRegistryGet(res) {
   const registry = await readProductRegistryJson(productRegistryFile);
   return json(res, { ok: true, registry });
+}
+
+async function handlePriceAuditGet(res) {
+  if (!existsSync(priceAuditFile)) {
+    return json(res, { ok: false, error: "Price Audit Not Found", hint: "run scripts/build-price-audit.mjs first" }, 404);
+  }
+  const audit = await readProductRegistryJson(priceAuditFile);
+  return json(res, { ok: true, audit });
+}
+
+// SAMPLAS DESK read-only api/ops-summary를 호출한다(fetchNaverKeywordSearch()와 동일한
+// AbortController+timeout+try/catch 패턴). DESK가 죽어 있거나(401/timeout/network/5xx/
+// invalid JSON) 토큰이 아직 설정 안 됐어도 절대 throw하지 않고 항상 { ok:false, error }
+// 형태로 정상 반환한다 — 이 실패가 TODAY의 다른 카드(매출/Price Audit/Product Sync)
+// 렌더링을 막으면 안 된다.
+async function fetchDeskOpsSummary() {
+  if (!deskOpsApiToken) {
+    return { ok: false, error: "desk_ops_token_not_configured" };
+  }
+  const endpoint = new URL("/api/ops-summary", deskOpsBaseUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), deskOpsTimeoutMs);
+  try {
+    const response = await fetch(endpoint, {
+      method: "GET",
+      headers: { "X-Desk-Ops-Token": deskOpsApiToken },
+      signal: controller.signal
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      return { ok: false, error: "desk_unreachable", status: response.status };
+    }
+    try {
+      const parsed = text ? JSON.parse(text) : null;
+      if (!parsed || !parsed.stores) {
+        return { ok: false, error: "desk_unreachable" };
+      }
+      return { ok: true, ops: parsed };
+    } catch {
+      return { ok: false, error: "desk_unreachable" };
+    }
+  } catch {
+    return { ok: false, error: "desk_unreachable" };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function handleDeskOpsGet(res) {
+  const result = await fetchDeskOpsSummary();
+  if (!result.ok) {
+    return json(res, { ok: false, error: result.error });
+  }
+  return json(res, { ok: true, ops: result.ops });
+}
+
+async function handleProductSyncIssuesGet(res) {
+  if (!existsSync(todayProductSyncIssuesFile)) {
+    return json(res, { ok: false, error: "Product Sync Issues Not Found" }, 404);
+  }
+  const issues = await readProductRegistryJson(todayProductSyncIssuesFile);
+  return json(res, { ok: true, issues });
 }
 
 async function handleProductRegistryReviewQueueGet(res) {

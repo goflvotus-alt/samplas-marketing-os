@@ -9,6 +9,8 @@
   --blue: #285d9a;
   --red: #a9423d;
   --yellow: #d7a642;
+  --purple: #6a4c93;
+  --brown: #a86a34;
   --black: #101010;
   --shadow: 0 18px 50px rgba(25, 25, 20, 0.08);
 }
@@ -1430,8 +1432,10 @@ select,
 
 .today-jump-button,
 .today-project-button {
+  display: inline-block;
   align-self: flex-start;
   min-height: 34px;
+  line-height: 34px;
   padding: 0 12px;
   border: 1px solid var(--black);
   border-radius: 999px;
@@ -1439,6 +1443,7 @@ select,
   color: #fff;
   font-size: 12px;
   font-weight: 900;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -11456,4 +11461,467 @@ body.entity-compare-on .entity-compare-trend-legend {
 .monthly-store-donut-legend-text span {
   font-size: 11px;
   color: var(--muted);
+}
+
+/* TODAY-UI-REDESIGN: compact hero + one-line status + sales strip + Ops Check cards
+   + Price Audit table. Reuses existing tokens (var(--muted)/var(--line)/var(--black),
+   .segmented/.segment, table/th/td/.table-wrap, .today-jump-button, .hint-text)
+   instead of introducing a new color system or component library. */
+.today-compact-hero {
+  margin-bottom: 4px;
+}
+
+.today-status-line {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+/* 매출 요약: 총매출(primary)만 강조, 나머지는 한 줄에 나열되는 보조 세그먼트. */
+.today-sales-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 20px 32px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.today-sales-segment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.today-sales-segment span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.today-sales-segment strong {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.today-sales-segment.primary strong {
+  font-size: 30px;
+}
+
+/* Ops Check: 가격 불일치(강함) > 상품 매칭 필요(중간) > 추가 확인(약함). 색 박스는
+   가장 중요한 카드에만 쓰고 나머지는 중립 톤으로 낮춘다(섹션 11). */
+.today-ops-check-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.today-ops-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.today-ops-card > span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.today-ops-card > strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 26px;
+}
+
+.today-ops-card > p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* PRICE-OPS-UX: 가격 불일치 카드 내부 3분류 breakdown을 클릭 가능한 pill로 노출.
+   각 pill이 자체 data-price-audit-filter를 갖고 있어 기존 delegation이 closest()로
+   pill을 먼저 찾으므로 부모 카드(PRICE_MISMATCH)로 덮이지 않는다. */
+.today-ops-subpills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.today-ops-subpill {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.today-ops-subpill:hover {
+  border-color: rgba(169, 66, 61, 0.45);
+}
+
+.today-ops-card.ops-primary {
+  border-color: rgba(169, 66, 61, 0.45);
+  background: #fff3f1;
+}
+
+.today-ops-card.ops-secondary {
+  border-color: rgba(215, 166, 66, 0.4);
+}
+
+.today-ops-card.ops-tertiary {
+  color: var(--muted);
+}
+
+.today-ops-card.ops-tertiary > strong {
+  font-size: 20px;
+  color: var(--ink);
+}
+
+/* DESK-OPS-PANEL-UI: OPS CHECK 카드 그리드에서 분리한 SAMPLAS DESK 실시간 운영
+   패널 — 가로 전체 폭, desktop 기본 1행 5칸. .today-ops-card와 같은 색/여백 언어를
+   재사용하되(box, border, radius, font-weight) 카드 그리드와는 시각적으로 독립된
+   섹션임을 border-color만으로 구분한다. */
+.desk-ops-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.desk-ops-live-badge:empty {
+  display: none;
+}
+
+.desk-ops-live-badge i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  display: inline-block;
+}
+
+/* DESK-TWO-GROUPS: "오늘 일정"(날짜 기준 4분류)과 "현재 운영"(스케줄링 컬럼 기준
+   6분류)은 서로 다른 분류 체계라 하나의 그리드로 섞지 않는다 — 그룹마다 별도
+   컨테이너 + 라벨을 둔다. */
+.desk-ops-group + .desk-ops-group {
+  margin-top: 14px;
+}
+
+.desk-ops-group-label {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.desk-ops-panel-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.desk-ops-panel-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.desk-ops-panel-grid-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.desk-ops-panel-empty {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+}
+
+.desk-ops-panel-empty strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.desk-ops-panel-empty p {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.desk-ops-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.desk-ops-cell > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.desk-ops-cell > strong {
+  font-size: 22px;
+}
+
+.desk-ops-cell.tone-info {
+  border-color: rgba(40, 93, 154, 0.4);
+}
+
+.desk-ops-cell.tone-info > strong {
+  color: var(--blue);
+}
+
+.desk-ops-cell.tone-good {
+  border-color: rgba(32, 111, 84, 0.4);
+}
+
+.desk-ops-cell.tone-good > strong {
+  color: var(--green);
+}
+
+.desk-ops-cell.tone-urgent {
+  border-color: rgba(169, 66, 61, 0.45);
+  background: #fff3f1;
+}
+
+.desk-ops-cell.tone-urgent > strong {
+  color: var(--red);
+}
+
+.desk-ops-cell.tone-purple {
+  border-color: rgba(106, 76, 147, 0.4);
+}
+
+.desk-ops-cell.tone-purple > strong {
+  color: var(--purple);
+}
+
+.desk-ops-cell.tone-warn {
+  border-color: rgba(215, 166, 66, 0.45);
+  background: #fff9e8;
+}
+
+.desk-ops-cell.tone-warn > strong {
+  color: var(--yellow);
+}
+
+.desk-ops-cell.tone-brown {
+  border-color: rgba(168, 106, 52, 0.4);
+}
+
+.desk-ops-cell.tone-brown > strong {
+  color: var(--brown);
+}
+
+/* 0건은 카테고리 색과 무관하게 비활성처럼 보이게(클릭은 계속 가능) — .tone-* 보다
+   뒤에 선언해 같은 우선순위에서 마지막 규칙이 이기도록 한다. */
+.desk-ops-cell.zero {
+  background: #fff;
+  border-color: var(--line);
+}
+
+.desk-ops-cell.zero > strong {
+  color: var(--muted);
+}
+
+.desk-ops-cell.active {
+  border-color: var(--black);
+  box-shadow: inset 0 0 0 1px var(--black);
+}
+
+@media (max-width: 900px) {
+  .desk-ops-panel-grid-4,
+  .desk-ops-panel-grid-6 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Price Audit: header actions, toolbar(필터+검색), compact table, pagination. */
+.price-audit-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.price-audit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#priceAuditSearch {
+  min-width: 220px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.price-audit-table-wrap table.price-audit-table {
+  min-width: 880px;
+}
+
+.price-audit-table-wrap th,
+.price-audit-table-wrap td {
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.price-audit-table-wrap td.num,
+.price-audit-table-wrap th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-audit-id-cell em {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.price-audit-id-cell strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.price-audit-sku-cell {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.price-audit-sku-cell span {
+  color: var(--muted);
+}
+
+.price-audit-diff-cell {
+  font-weight: 900;
+}
+
+.price-audit-online-retail {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.price-audit-cause-cell {
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 220px;
+}
+
+/* DESK-NOTE-WRAP: DESK 상세 테이블의 "상품" 셀 전용(Price Audit의 .price-audit-sku-cell은
+   SKU 코드용 nowrap을 유지해야 하므로 재사용하지 않고 분리한다 — Price Audit 레이아웃에
+   영향 없음). 긴 상품명이 한 줄로 뻗어 잘리지 않도록 줄바꿈을 허용하고 최대 3줄까지만
+   보여준 뒤 ellipsis 처리한다. 전체 텍스트는 title 속성 hover로 확인 가능(새 모달 없음). */
+.desk-ops-note-cell {
+  max-width: 260px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .desk-ops-note-cell {
+    max-width: none;
+  }
+}
+
+.price-audit-status-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.price-audit-status-badge.urgent {
+  background: #fff3f1;
+  border: 1px solid rgba(169, 66, 61, 0.45);
+  color: #a9423d;
+}
+
+.price-audit-status-badge.warn {
+  background: #fff9e8;
+  border: 1px solid rgba(215, 166, 66, 0.45);
+  color: #8a6a1f;
+}
+
+.price-audit-status-badge.info {
+  background: #eef4fb;
+  border: 1px solid rgba(40, 93, 154, 0.4);
+  color: var(--blue);
+}
+
+.price-audit-status-badge.neutral {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.price-audit-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.price-audit-pager-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .today-ops-check-grid {
+    grid-template-columns: 1fr;
+  }
+  .price-audit-cause-cell {
+    max-width: none;
+  }
 }

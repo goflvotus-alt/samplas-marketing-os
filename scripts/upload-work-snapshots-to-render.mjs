@@ -6,6 +6,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const monthlyPathPattern = /^(?:ecount-sales|monthly)\/\d{4}-(?:0[1-9]|1[0-2])\.json$/;
 const explicitPaths = [
   "brand-master.json",
+  "price-audit.json",
+  "today-product-sync-issues.json",
   "ecount-inventory/latest.json",
   "ecount-inventory/diagnostic.json",
   "intelligence/brand-aliases.json",
