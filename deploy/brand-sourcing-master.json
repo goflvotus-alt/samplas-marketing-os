@@ -1,0 +1,4395 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-10T18:48:34.398Z",
+  "summary": {
+    "UNKNOWN": 257,
+    "CONSIGNMENT": 17,
+    "OWN_PRODUCTION": 1,
+    "PARTIAL": 5,
+    "HYBRID": 1,
+    "WHOLESALE": 10
+  },
+  "sources": {
+    "brand_master": "work/brand-master.json",
+    "inventory": "work/ecount-inventory/raw-products.json",
+    "sales_months": [
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+      "2026-07",
+      "2026-08"
+    ],
+    "historical_candidates": "work/brand-sourcing-candidates.json",
+    "exact_30_percent_signal": "NOT_ACTIVE"
+  },
+  "brands": [
+    {
+      "brand_code": "B0000000",
+      "brand_name": "",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DB",
+      "brand_name": "GHTG",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DC",
+      "brand_name": "BALMAIN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DD",
+      "brand_name": "BLACK SCALE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DE",
+      "brand_name": "NIEL BARRET",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DF",
+      "brand_name": "BYHOT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DG",
+      "brand_name": "KUBORAUM",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DH",
+      "brand_name": "CHRISTOPHER KANE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DI",
+      "brand_name": "COMME des GARÇONS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DJ",
+      "brand_name": "CAREVEN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DK",
+      "brand_name": "Moncler Gamme Blue",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DL",
+      "brand_name": "By hot",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DM",
+      "brand_name": "Camper",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DN",
+      "brand_name": "Carven",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DO",
+      "brand_name": "NIKE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DP",
+      "brand_name": "THOM BROWNE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DQ",
+      "brand_name": "Fear of God",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DR",
+      "brand_name": "THOM BROWNE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DS",
+      "brand_name": "BLACK SCALE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DT",
+      "brand_name": "GOLD LINE FASHION",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DU",
+      "brand_name": "LES (ART)IST",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DV",
+      "brand_name": "ZADIG & VOLTAIRE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DW",
+      "brand_name": "TourneDeTransmission",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DX",
+      "brand_name": "SSUR",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DY",
+      "brand_name": "NEW BALANCE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000DZ",
+      "brand_name": "Maison Martin Margiela",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EA",
+      "brand_name": "YMC",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EB",
+      "brand_name": "Marc Jacobs",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EC",
+      "brand_name": "BBP",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000ED",
+      "brand_name": "THE WHITE BRIEFS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EE",
+      "brand_name": "VOLTA",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EF",
+      "brand_name": "SPECULUM",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EG",
+      "brand_name": "PATRICIAFIELD",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EH",
+      "brand_name": "KITSUNE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EI",
+      "brand_name": "Maison Martin Margiela",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EJ",
+      "brand_name": "OATW",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EK",
+      "brand_name": "MONTECORE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EL",
+      "brand_name": "BBP X JUSTDON",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EM",
+      "brand_name": "CARVEN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EN",
+      "brand_name": "FORFEX",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EO",
+      "brand_name": "MONCLER GAMME BLUE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EP",
+      "brand_name": "LES (ART)ISTS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EQ",
+      "brand_name": "CROWN THE QUEENS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000ER",
+      "brand_name": "PATRICIAFIELD",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000ES",
+      "brand_name": "BLACKSCALE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000ET",
+      "brand_name": "Maison Martain Margiela",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EU",
+      "brand_name": "PVRISIEN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EV",
+      "brand_name": "ByHOT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EW",
+      "brand_name": "Neil Barret",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EX",
+      "brand_name": "MARC JACOBS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EY",
+      "brand_name": "Givenchy",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000EZ",
+      "brand_name": "ADYN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FA",
+      "brand_name": "BOYLONDON",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FB",
+      "brand_name": "Comme des garcons",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FC",
+      "brand_name": "40ozNYC",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FD",
+      "brand_name": "NAVIIV",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FE",
+      "brand_name": "STAMPDLA",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FF",
+      "brand_name": "Money Mitch",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FG",
+      "brand_name": "Balmain",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FH",
+      "brand_name": "DOPE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FI",
+      "brand_name": "REPRESENT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FJ",
+      "brand_name": "DOUBLEU2",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FK",
+      "brand_name": "KARL ALLEY",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FL",
+      "brand_name": "HAZEL21",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FM",
+      "brand_name": "FEAR OF GOD",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FN",
+      "brand_name": "Vitaly",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FO",
+      "brand_name": "JONATHAN SAUNDERS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FP",
+      "brand_name": "WINGS + HORNS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FQ",
+      "brand_name": "PIGALLE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FR",
+      "brand_name": "Brooks Brothers",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FS",
+      "brand_name": "STRESS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FT",
+      "brand_name": "JIL SANDER",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FU",
+      "brand_name": "NODAYSOFFPARIS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FV",
+      "brand_name": "KENZO",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FW",
+      "brand_name": "LES ARTISTS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FX",
+      "brand_name": "PATRICIA FIELD",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FY",
+      "brand_name": "ZADIG & VOLTAIRE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000FZ",
+      "brand_name": "REQUICHOT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GB",
+      "brand_name": "UMAMIISM",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 7
+      }
+    },
+    {
+      "brand_code": "B00000GC",
+      "brand_name": "BLEACH",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GF",
+      "brand_name": "BLIND / NO PLAN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GH",
+      "brand_name": "DEVASTATES",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GJ",
+      "brand_name": "FROMMARK",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GL",
+      "brand_name": "GOOPi MADE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GN",
+      "brand_name": "HOODLAB",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GP",
+      "brand_name": "JIEDA",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GR",
+      "brand_name": "LIMBIC GEAR",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GT",
+      "brand_name": "OBH",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GV",
+      "brand_name": "RAISED BY CHAMPIONS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GX",
+      "brand_name": "SAMPLES",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000GZ",
+      "brand_name": "SEC STUDIO",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000HB",
+      "brand_name": "SILENTYPE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000HD",
+      "brand_name": "선데이오프클럽",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 103,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 103
+      }
+    },
+    {
+      "brand_code": "B00000HF",
+      "brand_name": "TAKARA WONG",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000HH",
+      "brand_name": "YOUTH MACHINE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000HJ",
+      "brand_name": "SOUTHFINESS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000HM",
+      "brand_name": "민타임",
+      "sourcing_type": "OWN_PRODUCTION",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 71,
+        "resolved_sales_lines": 230
+      }
+    },
+    {
+      "brand_code": "B00000HO",
+      "brand_name": "MODITEC",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000HP",
+      "brand_name": "MODITEC",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000HR",
+      "brand_name": "EVAE+ MOB",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000HT",
+      "brand_name": "MOHO",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000HV",
+      "brand_name": "SALUTE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000HX",
+      "brand_name": "HAMCUS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 123,
+        "resolved_sales_lines": 56
+      }
+    },
+    {
+      "brand_code": "B00000HZ",
+      "brand_name": "ALEXANDERKWON",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000IB",
+      "brand_name": "NONDISCLOTHES",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000ID",
+      "brand_name": "SOOKOI",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000IF",
+      "brand_name": "VLONE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000IH",
+      "brand_name": "IIMAGE PLUS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000IJ",
+      "brand_name": "D / HILL",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000IL",
+      "brand_name": "51Percent",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000IP",
+      "brand_name": "SIBERIA HILLS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000IS",
+      "brand_name": "ATTÈMPT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000IU",
+      "brand_name": "elhaus",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000IW",
+      "brand_name": "MANKIND",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000IY",
+      "brand_name": "MAISON EMERALD",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000JA",
+      "brand_name": "써저리",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 4,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 48,
+        "resolved_sales_lines": 4
+      }
+    },
+    {
+      "brand_code": "B00000JD",
+      "brand_name": "NICHED",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000JF",
+      "brand_name": "AJOBYAJO",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000JG",
+      "brand_name": "AJOBYAJO",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000JH",
+      "brand_name": "AJOBYAJO",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000JJ",
+      "brand_name": "SOMEIT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000JL",
+      "brand_name": "Professor-E",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000JO",
+      "brand_name": "SPIDER WORLDWIDE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000JR",
+      "brand_name": "HOMME BOY CO.",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000JU",
+      "brand_name": "AFB",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000JY",
+      "brand_name": "VOICES",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000KA",
+      "brand_name": "ODLYWORKSHOP",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000KD",
+      "brand_name": "ORGANICKIT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000KF",
+      "brand_name": "SECOND&7th",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000KI",
+      "brand_name": "BARRAGAN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000KN",
+      "brand_name": "ARNAR MAR JONSSON",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000KP",
+      "brand_name": "STEFAN COOKE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000KS",
+      "brand_name": "Meantime",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000KU",
+      "brand_name": "카르넷 아카이브",
+      "sourcing_type": "PARTIAL",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 802,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 612,
+        "resolved_sales_lines": 803
+      }
+    },
+    {
+      "brand_code": "B00000KW",
+      "brand_name": "CHAMPION TEARS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000KZ",
+      "brand_name": "The Internatiiional",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000LC",
+      "brand_name": "엑슬림",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 74,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 74
+      }
+    },
+    {
+      "brand_code": "B00000LF",
+      "brand_name": "언본소사이어티",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000LI",
+      "brand_name": "LIBERAL YOUTH MINISTRY",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000LL",
+      "brand_name": "UNTITLED",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000LQ",
+      "brand_name": "KANGJUNGSEOK",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 65,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000LV",
+      "brand_name": "Wave of Sand",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000LY",
+      "brand_name": "PER GOTESSON",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 11,
+        "resolved_sales_lines": 3
+      }
+    },
+    {
+      "brand_code": "B00000MA",
+      "brand_name": "SAM POMEROY",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000MD",
+      "brand_name": "AYINTOAYIN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000MG",
+      "brand_name": "VATKA",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000MJ",
+      "brand_name": "레저렉션13",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000ML",
+      "brand_name": "DEGREMONT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000MN",
+      "brand_name": "P.Andrade",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000MQ",
+      "brand_name": "CHAN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000MT",
+      "brand_name": "AE SYNCTX",
+      "sourcing_type": "HYBRID",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 38,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 392,
+        "resolved_sales_lines": 166
+      }
+    },
+    {
+      "brand_code": "B00000MW",
+      "brand_name": "AGR",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000MZ",
+      "brand_name": "SAUL NASH",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000NC",
+      "brand_name": "KOZABURO",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 65,
+        "resolved_sales_lines": 5
+      }
+    },
+    {
+      "brand_code": "B00000NG",
+      "brand_name": "KNWLS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 9,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000NJ",
+      "brand_name": "OTTOLINGER",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 33,
+        "resolved_sales_lines": 1
+      }
+    },
+    {
+      "brand_code": "B00000NM",
+      "brand_name": "0608WEAR",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000NP",
+      "brand_name": "PM PROJECT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000NS",
+      "brand_name": "SRD",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000NW",
+      "brand_name": "RASSVET",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 96,
+        "resolved_sales_lines": 9
+      }
+    },
+    {
+      "brand_code": "B00000NZ",
+      "brand_name": "SKY HIGH FARMS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 12
+      }
+    },
+    {
+      "brand_code": "B00000OB",
+      "brand_name": "OLLY SHINDER",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 36,
+        "resolved_sales_lines": 6
+      }
+    },
+    {
+      "brand_code": "B00000OE",
+      "brand_name": "어나더유스",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000OI",
+      "brand_name": "TILLDAWN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000OL",
+      "brand_name": "IYSO",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000OO",
+      "brand_name": "604서비스",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 22,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 119,
+        "resolved_sales_lines": 22
+      }
+    },
+    {
+      "brand_code": "B00000OR",
+      "brand_name": "ALEXII",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": "CONSIGNMENT",
+        "operational_co_sales_lines": 51,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 41,
+        "resolved_sales_lines": 51
+      }
+    },
+    {
+      "brand_code": "B00000OU",
+      "brand_name": "SOFT OFFICE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000OX",
+      "brand_name": "HYOVASMI",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 5,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 23,
+        "resolved_sales_lines": 5
+      }
+    },
+    {
+      "brand_code": "B00000PA",
+      "brand_name": "MARTINE ROSE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 19,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000PD",
+      "brand_name": "HELIX CLOTHING",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000PG",
+      "brand_name": "SUPER+POSITION",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 11,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 11
+      }
+    },
+    {
+      "brand_code": "B00000PJ",
+      "brand_name": "VCTR",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000PM",
+      "brand_name": "노페이스스튜디오",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000PP",
+      "brand_name": "RANRA",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 5,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000PS",
+      "brand_name": "HGBB STUDIO",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000PV",
+      "brand_name": "NVRFRGT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 95,
+        "resolved_sales_lines": 31
+      }
+    },
+    {
+      "brand_code": "B00000PY",
+      "brand_name": "엘리엇 에밀",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 203,
+        "resolved_sales_lines": 64
+      }
+    },
+    {
+      "brand_code": "B00000QB",
+      "brand_name": "SRVC",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 7
+      }
+    },
+    {
+      "brand_code": "B00000QE",
+      "brand_name": "SOFT OFFICE AIR",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000QH",
+      "brand_name": "AAH MIDNIGHT CLUB",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 90,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000QK",
+      "brand_name": "PANQ",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000QN",
+      "brand_name": "GR10K",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000QQ",
+      "brand_name": "MAD PARIS X D1_WATCH",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000QT",
+      "brand_name": "LIEBESTRAUM",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000QW",
+      "brand_name": "COPERNI",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 32,
+        "resolved_sales_lines": 1
+      }
+    },
+    {
+      "brand_code": "B00000QY",
+      "brand_name": "CMMAWEAR",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 43,
+        "resolved_sales_lines": 4
+      }
+    },
+    {
+      "brand_code": "B00000RC",
+      "brand_name": "VAEGABOND",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000RF",
+      "brand_name": "HANBYEONGJU",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 25,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000RI",
+      "brand_name": "아이필럭키",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 5,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 5,
+        "resolved_sales_lines": 5
+      }
+    },
+    {
+      "brand_code": "B00000RL",
+      "brand_name": "P.L.N.",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000RO",
+      "brand_name": "KIMYO",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 64,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 176,
+        "resolved_sales_lines": 64
+      }
+    },
+    {
+      "brand_code": "B00000RR",
+      "brand_name": "OMAR AFRIDI",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000RU",
+      "brand_name": "PUBLICPHARMACY",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000RX",
+      "brand_name": "PRIX",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 61,
+        "resolved_sales_lines": 6
+      }
+    },
+    {
+      "brand_code": "B00000SA",
+      "brand_name": "본네",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 251,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 325,
+        "resolved_sales_lines": 251
+      }
+    },
+    {
+      "brand_code": "B00000SD",
+      "brand_name": "프로토타입스",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 153,
+        "resolved_sales_lines": 105
+      }
+    },
+    {
+      "brand_code": "B00000SG",
+      "brand_name": "VAIN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 127
+      }
+    },
+    {
+      "brand_code": "B00000SJ",
+      "brand_name": "V",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000SK",
+      "brand_name": "나밀리아",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 294,
+        "resolved_sales_lines": 212
+      }
+    },
+    {
+      "brand_code": "B00000SN",
+      "brand_name": "SOMEWHERE OUTSIDE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000SS",
+      "brand_name": "아바바브",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 178,
+        "resolved_sales_lines": 82
+      }
+    },
+    {
+      "brand_code": "B00000SV",
+      "brand_name": "HUELLEY ROSE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 10,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000SY",
+      "brand_name": "DET BLEV SENT",
+      "sourcing_type": "PARTIAL",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 23,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 130,
+        "resolved_sales_lines": 82
+      }
+    },
+    {
+      "brand_code": "B00000TB",
+      "brand_name": "LOADING ROOM",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 148,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 502,
+        "resolved_sales_lines": 148
+      }
+    },
+    {
+      "brand_code": "B00000TE",
+      "brand_name": "4FEX",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 78,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 44,
+        "resolved_sales_lines": 78
+      }
+    },
+    {
+      "brand_code": "B00000TH",
+      "brand_name": "EMOSTANCECLUB",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": "CONSIGNMENT",
+        "operational_co_sales_lines": 165,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 73,
+        "resolved_sales_lines": 166
+      }
+    },
+    {
+      "brand_code": "B00000TK",
+      "brand_name": "MYNAMEISPETER",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 25,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000TN",
+      "brand_name": "FAR FROM WHAT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 40,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000TQ",
+      "brand_name": "얼라이브폼",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 63,
+        "resolved_sales_lines": 17
+      }
+    },
+    {
+      "brand_code": "B00000TT",
+      "brand_name": "NULLUS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 105,
+        "resolved_sales_lines": 36
+      }
+    },
+    {
+      "brand_code": "B00000TW",
+      "brand_name": "CYCLE BY MYOB",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 12,
+        "resolved_sales_lines": 3
+      }
+    },
+    {
+      "brand_code": "B00000TZ",
+      "brand_name": "AESIR STUDIOS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 272,
+        "resolved_sales_lines": 190
+      }
+    },
+    {
+      "brand_code": "B00000UC",
+      "brand_name": "PONDER.ER",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 153,
+        "resolved_sales_lines": 33
+      }
+    },
+    {
+      "brand_code": "B00000UF",
+      "brand_name": "VEERKRACHT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 68
+      }
+    },
+    {
+      "brand_code": "B00000UI",
+      "brand_name": "산쿠안즈",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 96
+      }
+    },
+    {
+      "brand_code": "B00000UL",
+      "brand_name": "LUEDER",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 67,
+        "resolved_sales_lines": 24
+      }
+    },
+    {
+      "brand_code": "B00000UO",
+      "brand_name": "에잇아이쥐비",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 68,
+        "resolved_sales_lines": 11
+      }
+    },
+    {
+      "brand_code": "B00000UR",
+      "brand_name": "데드우드",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 94,
+        "resolved_sales_lines": 18
+      }
+    },
+    {
+      "brand_code": "B00000UU",
+      "brand_name": "MERYLL ROGGE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 18,
+        "resolved_sales_lines": 1
+      }
+    },
+    {
+      "brand_code": "B00000UX",
+      "brand_name": "리매진",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 67,
+        "resolved_sales_lines": 78
+      }
+    },
+    {
+      "brand_code": "B00000VA",
+      "brand_name": "BALMUNG",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 5,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 39,
+        "resolved_sales_lines": 5
+      }
+    },
+    {
+      "brand_code": "B00000VD",
+      "brand_name": "LIZA KEANE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 47,
+        "resolved_sales_lines": 10
+      }
+    },
+    {
+      "brand_code": "B00000VG",
+      "brand_name": "SIADDS ATELIER",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 26
+      }
+    },
+    {
+      "brand_code": "B00000VJ",
+      "brand_name": "게릿 제이콥",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 29,
+        "resolved_sales_lines": 6
+      }
+    },
+    {
+      "brand_code": "B00000VM",
+      "brand_name": "퍼블릭하우징스케이트팀",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 17,
+        "resolved_sales_lines": 3
+      }
+    },
+    {
+      "brand_code": "B00000VP",
+      "brand_name": "ALMOST BLACK",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 36,
+        "resolved_sales_lines": 5
+      }
+    },
+    {
+      "brand_code": "B00000VS",
+      "brand_name": "BARCELOS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 4,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000VV",
+      "brand_name": "NO MAINTENANCE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 50,
+        "resolved_sales_lines": 6
+      }
+    },
+    {
+      "brand_code": "B00000VY",
+      "brand_name": "EREHWON",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 8,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 28,
+        "resolved_sales_lines": 8
+      }
+    },
+    {
+      "brand_code": "B00000WB",
+      "brand_name": "HYACYN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 51,
+        "resolved_sales_lines": 33
+      }
+    },
+    {
+      "brand_code": "B00000WE",
+      "brand_name": "레이서 월드 와이드",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 97,
+        "resolved_sales_lines": 17
+      }
+    },
+    {
+      "brand_code": "B00000WH",
+      "brand_name": "WANGXINGYU",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 43
+      }
+    },
+    {
+      "brand_code": "B00000WK",
+      "brand_name": "Birth of Royal Child",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000WN",
+      "brand_name": "GRACE ELWOOD",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 98,
+        "resolved_sales_lines": 69
+      }
+    },
+    {
+      "brand_code": "B00000WQ",
+      "brand_name": "Fancì Club",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 17,
+        "resolved_sales_lines": 1
+      }
+    },
+    {
+      "brand_code": "B00000WT",
+      "brand_name": "FORBIDDEN KN0WLEDGE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 31,
+        "resolved_sales_lines": 2
+      }
+    },
+    {
+      "brand_code": "B00000WW",
+      "brand_name": "TROUBLED WATERS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 198
+      }
+    },
+    {
+      "brand_code": "B00000WZ",
+      "brand_name": "THE PROUDER",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 26
+      }
+    },
+    {
+      "brand_code": "B00000XD",
+      "brand_name": "팩스00100",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 133,
+        "resolved_sales_lines": 91
+      }
+    },
+    {
+      "brand_code": "B00000XG",
+      "brand_name": "Anomalies Department",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 206,
+        "resolved_sales_lines": 195
+      }
+    },
+    {
+      "brand_code": "B00000XJ",
+      "brand_name": "ROCK STEADY",
+      "sourcing_type": "WHOLESALE",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 26
+      }
+    },
+    {
+      "brand_code": "B00000XM",
+      "brand_name": "YUEQI QI",
+      "sourcing_type": "WHOLESALE",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000XQ",
+      "brand_name": "KEIMFLECK",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 28,
+        "resolved_sales_lines": 8
+      }
+    },
+    {
+      "brand_code": "B00000XT",
+      "brand_name": "LILDENIMJEAN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000XW",
+      "brand_name": "스페로",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000XZ",
+      "brand_name": "ANT/ANTI",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000YC",
+      "brand_name": "RUIBUILT",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 45
+      }
+    },
+    {
+      "brand_code": "B00000YF",
+      "brand_name": "GROSSI",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 36,
+        "resolved_sales_lines": 8
+      }
+    },
+    {
+      "brand_code": "B00000YI",
+      "brand_name": "VIVAMUS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 7
+      }
+    },
+    {
+      "brand_code": "B00000YL",
+      "brand_name": "COZY WORLDWIDE",
+      "sourcing_type": "WHOLESALE",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 292,
+        "resolved_sales_lines": 346
+      }
+    },
+    {
+      "brand_code": "B00000YO",
+      "brand_name": "AMBUSH",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 25,
+        "resolved_sales_lines": 14
+      }
+    },
+    {
+      "brand_code": "B00000YR",
+      "brand_name": "STOLEN ARTS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 4
+      }
+    },
+    {
+      "brand_code": "B00000YU",
+      "brand_name": "WNTD APPAREL",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000YY",
+      "brand_name": "LSOUL",
+      "sourcing_type": "WHOLESALE",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 97,
+        "resolved_sales_lines": 46
+      }
+    },
+    {
+      "brand_code": "B00000ZB",
+      "brand_name": "PSN/OWN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000ZE",
+      "brand_name": "YORI",
+      "sourcing_type": "WHOLESALE",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 45
+      }
+    },
+    {
+      "brand_code": "B00000ZH",
+      "brand_name": "DOLLAVA",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B00000ZK",
+      "brand_name": "AIVER",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 88,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 57,
+        "resolved_sales_lines": 88
+      }
+    },
+    {
+      "brand_code": "B00000ZN",
+      "brand_name": "DOMINNICO",
+      "sourcing_type": "PARTIAL",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 11,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 254,
+        "resolved_sales_lines": 22
+      }
+    },
+    {
+      "brand_code": "B00000ZQ",
+      "brand_name": "MOWALOLA",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 35,
+        "resolved_sales_lines": 42
+      }
+    },
+    {
+      "brand_code": "B00000ZT",
+      "brand_name": "파코서플라이",
+      "sourcing_type": "PARTIAL",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 13,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 124,
+        "resolved_sales_lines": 368
+      }
+    },
+    {
+      "brand_code": "B00000ZW",
+      "brand_name": "LIFE IS HELL",
+      "sourcing_type": "WHOLESALE",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 82,
+        "resolved_sales_lines": 120
+      }
+    },
+    {
+      "brand_code": "B00000ZZ",
+      "brand_name": "GINKCLE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B0000BAC",
+      "brand_name": "DDAILIES",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 10,
+        "resolved_sales_lines": 9
+      }
+    },
+    {
+      "brand_code": "B0000BAF",
+      "brand_name": "BED J.W FORD",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 5,
+        "resolved_sales_lines": 4
+      }
+    },
+    {
+      "brand_code": "B0000BAI",
+      "brand_name": "PHTMNE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 31,
+        "resolved_sales_lines": 43
+      }
+    },
+    {
+      "brand_code": "B0000BAL",
+      "brand_name": "ALA TIANAN",
+      "sourcing_type": "WHOLESALE",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B0000BAO",
+      "brand_name": "토가",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 20
+      }
+    },
+    {
+      "brand_code": "B0000BAR",
+      "brand_name": "보헤미안 서울",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B0000BAU",
+      "brand_name": "FUGUIHUA",
+      "sourcing_type": "PARTIAL",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 20,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 66,
+        "resolved_sales_lines": 46
+      }
+    },
+    {
+      "brand_code": "B0000BAX",
+      "brand_name": "AKME",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 16,
+        "resolved_sales_lines": 19
+      }
+    },
+    {
+      "brand_code": "B0000BBA",
+      "brand_name": "CLEIONER",
+      "sourcing_type": "WHOLESALE",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 33,
+        "resolved_sales_lines": 49
+      }
+    },
+    {
+      "brand_code": "B0000BBD",
+      "brand_name": "에프엔케이 스튜디오",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 31,
+        "resolved_sales_lines": 36
+      }
+    },
+    {
+      "brand_code": "B0000BBG",
+      "brand_name": "Pièces Uniques",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B0000BBJ",
+      "brand_name": "424",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 12,
+        "resolved_sales_lines": 13
+      }
+    },
+    {
+      "brand_code": "B0000BBM",
+      "brand_name": "AQUA LIXUN SU",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B0000BBP",
+      "brand_name": "WAI.NEKE",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B0000BBS",
+      "brand_name": "츄 포에버",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 23,
+        "resolved_sales_lines": 21
+      }
+    },
+    {
+      "brand_code": "B0000BBV",
+      "brand_name": "젬젬 파라디스",
+      "sourcing_type": "CONSIGNMENT",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 65,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 39,
+        "resolved_sales_lines": 65
+      }
+    },
+    {
+      "brand_code": "B0000BBY",
+      "brand_name": "GOOMHEO",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 9,
+        "resolved_sales_lines": 10
+      }
+    },
+    {
+      "brand_code": "B0000BCB",
+      "brand_name": "BLACKMEANS",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 6,
+        "resolved_sales_lines": 1
+      }
+    },
+    {
+      "brand_code": "B0000BCE",
+      "brand_name": "SAMPLAS MERCH",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B0000BCH",
+      "brand_name": "DINGYUN ZHANG",
+      "sourcing_type": "WHOLESALE",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 27,
+        "resolved_sales_lines": 17
+      }
+    },
+    {
+      "brand_code": "B0000BCK",
+      "brand_name": "밍가",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 76,
+        "resolved_sales_lines": 111
+      }
+    },
+    {
+      "brand_code": "B0000BCN",
+      "brand_name": "소마",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 23
+      }
+    },
+    {
+      "brand_code": "B0000BCQ",
+      "brand_name": "카미긴",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 26,
+        "resolved_sales_lines": 39
+      }
+    },
+    {
+      "brand_code": "B0000BCU",
+      "brand_name": "OURSELVES REMAKE",
+      "sourcing_type": "WHOLESALE",
+      "evidence": {
+        "historical_candidate": "WHOLESALE",
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 32,
+        "resolved_sales_lines": 45
+      }
+    },
+    {
+      "brand_code": "B0000BCX",
+      "brand_name": "BARRAGAN",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 1
+      }
+    },
+    {
+      "brand_code": "B0000BDA",
+      "brand_name": "O. FILES",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    },
+    {
+      "brand_code": "B0000BDD",
+      "brand_name": "TAE GLOBAL",
+      "sourcing_type": "UNKNOWN",
+      "evidence": {
+        "historical_candidate": null,
+        "operational_co_sales_lines": 0,
+        "con_prefix_products": 0,
+        "exact_30_percent_products": 0
+      },
+      "coverage": {
+        "resolved_products": 0,
+        "resolved_sales_lines": 0
+      }
+    }
+  ]
+}

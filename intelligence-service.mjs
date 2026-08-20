@@ -12,6 +12,7 @@ import {
   DEFAULTS as INVENTORY_OVERVIEW_DEFAULTS
 } from "./scripts/inventory-overview-lib.mjs";
 import { bootstrapProductRegistryFiles } from "./scripts/bootstrap-product-registry.mjs";
+import { bootstrapCommercialPolicyFiles } from "./scripts/bootstrap-commercial-policy.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import {
   normalizeBrandCode,
@@ -72,6 +73,8 @@ const todayProductSyncIssuesFile = join(workRoot, "today-product-sync-issues.jso
 const productRegistryReviewQueueFile = join(workRoot, "product-registry-review-queue.json");
 const categoryMasterFile = join(workRoot, "category-master.json");
 const colorMasterFile = join(workRoot, "color-master.json");
+const brandCommercialPolicyFile = join(workRoot, "brand-commercial-policy.json");
+const brandSourcingMasterFile = join(workRoot, "brand-sourcing-master.json");
 const categoryReviewAuditFile = join(workRoot, "category-unclassified-model-audit.json");
 const inventoryIntelligenceCandidatesFile = join(workRoot, "inventory-intelligence-candidates.json");
 // Phase 3A — Inventory Overview: ECOUNT stockQuantity를 유일한 재고 기준(Source of Truth)으로 사용한다.
@@ -102,6 +105,7 @@ let productRegistryReviewWriteQueue = Promise.resolve();
 const intelligenceRequestTimeoutMs = Number(env.INTELLIGENCE_REQUEST_TIMEOUT_MS || 45000);
 
 await bootstrapProductRegistryFiles({ projectRoot: root, workDir: workRoot });
+await bootstrapCommercialPolicyFiles({ projectRoot: root, workDir: workRoot });
 await mkdir(intelligenceWorkDir, { recursive: true });
 await ensureBrandRegistryFiles();
 await ensureNaverSnapshotsFile();
@@ -159,6 +163,182 @@ export async function handleIntelligenceRequest(req, res) {
       console.error(`[intelligence] TIMEOUT-AFTER ${url.pathname} 지연 이후 추가 오류: ${safeErrorMessage(error)}`);
     });
   }
+}
+
+
+async function handleBrandCommercialPolicyGet(url, res) {
+  if (!existsSync(brandCommercialPolicyFile)) {
+    return json(res, {
+      ok: false,
+      error: "Commercial Policy Not Found"
+    }, 404);
+  }
+
+  const store = JSON.parse(await readFile(brandCommercialPolicyFile, "utf8"));
+  const policies = Array.isArray(store?.policies) ? store.policies : [];
+
+  const brandCode = (url.searchParams.get("brand_code") || "").trim();
+  const brandName = (url.searchParams.get("name") || "").trim();
+  const productName = (url.searchParams.get("product_name") || "").trim();
+
+  if (!brandCode && !brandName) {
+    return json(res, {
+      ok: true,
+      count: policies.length,
+      summary: store.summary || null,
+      policies
+    });
+  }
+
+  let policy = null;
+  let brand = null;
+
+  if (brandCode) {
+    policy = policies.find((item) => item.brand_code === brandCode) || null;
+
+    brand = {
+      brandId: brandCode,
+      name: policy?.canonical_brand_name || policy?.source_brand_name || null,
+      matchedBy: "brand_code"
+    };
+  }
+
+  if (!policy && brandName) {
+    const master = JSON.parse(await readFile(marketingBrandMasterFile, "utf8"));
+    const registry = buildBrandRegistry(master);
+
+    const resolved = resolveBrandFromEngine(brandName, registry);
+
+    if (resolved?.brandId) {
+      brand = {
+        brandId: resolved.brandId,
+        name: resolved.name,
+        matchedBy: resolved.matchedBy
+      };
+
+      policy =
+        policies.find((item) => item.brand_code === resolved.brandId) ||
+        null;
+    }
+  }
+
+  let fallback = null;
+
+  if (!policy && brand?.brandId && existsSync(brandSourcingMasterFile)) {
+    const sourcingStore = JSON.parse(
+      await readFile(brandSourcingMasterFile, "utf8")
+    );
+
+    const sourcingRows = Array.isArray(sourcingStore?.brands)
+      ? sourcingStore.brands
+      : [];
+
+    const sourcing = sourcingRows.find(
+      (item) => item.brand_code === brand.brandId
+    ) || null;
+
+    if (sourcing) {
+      const defaults = {
+        CONSIGNMENT: 10,
+        WHOLESALE: 20,
+        OWN_PRODUCTION: 10
+      };
+
+      const discount =
+        Object.prototype.hasOwnProperty.call(defaults, sourcing.sourcing_type)
+          ? defaults[sourcing.sourcing_type]
+          : null;
+
+      fallback = {
+        brand_code: sourcing.brand_code,
+        canonical_brand_name: sourcing.brand_name,
+        sourcing_type: sourcing.sourcing_type,
+        stylist_discount_percent: discount,
+        policy_status: discount === null
+          ? "REVIEW_REQUIRED"
+          : "SOURCING_DEFAULT",
+        policy_source: "brand-sourcing-master",
+        warning: discount === null
+          ? "Commercial Policy가 없고 sourcing만 판별되었습니다. 할인율 확인이 필요합니다."
+          : "Commercial Policy 미등록 브랜드입니다. sourcing 기반 기본 권장 할인율입니다.",
+        evidence: sourcing.evidence || null,
+        coverage: sourcing.coverage || null
+      };
+    }
+  }
+
+  let effectivePolicy = null;
+
+  if (policy) {
+    const baseDiscount = policy.stylist_discount_percent ?? null;
+    const rules = Array.isArray(policy.product_rules)
+      ? policy.product_rules
+      : [];
+
+    let matchedRule = null;
+
+    if (productName) {
+      matchedRule =
+        rules.find((rule) => {
+          if (rule?.type !== "PRODUCT_NAME_PREFIX") return false;
+
+          const prefix = String(rule.value || "").trim();
+          if (!prefix) return false;
+
+          return productName
+            .trim()
+            .toUpperCase()
+            .startsWith(prefix.toUpperCase());
+        }) || null;
+    }
+
+    effectivePolicy = {
+      base_discount_percent: baseDiscount,
+      effective_discount_percent:
+        matchedRule?.stylist_discount_percent ?? baseDiscount,
+      matched_product_rule: matchedRule,
+      product_name: productName || null,
+      decision_source: matchedRule
+        ? "PRODUCT_RULE"
+        : "BRAND_POLICY"
+    };
+  } else if (fallback) {
+    effectivePolicy = {
+      base_discount_percent:
+        fallback.stylist_discount_percent ?? null,
+      effective_discount_percent:
+        fallback.stylist_discount_percent ?? null,
+      matched_product_rule: null,
+      product_name: productName || null,
+      decision_source: "SOURCING_FALLBACK"
+    };
+  }
+
+  const onlinePrice =
+    productName && brand?.brandId
+      ? await resolveCommercialPolicyOnlinePrice(
+          brand.brandId,
+          productName
+        )
+      : null;
+
+  return json(res, {
+    ok: true,
+    query: {
+      brand_code: brandCode || null,
+      name: brandName || null,
+      product_name: productName || null
+    },
+    brand,
+    found: Boolean(policy),
+    policy_status: policy
+      ? "EXPLICIT_POLICY"
+      : fallback?.policy_status || "UNRESOLVED",
+    policy,
+    fallback,
+    effective_policy: effectivePolicy,
+    online_price: onlinePrice
+  });
 }
 
 async function routeIntelligenceRequest(url, req, res) {
@@ -268,6 +448,10 @@ async function routeIntelligenceRequest(url, req, res) {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return handleColorMasterGet(res);
     }
+    if (url.pathname === "/api/intelligence/commercial-policy") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleBrandCommercialPolicyGet(url, res);
+    }
     if (url.pathname === "/api/intelligence/category-review") {
       if (req.method === "GET") return handleCategoryReviewGet(res);
       if (req.method === "PATCH") return await handleCategoryReviewPatch(req, res);
@@ -350,6 +534,130 @@ function corsHeaders() {
 
 async function readProductRegistryJson(filePath) {
   return JSON.parse(await readFile(filePath, "utf8"));
+}
+
+function normalizeCommercialProductName(value) {
+  return String(value || "")
+    .replace(/^\[[^\]]+\]\s*/, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+}
+
+async function resolveCommercialPolicyOnlinePrice(brandId, productName) {
+  if (!brandId || !productName) return null;
+
+  try {
+    const registryStore = await readProductRegistryJson(productRegistryFile);
+    const entries = Array.isArray(registryStore?.entries)
+      ? registryStore.entries
+      : [];
+
+    const targetName = normalizeCommercialProductName(productName);
+
+    const matches = entries.filter((entry) =>
+      String(entry?.brandId || "") === String(brandId) &&
+      normalizeCommercialProductName(entry?.canonicalProductName) === targetName &&
+      entry?.cafe24?.productNo
+    );
+
+    if (matches.length !== 1) {
+      return null;
+    }
+
+    const entry = matches[0];
+    const productNo = String(entry.cafe24.productNo);
+
+    const headers = {
+      Accept: "application/json"
+    };
+
+    if (env.CAFE24_PROXY_SECRET) {
+      headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
+    }
+
+    if (env.CAFE24_PROXY_BASIC_AUTH) {
+      headers.Authorization =
+        "Basic " +
+        Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64");
+    }
+
+    const detailUrl = new URL(
+      `/api/cafe24/products/${encodeURIComponent(productNo)}`,
+      marketingOsBaseUrl
+    );
+
+    const discountUrl = new URL(
+      `/api/cafe24/products/${encodeURIComponent(productNo)}/discountprice`,
+      marketingOsBaseUrl
+    );
+
+    const [detailResponse, discountResponse] = await Promise.all([
+      fetch(detailUrl, { headers }),
+      fetch(discountUrl, { headers })
+    ]);
+
+    if (!detailResponse.ok || !discountResponse.ok) {
+      return null;
+    }
+
+    const detailBody = await detailResponse.json();
+    const discountBody = await discountResponse.json();
+
+    if (detailBody?.error || discountBody?.error) {
+      return null;
+    }
+
+    const product = detailBody?.product || {};
+    const discountprice = discountBody?.discountprice || {};
+
+    const retailPrice = Number(
+      product.retail_price ??
+      product.price ??
+      0
+    );
+
+    const rawSalePrice = Number(
+      discountprice.pc_discount_price ??
+      discountprice.mobile_discount_price ??
+      product.price ??
+      retailPrice
+    );
+
+    if (!Number.isFinite(retailPrice) || retailPrice <= 0) {
+      return null;
+    }
+
+    const salePrice =
+      Number.isFinite(rawSalePrice) && rawSalePrice >= 0
+        ? Math.round(rawSalePrice)
+        : Math.round(retailPrice);
+
+    const discountAmount = Math.max(
+      0,
+      Math.round(retailPrice - salePrice)
+    );
+
+    const discountPercent = Math.round(
+      (discountAmount / retailPrice) * 100
+    );
+
+    return {
+      product_no: productNo,
+      retail_price: Math.round(retailPrice),
+      discount_amount: discountAmount,
+      sale_price: salePrice,
+      discount_percent: discountPercent,
+      registry_status: entry.status || null,
+      registry_verified: Boolean(entry.verified)
+    };
+  } catch (error) {
+    console.warn(
+      "[intelligence][commercial-policy] online price unavailable:",
+      safeErrorMessage(error)
+    );
+    return null;
+  }
 }
 
 async function handleProductRegistryGet(res) {

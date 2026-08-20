@@ -1,0 +1,2729 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-18T02:39:27.005Z",
+  "policy": {
+    "canonicalKey": "brand_code",
+    "commercialPolicyPrecedence": "explicit commercial policy seed overrides inferred sourcing",
+    "unresolvedPolicy": "preserve policy but never guess canonical brand"
+  },
+  "source": {
+    "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+    "sheet": "할인율",
+    "source_sha256": "b799f0f83de3b643fe89c94fcd9625c8de57f86b9126989d4b3f153baf43e79c",
+    "header_row": 4,
+    "data_start_row": 22,
+    "policy_row_count": 119,
+    "instructions": [
+      "스타일리스트 & 프레스 국내 -10% / 해외 -20% / 잘 모르겠으면 -10%로 통일",
+      "시즌 할인 상품들 중복 할인 안되게 꼭 확인"
+    ]
+  },
+  "summary": {
+    "total": 134,
+    "resolved": 133,
+    "unresolved": 1,
+    "duplicateBrandCodes": 0
+  },
+  "policies": [
+    {
+      "brand_code": "B0000BBJ",
+      "canonical_brand_name": "424",
+      "source_brand_name": "424.0",
+      "resolution_status": "RESOLVED",
+      "matched_by": "legacy_name_map",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 22
+      }
+    },
+    {
+      "brand_code": "B00000TE",
+      "canonical_brand_name": "4FEX",
+      "source_brand_name": "4FEX",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 23
+      }
+    },
+    {
+      "brand_code": "B00000OO",
+      "canonical_brand_name": "604서비스",
+      "source_brand_name": "604SERVICE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 24
+      }
+    },
+    {
+      "brand_code": "B00000UO",
+      "canonical_brand_name": "에잇아이쥐비",
+      "source_brand_name": "8IGB",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 25
+      }
+    },
+    {
+      "brand_code": "B00000QH",
+      "canonical_brand_name": "AAH MIDNIGHT CLUB",
+      "source_brand_name": "AAH MIDNIGHT CLUB",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 26
+      }
+    },
+    {
+      "brand_code": "B00000ZK",
+      "canonical_brand_name": "AIVER",
+      "source_brand_name": "AIVER",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 27
+      }
+    },
+    {
+      "brand_code": "B00000TZ",
+      "canonical_brand_name": "AESIR STUDIOS",
+      "source_brand_name": "AESIR STUDIOS",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 28
+      }
+    },
+    {
+      "brand_code": "B00000MT",
+      "canonical_brand_name": "AE SYNCTX",
+      "source_brand_name": "AESYNCTX",
+      "resolution_status": "RESOLVED",
+      "matched_by": "legacy_name_map",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "HYBRID",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 29
+      }
+    },
+    {
+      "brand_code": "B0000BAL",
+      "canonical_brand_name": "ALA TIANAN",
+      "source_brand_name": "ALA TIANAN",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "WHOLESALE",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 30
+      }
+    },
+    {
+      "brand_code": "B00000OR",
+      "canonical_brand_name": "ALEXII",
+      "source_brand_name": "ALEXII",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 31
+      }
+    },
+    {
+      "brand_code": "B00000TQ",
+      "canonical_brand_name": "얼라이브폼",
+      "source_brand_name": "ALIVEFORM",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 32
+      }
+    },
+    {
+      "brand_code": "B00000XG",
+      "canonical_brand_name": "Anomalies Department",
+      "source_brand_name": "ANOMALIES DEPARTMENT",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 33
+      }
+    },
+    {
+      "brand_code": "B00000OE",
+      "canonical_brand_name": "어나더유스",
+      "source_brand_name": "ANOTHERYOUTH",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 34
+      }
+    },
+    {
+      "brand_code": "B00000XZ",
+      "canonical_brand_name": "ANT/ANTI",
+      "source_brand_name": "ANT/ANTI",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 35
+      }
+    },
+    {
+      "brand_code": "B00000YO",
+      "canonical_brand_name": "AMBUSH",
+      "source_brand_name": "AMBUSH",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 36
+      }
+    },
+    {
+      "brand_code": "B00000SS",
+      "canonical_brand_name": "아바바브",
+      "source_brand_name": "AVAVAV",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 37
+      }
+    },
+    {
+      "brand_code": "B0000BAF",
+      "canonical_brand_name": "BED J.W FORD",
+      "source_brand_name": "BED J.W FORD",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 38
+      }
+    },
+    {
+      "brand_code": "B00000VA",
+      "canonical_brand_name": "BALMUNG",
+      "source_brand_name": "BALMUNG",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 39
+      }
+    },
+    {
+      "brand_code": "B00000SA",
+      "canonical_brand_name": "본네",
+      "source_brand_name": "BONNAE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 40
+      }
+    },
+    {
+      "brand_code": "B0000BAR",
+      "canonical_brand_name": "보헤미안 서울",
+      "source_brand_name": "BOHEMIAN SEOUL",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 0,
+      "discount_status": "NO_DISCOUNT",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 41
+      }
+    },
+    {
+      "brand_code": "B00000WK",
+      "canonical_brand_name": "Birth of Royal Child",
+      "source_brand_name": "BIRTH OF ROYAL CHILD",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 42
+      }
+    },
+    {
+      "brand_code": "B00000KU",
+      "canonical_brand_name": "카르넷 아카이브",
+      "source_brand_name": "CARNET ARCHIVE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "PARTIAL",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 43
+      }
+    },
+    {
+      "brand_code": "B00000YL",
+      "canonical_brand_name": "COZY WORLDWIDE",
+      "source_brand_name": "COZY WORLDWIDE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "WHOLESALE",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 44
+      }
+    },
+    {
+      "brand_code": "B0000BAC",
+      "canonical_brand_name": "DDAILIES",
+      "source_brand_name": "DDAILIES",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 45
+      }
+    },
+    {
+      "brand_code": "B00000UR",
+      "canonical_brand_name": "데드우드",
+      "source_brand_name": "DEADWOOD",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 46
+      }
+    },
+    {
+      "brand_code": "B00000SY",
+      "canonical_brand_name": "DET BLEV SENT",
+      "source_brand_name": "DET BLEV SENT",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "PARTIAL",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 47
+      }
+    },
+    {
+      "brand_code": "B00000ZH",
+      "canonical_brand_name": "DOLLAVA",
+      "source_brand_name": "DOLLAVA",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 48
+      }
+    },
+    {
+      "brand_code": "B00000ZN",
+      "canonical_brand_name": "DOMINNICO",
+      "source_brand_name": "DOMINNICO",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "PARTIAL",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "제품명 앞에 CON -> -10%",
+      "product_rules": [
+        {
+          "type": "PRODUCT_NAME_PREFIX",
+          "value": "CON",
+          "stylist_discount_percent": 10,
+          "source": "commercial_policy_note"
+        }
+      ],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 49
+      }
+    },
+    {
+      "brand_code": "B00000TH",
+      "canonical_brand_name": "EMOSTANCECLUB",
+      "source_brand_name": "EMOSTANCECLUB",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 50
+      }
+    },
+    {
+      "brand_code": "B00000VY",
+      "canonical_brand_name": "EREHWON",
+      "source_brand_name": "EREHWON",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 51
+      }
+    },
+    {
+      "brand_code": "B00000WQ",
+      "canonical_brand_name": "Fancì Club",
+      "source_brand_name": "FANCÌ CLUB",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "User confirmed on 2026-08-16 that source +0.2 means 20% discount.",
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 52
+      }
+    },
+    {
+      "brand_code": "B00000TN",
+      "canonical_brand_name": "FAR FROM WHAT",
+      "source_brand_name": "FAR FROM WHAT",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 53
+      }
+    },
+    {
+      "brand_code": "B0000BBD",
+      "canonical_brand_name": "에프엔케이 스튜디오",
+      "source_brand_name": "FNK STUDIOS",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 54
+      }
+    },
+    {
+      "brand_code": "B00000WT",
+      "canonical_brand_name": "FORBIDDEN KN0WLEDGE",
+      "source_brand_name": "FORBIDDEN KN0WLEDGE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 55
+      }
+    },
+    {
+      "brand_code": "B00000VJ",
+      "canonical_brand_name": "게릿 제이콥",
+      "source_brand_name": "GERRIT JACOB",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 56
+      }
+    },
+    {
+      "brand_code": "B00000ZZ",
+      "canonical_brand_name": "GINKCLE",
+      "source_brand_name": "GINKCLE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "User confirmed on 2026-08-16 that source +0.2 means 20% discount.",
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 57
+      }
+    },
+    {
+      "brand_code": "B00000WN",
+      "canonical_brand_name": "GRACE ELWOOD",
+      "source_brand_name": "GRACE ELWOOD",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 58
+      }
+    },
+    {
+      "brand_code": "B00000YF",
+      "canonical_brand_name": "GROSSI",
+      "source_brand_name": "GROSSI",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 59
+      }
+    },
+    {
+      "brand_code": "B00000HX",
+      "canonical_brand_name": "HAMCUS",
+      "source_brand_name": "HAMCUS",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 60
+      }
+    },
+    {
+      "brand_code": "B00000RF",
+      "canonical_brand_name": "HANBYEONGJU",
+      "source_brand_name": "HANBYEONGJU",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 61
+      }
+    },
+    {
+      "brand_code": "B00000PY",
+      "canonical_brand_name": "엘리엇 에밀",
+      "source_brand_name": "HELIOT EMIL",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 62
+      }
+    },
+    {
+      "brand_code": "B00000JR",
+      "canonical_brand_name": "HOMME BOY CO.",
+      "source_brand_name": "HOMME BOY CO",
+      "resolution_status": "RESOLVED",
+      "matched_by": "legacy_name_map",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 63
+      }
+    },
+    {
+      "brand_code": "B00000WB",
+      "canonical_brand_name": "HYACYN",
+      "source_brand_name": "HYACYN",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 64
+      }
+    },
+    {
+      "brand_code": "B00000OX",
+      "canonical_brand_name": "HYOVASMI",
+      "source_brand_name": "HYOVASMI",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 65
+      }
+    },
+    {
+      "brand_code": "B00000SV",
+      "canonical_brand_name": "HUELLEY ROSE",
+      "source_brand_name": "HUELLEY ROSE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 66
+      }
+    },
+    {
+      "brand_code": "B00000RI",
+      "canonical_brand_name": "아이필럭키",
+      "source_brand_name": "IFEELLUCKY",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 67
+      }
+    },
+    {
+      "brand_code": "B00000RO",
+      "canonical_brand_name": "KIMYO",
+      "source_brand_name": "KIMYO",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 68
+      }
+    },
+    {
+      "brand_code": "B00000ZW",
+      "canonical_brand_name": "LIFE IS HELL",
+      "source_brand_name": "LIFE IS HELL",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "WHOLESALE",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 69
+      }
+    },
+    {
+      "brand_code": "B00000XT",
+      "canonical_brand_name": "LILDENIMJEAN",
+      "source_brand_name": "LILDENIMJEAN",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 70
+      }
+    },
+    {
+      "brand_code": "B00000VD",
+      "canonical_brand_name": "LIZA KEANE",
+      "source_brand_name": "LIZA KEANE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 71
+      }
+    },
+    {
+      "brand_code": "B00000TB",
+      "canonical_brand_name": "LOADING ROOM",
+      "source_brand_name": "LOADING ROOM",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 0,
+      "discount_status": "NO_DISCOUNT",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 72
+      }
+    },
+    {
+      "brand_code": "B00000YY",
+      "canonical_brand_name": "LSOUL",
+      "source_brand_name": "LSOUL",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "WHOLESALE",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 73
+      }
+    },
+    {
+      "brand_code": "B00000UL",
+      "canonical_brand_name": "LUEDER",
+      "source_brand_name": "LUEDER",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 74
+      }
+    },
+    {
+      "brand_code": "B00000SK",
+      "canonical_brand_name": "나밀리아",
+      "source_brand_name": "NAMILIA",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 75
+      }
+    },
+    {
+      "brand_code": "B00000TT",
+      "canonical_brand_name": "NULLUS",
+      "source_brand_name": "NULLUS",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 76
+      }
+    },
+    {
+      "brand_code": "B00000PV",
+      "canonical_brand_name": "NVRFRGT",
+      "source_brand_name": "NVRFRGT",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 77
+      }
+    },
+    {
+      "brand_code": "B00000HM",
+      "canonical_brand_name": "민타임",
+      "source_brand_name": "MEANTIME",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "OWN_PRODUCTION",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "OWN_PRODUCTION",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "제품명 앞에 KOIN SEOUL X MEANTIME -> 0%",
+      "product_rules": [
+        {
+          "type": "PRODUCT_NAME_PREFIX",
+          "value": "KOIN SEOUL X MEANTIME",
+          "stylist_discount_percent": 0,
+          "source": "commercial_policy_note"
+        }
+      ],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 78
+      }
+    },
+    {
+      "brand_code": "B00000ZQ",
+      "canonical_brand_name": "MOWALOLA",
+      "source_brand_name": "MOWALOLA",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 79
+      }
+    },
+    {
+      "brand_code": "B00000ZT",
+      "canonical_brand_name": "파코서플라이",
+      "source_brand_name": "PACOSPLY",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "PARTIAL",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 80
+      }
+    },
+    {
+      "brand_code": "B00000XD",
+      "canonical_brand_name": "팩스00100",
+      "source_brand_name": "PAX00100",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 81
+      }
+    },
+    {
+      "brand_code": "B0000BAI",
+      "canonical_brand_name": "PHTMNE",
+      "source_brand_name": "PHTMNE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 82
+      }
+    },
+    {
+      "brand_code": "B00000UC",
+      "canonical_brand_name": "PONDER.ER",
+      "source_brand_name": "PONDER.ER",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 83
+      }
+    },
+    {
+      "brand_code": "B00000SD",
+      "canonical_brand_name": "프로토타입스",
+      "source_brand_name": "PROTOTYPES",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 84
+      }
+    },
+    {
+      "brand_code": "B00000RU",
+      "canonical_brand_name": "PUBLICPHARMACY",
+      "source_brand_name": "PUBLIC PHARMACY",
+      "resolution_status": "RESOLVED",
+      "matched_by": "legacy_name_map",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 85
+      }
+    },
+    {
+      "brand_code": "B00000RL",
+      "canonical_brand_name": "P.L.N.",
+      "source_brand_name": "P.L.N.",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 86
+      }
+    },
+    {
+      "brand_code": "B00000ZB",
+      "canonical_brand_name": "PSN/OWN",
+      "source_brand_name": "PSN/OWN",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 87
+      }
+    },
+    {
+      "brand_code": "B00000WE",
+      "canonical_brand_name": "레이서 월드 와이드",
+      "source_brand_name": "RACER WORLDWIDE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 88
+      }
+    },
+    {
+      "brand_code": "B00000MJ",
+      "canonical_brand_name": "레저렉션13",
+      "source_brand_name": "RESURRECTION13",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 89
+      }
+    },
+    {
+      "brand_code": "B00000UX",
+      "canonical_brand_name": "리매진",
+      "source_brand_name": "REMAGINE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 90
+      }
+    },
+    {
+      "brand_code": "B00000XJ",
+      "canonical_brand_name": "ROCK STEADY",
+      "source_brand_name": "ROCKSTEADY",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "WHOLESALE",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 91
+      }
+    },
+    {
+      "brand_code": "B00000YC",
+      "canonical_brand_name": "RUIBUILT",
+      "source_brand_name": "RUIBUILT",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 92
+      }
+    },
+    {
+      "brand_code": null,
+      "canonical_brand_name": null,
+      "source_brand_name": "KOIN SEOUL",
+      "resolution_status": "UNRESOLVED",
+      "matched_by": null,
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "stylist_discount_percent": 0,
+      "discount_status": "NO_DISCOUNT",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 93
+      }
+    },
+    {
+      "brand_code": "B00000UI",
+      "canonical_brand_name": "산쿠안즈",
+      "source_brand_name": "SANKUANZ",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 94
+      }
+    },
+    {
+      "brand_code": "B00000XW",
+      "canonical_brand_name": "스페로",
+      "source_brand_name": "SFERO",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 95
+      }
+    },
+    {
+      "brand_code": "B00000VG",
+      "canonical_brand_name": "SIADDS ATELIER",
+      "source_brand_name": "SIADDS ATELIER",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 96
+      }
+    },
+    {
+      "brand_code": "B00000YR",
+      "canonical_brand_name": "STOLEN ARTS",
+      "source_brand_name": "STOLEN ARTS",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 97
+      }
+    },
+    {
+      "brand_code": "B00000HD",
+      "canonical_brand_name": "선데이오프클럽",
+      "source_brand_name": "SUNDAY OFF CLUB",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 98
+      }
+    },
+    {
+      "brand_code": "B00000JA",
+      "canonical_brand_name": "써저리",
+      "source_brand_name": "SURGERY",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 99
+      }
+    },
+    {
+      "brand_code": "B00000WZ",
+      "canonical_brand_name": "THE PROUDER",
+      "source_brand_name": "THE PROUDER",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 100
+      }
+    },
+    {
+      "brand_code": "B0000BAO",
+      "canonical_brand_name": "토가",
+      "source_brand_name": "TOGA",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 101
+      }
+    },
+    {
+      "brand_code": "B00000WW",
+      "canonical_brand_name": "TROUBLED WATERS",
+      "source_brand_name": "TROUBLED WATERS",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 102
+      }
+    },
+    {
+      "brand_code": "B00000LF",
+      "canonical_brand_name": "언본소사이어티",
+      "source_brand_name": "UNBORNSOCIETY",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 103
+      }
+    },
+    {
+      "brand_code": "B00000SG",
+      "canonical_brand_name": "VAIN",
+      "source_brand_name": "VAIN",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 104
+      }
+    },
+    {
+      "brand_code": "B00000UF",
+      "canonical_brand_name": "VEERKRACHT",
+      "source_brand_name": "VEERKRACHT",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 105
+      }
+    },
+    {
+      "brand_code": "B00000WH",
+      "canonical_brand_name": "WANGXINGYU",
+      "source_brand_name": "WANGXINGYU",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 106
+      }
+    },
+    {
+      "brand_code": "B00000YU",
+      "canonical_brand_name": "WNTD APPAREL",
+      "source_brand_name": "WNTD APPAREL",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 107
+      }
+    },
+    {
+      "brand_code": "B00000LC",
+      "canonical_brand_name": "엑슬림",
+      "source_brand_name": "XLIM",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 108
+      }
+    },
+    {
+      "brand_code": "B00000ZE",
+      "canonical_brand_name": "YORI",
+      "source_brand_name": "YORI",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "WHOLESALE",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 109
+      }
+    },
+    {
+      "brand_code": "B00000XM",
+      "canonical_brand_name": "YUEQI QI",
+      "source_brand_name": "YUEQI QI",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "WHOLESALE",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 110
+      }
+    },
+    {
+      "brand_code": "B00000XQ",
+      "canonical_brand_name": "KEIMFLECK",
+      "source_brand_name": "KEIMFLECK",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 111
+      }
+    },
+    {
+      "brand_code": "B00000NC",
+      "canonical_brand_name": "KOZABURO",
+      "source_brand_name": "KOZABURO",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 112
+      }
+    },
+    {
+      "brand_code": "B00000LI",
+      "canonical_brand_name": "LIBERAL YOUTH MINISTRY",
+      "source_brand_name": "LIBERAL YOUTH MINISTRY",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 113
+      }
+    },
+    {
+      "brand_code": "B00000VV",
+      "canonical_brand_name": "NO MAINTENANCE",
+      "source_brand_name": "NO MAINTENANCE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 114
+      }
+    },
+    {
+      "brand_code": "B00000UU",
+      "canonical_brand_name": "MERYLL ROGGE",
+      "source_brand_name": "MERYLL ROGGE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 115
+      }
+    },
+    {
+      "brand_code": "B00000OB",
+      "canonical_brand_name": "OLLY SHINDER",
+      "source_brand_name": "OLLY SHINDER",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 116
+      }
+    },
+    {
+      "brand_code": "B00000NJ",
+      "canonical_brand_name": "OTTOLINGER",
+      "source_brand_name": "OTTOLINGER",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 117
+      }
+    },
+    {
+      "brand_code": "B00000LY",
+      "canonical_brand_name": "PER GOTESSON",
+      "source_brand_name": "PER GOTESSON",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 118
+      }
+    },
+    {
+      "brand_code": "B00000RX",
+      "canonical_brand_name": "PRIX",
+      "source_brand_name": "PRIX",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 119
+      }
+    },
+    {
+      "brand_code": "B00000NW",
+      "canonical_brand_name": "RASSVET",
+      "source_brand_name": "RASSVET",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 120
+      }
+    },
+    {
+      "brand_code": "B00000NZ",
+      "canonical_brand_name": "SKY HIGH FARMS",
+      "source_brand_name": "SKY HIGH FARM WORKWEAR",
+      "resolution_status": "RESOLVED",
+      "matched_by": "legacy_name_map",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 121
+      }
+    },
+    {
+      "brand_code": "B00000QB",
+      "canonical_brand_name": "SRVC",
+      "source_brand_name": "SRVC",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 122
+      }
+    },
+    {
+      "brand_code": "B00000GB",
+      "canonical_brand_name": "UMAMIISM",
+      "source_brand_name": "UMAMIISM",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 123
+      }
+    },
+    {
+      "brand_code": "B00000YI",
+      "canonical_brand_name": "VIVAMUS",
+      "source_brand_name": "VIVAMUS",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "온라인 할인 중",
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 124
+      }
+    },
+    {
+      "brand_code": "B00000LV",
+      "canonical_brand_name": "Wave of Sand",
+      "source_brand_name": "WAVE OF SAND",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 125
+      }
+    },
+    {
+      "brand_code": "B0000BBM",
+      "canonical_brand_name": "AQUA LIXUN SU",
+      "source_brand_name": "AQUA LIXUN SU",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 126
+      }
+    },
+    {
+      "brand_code": "B0000BCB",
+      "canonical_brand_name": "BLACKMEANS",
+      "source_brand_name": "BLACKMEANS",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 127
+      }
+    },
+    {
+      "brand_code": "B0000BBS",
+      "canonical_brand_name": "츄 포에버",
+      "source_brand_name": "CHEW FOREVER",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 128
+      }
+    },
+    {
+      "brand_code": "B0000BBA",
+      "canonical_brand_name": "CLEIONER",
+      "source_brand_name": "CLEIONER",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "WHOLESALE",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 129
+      }
+    },
+    {
+      "brand_code": "B0000BCH",
+      "canonical_brand_name": "DINGYUN ZHANG",
+      "source_brand_name": "DINGYUN ZHANG",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "WHOLESALE",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 130
+      }
+    },
+    {
+      "brand_code": "B0000BAU",
+      "canonical_brand_name": "FUGUIHUA",
+      "source_brand_name": "FUGUIHUA",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "PARTIAL",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": "제품명 앞에 CON -> -10%",
+      "product_rules": [
+        {
+          "type": "PRODUCT_NAME_PREFIX",
+          "value": "CON",
+          "stylist_discount_percent": 10,
+          "source": "commercial_policy_note"
+        }
+      ],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 131
+      }
+    },
+    {
+      "brand_code": "B0000BBV",
+      "canonical_brand_name": "젬젬 파라디스",
+      "source_brand_name": "gemgem paradis",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 132
+      }
+    },
+    {
+      "brand_code": "B0000BBY",
+      "canonical_brand_name": "GOOMHEO",
+      "source_brand_name": "GOOMHEO",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 133
+      }
+    },
+    {
+      "brand_code": "B0000BCQ",
+      "canonical_brand_name": "카미긴",
+      "source_brand_name": "KAMIGIN",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 134
+      }
+    },
+    {
+      "brand_code": "B0000BCK",
+      "canonical_brand_name": "밍가",
+      "source_brand_name": "MINGA",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 135
+      }
+    },
+    {
+      "brand_code": "B0000BCU",
+      "canonical_brand_name": "OURSELVES REMAKE",
+      "source_brand_name": "OURSELVES REMAKE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "WHOLESALE",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 136
+      }
+    },
+    {
+      "brand_code": "B0000BBG",
+      "canonical_brand_name": "Pièces Uniques",
+      "source_brand_name": "Pièces Uniques",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 137
+      }
+    },
+    {
+      "brand_code": "B0000BCN",
+      "canonical_brand_name": "소마",
+      "source_brand_name": "SOMAR",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 0,
+      "discount_status": "NO_DISCOUNT",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 138
+      }
+    },
+    {
+      "brand_code": "B00000PG",
+      "canonical_brand_name": "SUPER+POSITION",
+      "source_brand_name": "SUPER+POSITION",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "CONSIGNMENT",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 139
+      }
+    },
+    {
+      "brand_code": "B0000BBP",
+      "canonical_brand_name": "WAI.NEKE",
+      "source_brand_name": "WAI.NEKE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "commercial_policy_seed",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": null,
+      "source": {
+        "file": "SAMPLAS 데스크 할인율 07.30.xlsb",
+        "sheet": "할인율",
+        "row": 140
+      }
+    },
+    {
+      "brand_code": "B0000BDG",
+      "canonical_brand_name": "BORC",
+      "source_brand_name": "BORC",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": null,
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-16",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B0000BDJ",
+      "canonical_brand_name": "GKL",
+      "source_brand_name": "GKL",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": null,
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-16",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B0000BDM",
+      "canonical_brand_name": "LAMASKARADE",
+      "source_brand_name": "LAMASKARADE",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": null,
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-16",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B00000PM",
+      "canonical_brand_name": "노페이스스튜디오",
+      "source_brand_name": "NO FAITH STUDIOS",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B0000BAX",
+      "canonical_brand_name": "AKME",
+      "source_brand_name": "AKME",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B0000BDA",
+      "canonical_brand_name": "O. FILES",
+      "source_brand_name": "OFILES",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B0000BDD",
+      "canonical_brand_name": "TAE GLOBAL",
+      "source_brand_name": "TAE GLOBAL",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B00000VP",
+      "canonical_brand_name": "ALMOST BLACK",
+      "source_brand_name": "ALMOST BLACK",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B00000QY",
+      "canonical_brand_name": "CMMAWEAR",
+      "source_brand_name": "CMMAWEAR",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B00000VM",
+      "canonical_brand_name": "퍼블릭하우징스케이트팀",
+      "source_brand_name": "Publichousingskateteam",
+      "resolution_status": "RESOLVED",
+      "matched_by": "alias",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B0000BCX",
+      "canonical_brand_name": "BARRAGAN",
+      "source_brand_name": "BARRAGAN",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B00000TW",
+      "canonical_brand_name": "CYCLE BY MYOB",
+      "source_brand_name": "CYCLE BY MYOB",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B00000LQ",
+      "canonical_brand_name": "KANGJUNGSEOK",
+      "source_brand_name": "KANGJUNGSEOK",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "CONSIGNMENT",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 10,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B00000QW",
+      "canonical_brand_name": "COPERNI",
+      "source_brand_name": "COPERNI",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    },
+    {
+      "brand_code": "B00000QT",
+      "canonical_brand_name": "LIEBESTRAUM",
+      "source_brand_name": "LIEBESTRAUM",
+      "resolution_status": "RESOLVED",
+      "matched_by": "name",
+      "sourcing_type": "WHOLESALE",
+      "sourcing_source": "manual_operational_confirmation",
+      "intelligence_sourcing_type": "UNKNOWN",
+      "stylist_discount_percent": 20,
+      "discount_status": "STANDARD",
+      "note": null,
+      "product_rules": [],
+      "normalization_note": "Manual operational confirmation 2026-08-18",
+      "source": {
+        "file": "manual operational confirmation",
+        "sheet": "할인율",
+        "row": null
+      }
+    }
+  ]
+}
