@@ -148,3 +148,50 @@ console.log("missing ECOUNT price regression tests passed");
 }
 
 console.log("invalid Cafe24 price regression tests passed");
+
+{
+  const { resolveBrandName } = await import("../scripts/build-price-audit.mjs");
+
+  const brandNameByCode = new Map([
+    ["B00000PY", "엘리엇 에밀"],
+    ["B00000SK", "나밀리아"]
+  ]);
+
+  assert.equal(
+    resolveBrandName(
+      {
+        brandId: "B00000PY",
+        brandName: null
+      },
+      brandNameByCode
+    ),
+    "엘리엇 에밀",
+    "missing registry brandName must fall back to Brand Master"
+  );
+
+  assert.equal(
+    resolveBrandName(
+      {
+        brandId: "B00000SK",
+        brandName: "NAMiLIA Registry Name"
+      },
+      brandNameByCode
+    ),
+    "NAMiLIA Registry Name",
+    "existing registry brandName must remain authoritative"
+  );
+
+  assert.equal(
+    resolveBrandName(
+      {
+        brandId: "UNKNOWN",
+        brandName: null
+      },
+      brandNameByCode
+    ),
+    null,
+    "unknown brand code must remain null"
+  );
+
+  console.log("brand master fallback regression tests passed");
+}

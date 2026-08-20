@@ -128,6 +128,10 @@ function effectiveCafe24Price(product, discountprice) {
 
 // Mirrors handleBrandCommercialPolicyGet's policy/product-rule resolution (server-side
 // intelligence-service.mjs), read-only — used only to annotate a probable cause.
+export function resolveBrandName(entry, brandNameByCode) {
+  return entry?.brandName || brandNameByCode?.get(entry?.brandId) || null;
+}
+
 export function resolvePolicy(policies, brandCode, canonicalProductName) {
   const policy = policies.find((item) => item.brand_code === brandCode) || null;
   if (!policy) return null;
@@ -188,13 +192,19 @@ export async function buildPriceAudit(options = {}) {
   const baseUrl = (env.INTELLIGENCE_MARKETING_OS_BASE_URL || env.MARKETING_OS_BASE_URL || `http://127.0.0.1:${env.PORT || 8787}`).replace(/\/$/, "");
   const headers = proxyHeaders(env);
 
-  const [registry, latestInventory, commercialPolicy] = await Promise.all([
+  const [registry, latestInventory, commercialPolicy, brandMaster] = await Promise.all([
     readJson(join(workDir, "product-registry.json")),
     readJson(join(workDir, "ecount-inventory", "latest.json")),
-    readJson(join(workDir, "brand-commercial-policy.json")).catch(() => ({ policies: [] }))
+    readJson(join(workDir, "brand-commercial-policy.json")).catch(() => ({ policies: [] })),
+    readJson(join(workDir, "brand-master.json")).catch(() => ({ brands: [] }))
   ]);
   const inventoryByCode = new Map(latestInventory.map((row) => [row.productCode, row]));
   const policies = Array.isArray(commercialPolicy?.policies) ? commercialPolicy.policies : [];
+  const brandNameByCode = new Map(
+    (Array.isArray(brandMaster) ? brandMaster : brandMaster?.brands || [])
+      .filter((brand) => brand?.brand_code)
+      .map((brand) => [brand.brand_code, brand.brand_name || null])
+  );
 
   const eligible = (registry.entries || []).filter((e) => e?.cafe24?.productNo);
   const targets = options.limit ? eligible.slice(0, options.limit) : eligible;
@@ -290,7 +300,7 @@ export async function buildPriceAudit(options = {}) {
     return {
       canonicalProductId: entry.canonicalProductId,
       brandId: entry.brandId,
-      brandName: entry.brandName,
+      brandName: resolveBrandName(entry, brandNameByCode),
       canonicalProductName: entry.canonicalProductName,
       cafe24ProductNo: productNo,
       cafe24ProductCode: entry.cafe24.productCode || null,
