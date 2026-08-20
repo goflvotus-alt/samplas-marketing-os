@@ -2101,6 +2101,59 @@ function deskOpsItemNameParts(item) {
 // item.products 원문)을 그대로 clipboard에 쓴다 — 화면에 ellipsis된 짧은 문자열이 아니라
 // 항상 원문 전체를 복사한다(esc()는 &<>"'만 escape하고 개행/공백은 그대로 두므로,
 // 브라우저가 속성값을 읽어 돌려줄 때 원문과 동일한 문자열이 나온다).
+function positionDeskNotePopover(wrap) {
+  const popover = wrap?.querySelector(".desk-ops-note-popover");
+  if (!popover) return;
+
+  const rect = wrap.getBoundingClientRect();
+  const viewportGap = 12;
+  const gap = 6;
+
+  // 먼저 보이게 해야 실제 popover 크기를 측정할 수 있다.
+  popover.style.visibility = "hidden";
+  popover.style.left = "0px";
+  popover.style.top = "0px";
+
+  const popoverRect = popover.getBoundingClientRect();
+
+  let left = rect.left;
+  if (left + popoverRect.width > window.innerWidth - viewportGap) {
+    left = window.innerWidth - popoverRect.width - viewportGap;
+  }
+  left = Math.max(viewportGap, left);
+
+  let top = rect.bottom + gap;
+
+  // 아래 공간이 부족하면 셀 위쪽으로 띄운다.
+  if (
+    top + popoverRect.height > window.innerHeight - viewportGap &&
+    rect.top - popoverRect.height - gap >= viewportGap
+  ) {
+    top = rect.top - popoverRect.height - gap;
+  }
+
+  popover.style.left = `${Math.round(left)}px`;
+  popover.style.top = `${Math.round(top)}px`;
+  popover.style.visibility = "";
+}
+
+document.addEventListener("mouseover", (event) => {
+  const wrap = event.target.closest?.(".desk-ops-note-wrap");
+  if (!wrap) return;
+
+  const from = event.relatedTarget;
+  if (from && wrap.contains(from)) return;
+
+  positionDeskNotePopover(wrap);
+});
+
+document.addEventListener("focusin", (event) => {
+  const wrap = event.target.closest?.(".desk-ops-note-wrap");
+  if (!wrap) return;
+
+  positionDeskNotePopover(wrap);
+});
+
 async function copyDeskNoteText(text) {
   if (!text) return;
   try {

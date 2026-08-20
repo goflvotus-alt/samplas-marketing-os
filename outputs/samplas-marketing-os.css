@@ -11956,9 +11956,9 @@ body.entity-compare-on .entity-compare-trend-legend {
    .monthly-intel-popover는 건드리지 않는다. margin 없이 top:100%로 바로 붙여, 상품 셀에서
    popover로 마우스가 이동하는 동안 hover가 끊기는 틈을 만들지 않는다. */
 .desk-ops-note-popover {
-  position: absolute;
+  position: fixed;
   left: 0;
-  top: 100%;
+  top: 0;
   width: 280px;
   max-width: 80vw;
   border: 1px solid var(--line);
@@ -11970,7 +11970,7 @@ body.entity-compare-on .entity-compare-trend-legend {
   transform: translateY(-2px);
   transition: opacity 120ms ease, transform 120ms ease;
   pointer-events: none;
-  z-index: 40;
+  z-index: 2300;
   white-space: normal;
 }
 
