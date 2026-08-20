@@ -1736,7 +1736,10 @@ const DESK_OPS_CATEGORY_LABELS = {
 const DESK_OPS_CATEGORY_GROUP = {};
 DESK_TODAY_OPS_KEYS.forEach((key) => { DESK_OPS_CATEGORY_GROUP[key] = "todayOps"; });
 DESK_CURRENT_OPS_KEYS.forEach((key) => { DESK_OPS_CATEGORY_GROUP[key] = "currentOps"; });
-const DESK_APP_URL = "https://samplas-desk-app.vercel.app/";
+const DESK_APP_URL = "https://samplas-desk-recovery.vercel.app/";
+// DESK 상세 "상품" 셀 hover popover의 복사 버튼 아이콘. 새 색상 없이 currentColor만
+// 쓰는 작은 인라인 SVG(폰트/OS별 유니코드 글리프 렌더링 차이를 피하기 위함).
+const DESK_NOTE_COPY_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M3.5 10.5v-7A1.5 1.5 0 0 1 5 2h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
 
 // 기존 공유 storeFilterState(APGUJEONG/VAIL/ALL — Cafe24·ECOUNT 매출 화면 전역 상태)를
 // DESK 응답의 store 키(SAMPLAS/VEIL)로 매핑한다. DESK는 매장이 SAMPLAS/VEIL 2개뿐이고
@@ -2094,6 +2097,39 @@ function deskOpsItemNameParts(item) {
   return { primary, secondary };
 }
 
+// DESK 상세 "상품" 셀 popover의 복사 버튼. data-desk-note-copy 속성값(esc()로 이스케이프된
+// item.products 원문)을 그대로 clipboard에 쓴다 — 화면에 ellipsis된 짧은 문자열이 아니라
+// 항상 원문 전체를 복사한다(esc()는 &<>"'만 escape하고 개행/공백은 그대로 두므로,
+// 브라우저가 속성값을 읽어 돌려줄 때 원문과 동일한 문자열이 나온다).
+async function copyDeskNoteText(text) {
+  if (!text) return;
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      throw new Error("clipboard api unavailable");
+    }
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      document.execCommand("copy");
+    } catch {
+      toast("복사에 실패했습니다.");
+      document.body.removeChild(textarea);
+      return;
+    }
+    document.body.removeChild(textarea);
+  }
+  toast("복사되었습니다.");
+}
+
 function renderDeskOpsDetail() {
   const section = $("#deskOpsDetailSection");
   const title = $("#deskOpsDetailTitle");
@@ -2121,7 +2157,19 @@ function renderDeskOpsDetail() {
     const productsText = item.products || "-";
     return `<tr>
       <td class="price-audit-id-cell"><em>${esc(item.store || "-")}</em><strong>${esc(primary)}</strong>${secondary ? `<br><span>${esc(secondary)}</span>` : ""}</td>
-      <td class="desk-ops-note-cell" title="${esc(productsText)}">${esc(productsText)}</td>
+      <td class="desk-ops-note-cell">
+        <span class="desk-ops-note-wrap" tabindex="0">
+          <span class="desk-ops-note-text">${esc(productsText)}</span>
+          <span class="desk-ops-note-popover" role="dialog" aria-label="상품 내용 미리보기">
+            <span class="desk-ops-note-popover-head">
+              <span>상품 내용 미리보기</span>
+              <button type="button" class="desk-ops-note-copy-btn" data-desk-note-copy="${esc(productsText)}">${DESK_NOTE_COPY_ICON} 복사</button>
+            </span>
+            <span class="desk-ops-note-popover-body">${esc(productsText)}</span>
+            <span class="desk-ops-note-popover-foot">클릭 없이 복사할 수 있어요</span>
+          </span>
+        </span>
+      </td>
       <td class="num">${esc(item.pickupDate || "-")}</td>
       <td class="num">${esc(item.returnDate || "-")}</td>
       <td class="price-audit-cause-cell">${esc(item.status || "-")}</td>
@@ -20157,6 +20205,13 @@ function bind() {
     section?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   $("#deskOpsReloadBtn")?.addEventListener("click", () => refreshDeskOps());
+
+  document.addEventListener("click", (event) => {
+    const copyButton = event.target.closest("[data-desk-note-copy]");
+    if (!copyButton) return;
+    event.preventDefault();
+    copyDeskNoteText(copyButton.dataset.deskNoteCopy || "");
+  });
 
   document.addEventListener("click", (event) => {
     const filterButton = event.target.closest("[data-price-audit-filter]");

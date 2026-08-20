@@ -11846,21 +11846,112 @@ body.entity-compare-on .entity-compare-trend-legend {
   max-width: 220px;
 }
 
-/* DESK-NOTE-WRAP: DESK 상세 테이블의 "상품" 셀 전용(Price Audit의 .price-audit-sku-cell은
+/* DESK-NOTE-POPOVER: DESK 상세 테이블의 "상품" 셀 전용(Price Audit의 .price-audit-sku-cell은
    SKU 코드용 nowrap을 유지해야 하므로 재사용하지 않고 분리한다 — Price Audit 레이아웃에
-   영향 없음). 긴 상품명이 한 줄로 뻗어 잘리지 않도록 줄바꿈을 허용하고 최대 3줄까지만
-   보여준 뒤 ellipsis 처리한다. 전체 텍스트는 title 속성 hover로 확인 가능(새 모달 없음). */
-.desk-ops-note-cell {
+   영향 없음). 기본은 1줄 ellipsis로 행 높이를 그대로 유지하고, 전체 원문은 hover/focus 시
+   compact popover로만 보여준다(모달 없음). */
+.price-audit-table-wrap td.desk-ops-note-cell {
   max-width: 260px;
+  padding: 0;
+}
+
+.desk-ops-note-wrap {
+  position: relative;
+  display: block;
+  padding: 9px 12px;
+  cursor: default;
+}
+
+.desk-ops-note-text {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--muted);
   font-size: 12px;
+}
+
+/* 기존 .monthly-intel-popover와 같은 relative-wrapper + absolute-popover +
+   hover/focus-within opacity 토글 패턴을 재사용한다(새 JS show/hide 상태 없음). 다만
+   .monthly-intel-popover는 내부에 클릭 요소가 없어 의도적으로 pointer-events:none인 반면,
+   여기는 복사 버튼이 있어야 하므로 pointer-events:auto인 별도 클래스로 분리했다 — 기존
+   .monthly-intel-popover는 건드리지 않는다. margin 없이 top:100%로 바로 붙여, 상품 셀에서
+   popover로 마우스가 이동하는 동안 hover가 끊기는 틈을 만들지 않는다. */
+.desk-ops-note-popover {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  width: 280px;
+  max-width: 80vw;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(25, 25, 20, 0.12);
+  padding: 10px 12px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
+  z-index: 40;
   white-space: normal;
+}
+
+.desk-ops-note-wrap:hover .desk-ops-note-popover,
+.desk-ops-note-wrap:focus-within .desk-ops-note-popover {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.desk-ops-note-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.desk-ops-note-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.desk-ops-note-copy-btn:hover {
+  border-color: var(--black);
+}
+
+.desk-ops-note-popover-body {
+  display: block;
+  max-height: 160px;
+  overflow: auto;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
   word-break: break-word;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+}
+
+.desk-ops-note-popover-foot {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
 }
 
 @media (max-width: 900px) {
