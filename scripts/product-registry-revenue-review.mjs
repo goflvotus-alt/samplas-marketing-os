@@ -2,6 +2,7 @@ import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { normalizeProductName, splitEcountProductName } from "./diagnose-cafe24-ecount-product-matching.mjs";
+import { recomputeProductRegistrySummary } from "./product-registry-summary.mjs";
 
 const text = (value) => String(value ?? "").trim();
 const amount = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -99,16 +100,23 @@ export async function approveRevenueReviewItem({ registryPath, productNo, prodCd
     updatedAt: now
   };
   const wasReviewEntry = Boolean(entry) && entry.verified !== true;
+  const nextEntries = entry
+    ? entries.map((item) => item === entry ? nextEntry : item)
+    : [...entries, nextEntry];
+
+  const existingSummary = {
+    ...(registry.summary || {}),
+    reviewQueueCount: Math.max(
+      0,
+      amount(registry.summary?.reviewQueueCount) - (wasReviewEntry ? 1 : 0)
+    )
+  };
+
   const next = {
     ...registry,
     generatedAt: now,
-    summary: {
-      ...(registry.summary || {}),
-      registryCount: amount(registry.summary?.registryCount) + (entry ? 0 : 1),
-      verifiedCount: amount(registry.summary?.verifiedCount) + (entry?.verified === true ? 0 : 1),
-      reviewQueueCount: Math.max(0, amount(registry.summary?.reviewQueueCount) - (wasReviewEntry ? 1 : 0))
-    },
-    entries: entry ? entries.map((item) => item === entry ? nextEntry : item) : [...entries, nextEntry]
+    summary: recomputeProductRegistrySummary(nextEntries, existingSummary),
+    entries: nextEntries
   };
   if (nextEntry.status !== "confirmed" || nextEntry.verified !== true || !nextEntry.ecount.matchedProducts.length) throw new Error("Invalid Product Registry approval");
 
