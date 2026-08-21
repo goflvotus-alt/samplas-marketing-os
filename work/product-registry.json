@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T16:37:17.705Z",
+  "generatedAt": "2026-08-21T03:10:36.037Z",
   "mode": "product_registry_phase1_diagnostic_only",
   "source": {
     "diagnostic": "work/cafe24-ecount-product-matching-diagnostic.json",
@@ -12,14 +12,14 @@
   },
   "summary": {
     "registryCount": 3596,
-    "verifiedCount": 344,
+    "verifiedCount": 382,
     "reviewQueueCount": 727,
     "confidenceDistribution": {
-      "100": 344,
+      "100": 382,
       "95-99": 987,
       "80-94": 25,
       "60-79": 2023,
-      "0-59": 217
+      "0-59": 179
     },
     "cafe24AnchorCoverage": {
       "cafe24AnchorCount": 824,
@@ -14562,29 +14562,52 @@
       "brandId": "B00000SA",
       "brandName": "본네",
       "canonicalProductName": "THREE-QUARTER SLEEVE SHIRT WHITE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "7957",
         "productCode": "P0000LUB",
         "productName": "[BONNAE : 본네] THREE-QUARTER SLEEVE SHIRT WHITE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SSS00201",
+            "barcode": "SSS00201",
+            "productName": "SAMPLAS - BONNAE / THREE-QUARTER SLEEVE SHIRT WHITE",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SSS00203",
+            "barcode": "SSS00203",
+            "productName": "SAMPLAS - BONNAE / THREE-QUARTER SLEEVE SHIRT WHITE",
+            "size": "3",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-14386",
@@ -15986,58 +16009,88 @@
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "00’ Tribal – Black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11726",
         "productCode": "P0000RJA",
         "productName": "[SFERO : 스페로] 00’ Tribal – Black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC00600",
+            "barcode": "SFE253AC00600",
+            "productName": "SFERRO / 00 Tribal – Black",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-11728",
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "00’ Tribal – Rosa Pink",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11728",
         "productCode": "P0000RJC",
         "productName": "[SFERO : 스페로] 00’ Tribal – Rosa Pink"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC00700",
+            "barcode": "SFE253AC00700",
+            "productName": "SFERRO / 00 Tribal – Rosa Pink",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_one"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-11707",
@@ -16173,29 +16226,68 @@
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "BANDANA RING BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11711",
         "productCode": "P0000RIL",
         "productName": "[SFERO : 스페로] BANDANA RING BLUE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC01103",
+            "barcode": "SFE253AC01103",
+            "productName": "SFERRO / BANDANA RING BLUE",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SFE253AC01104",
+            "barcode": "SFE253AC01104",
+            "productName": "SFERRO / BANDANA RING BLUE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SFE253AC01105",
+            "barcode": "SFE253AC01105",
+            "productName": "SFERRO / BANDANA RING BLUE",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SFE253AC01106",
+            "barcode": "SFE253AC01106",
+            "productName": "SFERRO / BANDANA RING BLUE",
+            "size": "XXL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-11729",
@@ -42856,58 +42948,112 @@
       "brandId": "B00000YC",
       "brandName": "RUIBUILT",
       "canonicalProductName": "G-string Rivets Denim Shorts Sun Faded Blue",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12849",
         "productCode": "P0000TAF",
         "productName": "[RUIBUILT : 루이빌트] G-string Rivets Denim Shorts Sun Faded Blue"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "RUI261BT00202",
+            "barcode": "RUI261BT00202",
+            "productName": "RUIBUILT / G-string Rivets Denim Shorts﻿ Sun Faded Blue",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RUI261BT00203",
+            "barcode": "RUI261BT00203",
+            "productName": "RUIBUILT / G-string Rivets Denim Shorts﻿ Sun Faded Blue",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-12850",
       "brandId": "B00000YC",
       "brandName": "RUIBUILT",
       "canonicalProductName": "Gstring Flared Denim Print Trousers Sun Faded Blue",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12850",
         "productCode": "P0000TAG",
         "productName": "[RUIBUILT : 루이빌트] Gstring Flared Denim Print Trousers Sun Faded Blue"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "RUI261BT00302",
+            "barcode": "RUI261BT00302",
+            "productName": "RUIBUILT / Gstring Flared Denim Print Trousers Sun Faded Blue",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RUI261BT00303",
+            "barcode": "RUI261BT00303",
+            "productName": "RUIBUILT / Gstring Flared Denim Print Trousers Sun Faded Blue",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RUI261BT00304",
+            "barcode": "RUI261BT00304",
+            "productName": "RUIBUILT / Gstring Flared Denim Print Trousers Sun Faded Blue",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-11839",
@@ -43058,29 +43204,52 @@
       "brandId": "B00000YC",
       "brandName": "RUIBUILT",
       "canonicalProductName": "Thorn Combo Sport T-Shirt﻿ Onyx",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12860",
         "productCode": "P0000TAQ",
         "productName": "[RUIBUILT : 루이빌트] Thorn Combo Sport T-Shirt﻿ Onyx"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "RUI261ST00502",
+            "barcode": "RUI261ST00502",
+            "productName": "RUIBUILT / Thorn Combo Sport T-Shirt﻿ Onyx",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RUI261ST00503",
+            "barcode": "RUI261ST00503",
+            "productName": "RUIBUILT / Thorn Combo Sport T-Shirt﻿ Onyx",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-11841",
@@ -43116,116 +43285,224 @@
       "brandId": "B00000VG",
       "brandName": "SIADDS ATELIER",
       "canonicalProductName": "JIWE-1",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12712",
         "productCode": "P0000SUY",
         "productName": "[SIADDS ATELIER : 시아디스 아틀리에] JIWE-1"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SIA253AC01717",
+            "barcode": "SIA253AC01717",
+            "productName": "SIADDS ATELIER / JIWE-1",
+            "size": "17",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SIA253AC01720",
+            "barcode": "SIA253AC01720",
+            "productName": "SIADDS ATELIER / JIWE-1",
+            "size": "20",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-12702",
       "brandId": "B00000VG",
       "brandName": "SIADDS ATELIER",
       "canonicalProductName": "KIJANI-BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12702",
         "productCode": "P0000SUO",
         "productName": "[SIADDS ATELIER : 시아디스 아틀리에] KIJANI-BLUE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SIA253AC00248",
+            "barcode": "SIA253AC00248",
+            "productName": "SIADDS ATELIER / KIJANI-BLUE",
+            "size": "48",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SIA253AC00256",
+            "barcode": "SIA253AC00256",
+            "productName": "SIADDS ATELIER / KIJANI-BLUE",
+            "size": "56",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SIA253AC00258",
+            "barcode": "SIA253AC00258",
+            "productName": "SIADDS ATELIER / KIJANI-BLUE",
+            "size": "58",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-12703",
       "brandId": "B00000VG",
       "brandName": "SIADDS ATELIER",
       "canonicalProductName": "KIJANI-WHITE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12703",
         "productCode": "P0000SUP",
         "productName": "[SIADDS ATELIER : 시아디스 아틀리에] KIJANI-WHITE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SIA253AC00348",
+            "barcode": "SIA253AC00348",
+            "productName": "SIADDS ATELIER / KIJANI-WHITE",
+            "size": "48",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SIA253AC00356",
+            "barcode": "SIA253AC00356",
+            "productName": "SIADDS ATELIER / KIJANI-WHITE",
+            "size": "56",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SIA253AC00358",
+            "barcode": "SIA253AC00358",
+            "productName": "SIADDS ATELIER / KIJANI-WHITE",
+            "size": "58",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-12716",
       "brandId": "B00000VG",
       "brandName": "SIADDS ATELIER",
       "canonicalProductName": "PELU-1 Baby Blue White",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12716",
         "productCode": "P0000SVC",
         "productName": "[SIADDS ATELIER : 시아디스 아틀리에] PELU-1 Baby Blue White"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SIA253AC01343",
+            "barcode": "SIA253AC01343",
+            "productName": "SIADDS ATELIER / PELU-1 Baby Blue White",
+            "size": "43",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SIA253AC01349",
+            "barcode": "SIA253AC01349",
+            "productName": "SIADDS ATELIER / PELU-1 Baby Blue White",
+            "size": "49",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-12711",
@@ -44343,174 +44620,344 @@
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "Faux patent leather line detail padded bomber",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "7190",
         "productCode": "P0000KQO",
         "productName": "[UMAMIISM : 우마미즘] Faux patent leather line detail padded bomber"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243OT00302",
+            "barcode": "UMA243OT00302",
+            "productName": "UMAMIISM / Faux patent leather line detail padded bomber",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243OT00303",
+            "barcode": "UMA243OT00303",
+            "productName": "UMAMIISM / Faux patent leather line detail padded bomber",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-5551",
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "Herringbone front pleats double zip & flap detail trosuers",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "5551",
         "productCode": "P0000IFN",
         "productName": "[UMAMIISM : 우마미즘] Herringbone front pleats double zip & flap detail trosuers"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243BT01802",
+            "barcode": "UMA243BT01802",
+            "productName": "UMAMIISM / Herringbone front pleats double zip & flap detail trosuers",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243BT01803",
+            "barcode": "UMA243BT01803",
+            "productName": "UMAMIISM / Herringbone front pleats double zip & flap detail trosuers",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243BT01805",
+            "barcode": "UMA243BT01805",
+            "productName": "UMAMIISM / Herringbone front pleats double zip & flap detail trosuers",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-7185",
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "Leather patch varsity jacket olive",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "7185",
         "productCode": "P0000KQJ",
         "productName": "[UMAMIISM : 우마미즘] Leather patch varsity jacket olive"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243OT00502",
+            "barcode": "UMA243OT00502",
+            "productName": "UMAMIISM / Leather patch varsity jacket olive",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243OT00503",
+            "barcode": "UMA243OT00503",
+            "productName": "UMAMIISM / Leather patch varsity jacket olive",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243OT00504",
+            "barcode": "UMA243OT00504",
+            "productName": "UMAMIISM / Leather patch varsity jacket olive",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-6694",
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "Logo neck band detail brush painted vegan suede jacket grey",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "6694",
         "productCode": "P0000JXM",
         "productName": "[UMAMIISM : 우마미즘] Logo neck band detail brush painted vegan suede jacket grey"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243OT00802",
+            "barcode": "UMA243OT00802",
+            "productName": "UMAMIISM / Logo neck band detail brush painted vegan suede jacket grey",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243OT00804",
+            "barcode": "UMA243OT00804",
+            "productName": "UMAMIISM / Logo neck band detail brush painted vegan suede jacket grey",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243OT00805",
+            "barcode": "UMA243OT00805",
+            "productName": "UMAMIISM / Logo neck band detail brush painted vegan suede jacket grey",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-6972",
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "Multi panel moutain parka green",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "6972",
         "productCode": "P0000KIE",
         "productName": "[UMAMIISM : 우마미즘] Multi panel moutain parka green"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243OT00603",
+            "barcode": "UMA243OT00603",
+            "productName": "UMAMIISM / Multi panel moutain parka green",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243OT00604",
+            "barcode": "UMA243OT00604",
+            "productName": "UMAMIISM / Multi panel moutain parka green",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-6175",
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "Multi panels pattern racing t-shirt",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "6175",
         "productCode": "P0000JDN",
         "productName": "[UMAMIISM : 우마미즘] Multi panels pattern racing t-shirt"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243ST01802",
+            "barcode": "UMA243ST01802",
+            "productName": "UMAMIISM / Multi panels pattern racing t-shirt",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243ST01803",
+            "barcode": "UMA243ST01803",
+            "productName": "UMAMIISM / Multi panels pattern racing t-shirt",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243ST01804",
+            "barcode": "UMA243ST01804",
+            "productName": "UMAMIISM / Multi panels pattern racing t-shirt",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-5547",
@@ -44546,87 +44993,180 @@
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "Out pocket detail shell parka blue",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "6973",
         "productCode": "P0000KIF",
         "productName": "[UMAMIISM : 우마미즘] Out pocket detail shell parka blue"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243HD00802",
+            "barcode": "UMA243HD00802",
+            "productName": "UMAMIISM / Out pocket detail shell parka blue",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243HD00803",
+            "barcode": "UMA243HD00803",
+            "productName": "UMAMIISM / Out pocket detail shell parka blue",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243HD00804",
+            "barcode": "UMA243HD00804",
+            "productName": "UMAMIISM / Out pocket detail shell parka blue",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-4990",
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "U logo band color block  striped zip-up sweater black",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "4990",
         "productCode": "P0000HJY",
         "productName": "[UMAMIISM : 우마미즘] U logo band color block  striped zip-up sweater black"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243LT02201",
+            "barcode": "UMA243LT02201",
+            "productName": "UMAMIISM / U logo band color block striped zip-up sweater black",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243LT02202",
+            "barcode": "UMA243LT02202",
+            "productName": "UMAMIISM / U logo band color block striped zip-up sweater black",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-5320",
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "U logo band color block  striped zip-up sweater grey & neon green",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "5320",
         "productCode": "P0000HWQ",
         "productName": "[UMAMIISM : 우마미즘] U logo band color block  striped zip-up sweater grey & neon green"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243LT02101",
+            "barcode": "UMA243LT02101",
+            "productName": "UMAMIISM / U logo band color block striped zip-up sweater grey & neon green",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243LT02102",
+            "barcode": "UMA243LT02102",
+            "productName": "UMAMIISM / U logo band color block striped zip-up sweater grey & neon green",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243LT02103",
+            "barcode": "UMA243LT02103",
+            "productName": "UMAMIISM / U logo band color block striped zip-up sweater grey & neon green",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243LT02104",
+            "barcode": "UMA243LT02104",
+            "productName": "UMAMIISM / U logo band color block striped zip-up sweater grey & neon green",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe20",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-21T03:10:36.037Z"
     },
     {
       "canonicalProductId": "CP-C24-4885",
