@@ -12115,26 +12115,40 @@
       "brandId": "B00000SA",
       "brandName": "본네",
       "canonicalProductName": "GRAPHIC SHORTS PINK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "7949",
         "productCode": "P0000LTT",
         "productName": "[BONNAE : 본네] GRAPHIC SHORTS PINK"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SSS00101",
+            "barcode": "SSS00101",
+            "productName": "BONNAE / GRAPHIC SHORTS PINK",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -16030,26 +16044,40 @@
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "BANDANA CHARM BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11707",
         "productCode": "P0000RIH",
         "productName": "[SFERO : 스페로] BANDANA CHARM BLUE"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC03000",
+            "barcode": "SFE253AC03000",
+            "productName": "SFERRO / BANDANA CHARM BLUE",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -16059,26 +16087,40 @@
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "BANDANA CHARM PINK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11709",
         "productCode": "P0000RIJ",
         "productName": "[SFERO : 스페로] BANDANA CHARM PINK"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC02700",
+            "barcode": "SFE253AC02700",
+            "productName": "SFERRO / BANDANA CHARM PINK",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -16088,26 +16130,40 @@
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "BANDANA CHARM YELLOW",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11710",
         "productCode": "P0000RIK",
         "productName": "[SFERO : 스페로] BANDANA CHARM YELLOW"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC02800",
+            "barcode": "SFE253AC02800",
+            "productName": "SFERRO / BANDANA CHARM YELLOW",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -16146,26 +16202,40 @@
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "BELT BOOSTER BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11729",
         "productCode": "P0000RJD",
         "productName": "[SFERO : 스페로] BELT BOOSTER BLUE"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC02200",
+            "barcode": "SFE253AC02200",
+            "productName": "SFERRO / BELT BOOSTER BLUE",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -16175,26 +16245,40 @@
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "BELT BOOSTER GREEN",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11730",
         "productCode": "P0000RJE",
         "productName": "[SFERO : 스페로] BELT BOOSTER GREEN"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC02100",
+            "barcode": "SFE253AC02100",
+            "productName": "SFERRO / BELT BOOSTER GREEN",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -16204,26 +16288,40 @@
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "BELT BOOSTER PINK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11731",
         "productCode": "P0000RJF",
         "productName": "[SFERO : 스페로] BELT BOOSTER PINK"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC01900",
+            "barcode": "SFE253AC01900",
+            "productName": "SFERRO / BELT BOOSTER PINK",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -16233,26 +16331,40 @@
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "CAP BOOSTER BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11722",
         "productCode": "P0000RIW",
         "productName": "[SFERO : 스페로] CAP BOOSTER BLUE"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC02600",
+            "barcode": "SFE253AC02600",
+            "productName": "SFERRO / CAP BOOSTER BLUE",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -16262,26 +16374,40 @@
       "brandId": "B00000XW",
       "brandName": "스페로",
       "canonicalProductName": "KITTY BOW FLAME RED",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11717",
         "productCode": "P0000RIR",
         "productName": "[SFERO : 스페로] KITTY BOW FLAME RED"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SFE253AC00400",
+            "barcode": "SFE253AC00400",
+            "productName": "SFERRO / Kitty Bow FLAME RED",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -42846,26 +42972,40 @@
       "brandId": "B00000YC",
       "brandName": "RUIBUILT",
       "canonicalProductName": "Sheer String Body Harness Onyx",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12857",
         "productCode": "P0000TAN",
         "productName": "[RUIBUILT : 루이빌트] Sheer String Body Harness Onyx"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "RUI261AC00100",
+            "barcode": "RUI261AC00100",
+            "productName": "RUIBUILT / Sheer String Body Harness﻿ Onyx",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -42875,26 +43015,40 @@
       "brandId": "B00000YC",
       "brandName": "RUIBUILT",
       "canonicalProductName": "Sheer String Shoulder Neck Onyx",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12853",
         "productCode": "P0000TAJ",
         "productName": "[RUIBUILT : 루이빌트] Sheer String Shoulder Neck Onyx"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "RUI261AC00300",
+            "barcode": "RUI261AC00300",
+            "productName": "RUIBUILT / Sheer String Shoulder Neck Onyx",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -43078,26 +43232,40 @@
       "brandId": "B00000VG",
       "brandName": "SIADDS ATELIER",
       "canonicalProductName": "VIVI-1 Blue",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12711",
         "productCode": "P0000SUX",
         "productName": "[SIADDS ATELIER : 시아디스 아틀리에] VIVI-1 Blue"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SIA253AC01520",
+            "barcode": "SIA253AC01520",
+            "productName": "SIADDS ATELIER / VIVI-1 Blue",
+            "size": "20",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -43107,26 +43275,40 @@
       "brandId": "B00000NZ",
       "brandName": "SKY HIGH FARMS",
       "canonicalProductName": "FLAME HOODIE BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "7713",
         "productCode": "P0000LKR",
         "productName": "[SKY HIGH FARMS : 스카이 하이 팜] FLAME HOODIE BLUE"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "SKY243HD00105",
+            "barcode": "SKY243HD00105",
+            "productName": "SKY HIGH FARMS / FLAME HOODIE BLUE",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -43973,26 +44155,40 @@
       "brandId": "B00000WZ",
       "brandName": "THE PROUDER",
       "canonicalProductName": "Extended Unique Neck Warmer Grey",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12386",
         "productCode": "P0000SIK",
         "productName": "[THE PROUDER : 더 프라우더] Extended Unique Neck Warmer Grey"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "THE253AC00200",
+            "barcode": "THE253AC00200",
+            "productName": "THE PROUDER / Extended Unique Neck Warmer Grey",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -44437,26 +44633,40 @@
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "U logo neck band detail Multi consturctive pattern Vegan leather varsity Jacket Green",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "4885",
         "productCode": "P0000HFX",
         "productName": "[UMAMIISM : 우마미즘] U logo neck band detail Multi consturctive pattern Vegan leather varsity Jacket Green"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243OT01201",
+            "barcode": "UMA243OT01201",
+            "productName": "UMAMIISM / U logo neck band detail Multi consturctive pattern Vegan leather varsity Jacket Green",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -45049,26 +45259,40 @@
       "brandId": "B00000YI",
       "brandName": "VIVAMUS",
       "canonicalProductName": "OFF SHOULDER CUTSEWN BLACK",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11915",
         "productCode": "P0000RQH",
         "productName": "[VIVAMUS : 비바무스] OFF SHOULDER CUTSEWN BLACK"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "VIV253ST00100",
+            "barcode": "VIV253ST00100",
+            "productName": "VIVAMUS / OFF SHOULDER CUTSEWN BLACK",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -45078,26 +45302,40 @@
       "brandId": "B0000BBP",
       "brandName": "WAI.NEKE",
       "canonicalProductName": "Braided Hair Single earring",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14272",
         "productCode": "P0000VCY",
         "productName": "[WAI.NEKE : 와이네케] Braided Hair Single earring"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "WAI261AC00501",
+            "barcode": "WAI261AC00501",
+            "productName": "WAI . NEKE / Braided Hair Single earring",
+            "size": "OS",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
@@ -45368,26 +45606,40 @@
       "brandId": "B00000XM",
       "brandName": "YUEQI QI",
       "canonicalProductName": "Kaleidoscope Love Camisole",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "13330",
         "productCode": "P0000TSS",
         "productName": "[YUEQI QI : 위에치 치] Kaleidoscope Love Camisole"
       },
       "ecount": {
-        "matchedProducts": []
+        "matchedProducts": [
+          {
+            "prodCd": "YUE261ST00503",
+            "barcode": "YUE261ST00503",
+            "productName": "YUE QIQI / Kaleidoscope Love Camisole",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
+        ]
       },
       "matching": {
-        "strategy": "none",
+        "strategy": "human_review_approved",
         "diagnosticType": [
-          "cafe24_only"
+          "exact_one_to_one"
         ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
-        ]
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe18",
+          "full_ecount_master_verified",
+          "fresh_exact_one_to_one",
+          "uniform_sales_price",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
       "updatedAt": "2026-08-12T12:39:07.189Z"
