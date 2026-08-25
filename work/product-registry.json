@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-21T03:10:36.037Z",
+  "generatedAt": "2026-08-23T10:46:32.234Z",
   "mode": "product_registry_phase1_diagnostic_only",
   "source": {
     "diagnostic": "work/cafe24-ecount-product-matching-diagnostic.json",
@@ -12,14 +12,14 @@
   },
   "summary": {
     "registryCount": 3596,
-    "verifiedCount": 382,
+    "verifiedCount": 392,
     "reviewQueueCount": 727,
     "confidenceDistribution": {
-      "100": 382,
+      "100": 392,
       "95-99": 987,
       "80-94": 25,
       "60-79": 2023,
-      "0-59": 179
+      "0-59": 169
     },
     "cafe24AnchorCoverage": {
       "cafe24AnchorCount": 824,
@@ -133,10 +133,6 @@
         "count": 37
       },
       {
-        "brandName": "카르넷 아카이브",
-        "count": 36
-      },
-      {
         "brandName": "B00000UR",
         "count": 36
       },
@@ -145,8 +141,8 @@
         "count": 36
       },
       {
-        "brandName": "파코서플라이",
-        "count": 32
+        "brandName": "카르넷 아카이브",
+        "count": 36
       },
       {
         "brandName": "B00000RI",
@@ -154,6 +150,10 @@
       },
       {
         "brandName": "B00000YY",
+        "count": 32
+      },
+      {
+        "brandName": "파코서플라이",
         "count": 32
       },
       {
@@ -177,11 +177,11 @@
         "count": 26
       },
       {
-        "brandName": "엑슬림",
+        "brandName": "B00000NC",
         "count": 25
       },
       {
-        "brandName": "B00000NC",
+        "brandName": "엑슬림",
         "count": 25
       },
       {
@@ -209,10 +209,6 @@
         "count": 23
       },
       {
-        "brandName": "레이서 월드 와이드",
-        "count": 22
-      },
-      {
         "brandName": "B00000NJ",
         "count": 22
       },
@@ -222,6 +218,10 @@
       },
       {
         "brandName": "B0000BCK",
+        "count": 22
+      },
+      {
+        "brandName": "레이서 월드 와이드",
         "count": 22
       },
       {
@@ -245,10 +245,6 @@
         "count": 20
       },
       {
-        "brandName": "밍가",
-        "count": 19
-      },
-      {
         "brandName": "B00000OB",
         "count": 19
       },
@@ -265,8 +261,8 @@
         "count": 19
       },
       {
-        "brandName": "보헤미안 서울",
-        "count": 18
+        "brandName": "밍가",
+        "count": 19
       },
       {
         "brandName": "B00000QY",
@@ -290,6 +286,10 @@
       },
       {
         "brandName": "PONDER.ER",
+        "count": 18
+      },
+      {
+        "brandName": "보헤미안 서울",
         "count": 18
       },
       {
@@ -321,10 +321,6 @@
         "count": 15
       },
       {
-        "brandName": "카미긴",
-        "count": 15
-      },
-      {
         "brandName": "AAH MIDNIGHT CLUB",
         "count": 15
       },
@@ -349,6 +345,10 @@
         "count": 15
       },
       {
+        "brandName": "카미긴",
+        "count": 15
+      },
+      {
         "brandName": "B00000TH",
         "count": 14
       },
@@ -359,14 +359,6 @@
       {
         "brandName": "VAIN",
         "count": 14
-      },
-      {
-        "brandName": "아바바브",
-        "count": 13
-      },
-      {
-        "brandName": "에프엔케이 스튜디오",
-        "count": 13
       },
       {
         "brandName": "B00000OX",
@@ -389,12 +381,12 @@
         "count": 13
       },
       {
-        "brandName": "써저리",
-        "count": 12
+        "brandName": "아바바브",
+        "count": 13
       },
       {
-        "brandName": "어나더유스",
-        "count": 12
+        "brandName": "에프엔케이 스튜디오",
+        "count": 13
       },
       {
         "brandName": "ALEXII",
@@ -425,16 +417,12 @@
         "count": 12
       },
       {
-        "brandName": "노페이스스튜디오",
-        "count": 11
+        "brandName": "써저리",
+        "count": 12
       },
       {
-        "brandName": "스페로",
-        "count": 11
-      },
-      {
-        "brandName": "팩스00100",
-        "count": 11
+        "brandName": "어나더유스",
+        "count": 12
       },
       {
         "brandName": "B00000TN",
@@ -446,6 +434,18 @@
       },
       {
         "brandName": "PHTMNE",
+        "count": 11
+      },
+      {
+        "brandName": "노페이스스튜디오",
+        "count": 11
+      },
+      {
+        "brandName": "스페로",
+        "count": 11
+      },
+      {
+        "brandName": "팩스00100",
         "count": 11
       },
       {
@@ -481,10 +481,6 @@
         "count": 10
       },
       {
-        "brandName": "엘리엇 에밀",
-        "count": 9
-      },
-      {
         "brandName": "B00000UX",
         "count": 9
       },
@@ -509,20 +505,16 @@
         "count": 9
       },
       {
+        "brandName": "엘리엇 에밀",
+        "count": 9
+      },
+      {
         "brandName": "산쿠안즈",
         "count": 8
       },
       {
         "brandName": "프로토타입스",
         "count": 8
-      },
-      {
-        "brandName": "민타임",
-        "count": 7
-      },
-      {
-        "brandName": "얼라이브폼",
-        "count": 7
       },
       {
         "brandName": "B00000JR",
@@ -553,12 +545,12 @@
         "count": 7
       },
       {
-        "brandName": "리매진",
-        "count": 6
+        "brandName": "민타임",
+        "count": 7
       },
       {
-        "brandName": "언본소사이어티",
-        "count": 6
+        "brandName": "얼라이브폼",
+        "count": 7
       },
       {
         "brandName": "B0000BAC",
@@ -601,6 +593,14 @@
         "count": 6
       },
       {
+        "brandName": "리매진",
+        "count": 6
+      },
+      {
+        "brandName": "언본소사이어티",
+        "count": 6
+      },
+      {
         "brandName": "B00000SV",
         "count": 5
       },
@@ -619,14 +619,6 @@
       {
         "brandName": "TAE GLOBAL",
         "count": 5
-      },
-      {
-        "brandName": "게릿 제이콥",
-        "count": 4
-      },
-      {
-        "brandName": "젬젬 파라디스",
-        "count": 4
       },
       {
         "brandName": "AIVER",
@@ -653,12 +645,12 @@
         "count": 4
       },
       {
-        "brandName": "에잇아이쥐비",
-        "count": 3
+        "brandName": "게릿 제이콥",
+        "count": 4
       },
       {
-        "brandName": "토가",
-        "count": 3
+        "brandName": "젬젬 파라디스",
+        "count": 4
       },
       {
         "brandName": "B00000HD",
@@ -733,16 +725,12 @@
         "count": 3
       },
       {
-        "brandName": "데드우드",
-        "count": 2
+        "brandName": "에잇아이쥐비",
+        "count": 3
       },
       {
-        "brandName": "소마",
-        "count": 2
-      },
-      {
-        "brandName": "츄 포에버",
-        "count": 2
+        "brandName": "토가",
+        "count": 3
       },
       {
         "brandName": "ALA TIANAN",
@@ -801,11 +789,19 @@
         "count": 2
       },
       {
-        "brandName": "4FEX",
-        "count": 1
+        "brandName": "데드우드",
+        "count": 2
       },
       {
-        "brandName": "퍼블릭하우징스케이트팀",
+        "brandName": "소마",
+        "count": 2
+      },
+      {
+        "brandName": "츄 포에버",
+        "count": 2
+      },
+      {
+        "brandName": "4FEX",
         "count": 1
       },
       {
@@ -878,6 +874,10 @@
       },
       {
         "brandName": "WNTD APPAREL",
+        "count": 1
+      },
+      {
+        "brandName": "퍼블릭하우징스케이트팀",
         "count": 1
       }
     ]
@@ -43060,58 +43060,112 @@
       "brandId": "B00000YC",
       "brandName": "RUIBUILT",
       "canonicalProductName": "ribbon Embroidery Cutout Cargo Pants Onyx",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11839",
         "productCode": "P0000RNJ",
         "productName": "[RUIBUILT : 루이빌트] ribbon Embroidery Cutout Cargo Pants Onyx"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "RUI253BT00102",
+            "barcode": "RUI253BT00102",
+            "productName": "RUIbuilt / ribbon Embroidery Cutout Cargo Pants Onyx",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RUI253BT00103",
+            "barcode": "RUI253BT00103",
+            "productName": "RUIbuilt / ribbon Embroidery Cutout Cargo Pants Onyx",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RUI253BT00104",
+            "barcode": "RUI253BT00104",
+            "productName": "RUIbuilt / ribbon Embroidery Cutout Cargo Pants Onyx",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe10",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-23T10:46:32.234Z"
     },
     {
       "canonicalProductId": "CP-C24-11840",
       "brandId": "B00000YC",
       "brandName": "RUIBUILT",
       "canonicalProductName": "Ribbon Tank Top Chocolate",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11840",
         "productCode": "P0000RNK",
         "productName": "[RUIBUILT : 루이빌트] Ribbon Tank Top Chocolate"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "RUI253ST00301",
+            "barcode": "RUI253ST00301",
+            "productName": "RUIbuilt / Ribbon Tank Top Chocolate",
+            "size": "1",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "RUI253ST00302",
+            "barcode": "RUI253ST00302",
+            "productName": "RUIbuilt / Ribbon Tank Top Chocolate",
+            "size": "2",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe10",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-23T10:46:32.234Z"
     },
     {
       "canonicalProductId": "CP-C24-12857",
@@ -43595,87 +43649,172 @@
       "brandId": "B00000NZ",
       "brandName": "SKY HIGH FARMS",
       "canonicalProductName": "UNISEX STRAWBABIES BUTTON DOWN SHIRT WOVEN BLUE",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10178",
         "productCode": "P0000PBM",
         "productName": "[SKY HIGH FARMS : 스카이 하이 팜] UNISEX STRAWBABIES BUTTON DOWN SHIRT WOVEN BLUE"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SKY251SH00102",
+            "barcode": "SKY251SH00102",
+            "productName": "SKY HIGH FARMS / UNISEX STRAWBABIES BUTTON DOWN SHIRT WOVEN BLUE",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SKY251SH00104",
+            "barcode": "SKY251SH00104",
+            "productName": "SKY HIGH FARMS / UNISEX STRAWBABIES BUTTON DOWN SHIRT WOVEN BLUE",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe10",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-23T10:46:32.234Z"
     },
     {
       "canonicalProductId": "CP-C24-7705",
       "brandId": "B00000NZ",
       "brandName": "SKY HIGH FARMS",
       "canonicalProductName": "WORLD IS BURNING T-SHIRT",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "7705",
         "productCode": "P0000LKJ",
         "productName": "[SKY HIGH FARMS : 스카이 하이 팜] WORLD IS BURNING T-SHIRT"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SKY243ST00103",
+            "barcode": "SKY243ST00103",
+            "productName": "SKY HIGH FARMS / WORLD IS BURNING T-SHIRT",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SKY243ST00104",
+            "barcode": "SKY243ST00104",
+            "productName": "SKY HIGH FARMS / WORLD IS BURNING T-SHIRT",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SKY243ST00105",
+            "barcode": "SKY243ST00105",
+            "productName": "SKY HIGH FARMS / WORLD IS BURNING T-SHIRT",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SKY243ST00106",
+            "barcode": "SKY243ST00106",
+            "productName": "SKY HIGH FARMS / WORLD IS BURNING T-SHIRT",
+            "size": "XXL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe10",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-23T10:46:32.234Z"
     },
     {
       "canonicalProductId": "CP-C24-7706",
       "brandId": "B00000NZ",
       "brandName": "SKY HIGH FARMS",
       "canonicalProductName": "WORLD IS BURNING WORK SHIRT",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "7706",
         "productCode": "P0000LKK",
         "productName": "[SKY HIGH FARMS : 스카이 하이 팜] WORLD IS BURNING WORK SHIRT"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "SKY243SH00202",
+            "barcode": "SKY243SH00202",
+            "productName": "SKY HIGH FARMS / WORLD IS BURNING WORK SHIRT",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "SKY243SH00203",
+            "barcode": "SKY243SH00203",
+            "productName": "SKY HIGH FARMS / WORLD IS BURNING WORK SHIRT",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe10",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-23T10:46:32.234Z"
     },
     {
       "canonicalProductId": "CP-C24-10301",
@@ -44475,29 +44614,60 @@
       "brandId": "B00000WZ",
       "brandName": "THE PROUDER",
       "canonicalProductName": "Heavy Zip-up Hoodie Dark Grey",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12388",
         "productCode": "P0000SIM",
         "productName": "[THE PROUDER : 더 프라우더] Heavy Zip-up Hoodie Dark Grey"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "THE253OT00403",
+            "barcode": "THE253OT00403",
+            "productName": "THE PROUDER / Heavy Zip-up Hoodie Dark Grey",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "THE253OT00404",
+            "barcode": "THE253OT00404",
+            "productName": "THE PROUDER / Heavy Zip-up Hoodie Dark Grey",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "THE253OT00405",
+            "barcode": "THE253OT00405",
+            "productName": "THE PROUDER / Heavy Zip-up Hoodie Dark Grey",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe10",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-23T10:46:32.234Z"
     },
     {
       "canonicalProductId": "CP-C24-10997",
@@ -44964,29 +45134,76 @@
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "Optical illusion dot-wave artwork color block hoodie",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "5547",
         "productCode": "P0000IFJ",
         "productName": "[UMAMIISM : 우마미즘] Optical illusion dot-wave artwork color block hoodie"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243HD01001",
+            "barcode": "UMA243HD01001",
+            "productName": "UMAMIISM / Optical illusion dot-wave artwork color block hoodie",
+            "size": "XS",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243HD01002",
+            "barcode": "UMA243HD01002",
+            "productName": "UMAMIISM / Optical illusion dot-wave artwork color block hoodie",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243HD01003",
+            "barcode": "UMA243HD01003",
+            "productName": "UMAMIISM / Optical illusion dot-wave artwork color block hoodie",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243HD01004",
+            "barcode": "UMA243HD01004",
+            "productName": "UMAMIISM / Optical illusion dot-wave artwork color block hoodie",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243HD01005",
+            "barcode": "UMA243HD01005",
+            "productName": "UMAMIISM / Optical illusion dot-wave artwork color block hoodie",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe10",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-23T10:46:32.234Z"
     },
     {
       "canonicalProductId": "CP-C24-6973",
@@ -45216,29 +45433,68 @@
       "brandId": "B00000GB",
       "brandName": "UMAMIISM",
       "canonicalProductName": "Wrinkled coated fabric half closure pullover jacket",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "5550",
         "productCode": "P0000IFM",
         "productName": "[UMAMIISM : 우마미즘] Wrinkled coated fabric half closure pullover jacket"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "UMA243OT00902",
+            "barcode": "UMA243OT00902",
+            "productName": "UMAMIISM / Wrinkled coated fabric half closure pullover jacket",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243OT00903",
+            "barcode": "UMA243OT00903",
+            "productName": "UMAMIISM / Wrinkled coated fabric half closure pullover jacket",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243OT00904",
+            "barcode": "UMA243OT00904",
+            "productName": "UMAMIISM / Wrinkled coated fabric half closure pullover jacket",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "UMA243OT00905",
+            "barcode": "UMA243OT00905",
+            "productName": "UMAMIISM / Wrinkled coated fabric half closure pullover jacket",
+            "size": "XL",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe10",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-23T10:46:32.234Z"
     },
     {
       "canonicalProductId": "CP-C24-10953",
@@ -46088,58 +46344,114 @@
       "brandId": "B00000XM",
       "brandName": "YUEQI QI",
       "canonicalProductName": "Feline Airbrush Cardigan Grey",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11519",
         "productCode": "P0000RBB",
         "productName": "[YUEQI QI : 위에치 치] Feline Airbrush Cardigan Grey"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "YUE253LT00303",
+            "barcode": "YUE253LT00303",
+            "productName": "YUE QIQI / Feline Airbrush Cardigan Grey",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "YUE253LT00304",
+            "barcode": "YUE253LT00304",
+            "productName": "YUE QIQI / Feline Airbrush Cardigan Grey",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe10",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence",
+          "brand_alias_yueqi_qi_yue_qiqi_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-23T10:46:32.234Z"
     },
     {
       "canonicalProductId": "CP-C24-11520",
       "brandId": "B00000XM",
       "brandName": "YUEQI QI",
       "canonicalProductName": "Feline Airbrush Knit Hood Cream",
-      "status": "unmatched",
-      "confidence": 0,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11520",
         "productCode": "P0000RBC",
         "productName": "[YUEQI QI : 위에치 치] Feline Airbrush Knit Hood Cream"
       },
       "ecount": {
-        "matchedProducts": []
-      },
-      "matching": {
-        "strategy": "none",
-        "diagnosticType": [
-          "cafe24_only"
-        ],
-        "evidence": [],
-        "pendingReasons": [
-          "no_ecount_candidate"
+        "matchedProducts": [
+          {
+            "prodCd": "YUE253OT00102",
+            "barcode": "YUE253OT00102",
+            "productName": "YUE QIQI / Feline Airbrush Knit Hood Cream",
+            "size": "S",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "YUE253OT00103",
+            "barcode": "YUE253OT00103",
+            "productName": "YUE QIQI / Feline Airbrush Knit Hood Cream",
+            "size": "M",
+            "supplier": null,
+            "consignment": false
+          },
+          {
+            "prodCd": "YUE253OT00104",
+            "barcode": "YUE253OT00104",
+            "productName": "YUE QIQI / Feline Airbrush Knit Hood Cream",
+            "size": "L",
+            "supplier": null,
+            "consignment": false
+          }
         ]
       },
+      "matching": {
+        "strategy": "human_review_approved",
+        "diagnosticType": [
+          "exact_one_to_many"
+        ],
+        "evidence": [
+          "human_review_approved",
+          "price_audit_safe10",
+          "full_ecount_master_verified",
+          "pure_brand_prefix_scope",
+          "uniform_sales_price",
+          "sku_family_verified",
+          "manual_high_confidence",
+          "brand_alias_yueqi_qi_yue_qiqi_verified"
+        ],
+        "pendingReasons": []
+      },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-08-23T10:46:32.234Z"
     },
     {
       "canonicalProductId": "CP-C24-13330",
