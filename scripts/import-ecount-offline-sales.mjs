@@ -1,10 +1,15 @@
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadEcountOfflineSalesExcel } from "./load-ecount-offline-sales.mjs";
+import { buildOfflineSalesResult, loadEcountOfflineSalesExcel } from "./load-ecount-offline-sales.mjs";
 import { ecountOfflineSalesSnapshotPath } from "./read-ecount-offline-sales-snapshot.mjs";
 
 const schemaVersion = 1;
+export const WAREHOUSE_ROUTING_START_MONTH = "2026-08";
+export const ECOUNT_WAREHOUSE_STORES = [
+  { warehouseName: "매장", storeCode: "APGUJEONG", warehouseCode: "100" },
+  { warehouseName: "SAMPLAS Veil", storeCode: "VAIL", warehouseCode: "200" }
+];
 
 // STORE-BATCH-B: options.storeCode가 있으면 매장별 분리 파일(work/ecount-sales/
 // {month}.{storeCode}.json)로 저장한다 — 압구정을 다시 올려도 VAIL 파일은 전혀 건드리지
@@ -18,6 +23,15 @@ export async function importEcountOfflineSalesSnapshot(filePath, options = {}) {
   const workDir = resolve(options.workDir || join(process.cwd(), "work"));
   const snapshotDir = options.outputDir ? resolve(options.outputDir) : join(workDir, "ecount-sales");
   await mkdir(snapshotDir, { recursive: true });
+  if (month >= WAREHOUSE_ROUTING_START_MONTH && !options.storeCode) {
+    const snapshots = buildWarehouseRoutedSnapshots(loaded, month, filePath);
+    const entries = snapshots.map((snapshot) => ({
+      filePath: ecountOfflineSalesSnapshotPath(month, { snapshotDir, storeCode: snapshot.storeCode }),
+      data: snapshot
+    }));
+    await writeJsonSetAtomic(entries, options.atomicFs);
+    return { outputPaths: entries.map((entry) => entry.filePath), snapshots, snapshot: { month } };
+  }
   const snapshot = buildEcountSalesSnapshot(loaded, month, options);
   const outputPath = ecountOfflineSalesSnapshotPath(month, { snapshotDir, storeCode: options.storeCode });
   await writeJsonAtomic(outputPath, snapshot);
@@ -25,6 +39,27 @@ export async function importEcountOfflineSalesSnapshot(filePath, options = {}) {
     outputPath,
     snapshot
   };
+}
+
+export function buildWarehouseRoutedSnapshots(loaded, month = monthFromLoadedSales(loaded), filePath = loaded?.fileName || "ecount.xlsx") {
+  const byStore = new Map(ECOUNT_WAREHOUSE_STORES.map((store) => [store.storeCode, []]));
+  const mapping = new Map(ECOUNT_WAREHOUSE_STORES.map((store) => [store.warehouseName, store]));
+  for (const line of loaded.salesLines || []) {
+    const warehouseName = String(line?.warehouseName || "").trim();
+    const store = mapping.get(warehouseName);
+    if (!store) {
+      throw new Error(`Unknown ECOUNT warehouse at row ${line?.sourceRowNumber || "?"}: ${warehouseName || "<EMPTY>"} · ${line?.date || "-"} · ${line?.productName || "-"}`);
+    }
+    byStore.get(store.storeCode).push(line);
+  }
+  return ECOUNT_WAREHOUSE_STORES.map((store) => {
+    const routed = buildOfflineSalesResult({ filePath, sheetName: loaded.sheetName, salesLines: byStore.get(store.storeCode) });
+    return buildEcountSalesSnapshot(routed, month, {
+      storeCode: store.storeCode,
+      sourceWarehouseCode: store.warehouseCode,
+      sourceWarehouseName: store.warehouseName
+    });
+  });
 }
 
 export function buildEcountSalesSnapshot(loaded, month = monthFromLoadedSales(loaded), options = {}) {
@@ -72,6 +107,41 @@ async function writeJsonAtomic(filePath, data) {
   await rename(tempPath, filePath);
 }
 
+export async function writeJsonSetAtomic(entries, atomicFs = {}) {
+  const write = atomicFs?.writeFile || writeFile;
+  const move = atomicFs?.rename || rename;
+  const remove = atomicFs?.unlink || unlink;
+  const read = atomicFs?.readFile || readFile;
+  const transaction = `${process.pid}-${Date.now()}`;
+  const prepared = [];
+  try {
+    for (const [index, entry] of entries.entries()) {
+      let previous = null;
+      try { previous = await read(entry.filePath); } catch (error) { if (error?.code !== "ENOENT") throw error; }
+      const tempPath = `${entry.filePath}.tmp-${transaction}-${index}`;
+      prepared.push({ ...entry, tempPath, previous, committed: false });
+      await write(tempPath, `${JSON.stringify(entry.data, null, 2)}\n`);
+    }
+    for (const entry of prepared) {
+      await move(entry.tempPath, entry.filePath);
+      entry.committed = true;
+    }
+  } catch (error) {
+    for (const entry of prepared) {
+      if (entry.committed) {
+        if (entry.previous === null) await remove(entry.filePath).catch(() => {});
+        else {
+          const restorePath = `${entry.filePath}.restore-${transaction}`;
+          await write(restorePath, entry.previous);
+          await move(restorePath, entry.filePath);
+        }
+      }
+      await remove(entry.tempPath).catch(() => {});
+    }
+    throw error;
+  }
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const files = process.argv.slice(2);
   if (!files.length) {
@@ -81,16 +151,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const results = [];
   for (const file of files) {
     const result = await importEcountOfflineSalesSnapshot(file);
+    const snapshots = result.snapshots || [result.snapshot];
     results.push({
       fileName: basename(file),
-      outputPath: result.outputPath,
-      month: result.snapshot.month,
-      periodStart: result.snapshot.periodStart,
-      periodEnd: result.snapshot.periodEnd,
-      totalOfflineSales: result.snapshot.totalOfflineSales,
-      totalLineCount: result.snapshot.totalLineCount,
-      revenueLineCount: result.snapshot.revenueLineCount,
-      nonRevenueLineCount: result.snapshot.nonRevenueLineCount
+      outputPath: result.outputPath || result.outputPaths,
+      month: snapshots[0].month,
+      periodStart: snapshots.map((item) => item.periodStart).filter(Boolean).sort()[0] || null,
+      periodEnd: snapshots.map((item) => item.periodEnd).filter(Boolean).sort().at(-1) || null,
+      totalOfflineSales: snapshots.reduce((sum, item) => sum + item.totalOfflineSales, 0),
+      totalLineCount: snapshots.reduce((sum, item) => sum + item.totalLineCount, 0),
+      revenueLineCount: snapshots.reduce((sum, item) => sum + item.revenueLineCount, 0),
+      nonRevenueLineCount: snapshots.reduce((sum, item) => sum + item.nonRevenueLineCount, 0)
     });
   }
   console.log(JSON.stringify(results.length === 1 ? results[0] : results, null, 2));

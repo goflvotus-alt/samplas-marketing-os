@@ -1588,6 +1588,9 @@ async function importEcountOfflineSalesUpload(req) {
   if (!fileName) throw Object.assign(new Error("파일명이 필요합니다 (X-Ecount-File-Name 헤더)."), { status: 400 });
   if (!/\.xlsx$/i.test(fileName)) throw Object.assign(new Error("XLSX 파일만 업로드할 수 있습니다."), { status: 400 });
 
+  const uploadMonth = fileName.match(/^(\d{4})[.-](\d{2})\.xlsx$/i)?.slice(1, 3).join("-") || "";
+  if (!uploadMonth) throw Object.assign(new Error("파일명은 YYYY-MM.xlsx 또는 YYYY.MM.xlsx 형식이어야 합니다."), { status: 400 });
+  const warehouseRouted = uploadMonth >= "2026-08";
   const rawStoreCode = req.headers["x-ecount-store-code"];
   let storeCode = "";
   try {
@@ -1595,10 +1598,10 @@ async function importEcountOfflineSalesUpload(req) {
   } catch {
     throw Object.assign(new Error("매장 코드를 읽을 수 없습니다."), { status: 400 });
   }
-  if (!storeCode) throw Object.assign(new Error("매장 코드가 필요합니다 (X-Ecount-Store-Code 헤더)."), { status: 400 });
+  if (!warehouseRouted && !storeCode) throw Object.assign(new Error("매장 코드가 필요합니다 (X-Ecount-Store-Code 헤더)."), { status: 400 });
   const stores = await loadStoreMaster();
-  const store = stores.find((item) => item.storeCode === storeCode);
-  if (!store) throw Object.assign(new Error(`알 수 없는 매장 코드입니다: ${storeCode}`), { status: 400 });
+  const store = storeCode ? stores.find((item) => item.storeCode === storeCode) : null;
+  if (storeCode && !store) throw Object.assign(new Error(`알 수 없는 매장 코드입니다: ${storeCode}`), { status: 400 });
 
   const chunks = [];
   let receivedBytes = 0;
@@ -1621,9 +1624,9 @@ async function importEcountOfflineSalesUpload(req) {
       workDir,
       buildArchive: buildMonthlyArchive,
       writeArchive: writeMonthlyArchive,
-      storeCode: store.storeCode,
-      sourceWarehouseCode: store.source?.warehouseCode || null,
-      sourceWarehouseName: store.source?.warehouseName || null
+      storeCode: warehouseRouted ? null : store.storeCode,
+      sourceWarehouseCode: warehouseRouted ? null : store.source?.warehouseCode || null,
+      sourceWarehouseName: warehouseRouted ? null : store.source?.warehouseName || null
     });
     const result = results[0];
     if (!result) {
@@ -1635,11 +1638,21 @@ async function importEcountOfflineSalesUpload(req) {
     if (result.snapshot === "FAIL" || result.archive === "FAIL") {
       throw Object.assign(new Error(result.reason || "XLSX 처리에 실패했습니다."), { status: 400 });
     }
-    const snapshot = await readEcountOfflineSalesSnapshot(result.month, { workDir, storeCode: store.storeCode });
+    const snapshot = await readEcountOfflineSalesSnapshot(result.month, { workDir, storeCode: warehouseRouted ? undefined : store.storeCode });
+    const storeResults = warehouseRouted ? await Promise.all(stores.map(async (item) => {
+      const itemSnapshot = await readEcountOfflineSalesSnapshot(result.month, { workDir, storeCode: item.storeCode });
+      return {
+        storeCode: item.storeCode,
+        storeDisplayName: item.storeCode === "VAIL" ? "SAMPLAS VEIL" : item.displayName || item.storeCode,
+        totalLineCount: itemSnapshot?.totalLineCount ?? 0,
+        totalOfflineSales: itemSnapshot?.totalOfflineSales ?? 0
+      };
+    })) : null;
     return {
       month: result.month,
-      storeCode: store.storeCode,
-      storeDisplayName: store.displayName || store.storeCode,
+      storeCode: warehouseRouted ? null : store.storeCode,
+      storeDisplayName: warehouseRouted ? null : store.displayName || store.storeCode,
+      stores: storeResults,
       snapshotStatus: result.snapshot,
       archiveStatus: result.archive,
       reason: result.reason || null,
@@ -2547,7 +2560,7 @@ const workDataUploadPaths = new Set([
   "ecount-inventory/latest.json",
   "ecount-inventory/diagnostic.json"
 ]);
-const monthlyWorkDataPathPattern = /^(?:ecount-sales|monthly)\/\d{4}-(?:0[1-9]|1[0-2])\.json$/;
+const monthlyWorkDataPathPattern = /^(?:ecount-sales|monthly)\/(\d{4}-(?:0[1-9]|1[0-2]))(?:\.(?:APGUJEONG|VAIL))?\.json$/;
 export const isAllowedWorkDataUploadPath = (relativePath) => workDataUploadPaths.has(relativePath) || monthlyWorkDataPathPattern.test(relativePath);
 
 async function uploadWorkDataFiles(payload) {
@@ -2572,8 +2585,7 @@ async function uploadWorkDataFiles(payload) {
       throw Object.assign(new Error(`JSON 파싱 실패: ${relativePath}`), { status: 400 });
     }
     if (relativePath.startsWith("ecount-sales/") || relativePath.startsWith("monthly/")) {
-      const month = relativePath.slice("ecount-sales/".length, -".json".length);
-      const expectedMonth = relativePath.startsWith("monthly/") ? relativePath.slice("monthly/".length, -".json".length) : month;
+      const expectedMonth = relativePath.match(monthlyWorkDataPathPattern)?.[1];
       if (parsed?.month !== expectedMonth) throw Object.assign(new Error(`월 데이터 month 불일치: ${relativePath}`), { status: 400 });
     } else if (relativePath.endsWith("/latest.json") && !Array.isArray(parsed)) {
       throw Object.assign(new Error(`ECOUNT inventory latest 형식 오류: ${relativePath}`), { status: 400 });

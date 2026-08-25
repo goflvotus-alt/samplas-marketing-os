@@ -1,8 +1,8 @@
 import { mkdir, open, readFile, readdir, stat, unlink } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { importEcountOfflineSalesSnapshot } from "./import-ecount-offline-sales.mjs";
-import { ecountOfflineSalesSnapshotPath } from "./read-ecount-offline-sales-snapshot.mjs";
+import { importEcountOfflineSalesSnapshot, WAREHOUSE_ROUTING_START_MONTH } from "./import-ecount-offline-sales.mjs";
+import { ecountOfflineSalesSnapshotPath, KNOWN_STORE_CODES } from "./read-ecount-offline-sales-snapshot.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const monthFromFile = (name) => name.match(/^(\d{4})[.-](\d{2})\.xlsx$/i)?.slice(1, 3).join("-") || "";
@@ -28,6 +28,20 @@ export async function monthlySnapshotStatus(xlsxPath, snapshotPath) {
   return xlsx.mtimeMs > importedAt
     ? { status: "STALE", reason: "XLSX is newer than snapshot" }
     : { status: "FRESH", reason: "Snapshot is up to date" };
+}
+
+async function refreshStatusForFile(xlsxPath, month, workDir, storeCode) {
+  if (storeCode || month < WAREHOUSE_ROUTING_START_MONTH) {
+    return monthlySnapshotStatus(xlsxPath, ecountOfflineSalesSnapshotPath(month, { workDir, storeCode }));
+  }
+  const statuses = await Promise.all(KNOWN_STORE_CODES.map((code) => monthlySnapshotStatus(
+    xlsxPath,
+    ecountOfflineSalesSnapshotPath(month, { workDir, storeCode: code })
+  )));
+  return statuses.find((item) => item.status === "INVALID")
+    || statuses.find((item) => item.status === "MISSING")
+    || statuses.find((item) => item.status === "STALE")
+    || statuses[0];
 }
 
 export function validateMonthlyArchive(archive) {
@@ -68,8 +82,7 @@ export async function refreshMonthlySales(folder, options = {}) {
   for (const file of files) {
     const startedAt = Date.now();
     const xlsxPath = join(resolve(folder), file.name);
-    const snapshotPath = ecountOfflineSalesSnapshotPath(file.month, { workDir, storeCode });
-    const detected = await monthlySnapshotStatus(xlsxPath, snapshotPath);
+    const detected = await refreshStatusForFile(xlsxPath, file.month, workDir, storeCode);
     log(`[${file.month}] ${file.name}\n${detected.status}`);
     if (detected.status === "FRESH") {
       log("Skipped");

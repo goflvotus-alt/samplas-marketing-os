@@ -16,7 +16,7 @@ export function loadEcountOfflineSalesExcel(filePath, options = {}) {
   const header = findHeader(rows);
   if (!header) throw new Error("ECOUNT 판매현황 header row was not found");
   const salesLines = [];
-  for (const row of rows.slice(header.rowIndex + 1)) {
+  for (const [offset, row] of rows.slice(header.rowIndex + 1).entries()) {
     const rawDateNo = cleanText(row[header.columns.dateNo] || "");
     const match = rawDateNo.match(detailDatePattern);
     if (!match) continue;
@@ -39,6 +39,10 @@ export function loadEcountOfflineSalesExcel(filePath, options = {}) {
       salesAmount,
       isPersonalPayment: personalPayment.isPersonalPayment,
       personalPaymentReason: personalPayment.reason,
+      ...(header.columns.warehouseName >= 0 ? {
+        warehouseName: cleanText(row[header.columns.warehouseName] || ""),
+        sourceRowNumber: header.rowIndex + offset + 2
+      } : {}),
       // isOfflineRevenue: 이 라인이 canonical offlineSales 집계에 포함되어야 하는지 여부.
       // 합계(salesAmount)가 있고, 개인결제창 거래가 아닐 때만 true다.
       // 개인결제창 금액은 Cafe24 쪽에서 이미 canonical 온라인 매출로 집계되므로
@@ -188,7 +192,8 @@ function findHeader(rows) {
       brandGroup: normalized.indexOf("품목그룹1명"),
       customerName: normalized.indexOf("거래처명"),
       poNo: normalized.indexOf("pono"),
-      salesAmount: normalized.indexOf("합계")
+      salesAmount: normalized.indexOf("합계"),
+      warehouseName: normalized.indexOf("창고명")
     };
     if (columns.dateNo >= 0 && columns.productName >= 0 && columns.salesAmount >= 0) return { rowIndex, columns };
   }

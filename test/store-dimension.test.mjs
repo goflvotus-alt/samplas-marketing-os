@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { readEcountOfflineSalesSnapshot, ecountOfflineSalesSnapshotPath, KNOWN_STORE_CODES } from "../scripts/read-ecount-offline-sales-snapshot.mjs";
-import { buildEcountSalesSnapshot, importEcountOfflineSalesSnapshot } from "../scripts/import-ecount-offline-sales.mjs";
+import { buildEcountSalesSnapshot, buildWarehouseRoutedSnapshots, importEcountOfflineSalesSnapshot, writeJsonSetAtomic } from "../scripts/import-ecount-offline-sales.mjs";
 import { refreshMonthlySales } from "../scripts/refresh-monthly-sales.mjs";
 import { buildCanonicalTotalSales } from "../server.mjs";
 
@@ -220,3 +220,47 @@ test("ecountOfflineSalesSnapshotPath: storeCode produces {month}.{storeCode}.jso
   assert.match(legacy, /2026-08\.json$/);
   assert.doesNotMatch(legacy, /\.VAIL\./);
 });
+
+test("warehouse routing partitions one loaded workbook into APGUJEONG/VAIL and preserves ALL total", () => {
+  const loaded = loadedFixture({
+    salesLines: [
+      { ...loadedFixture().salesLines[0], warehouseName: "매장", sourceRowNumber: 2 },
+      { ...loadedFixture().salesLines[1], warehouseName: "SAMPLAS Veil", sourceRowNumber: 3 }
+    ]
+  });
+  const snapshots = buildWarehouseRoutedSnapshots(loaded, "2026-08");
+  const apgujeong = snapshots.find((row) => row.storeCode === "APGUJEONG");
+  const vail = snapshots.find((row) => row.storeCode === "VAIL");
+  assert.equal(apgujeong.totalOfflineSales, 60000);
+  assert.equal(vail.totalOfflineSales, 40000);
+  assert.equal(apgujeong.totalOfflineSales + vail.totalOfflineSales, loaded.totalOfflineSales);
+  assert.ok(apgujeong.salesLines.every((line) => line.storeCode === "APGUJEONG"));
+  assert.ok(vail.salesLines.every((line) => line.storeCode === "VAIL"));
+});
+
+test("warehouse routing hard-fails empty and unknown warehouses with row context", () => {
+  for (const warehouseName of ["", "물류창고"]) {
+    const loaded = loadedFixture({ salesLines: [{ ...loadedFixture().salesLines[0], warehouseName, sourceRowNumber: 27 }] });
+    assert.throws(() => buildWarehouseRoutedSnapshots(loaded, "2026-08"), /row 27/);
+  }
+});
+
+test("two-store atomic write restores the first target when the second commit fails", () => withTemp(async (dir) => {
+  const first = join(dir, "2026-08.APGUJEONG.json");
+  const second = join(dir, "2026-08.VAIL.json");
+  await writeFile(first, "old-a");
+  await writeFile(second, "old-v");
+  let commitCount = 0;
+  const { rename } = await import("node:fs/promises");
+  await assert.rejects(() => writeJsonSetAtomic([
+    { filePath: first, data: { value: "new-a" } },
+    { filePath: second, data: { value: "new-v" } }
+  ], {
+    rename: async (from, to) => {
+      if (from.includes(".tmp-") && ++commitCount === 2) throw new Error("simulated second commit failure");
+      return rename(from, to);
+    }
+  }), /simulated/);
+  assert.equal(await readFile(first, "utf8"), "old-a");
+  assert.equal(await readFile(second, "utf8"), "old-v");
+}));

@@ -13065,41 +13065,30 @@ async function refreshDataCenterCard(service) {
 }
 
 // ECOUNT Offline Refresh Wizard (STEP53-4 UI, STEP67-2B Data Apply 구현).
-// STORE-BATCH-B: Monthly Sales Excel에는 창고 필드가 없다(STORE-BATCH-A 실측) — 대신
-// ECOUNT 판매현황 조회 시점에 창고(100=매장/200=SAMPLAS Veil)를 선택해 매장별로 각각
-// 내려받은 뒤, 이 모달의 해당 매장 슬롯에 업로드한다. "업로드 슬롯이 store identity를
-// 부여한다" — Excel 내용에서 매장명을 추측하지 않는다(work/store-master.json과 동일한
-// 2개 매장을 여기서도 하드코딩한다 — SAMPLAS Category Master v1이 taxonomy를 클라이언트에
-// 하드코딩한 것과 동일 패턴, 매장이 늘면 이 배열과 work/store-master.json을 함께 갱신).
 // "대상 월"은 scripts/refresh-monthly-sales.mjs의 파일명 규칙(YYYY-MM.xlsx /
 // YYYY.MM.xlsx)을 미리보기 표시 목적으로 클라이언트에서 재해석한 것이다. Data Apply는
-// 선택된 XLSX 원본 바이트 + 매장 코드를 POST /api/ecount-sales/import로 전송하고,
+// 선택된 XLSX 원본 바이트를 POST /api/ecount-sales/import로 전송하고,
 // 서버가 기존 importEcountOfflineSalesSnapshot()/refreshMonthlySales() 정책을 그대로
-// 재사용해 처리한다(새 파서/파이프라인 없음).
-const ECOUNT_WIZARD_STORES = [
-  { code: "APGUJEONG", name: "압구정 매장" },
-  { code: "VAIL", name: "SAMPLAS VAIL" }
-];
+// 재사용해 창고명 기준으로 매장을 분리한다(새 파서/파이프라인 없음).
 let ecountWizardPreviousFocus = null;
-const ecountWizardSelectedFiles = {};
+let ecountWizardSelectedFile = null;
 
-function ecountWizardStoreSlotHtml(store) {
+function ecountWizardUploadSlotHtml() {
   return `
-    <div class="ecount-wizard-store-slot" data-ecount-wizard-slot="${esc(store.code)}">
+    <div class="ecount-wizard-store-slot">
       <div class="ecount-wizard-slot-head">
-        <strong class="ecount-wizard-slot-title">${esc(store.name)}</strong>
-        <span class="ecount-wizard-slot-status" id="ecountWizardStatus_${esc(store.code)}">확인 중...</span>
+        <strong class="ecount-wizard-slot-title">ECOUNT 판매현황 업로드</strong>
       </div>
       <div class="ecount-wizard-step">
-        <label for="ecountWizardFile_${esc(store.code)}">파일 선택 (.xlsx)</label>
-        <input type="file" id="ecountWizardFile_${esc(store.code)}" accept=".xlsx" data-ecount-wizard-store="${esc(store.code)}">
+        <label for="ecountWizardFile">파일 선택 (.xlsx)</label>
+        <input type="file" id="ecountWizardFile" accept=".xlsx">
       </div>
-      <div id="ecountWizardPreview_${esc(store.code)}" hidden>
-        <div class="ecount-wizard-row"><span>선택 파일</span><strong id="ecountWizardFileName_${esc(store.code)}">-</strong></div>
-        <div class="ecount-wizard-row"><span>대상 월</span><strong id="ecountWizardMonth_${esc(store.code)}">-</strong></div>
+      <div id="ecountWizardPreview" hidden>
+        <div class="ecount-wizard-row"><span>선택 파일</span><strong id="ecountWizardFileName">-</strong></div>
+        <div class="ecount-wizard-row"><span>대상 월</span><strong id="ecountWizardMonth">-</strong></div>
       </div>
-      <button type="button" class="button primary ecount-wizard-apply-btn" id="ecountWizardApplyBtn_${esc(store.code)}" data-ecount-wizard-store="${esc(store.code)}" disabled>업로드</button>
-      <p id="ecountWizardApplyStatus_${esc(store.code)}" class="ecount-wizard-apply-status" hidden></p>
+      <button type="button" class="button primary ecount-wizard-apply-btn" id="ecountWizardApplyBtn" disabled>업로드</button>
+      <p id="ecountWizardApplyStatus" class="ecount-wizard-apply-status" hidden></p>
     </div>`;
 }
 
@@ -13114,10 +13103,10 @@ function ecountWizardModalNode() {
       <div class="ecount-wizard-backdrop" data-ecount-wizard-close></div>
       <div class="ecount-wizard-panel" role="dialog" aria-modal="true" aria-labelledby="ecountWizardTitle" tabindex="-1">
         <button type="button" class="ecount-wizard-close-btn" data-ecount-wizard-close aria-label="닫기">×</button>
-        <strong id="ecountWizardTitle" class="ecount-wizard-title">Monthly Sales — 매장별 업로드</strong>
-        <p class="ecount-wizard-desc">ECOUNT 판매현황에서 매장(창고)별로 같은 기간을 조회해 각각 내려받은 뒤, 해당 매장 슬롯에 업로드하세요.</p>
-        ${ECOUNT_WIZARD_STORES.map(ecountWizardStoreSlotHtml).join("")}
-        <p class="ecount-wizard-note">Data Apply 실행 시 처리 순서: XLSX 업로드 → 그 매장 Snapshot 생성 → (과거월인 경우) Monthly Archive 갱신(두 매장 데이터를 합쳐 재계산). 로컬 Marketing OS(127.0.0.1:8787)에만 반영되며, Render 운영 배포는 별도로 진행합니다.</p>
+        <strong id="ecountWizardTitle" class="ecount-wizard-title">Monthly Sales — ECOUNT 판매현황 업로드</strong>
+        <p class="ecount-wizard-desc">ECOUNT 판매현황에서 기간을 조회한 뒤 XLSX 파일 하나를 업로드하세요. 창고명 기준으로 압구정 매장 / SAMPLAS VEIL 매출이 자동 분류됩니다.</p>
+        ${ecountWizardUploadSlotHtml()}
+        <p class="ecount-wizard-note">처리 순서: XLSX 업로드 → 창고명 기준 매장 자동 분류 → APGUJEONG / VAIL Snapshot 생성 → Monthly 데이터 재계산. 로컬 Marketing OS(127.0.0.1:8787)에만 반영되며, Render 운영 배포는 별도로 진행합니다.</p>
       </div>`;
     document.body.appendChild(modal);
   }
@@ -13129,12 +13118,12 @@ function ecountWizardMonthFromFileName(name) {
   return match ? `${match[1]}-${match[2]}` : "";
 }
 
-function ecountWizardHandleFileChange(event, storeCode) {
+function ecountWizardHandleFileChange(event) {
   const file = event.target.files?.[0] || null;
-  ecountWizardSelectedFiles[storeCode] = file;
-  const preview = $(`#ecountWizardPreview_${storeCode}`);
-  const applyBtn = $(`#ecountWizardApplyBtn_${storeCode}`);
-  const applyStatus = $(`#ecountWizardApplyStatus_${storeCode}`);
+  ecountWizardSelectedFile = file;
+  const preview = $("#ecountWizardPreview");
+  const applyBtn = $("#ecountWizardApplyBtn");
+  const applyStatus = $("#ecountWizardApplyStatus");
   if (applyStatus) applyStatus.hidden = true;
   if (!file) {
     if (preview) preview.hidden = true;
@@ -13142,23 +13131,21 @@ function ecountWizardHandleFileChange(event, storeCode) {
     return;
   }
   const month = ecountWizardMonthFromFileName(file.name);
-  $(`#ecountWizardFileName_${storeCode}`).textContent = file.name;
-  $(`#ecountWizardMonth_${storeCode}`).textContent = month || "파일명에서 확인 불가 (예: 2026-08.xlsx)";
+  $("#ecountWizardFileName").textContent = file.name;
+  $("#ecountWizardMonth").textContent = month || "파일명에서 확인 불가 (예: 2026-08.xlsx)";
   if (preview) preview.hidden = false;
   if (applyBtn) applyBtn.disabled = false;
 }
 
-// XLSX 원본 바이트를 그대로 POST body로 보낸다(multipart 불필요) — 파일명과 업로드
-// 슬롯의 매장 코드를 헤더로 전달한다(Excel 내용에서 매장을 추측하지 않는다).
-async function postEcountOfflineFile(file, storeCode, timeoutMs = 60000) {
+// XLSX 원본 바이트를 그대로 POST body로 보낸다(multipart 불필요).
+async function postEcountOfflineFile(file, timeoutMs = 60000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch("/api/ecount-sales/import", {
       method: "POST",
       headers: {
-        "X-Ecount-File-Name": encodeURIComponent(file.name),
-        "X-Ecount-Store-Code": encodeURIComponent(storeCode)
+        "X-Ecount-File-Name": encodeURIComponent(file.name)
       },
       body: file,
       signal: controller.signal
@@ -13179,11 +13166,11 @@ async function postEcountOfflineFile(file, storeCode, timeoutMs = 60000) {
   }
 }
 
-async function ecountWizardHandleApplyClick(storeCode) {
-  const status = $(`#ecountWizardApplyStatus_${storeCode}`);
-  const applyBtn = $(`#ecountWizardApplyBtn_${storeCode}`);
+async function ecountWizardHandleApplyClick() {
+  const status = $("#ecountWizardApplyStatus");
+  const applyBtn = $("#ecountWizardApplyBtn");
   if (!status || !applyBtn) return;
-  const file = ecountWizardSelectedFiles[storeCode];
+  const file = ecountWizardSelectedFile;
   if (!file) {
     status.textContent = "파일을 먼저 선택하세요.";
     status.hidden = false;
@@ -13196,7 +13183,7 @@ async function ecountWizardHandleApplyClick(storeCode) {
   status.hidden = false;
   status.classList.remove("is-error");
   try {
-    const result = await postEcountOfflineFile(file, storeCode);
+    const result = await postEcountOfflineFile(file);
     if (result?.error) {
       status.textContent = `적용 실패: ${result.error}`;
       status.classList.add("is-error");
@@ -13205,15 +13192,9 @@ async function ecountWizardHandleApplyClick(storeCode) {
     const periodLabel = result.periodStart && result.periodEnd
       ? `${result.periodStart} ~ ${result.periodEnd}`
       : "-";
-    status.textContent = [
-      `반영 월 ${result.month || "-"}`,
-      `데이터 기간 ${periodLabel}`,
-      `오프라인 매출(${result.storeDisplayName || storeCode}) ${hasApiValue(result.totalOfflineSales) ? won(result.totalOfflineSales) : "-"}`,
-      `처리 행 수 ${hasApiValue(result.totalLineCount) ? apiNum(result.totalLineCount) : "-"}`,
-      "적용 완료"
-    ].join(" · ");
+    const storeSummary = (result.stores || []).map((store) => `${store.storeDisplayName}: ${apiNum(store.totalLineCount)}행 · ${won(store.totalOfflineSales)}`).join(" / ");
+    status.textContent = [`업로드 완료 · ${file.name}`, `반영 월 ${result.month || "-"}`, `데이터 기간 ${periodLabel}`, storeSummary, `총 ${apiNum(result.totalLineCount)}행 · ${won(result.totalOfflineSales)}`].filter(Boolean).join(" · ");
     await refreshEcountOfflineCard(result.month);
-    await ecountWizardRefreshSlotStatus(storeCode, result.month);
   } catch (error) {
     status.textContent = `적용 실패: ${error.message}`;
     status.classList.add("is-error");
@@ -13221,22 +13202,6 @@ async function ecountWizardHandleApplyClick(storeCode) {
     applyBtn.disabled = false;
     applyBtn.textContent = originalLabel;
   }
-}
-
-// STORE-BATCH-B Part 7: 슬롯을 열 때/업로드 직후 그 매장의 현재 업로드 상태(파일명·행
-// 수·매출)를 보여준다 — "검수 정보" 요구사항. 아직 업로드되지 않았으면(404) 정직하게
-// "미업로드"로 표시한다(0건으로 위장하지 않는다).
-async function ecountWizardRefreshSlotStatus(storeCode, month) {
-  const statusEl = $(`#ecountWizardStatus_${storeCode}`);
-  if (!statusEl || !month) return;
-  const data = await getJson(`/api/ecount-sales/monthly?month=${encodeURIComponent(month)}&store=${encodeURIComponent(storeCode)}`, 8000);
-  if (data?.error) {
-    statusEl.textContent = "미업로드";
-    statusEl.className = "ecount-wizard-slot-status is-missing";
-    return;
-  }
-  statusEl.textContent = `업로드 완료 · ${data.sourceFileName || "-"} · ${apiNum(data.totalLineCount)}행 · ${won(data.totalOfflineSales || 0)}`;
-  statusEl.className = "ecount-wizard-slot-status is-uploaded";
 }
 
 // Data Apply 성공 후 사이드바 ECOUNT Offline 카드를 GET /api/ecount-sales/monthly로
@@ -13264,19 +13229,15 @@ async function refreshEcountOfflineCard(month) {
 
 function openEcountWizard() {
   const modal = ecountWizardModalNode();
-  const currentMonthKey = new Date().toISOString().slice(0, 7);
-  for (const store of ECOUNT_WIZARD_STORES) {
-    const fileInput = $(`#ecountWizardFile_${store.code}`);
-    if (fileInput) fileInput.value = "";
-    delete ecountWizardSelectedFiles[store.code];
-    $(`#ecountWizardPreview_${store.code}`)?.setAttribute("hidden", "");
-    $(`#ecountWizardApplyBtn_${store.code}`)?.setAttribute("disabled", "");
-    const status = $(`#ecountWizardApplyStatus_${store.code}`);
-    if (status) {
-      status.hidden = true;
-      status.classList.remove("is-error");
-    }
-    ecountWizardRefreshSlotStatus(store.code, currentMonthKey);
+  const fileInput = $("#ecountWizardFile");
+  if (fileInput) fileInput.value = "";
+  ecountWizardSelectedFile = null;
+  $("#ecountWizardPreview")?.setAttribute("hidden", "");
+  $("#ecountWizardApplyBtn")?.setAttribute("disabled", "");
+  const status = $("#ecountWizardApplyStatus");
+  if (status) {
+    status.hidden = true;
+    status.classList.remove("is-error");
   }
   ecountWizardPreviousFocus = document.activeElement;
   modal.hidden = false;
@@ -18892,16 +18853,11 @@ function bind() {
   document.addEventListener("click", (event) => {
     if (event.target.closest("[data-ecount-wizard-close]")) closeEcountWizard();
   });
-  // STORE-BATCH-B: Monthly Sales가 매장별 슬롯(APGUJEONG/VAIL)으로 나뉘면서 파일
-  // input/버튼 id가 슬롯마다 달라졌다 — 공용 data-ecount-wizard-store 속성으로
-  // 어느 슬롯인지 식별해 위임한다(ecountWizardFile 단일 id 매칭 대신).
   document.addEventListener("change", (event) => {
-    const input = event.target.closest("input[data-ecount-wizard-store]");
-    if (input) ecountWizardHandleFileChange(event, input.dataset.ecountWizardStore);
+    if (event.target.closest("#ecountWizardFile")) ecountWizardHandleFileChange(event);
   });
   document.addEventListener("click", (event) => {
-    const button = event.target.closest(".ecount-wizard-apply-btn[data-ecount-wizard-store]");
-    if (button) ecountWizardHandleApplyClick(button.dataset.ecountWizardStore);
+    if (event.target.closest("#ecountWizardApplyBtn")) ecountWizardHandleApplyClick();
   });
   document.addEventListener("keydown", (event) => {
     const modal = $("#ecountWizardModal");
