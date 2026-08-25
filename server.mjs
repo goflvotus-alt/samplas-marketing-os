@@ -2555,6 +2555,7 @@ const workDataUploadPaths = new Set([
   "brand-master.json",
   "price-audit.json",
   "today-product-sync-issues.json",
+  "store-master.json",
   "intelligence/brand-master-list.json",
   "intelligence/brand-aliases.json",
   "ecount-inventory/latest.json",
