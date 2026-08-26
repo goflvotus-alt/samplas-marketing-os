@@ -79,16 +79,16 @@ main branch = 배포 기준. origin/main에 push되면 Render가 코드를 자�
 scripts/upload-work-snapshots-to-render.mjs [--dry-run|--overwrite]
 <relativePath...>`.
 
-현재 upload allowlist(2026-08-26 기준):
+현재 upload allowlist(Batch 6, 2026-08-26 갱신):
 ```
 brand-master.json, price-audit.json, today-product-sync-issues.json,
-store-master.json, intelligence/brand-master-list.json,
+store-master.json, product-registry.json, intelligence/brand-master-list.json,
 intelligence/brand-aliases.json, ecount-inventory/latest.json,
 ecount-inventory/diagnostic.json,
 그리고 정규식으로: ecount-sales/{YYYY-MM}[.STORE].json, monthly/{YYYY-MM}.json
 ```
 
-### 알려진 gap
+### 알려진 gap(Batch 5에서 발견 → Batch 6에서 해소, 아래 기록은 원문 보존)
 `work/product-registry.json`은 경로 A(git-tracked)에만 해당하고 경로
 B(upload allowlist)에는 없다 — SAFE10/18/20 등 사람 검토 결과가 git에는
 누적됐지만 Render에는 한 번도 업로드된 적이 없어(2026-08-26 실측 확인,
@@ -99,6 +99,32 @@ Render의 Product Registry 개별 항목이 stale하다. Today/Monthly 매출
 을 새로 편집한 뒤 "Render에도 반영됐다"고 가정하지 말 것** — 반영하려면
 allowlist 추가 + 명시적 upload가 필요하다(아직 실행되지 않음, 별도
 승인/작업 필요).
+
+**해소(Batch 6, 2026-08-26)**: `server.mjs`의 `workDataUploadPaths`와
+`scripts/upload-work-snapshots-to-render.mjs`의 `explicitPaths`에
+`product-registry.json`을 각각 1줄씩 추가(commit `bc65017`), Render 배포
+확인 후 SAFE10/18/20/24(총 72건) + 기타 deterministic-match 확인분(66건,
+총 138건 차이)을 포함한 Local 레지스트리를 Render에 명시적으로 업로드.
+업로드 후 Local↔Render 레지스트리 JSON이 완전히 동일함을 확인
+(`docs/reports/render-product-registry-alignment-2026-08-26.md`). **이
+gap은 재발 가능**하다 — 아래 "Product Registry 업데이트 규칙"을 반드시
+따를 것.
+
+### Product Registry 업데이트 규칙(Batch 6 이후 표준)
+`work/product-registry.json`을 수정하는 모든 작업(SAFE-N 배치 승인,
+Product Registry Review 반영 등)은 다음 4단계를 모두 거쳐야 "Render에도
+반영됐다"고 말할 수 있다:
+1. Local validation — 수정 후 Local API(`/api/intelligence/product-registry`,
+   `/api/intelligence/price-audit`)로 먼저 검증.
+2. Git commit — `work/product-registry.json`은 git-tracked이므로 커밋(해당
+   시).
+3. **명시적 Render snapshot upload** — `node
+   scripts/upload-work-snapshots-to-render.mjs --overwrite
+   product-registry.json`. **git commit만으로는 충분하지 않다**(§5 핵심
+   원칙과 동일한 이유 — Render는 git 체크아웃이 아니라 영구 디스크를
+   읽는다).
+4. Production API verification — 업로드 후 Local↔Render를 다시 비교해서
+   실제로 동일해졌는지 확인.
 
 ## 6. Reports — 보존 정책
 
