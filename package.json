@@ -8,6 +8,7 @@
     "start:intelligence": "node intelligence-service.mjs",
     "check": "node --check server.mjs && node --check outputs/samplas-marketing-os.js",
     "render:check": "node scripts/check-render-deployment.mjs",
+    "verify:production": "node scripts/verify-render-snapshot-sync.mjs",
     "render:upload-cafe24": "node scripts/upload-cafe24-csv-to-render.mjs"
   }
 }
