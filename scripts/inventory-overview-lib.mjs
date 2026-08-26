@@ -269,6 +269,23 @@ export function buildInventoryOverview({ ecountRows, brandRegistry, salesIndex, 
     const status = isQqq ? classifyQqqStock(stockQuantity) : classifyGeneralStock(stockQuantity);
     const estimatedSoldQuantity = isQqq ? estimatedQqqSoldQuantity(stockQuantity) : null;
     const lowStockCandidate = !isQqq && isLowStockCandidate(status, stockQuantity, lowStockThreshold);
+    const salesPrice = Number.isFinite(row.salesPrice) ? row.salesPrice : null;
+
+    // Inventory Operations MVP(2026-08-26) — 재고금액은 "판매가 기준 재고자산"만 계산한다.
+    // purchasePrice(매입가)는 이번 감사에서 신뢰도가 완전히 검증되지 않아(41%가 판매가와
+    // 동일 — placeholder 가능성, docs/reports/inventory-intelligence-v2-preaudit-2026-08-26.md
+    // §E "Margin" 참고) margin/profit 계열 계산에는 절대 쓰지 않는다(Cost Hard Gate).
+    // 음수 재고는 값에 포함하지 않는다(양수 재고만) — status==='in_stock'일 때만 계산.
+    const retailValue = status === "in_stock" && salesPrice !== null ? stockQuantity * salesPrice : null;
+    // slowWatch: 재고는 있는데(known, positive) 최근 판매 window(30일, 오프라인만) 안에
+    // 판매가 전혀 없었던 SKU. "DEAD STOCK"이라는 단정적 표현은 쓰지 않는다(입고일/재고
+    // age가 없어 얼마나 오래 안 팔렸는지는 알 수 없음).
+    const slowWatch = status === "in_stock" && (sales.recentQty || 0) === 0;
+    // daysOfSupply: 판매 이력이 실제로 있는 SKU에서만 계산(분모 0 → Infinity를 절대
+    // 노출하지 않는다). 판매가 없으면 N/A(null)로 남긴다.
+    const daysOfSupply = status === "in_stock" && (sales.recentQty || 0) > 0
+      ? stockQuantity / (sales.recentQty / DEFAULT_RECENT_SALES_WINDOW_DAYS)
+      : null;
 
     items.push({
       brandKey: brand.key,
@@ -289,10 +306,13 @@ export function buildInventoryOverview({ ecountRows, brandRegistry, salesIndex, 
       locations: location.locations,
       locationCoverageStatus: location.locationCoverageStatus,
       purchasePrice: Number.isFinite(row.purchasePrice) ? row.purchasePrice : null,
-      salesPrice: Number.isFinite(row.salesPrice) ? row.salesPrice : null,
+      salesPrice,
       recentSalesQty: sales.recentQty,
       lastSaleDate: sales.lastSaleDate,
-      registryLinked: registryProdCds ? registryProdCds.has(prodCd) : false
+      registryLinked: registryProdCds ? registryProdCds.has(prodCd) : false,
+      retailValue,
+      slowWatch,
+      daysOfSupply
     });
   }
 
@@ -365,15 +385,20 @@ export function buildInventoryOverview({ ecountRows, brandRegistry, salesIndex, 
         knownStock: 0,
         depletedCount: 0,
         negativeReviewCount: 0,
+        negativeUnits: 0,
         lowStockCandidateCount: 0,
         qqqEstimatedSoldQuantity: 0,
         qqqSkuCount: 0,
-        recentSalesQty: 0
+        recentSalesQty: 0,
+        slowWatchCount: 0,
+        retailValue: 0
       });
     }
     const bucket = brandMap.get(item.brandKey);
     bucket.totalSku += 1;
     bucket.recentSalesQty += item.recentSalesQty || 0;
+    bucket.retailValue += item.retailValue || 0;
+    if (item.slowWatch) bucket.slowWatchCount += 1;
     if (item.productType === "qqq") {
       bucket.qqqSkuCount += 1;
       bucket.qqqEstimatedSoldQuantity += item.estimatedSoldQuantity || 0;
@@ -382,11 +407,57 @@ export function buildInventoryOverview({ ecountRows, brandRegistry, salesIndex, 
     if (item.lowStockCandidate) bucket.lowStockCandidateCount += 1;
     if (item.status === "in_stock") bucket.knownStock += item.stockQuantity;
     else if (item.status === "depleted_candidate") bucket.depletedCount += 1;
-    else if (item.status === "negative_review") bucket.negativeReviewCount += 1;
+    else if (item.status === "negative_review") {
+      bucket.negativeReviewCount += 1;
+      bucket.negativeUnits += Math.abs(item.stockQuantity);
+    }
   }
   const brandRollup = [...brandMap.values()].sort((left, right) => left.brandName.localeCompare(right.brandName, "ko"));
 
-  return { items, summary, brandRollup };
+  // ---------------------------------------------------------------------------
+  // Inventory Operations MVP(2026-08-26) — coverage-first: 모든 지표 옆에 분모를 명시한다.
+  // Cost Hard Gate: purchasePrice 신뢰도가 검증되지 않아 margin/profit 계열은 절대 계산하지
+  // 않는다(retailValue만, salesPrice 기준). daysOfSupply는 판매 이력이 있는 SKU에서만
+  // 값을 갖고, 없으면 항상 null(N/A) — Infinity를 노출하지 않는다.
+  // ---------------------------------------------------------------------------
+  const negativeItems = items.filter((item) => item.status === "negative_review");
+  const sellingItems = items.filter((item) => item.productType !== "qqq" && (item.recentSalesQty || 0) > 0);
+  const slowWatchItems = items.filter((item) => item.slowWatch);
+  const valuedItems = items.filter((item) => item.retailValue !== null);
+  const missingPriceInStock = items.filter((item) => item.status === "in_stock" && item.salesPrice === null);
+
+  const operations = {
+    coverage: {
+      totalSkuCount: items.length,
+      knownStockSkuCount: summary.inStockSkuCount + summary.depletedSkuCount + summary.negativeReviewSkuCount,
+      knownStockPct: items.length ? (summary.inStockSkuCount + summary.depletedSkuCount + summary.negativeReviewSkuCount) / items.length : 0,
+      salesWindowDays: DEFAULT_RECENT_SALES_WINDOW_DAYS,
+      sellingSkuCount: sellingItems.length,
+      sellingSkuPct: items.length ? sellingItems.length / items.length : 0
+    },
+    negativeInventory: {
+      skuCount: negativeItems.length,
+      totalNegativeUnits: negativeItems.reduce((sum, item) => sum + Math.abs(item.stockQuantity), 0),
+      recentlySellingCount: negativeItems.filter((item) => (item.recentSalesQty || 0) > 0).length,
+      topByUnits: [...negativeItems]
+        .sort((a, b) => Math.abs(b.stockQuantity) - Math.abs(a.stockQuantity))
+        .slice(0, 10)
+        .map((item) => ({ prodCd: item.prodCd, productName: item.productName, brandName: item.brandName, stockQuantity: item.stockQuantity }))
+    },
+    slowWatch: {
+      skuCount: slowWatchItems.length,
+      pctOfInStock: summary.inStockSkuCount ? slowWatchItems.length / summary.inStockSkuCount : 0
+    },
+    inventoryValue: {
+      label: "retail_inventory_value", // 원가/margin 아님 — 판매가 × 양수 재고수량만
+      totalRetailValue: valuedItems.reduce((sum, item) => sum + item.retailValue, 0),
+      valuedSkuCount: valuedItems.length,
+      missingPriceInStockSkuCount: missingPriceInStock.length,
+      negativeStockExcludedUnits: negativeItems.reduce((sum, item) => sum + Math.abs(item.stockQuantity), 0)
+    }
+  };
+
+  return { items, summary, brandRollup, operations };
 }
 
 // view: "all" | "in_stock" | "depleted_candidate" | "negative_review" | "unknown" |

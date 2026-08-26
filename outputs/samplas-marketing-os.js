@@ -21546,6 +21546,48 @@ function renderInventoryOverviewSummaryCards(resp) {
   )).join("");
 }
 
+// Inventory Operations MVP(2026-08-26) — coverage-first: 모든 카드가 분모(모집단)를 함께
+// 보여준다. purchasePrice 신뢰도가 검증되지 않아 margin/profit은 절대 표시하지 않는다
+// (Cost Hard Gate, docs/reports/inventory-operations-foundation-mvp-2026-08-26.md 참고).
+function renderInventoryOperationsFreshness(resp) {
+  const target = $("#inventoryOperationsFreshness");
+  if (!target) return;
+  const stockAt = resp.generatedAt ? new Date(resp.generatedAt).toLocaleString("ko-KR") : "확인 불가";
+  const salesAt = resp.salesDataAsOf || "확인 불가";
+  // 재고 스냅샷 시각과 판매 window 기준 시각은 서로 다른 소스다 — 하나의 timestamp처럼
+  // 섞어 보여주지 않는다(Section 30).
+  target.innerHTML = `재고 기준: <strong>${esc(stockAt)}</strong> · 판매 기준: 최근 30일(오프라인, 최신 데이터 <strong>${esc(salesAt)}</strong>까지)`;
+}
+
+function renderInventoryOperationsCards(resp) {
+  const target = $("#inventoryOperationsCards");
+  if (!target) return;
+  const ops = resp.operations || {};
+  const coverage = ops.coverage || {};
+  const negative = ops.negativeInventory || {};
+  const slowWatch = ops.slowWatch || {};
+  const value = ops.inventoryValue || {};
+  const pct = (n) => `${((n || 0) * 100).toFixed(1)}%`;
+  const cards = [
+    { label: "재고 확인 가능 SKU", value: apiNum(coverage.knownStockSkuCount), sub: `전체 ${apiNum(coverage.totalSkuCount)}건 중 ${pct(coverage.knownStockPct)}(QQQ 제외)`, tone: "" },
+    { label: "최근 30일 판매 SKU", value: apiNum(coverage.sellingSkuCount), sub: `전체 ${apiNum(coverage.totalSkuCount)}건 중 ${pct(coverage.sellingSkuPct)} · velocity는 보조 지표로만 사용`, tone: "informational" },
+    { label: "Slow Watch(재고 有 · 30일 판매 0)", value: apiNum(slowWatch.skuCount), sub: `재고 있음 SKU 중 ${pct(slowWatch.pctOfInStock)} · "재고 age" 데이터 없어 Dead Stock 단정 안 함`, tone: (slowWatch.skuCount || 0) > 0 ? "neutral" : "good" },
+    { label: "음수 재고 SKU / 수량", value: `${apiNum(negative.skuCount)} / ${apiNum(negative.totalNegativeUnits)}`, sub: `이 중 최근 30일 판매 있음 ${apiNum(negative.recentlySellingCount)}건`, tone: (negative.skuCount || 0) > 0 ? "urgent" : "good" },
+    { label: "재고 자산(Retail, 판매가 기준)", value: `₩${apiNum(value.totalRetailValue)}`, sub: `가격 확인 SKU ${apiNum(value.valuedSkuCount)}건 · 재고 있는데 가격 없음 ${apiNum(value.missingPriceInStockSkuCount)}건 · 음수 재고 ${apiNum(value.negativeStockExcludedUnits)}개는 제외 · 원가/마진 아님`, tone: "" }
+  ];
+  target.innerHTML = cards.map((card) => (
+    `<div class="action-item sales-kpi-card ${esc(card.tone)}"><span>${esc(card.label)}</span><strong>${card.value}</strong><small>${esc(card.sub)}</small></div>`
+  )).join("");
+
+  const listTarget = $("#inventoryOperationsNegativeList");
+  if (listTarget) {
+    const rows = negative.topByUnits || [];
+    listTarget.innerHTML = rows.length
+      ? rows.map((row) => `<tr><td>${esc(row.productName)} <span class="hint-text">(${esc(row.prodCd)})</span></td><td>${esc(row.brandName)}</td><td>${apiNum(row.stockQuantity)}</td></tr>`).join("")
+      : `<tr><td colspan="3">음수 재고가 없습니다.</td></tr>`;
+  }
+}
+
 function renderInventoryOverviewBrandRows(resp) {
   const target = $("#inventoryOverviewBrandRows");
   if (!target) return;
@@ -21665,6 +21707,8 @@ async function renderInventoryOverviewView() {
       `;
     }
     renderInventoryOverviewSummaryCards(resp);
+    renderInventoryOperationsFreshness(resp);
+    renderInventoryOperationsCards(resp);
     renderInventoryOverviewBrandRows(resp);
     renderInventoryOverviewFilterOptions(resp);
     renderInventoryOverviewItemRows(resp);

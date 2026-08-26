@@ -932,7 +932,7 @@ async function handleInventoryOverviewGet(url, res) {
     readEcountInventoryDiagnostic()
   ]);
 
-  const { items, summary, brandRollup } = buildInventoryOverview({
+  const { items, summary, brandRollup, operations } = buildInventoryOverview({
     ecountRows,
     brandRegistry,
     salesIndex,
@@ -976,11 +976,16 @@ async function handleInventoryOverviewGet(url, res) {
     available: true,
     source: basename(ecountInventoryLatestFile),
     generatedAt: diagnostic?.finishedAt ?? null,
+    // Section 30 데이터 freshness 정책: 재고 스냅샷 기준 시각(generatedAt)과 판매 window
+    // 기준 시각(salesDataAsOf)은 서로 다른 소스다 — 하나의 timestamp처럼 섞어 보여주지
+    // 않는다. salesDataAsOf는 오프라인 매출 데이터 중 가장 최신 날짜(30일 window의 기준점).
+    salesDataAsOf: salesIndex.latestDataDate,
     lowStockThreshold,
     inventoryPolicy,
     coverage,
     summary,
     brandRollup,
+    operations,
     itemsTotal: filtered.length,
     offset,
     limit,
