@@ -9,6 +9,7 @@ const explicitPaths = [
   "price-audit.json",
   "today-product-sync-issues.json",
   "store-master.json",
+  "product-registry.json",
   "ecount-inventory/latest.json",
   "ecount-inventory/diagnostic.json",
   "intelligence/brand-aliases.json",
