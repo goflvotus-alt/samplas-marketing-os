@@ -359,3 +359,75 @@ Production parity 실행 중 **이 batch와 무관한** ecount-sales(2026-08)
 Local↔Render 동기화 gap을 부수적으로 발견해 정직하게 기록했다(§I/§J) —
 Inventory Operations의 완료 여부와는 별개의 사안이며, 별도 승인 하에
 후속 조치가 필요하다.
+
+---
+
+## Follow-up Resolution — ECOUNT August Production Resync (Batch 9, 2026-08-26)
+
+사용자가 위 §I/§J에서 발견한 ecount-sales(2026-08) 동기화 gap의 해소를
+승인함에 따라 후속 조치를 수행했다. **위 본문은 당시 실제 관측
+결과이므로 수정하지 않고 그대로 보존**한다.
+
+### Provenance 검증(핵심)
+Local의 2026-08 store-split 스냅샷(APGUJEONG 938행/₩190,060,400, VAIL
+99행/₩11,202,500)이 Render의 기존 스냅샷(APGUJEONG 816행/₩157,300,800,
+VAIL 90행/₩10,063,700)보다 최신인 이유를 day-by-day diff로 검증:
+- 2026-08-01~23: Render와 Local이 **완전히 동일**(0 diff, 전 일자).
+- 2026-08-24: +1행(미미한 오차, 단일 지연 입력으로 추정).
+- 2026-08-25: Render는 부분 캡처(14행, import 시각이 그날 오후였음),
+  Local은 그날 전체(79행) — **같은 날의 완성본**.
+- 2026-08-26: Render는 0행(아직 그날이 되기 전 import), Local은 56행 —
+  **새로 추가된 하루**.
+
+즉 Local newer 스냅샷은 다른 소스가 아니라 **같은 "2026-08.xlsx" 진행
+중 월 파일을 하루 늦게 재수출/재업로드한 것**이었다(과거 세션 전체에서
+반복된 정상 워크플로우와 동일한 패턴). 소스 Excel(`SALES/SAMPLAS/2026/2026-08.xlsx`,
+mtime 18:02 KST)이 스냅샷 importedAt(18:03:40 KST)보다 약 100초 앞서
+있어 정상 업로드 흐름과 일치하며, 파일 내부에 "창고명"/"매장"/"SAMPLAS
+Veil" 컬럼·값이 실제로 존재함을 구조적으로 재확인했다.
+
+**판정: LOCAL CANONICAL(VALID CANONICAL UPDATE).** Render가 오히려
+stale했던 것 — canonical 불확실성 없음.
+
+### Sync 실행
+```
+dry-run: {"dryRun": true, "files": ["ecount-sales/2026-08.APGUJEONG.json", "ecount-sales/2026-08.VAIL.json"]}
+upload:  {"ok": true, "overwrite": true, "uploaded": ["ecount-sales/2026-08.APGUJEONG.json", "ecount-sales/2026-08.VAIL.json"]}
+```
+정확히 이 2개 파일만 업로드 — legacy 병합 파일, 2026-07/09, Inventory/
+Brand Registry/Product Registry/Price Audit/Store Master/Monthly
+archives 어느 것도 건드리지 않음.
+
+### 재검증 결과
+```
+ECOUNT 2026-08: Render APGUJEONG 938/₩190,060,400, VAIL 99/₩11,202,500
+  — Local과 완전 일치(sources.importedAt 포함)
+Today(/api/sales/total): local=render 완전 일치(offline byStore 동일)
+Monthly(2026-08): local=render=232,203,898
+Annual(2026-01~08 합계): local=render=2,175,843,709, delta=0
+  (2026-01~07 historical 7/7 유지, Batch 4.6 정렬 상태 무변경)
+Clients: local=render 완전 동일(102/416, offline 필드 포함)
+Inventory Operations(Render): salesDataAsOf가 2026-08-25 → 2026-08-26으로
+  정확히 갱신됨, sellingSkuCount 407→427로 자연 증가(추가된 하루치 반영)
+```
+
+### September Future-Proof 재확인
+`work/ecount-sales/2026-09.APGUJEONG.json`(split-only, VAIL 파일 없음)에
+대해 로컬 서버가 여전히 `salesDataAsOf: 2026-09-05`로 정상 인식함을
+재확인(READ ONLY, Render에는 업로드하지 않음 — 이번 batch 범위 밖).
+`test/inventory-offline-sales-reader.test.mjs`의 케이스 12(9월
+split-only)가 정확히 이 시나리오를 커버하며 계속 PASS.
+
+### Full Production Parity
+```
+npm run verify:production
+STATUS/TODAY/MONTHLY CURRENT/HISTORICAL MONTHLY/ANNUAL/CLIENTS/
+ECOUNT CURRENT MONTH/STORE MASTER/INVENTORY/BRAND REGISTRY/
+PRODUCT REGISTRY/PRICE AUDIT/FRONTEND — 13/13 PASS
+VERDICT: PRODUCTION BASELINE HEALTHY
+```
+
+### Final Verdict
+```
+BATCH 9 ECOUNT PRODUCTION RESYNC COMPLETE — INVENTORY OPERATIONS FULLY CLOSED
+```
