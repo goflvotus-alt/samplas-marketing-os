@@ -464,7 +464,9 @@ export async function buildCafe24EcountProductMatchingDiagnostic(options = {}) {
   const [dashboard, brandSources, ecountRaw] = await Promise.all([
     fullCafe24ProductCatalogSource(options),
     loadBrandSources(),
-    readJson(join(workDir, "ecount-inventory", "latest.json"))
+    Array.isArray(options.ecountProductsOverride)
+      ? Promise.resolve({ products: options.ecountProductsOverride })
+      : readJson(join(workDir, "ecount-inventory", "latest.json"))
   ]);
   const brandResolver = makeBrandResolver(brandSources);
   for (const product of dashboard.products) {
@@ -513,7 +515,12 @@ export async function buildCafe24EcountProductMatchingDiagnostic(options = {}) {
         pagesFetched: dashboard.pagesFetched ?? null,
         stoppedReason: dashboard.stoppedReason ?? null
       },
-      ecount: { path: "work/ecount-inventory/latest.json", productCount: ecountProducts.length },
+      ecount: {
+        path: Array.isArray(options.ecountProductsOverride)
+          ? "ecount_products_override"
+          : "work/ecount-inventory/latest.json",
+        productCount: ecountProducts.length
+      },
       brandMaster: ["work/brand-master.json", "work/intelligence/brand-master-list.json", "work/intelligence/brand-aliases.json"]
     },
     policy: {

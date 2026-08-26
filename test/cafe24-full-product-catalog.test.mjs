@@ -110,4 +110,16 @@ test("buildCafe24EcountProductMatchingDiagnostic: 237개 전체 Cafe24 상품이
   }
 });
 
+test("buildCafe24EcountProductMatchingDiagnostic: ecountProductsOverride가 있으면 work/ecount-inventory/latest.json 대신 주입값을 사용한다", async () => {
+  const cafe24ProductsOverride = [
+    { productNo: "1", productCode: "P000001", productName: "[TESTBRAND] Product 1", brand: "TESTBRAND", display: "T", selling: "T" }
+  ];
+  const ecountProductsOverride = [
+    { productCode: "E000001", productName: "TESTBRAND / Product 1" }
+  ];
+  const diagnostic = await buildCafe24EcountProductMatchingDiagnostic({ cafe24ProductsOverride, ecountProductsOverride });
+  assert.equal(diagnostic.sources.ecount.path, "ecount_products_override", "override 사용 시 path가 override로 표시되어야 한다");
+  assert.equal(diagnostic.sources.ecount.productCount, 1, "override 배열 길이가 그대로 productCount여야 한다");
+});
+
 console.log("cafe24 full product catalog tests passed");
