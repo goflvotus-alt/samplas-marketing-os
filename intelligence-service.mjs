@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { createHash, createHmac } from "node:crypto";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { URL } from "node:url";
@@ -59,6 +59,11 @@ const intelligenceWorkDir = join(workRoot, "intelligence");
 const marketingBrandMasterFile = join(workRoot, "brand-master.json");
 const brandMasterListFile = join(intelligenceWorkDir, "brand-master-list.json");
 const brandAliasesFile = join(intelligenceWorkDir, "brand-aliases.json");
+const brandRegistryBuildMetaFile = join(intelligenceWorkDir, "brand-registry-build-meta.json");
+// canonical work/brand-master.json 변경 감지용 stat 캐시 + 동시 요청 rebuild dedupe.
+// 반드시 아래 top-level await ensureBrandRegistryFiles() 호출보다 먼저 선언되어야 한다.
+let brandRegistryStatCache = null; // `${mtimeMs}:${size}` — 마지막으로 확인 완료한 canonical stat
+let brandRegistryRefreshPromise = null; // 동시 요청이 겹쳐도 rebuild가 한 번만 실행되도록 dedupe
 const naverSearchSnapshotsFile = join(intelligenceWorkDir, "naver-search-snapshots.json");
 const brandTimelineFile = join(intelligenceWorkDir, "brand-timeline.json");
 const decisionHistoryFile = join(intelligenceWorkDir, "decision-history.json");
@@ -2742,14 +2747,83 @@ async function writeDecisionAndTimelineStores(decisionStore, timelineStore) {
   await rename(timelineTemp, brandTimelineFile);
 }
 
-async function ensureBrandRegistryFiles() {
+// canonical work/brand-master.json의 mtime+size(빠른 1차 필터)와 content hash(정확한
+// 2차 확인)를 함께 써서, 매 요청마다 파일을 다시 읽지 않고도(대부분은 stat 1회로 끝남)
+// canonical이 실제로 바뀐 순간 derived 파일(brand-master-list.json/brand-aliases.json)을
+// 자동으로 재생성한다 — 과거의 bootstrap-once(`if (!existsSync(...))`) 설계를 대체.
+async function ensureBrandRegistryFresh() {
+  if (brandRegistryRefreshPromise) return brandRegistryRefreshPromise;
+  brandRegistryRefreshPromise = ensureBrandRegistryFreshInner().finally(() => {
+    brandRegistryRefreshPromise = null;
+  });
+  return brandRegistryRefreshPromise;
+}
+
+async function ensureBrandRegistryFreshInner() {
   await mkdir(intelligenceWorkDir, { recursive: true });
-  if (!existsSync(brandMasterListFile) || !existsSync(brandAliasesFile)) {
-    const source = await readMarketingBrandMaster();
-    const { brands, aliases } = buildIntelligenceBrandRegistry(source.brands);
-    if (!existsSync(brandMasterListFile)) await writeJson(brandMasterListFile, brands);
-    if (!existsSync(brandAliasesFile)) await writeJson(brandAliasesFile, aliases);
+
+  let sourceStat = null;
+  try {
+    sourceStat = await stat(marketingBrandMasterFile);
+  } catch {
+    sourceStat = null;
   }
+  // ponytail: mtime+size 동일 파일을 같은 초 안에 같은 크기로 다시 쓰면 이론상 놓칠 수
+  // 있음 — 실사용 편집 주기(수동 편집, 분 단위)에서는 무해한 근사, 완벽한 보장이
+  // 필요해지면 매 호출마다 content hash를 계산하도록 승격.
+  const statKey = sourceStat ? `${sourceStat.mtimeMs}:${sourceStat.size}` : "missing";
+
+  const derivedFilesExist = existsSync(brandMasterListFile) && existsSync(brandAliasesFile);
+  if (derivedFilesExist && brandRegistryStatCache === statKey) {
+    return; // fast path: canonical stat 불변 확인, 재계산 없음
+  }
+
+  try {
+    const source = await readMarketingBrandMaster();
+    const sourceHash = createHash("sha256").update(JSON.stringify(source.brands)).digest("hex");
+
+    let meta = null;
+    if (existsSync(brandRegistryBuildMetaFile)) {
+      try {
+        meta = JSON.parse(await readFile(brandRegistryBuildMetaFile, "utf8"));
+      } catch {
+        meta = null;
+      }
+    }
+
+    if (derivedFilesExist && meta?.sourceHash === sourceHash) {
+      brandRegistryStatCache = statKey; // 내용은 그대로 — stat만 갱신하고 재작성 없음
+      return;
+    }
+
+    const { brands, aliases } = buildIntelligenceBrandRegistry(source.brands);
+    // 두 derived 파일을 각각 temp에 먼저 쓰고 마지막에만 rename — 중간에 실패해도
+    // partial(한쪽만 새 값) 상태가 절대 남지 않는다.
+    const brandsTemp = tempJsonFile(brandMasterListFile);
+    const aliasesTemp = tempJsonFile(brandAliasesFile);
+    await writeFile(brandsTemp, `${JSON.stringify(brands, null, 2)}\n`);
+    await writeFile(aliasesTemp, `${JSON.stringify(aliases, null, 2)}\n`);
+    await rename(brandsTemp, brandMasterListFile);
+    await rename(aliasesTemp, brandAliasesFile);
+    await writeJsonAtomic(brandRegistryBuildMetaFile, {
+      sourceHash,
+      generatedAt: new Date().toISOString(),
+      brandCount: brands.length,
+      aliasCount: aliases.length
+    });
+    brandRegistryStatCache = statKey;
+  } catch (error) {
+    if (!derivedFilesExist) throw error; // 대체할 기존 derived가 없으면 그대로 실패시킨다(과거 동일)
+    console.warn(
+      "[intelligence][brand-registry] canonical brand-master.json을 읽거나 재생성하는 데 실패해 기존 derived 파일을 그대로 유지합니다:",
+      safeErrorMessage(error)
+    );
+    // brandRegistryStatCache를 갱신하지 않음 — 다음 호출에서 다시 재시도한다.
+  }
+}
+
+async function ensureBrandRegistryFiles() {
+  await ensureBrandRegistryFresh();
   await readBrandRegistry();
 }
 
@@ -2827,7 +2901,8 @@ function selectBrandOwner(key, candidates) {
   return unique.sort((left, right) => left.id.localeCompare(right.id))[0];
 }
 
-async function readBrandRegistry() {
+export async function readBrandRegistry() {
+  await ensureBrandRegistryFresh();
   const brands = JSON.parse(await readFile(brandMasterListFile, "utf8"));
   const aliases = JSON.parse(await readFile(brandAliasesFile, "utf8"));
   validateBrandRegistry(brands, aliases);
