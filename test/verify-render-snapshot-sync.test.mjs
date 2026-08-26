@@ -93,6 +93,19 @@ test("checkInventory: recentSalesQty differences alone do not fail the check", a
   assert.equal(result.status, "PASS", "recentSalesQty만 다르면 live rolling metric이라 PASS여야 한다");
 });
 
+test("checkInventory: slowWatchCount differences alone do not fail the check(recentSalesQty에서 파생되는 live 필드)", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => {
+    const isLocal = url.startsWith("http://local");
+    return jsonResponse({
+      summary: { totalKnownStock: 100 },
+      coverage: { ok: true },
+      brandRollup: [{ brandId: "B1", recentSalesQty: isLocal ? 0 : 3, slowWatchCount: isLocal ? 5 : 4, totalSku: 5 }]
+    });
+  });
+  const result = await checkInventory("http://local", "http://render");
+  assert.equal(result.status, "PASS", "slowWatchCount는 recentSalesQty 파생 live 필드라 PASS여야 한다");
+});
+
 test("checkInventory: a real (non-recentSalesQty) field difference still fails", async (t) => {
   t.mock.method(globalThis, "fetch", async (url) => {
     const isLocal = url.startsWith("http://local");

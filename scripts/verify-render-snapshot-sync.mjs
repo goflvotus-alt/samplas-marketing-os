@@ -187,9 +187,10 @@ export async function checkStoreMaster(local, render) {
 
 export async function checkInventory(local, render) {
   const [l, r] = await Promise.all([getJson(local, "/api/inventory/overview"), getJson(render, "/api/inventory/overview")]);
-  // recentSalesQty는 요청 시점 rolling metric으로 알려진 live 필드라 비교에서 제외한다
-  // (docs/reports/local-to-render-batch3-5-brand-registry-sync-2026-08-25.md §11).
-  const strip = (rollup) => (rollup || []).map(({ recentSalesQty, ...rest }) => rest);
+  // recentSalesQty(및 그것으로부터 파생되는 slowWatchCount)는 요청 시점 rolling metric으로
+  // 알려진 live 필드라 비교에서 제외한다(docs/reports/local-to-render-batch3-5-brand-registry-sync-2026-08-25.md
+  // §11, docs/reports/inventory-operations-foundation-mvp-2026-08-26.md).
+  const strip = (rollup) => (rollup || []).map(({ recentSalesQty, slowWatchCount, ...rest }) => rest);
   const summaryOk = deepEqual(l.body?.summary, r.body?.summary);
   const coverageOk = deepEqual(l.body?.coverage, r.body?.coverage);
   const rollupOk = deepEqual(strip(l.body?.brandRollup), strip(r.body?.brandRollup));
