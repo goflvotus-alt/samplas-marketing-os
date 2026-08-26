@@ -10,7 +10,8 @@ import {
   requireResultList,
   runRequiredStep,
   validateOutputPayloads,
-  writeInventoryOutputsAtomically
+  writeInventoryOutputsAtomically,
+  writeInventoryHistorySnapshot
 } from "../scripts/sync-ecount-inventory.mjs";
 
 const rawProducts = { Data: { Result: [{ PROD_CD: "SKU1", PROD_DES: "BRAND / Item", IN_PRICE: "1,000" }] } };
@@ -145,4 +146,70 @@ test("실패 시 임시 폴더가 남지 않음", async () => {
 
 test("diagnostic metadata가 없으면 저장하지 않음", () => {
   assert.throws(() => validateOutputPayloads({ ...payloads(), diagnostic: { startedAt: "x" } }), /diagnostic/);
+});
+
+// ---- Inventory history snapshot (2026-08-26 foundation) ----
+
+test("history snapshot: 하루 하나(KST 날짜 기준)로 atomic write, no half-written file", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "inv-history-"));
+  try {
+    const { latest, diagnostic } = payloads();
+    const result = await writeInventoryHistorySnapshot(dir, { latest, diagnostic });
+    assert.equal(result.snapshotDate, "2026-07-23");
+    const saved = JSON.parse(await readFile(join(dir, "history", "2026-07-23.json"), "utf8"));
+    assert.equal(saved.schemaVersion, 1);
+    assert.equal(saved.snapshotDate, "2026-07-23");
+    assert.deepEqual(saved.latest, latest);
+    assert.deepEqual(saved.sourceCounts, diagnostic.counts);
+    const names = await readdir(join(dir, "history"));
+    assert.equal(names.some((name) => name.startsWith(".tmp-")), false, "임시 파일이 남아있으면 안 된다");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("history snapshot: 같은 날 두 번 실행하면 파일 1개만 남고(overwrite), 쌓이지 않음", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "inv-history-"));
+  try {
+    const first = payloads();
+    await writeInventoryHistorySnapshot(dir, first);
+    const second = payloads();
+    second.latest = [{ ...second.latest[0], stockQuantity: 999 }];
+    await writeInventoryHistorySnapshot(dir, second);
+    const names = await readdir(join(dir, "history"));
+    assert.deepEqual(names, ["2026-07-23.json"], "같은 날짜면 파일이 하나만 있어야 한다");
+    const saved = JSON.parse(await readFile(join(dir, "history", "2026-07-23.json"), "utf8"));
+    assert.equal(saved.latest[0].stockQuantity, 999, "가장 최근 실행 결과로 덮어써져야 한다");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("history snapshot 실패는 latest/diagnostic.json 원자적 교체에 전혀 영향을 주지 않는다", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "inv-history-"));
+  try {
+    await writeInventoryOutputsAtomically(dir, payloads());
+    const beforeLatest = await readFile(join(dir, "latest.json"), "utf8");
+
+    // history write가 실패하는 상황을 흉내낸다(예: 디스크 오류) — 호출부(runSync)와
+    // 동일하게 이 실패를 여기서도 catch해서 메인 파일에 영향이 없는지만 확인한다.
+    await assert.rejects(writeInventoryHistorySnapshot(dir, {
+      ...payloads(),
+      diagnostic: { counts: {} } // finishedAt 없음 → 의도적으로 throw
+    }));
+
+    const afterLatest = await readFile(join(dir, "latest.json"), "utf8");
+    assert.equal(beforeLatest, afterLatest, "history 실패가 이미 쓰여진 latest.json을 건드리면 안 된다");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("history는 과거 날짜를 추정해서 만들지 않는다 — diagnostic.finishedAt이 곧 snapshotDate", async () => {
+  const { latest } = payloads();
+  const result = await writeInventoryHistorySnapshot(
+    await mkdtemp(join(tmpdir(), "inv-history-")),
+    { latest, diagnostic: { finishedAt: "2026-08-26T05:00:00.000Z", counts: {} } }
+  );
+  assert.equal(result.snapshotDate, "2026-08-26", "backfill 없이 실제 실행 시점의 날짜만 기록되어야 한다");
 });

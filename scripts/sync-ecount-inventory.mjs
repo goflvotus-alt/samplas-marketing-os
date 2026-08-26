@@ -157,6 +157,15 @@ async function main() {
   validateOutputPayloads({ rawProducts, rawInventory, latest, diagnostic });
   await writeInventoryOutputsAtomically(outputDir, { rawProducts, rawInventory, latest, diagnostic });
 
+  let historySnapshot = null;
+  try {
+    historySnapshot = await writeInventoryHistorySnapshot(outputDir, { latest, diagnostic });
+  } catch (error) {
+    // history는 부가 기능이다 — 실패해도 이미 완료된 latest.json/diagnostic.json 교체를
+    // 절대 되돌리지 않고, 경고만 남긴 채 정상 종료한다.
+    console.error(`[sync-ecount-inventory] history snapshot 저장 실패(무시하고 계속): ${error?.message || error}`);
+  }
+
   console.log(JSON.stringify({
     mode,
     productsOnly: cli.productsOnly,
@@ -168,7 +177,8 @@ async function main() {
     ],
     productCount: productList.length,
     inventoryCount: inventoryList.length,
-    purchasePriceCount
+    purchasePriceCount,
+    historySnapshot: historySnapshot ? `work/ecount-inventory/history/${historySnapshot.snapshotDate}.json` : null
   }, null, 2));
 }
 
@@ -301,6 +311,40 @@ async function cleanupDir(fsOps, dir) {
   try {
     await fsOps.rm(dir, { recursive: true, force: true });
   } catch {}
+}
+
+// Inventory Operations 기반 구축(2026-08-26) — 지금까지는 latest.json 하나만 존재해
+// 재고 추세/시계열이 원천적으로 불가능했다(docs/reports/inventory-intelligence-v2-preaudit-2026-08-26.md
+// §18). 이 함수는 매 sync 실행 시 그 시점의 latest/diagnostic을 하루에 하나
+// (work/ecount-inventory/history/{YYYY-MM-DD}.json, KST 기준 날짜)로 append-only 보존한다.
+// 과거 데이터를 추정/backfill하지 않는다 — history는 이 구현 시점부터 시작한다.
+// 메인 4파일 원자적 교체(writeInventoryOutputsAtomically)가 이미 성공한 뒤 별도로
+// 호출되는 best-effort 스텝이며, 이 함수가 실패해도 호출부가 catch해서 latest/diagnostic
+// 자체를 절대 되돌리거나 오염시키지 않는다(호출부 참고).
+export async function writeInventoryHistorySnapshot(dir, { latest, diagnostic }, fsOps = { mkdir, writeFile, rename }) {
+  if (!Array.isArray(latest)) throw new Error("latest 결과가 배열이 아닙니다.");
+  if (!diagnostic?.finishedAt) throw new Error("diagnostic.finishedAt이 필요합니다.");
+
+  const snapshotDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date(diagnostic.finishedAt));
+  const historyDir = join(dir, "history");
+  const targetFile = join(historyDir, `${snapshotDate}.json`);
+  const token = `${process.pid}-${Date.now()}`;
+  const tempFile = join(historyDir, `.tmp-${token}-${snapshotDate}.json`);
+
+  const payload = {
+    schemaVersion: 1,
+    snapshotDate,
+    generatedAt: diagnostic.finishedAt,
+    // 같은 날 여러 번 sync를 돌리면 그날 파일은 최신 실행 결과로 덮어써진다(하루 1개 정책,
+    // Section 15 retention 설계와 일치) — 별도 dedupe 판단 없이 date 키 자체가 dedupe다.
+    sourceCounts: diagnostic.counts || null,
+    latest
+  };
+
+  await fsOps.mkdir(historyDir, { recursive: true });
+  await fsOps.writeFile(tempFile, `${JSON.stringify(payload, null, 2)}\n`);
+  await fsOps.rename(tempFile, targetFile);
+  return { snapshotDate, file: targetFile };
 }
 
 
