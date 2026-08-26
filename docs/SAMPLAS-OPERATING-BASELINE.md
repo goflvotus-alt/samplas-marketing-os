@@ -126,6 +126,38 @@ Product Registry Review 반영 등)은 다음 4단계를 모두 거쳐야 "Rende
 4. Production API verification — 업로드 후 Local↔Render를 다시 비교해서
    실제로 동일해졌는지 확인.
 
+### Brand Registry 파생 파일 auto-rebuild(Batch 7)
+`work/intelligence/brand-master-list.json`/`brand-aliases.json`은 canonical
+`work/brand-master.json`으로부터 파생되는 파일이다. 과거
+`ensureBrandRegistryFiles()`는 "파생 파일이 없을 때만" 한 번 만드는
+bootstrap-once 설계라 canonical이 갱신돼도 다시 반영되지 않았다(Batch
+3.5/4에서 기록된 debt). Batch 7에서 canonical의 mtime+size(빠른 1차 확인)
++ content hash(정확한 확인)를 함께 쓰는 자동 rebuild로 교체했다
+(`intelligence-service.mjs`의 `ensureBrandRegistryFresh()`, 매 요청 진입
+시 확인). canonical이 실제로 바뀐 시점에만 두 파생 파일을 temp+rename으로
+원자적으로 재생성하고, canonical이 읽기 실패/충돌 상태여도 기존 유효한
+파생 파일을 그대로 서빙한다(요청을 죽이지 않음).
+
+**이 fix가 드러낸 새 gap(중요)**: `work/brand-master.json` 자체는
+gitignored + upload allowlist에 있지만, **이 세션 전체에서 실제로 Render에
+업로드된 적이 단 한 번도 없다** — 지금까지 Render의 올바른 Brand Registry
+상태(278/361)는 Local에서 만든 파생 파일(`brand-master-list.json`/
+`brand-aliases.json`)만 직접 업로드해서 유지돼 왔다(Batch 3.5 패턴). 이
+방식은 canonical 자체의 차이를 가려왔다 — 실제로 Local의 canonical에는
+Render에 없는 콜라보 브랜드(`B0000COL` "MEANTIME X SUNDAYOFFCLUB", 세션
+초반에 Local에만 수동 추가됨)와 다른 브랜드들의 alias 차이가 누적돼 있다.
+Batch 7에서 이 auto-rebuild를 배포하자 Render가 **자신의(스테일한) 고유
+canonical**을 기준으로 파생 파일을 재생성해, 그동안 가려져 있던 이 차이가
+그대로 노출됐다(278/361 → 277/293로 표면화, 실제 데이터 손실이 아니라
+가려져 있던 gap이 드러난 것 — 상세: `docs/reports/platform-hardening-mega-batch-2026-08-26.md` §E).
+
+**해결 전 규칙**: `work/brand-master.json`을 Local에서 편집한 뒤 "Render도
+당연히 맞겠지"라고 가정하지 말 것 — 이 파일이 Render에 명시적으로
+업로드된 적이 없으므로, 다음에 브랜드/alias를 추가할 때는 반드시
+`node scripts/upload-work-snapshots-to-render.mjs --overwrite
+brand-master.json`을 함께 실행해야 한다(아직 미승인/미실행 상태로 남아있음
+— 별도 승인 후 진행).
+
 ## 6. Reports — 보존 정책
 
 `docs/reports/`는 SAMPLAS development history의 정식 저장소다:
@@ -162,6 +194,46 @@ Diagnosis → Implementation → Tests → Commit/Deploy → Production Validati
 - **Render mutation은 명시적 승인 필요**: snapshot upload/historical
   overwrite/deploy/restart/source 변경은 사용자가 명시적으로 승인한
   batch에서만 수행한다.
+
+## 9. Production Verification & Recovery(Batch 7)
+
+### 검증 명령
+```
+npm run verify:production
+node scripts/verify-render-snapshot-sync.mjs             # 전체 검사, READ ONLY
+node scripts/verify-render-snapshot-sync.mjs --only <key1,key2>  # 일부만
+node scripts/verify-render-snapshot-sync.mjs --json       # machine-readable
+```
+Local(`http://127.0.0.1:8787`)과 Render(`https://samplas-marketing-os.onrender.com`)
+를 13개 도메인(Status/Today/Monthly current·historical/Annual/Clients/
+ECOUNT current month/Store Master/Inventory/Brand Registry/Product
+Registry/Price Audit/Frontend bundle hash)에 대해 비교한다. 정적/과거
+확정 데이터는 완전 일치(PASS/FAIL)를, 당월/rolling 데이터(Today, Monthly
+current, Clients, ECOUNT current month)는 재시도 후에도 다르면 FAIL이
+아니라 WARN으로 timing drift를 구분한다. **자동으로 어떤 것도
+업로드/덮어쓰기/재시작하지 않는다 — GET만 보낸다.**
+
+### 배포 후 회귀 발견 시 대응 순서
+1. 즉시 재검증 — Render 배포 직후 몇 분간은 cold start/재시작 중이라
+   일시적으로 여러 항목이 실패할 수 있다(Batch 7에서 실제로 경험 —
+   배포 직후 6개 항목 FAIL, 몇 분 뒤 재실행하니 4개는 자연 해소).
+2. 재검증 후에도 남아있는 FAIL만 실제 데이터 gap으로 취급한다.
+3. Render 배포(코드 push) 자체가 데이터 재계산을 유발할 수 있다는 점을
+   유의한다 — 예: Brand Registry auto-rebuild fix 배포 직후 Render가
+   "자신의" stale canonical로 파생 파일을 재생성해 이전보다 더 어긋난
+   상태로 바뀐 사례가 실제로 있었다(§5 "Brand Registry 파생 파일
+   auto-rebuild" 참조). **코드 fix가 배포되는 순간 그 fix가 참조하는
+   canonical 데이터 자체도 최신인지 항상 같이 점검할 것.**
+4. 데이터 mismatch는 이 문서/report에 근거를 남기고, 실제 upload/overwrite
+   실행은 별도 승인을 받은 뒤에만 한다(자동 실행 금지).
+
+### 알려진 미해결 항목(2026-08-26 기준)
+`work/brand-master.json`이 Render에 한 번도 업로드된 적이 없어 Brand
+Registry가 278/361(Local) vs 277/293(Render)로 벌어져 있음(위 §5 참조).
+승인 후 `node scripts/upload-work-snapshots-to-render.mjs --overwrite
+brand-master.json` 실행 → 자동 rebuild가 Render에서 즉시 재발동 →
+`npm run verify:production --only brand-registry,inventory`로 재검증하는
+순서로 해소 예정.
 
 ---
 
