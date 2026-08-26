@@ -11,7 +11,7 @@ test("server allows exact monthly JSON paths and keeps explicit inventory paths"
     "ecount-sales/2026-08.json", "ecount-sales/2026-12.json", "ecount-sales/2027-01.json",
     "monthly/2026-07.json", "monthly/2027-01.json",
     "brand-master.json", "intelligence/brand-master-list.json", "intelligence/brand-aliases.json",
-    "ecount-inventory/latest.json", "ecount-inventory/diagnostic.json"
+    "ecount-inventory/latest.json", "ecount-inventory/diagnostic.json", "color-master.json"
   ]) assert.equal(isAllowedWorkDataUploadPath(path), true, path);
 });
 
@@ -35,7 +35,7 @@ test("discovery includes only existing valid monthly and explicit files, sorted 
     for (const path of [
       "ecount-sales/2026-08.json", "ecount-sales/2026-12.json", "ecount-sales/2026-13.json",
       "ecount-sales/2026-08.json.tmp", "monthly/2027-01.json", "monthly/test.json",
-      "ecount-inventory/latest.json", "brand-master.json", "intelligence/brand-master-list.json",
+      "ecount-inventory/latest.json", "brand-master.json", "color-master.json", "intelligence/brand-master-list.json",
       "intelligence/brand-aliases.json", "intelligence/unknown.json", "brand-master-merge-plan.json"
     ]) {
       await mkdir(join(workDir, ...path.split("/").slice(0, -1)), { recursive: true });
@@ -43,6 +43,7 @@ test("discovery includes only existing valid monthly and explicit files, sorted 
     }
     assert.deepEqual(await discoverWorkSnapshotPaths(workDir), [
       "brand-master.json",
+      "color-master.json",
       "ecount-inventory/latest.json",
       "ecount-sales/2026-08.json",
       "ecount-sales/2026-12.json",

@@ -12,6 +12,7 @@ export const RENDER_SNAPSHOT_EXPLICIT_PATHS = [
   "today-product-sync-issues.json",
   "store-master.json",
   "product-registry.json",
+  "color-master.json",
   "intelligence/brand-master-list.json",
   "intelligence/brand-aliases.json",
   "ecount-inventory/latest.json",

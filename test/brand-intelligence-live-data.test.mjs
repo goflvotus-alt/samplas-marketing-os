@@ -32,6 +32,9 @@ test("Brand Intelligence uses canonical product names and live ECOUNT inventory"
   assert.match(js, /const entityCategoryRows = \[\];/);
   assert.match(js, /getSharedJson\("\/api\/status"/);
   assert.match(js, /\/api\/ecount-sales\/monthly\?month=/);
+  assert.match(js, /brandIdentityState\.brandCode \? "선택한 기간에 고객 데이터가 없습니다"/);
+  assert.match(js, /const periodArchive = archives\[periodIndex\];/);
+  assert.match(js, /refreshEntitySkuSales\(brandCode, periodMonth, periodProductSales, Boolean\(periodArchive\?\.error\)\)/);
   assert.match(html, /id="entitySystemStatusCafe24"/);
   assert.match(html, /id="entitySystemStatusEcount"/);
   assert.doesNotMatch(html, /2분 전 동기화|5분 전 동기화|32분 전 동기화|09:00 동기화/);

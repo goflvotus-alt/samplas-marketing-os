@@ -14590,6 +14590,12 @@ function renderEntityCompositionSection() {
 function renderEntityCompositionEmpty() {
   const empty = $("#entityCompositionEmpty");
   const content = $("#entityCompositionContent");
+  const title = empty?.querySelector("h4");
+  const message = empty?.querySelector("p");
+  if (title) title.textContent = brandIdentityState.brandCode ? "선택한 기간에 고객 데이터가 없습니다" : "고객 구성을 확인할 수 없습니다";
+  if (message) message.textContent = brandIdentityState.brandCode
+    ? "이 기간에 선택 브랜드로 확인된 오프라인 고객 구매가 없습니다."
+    : "브랜드를 선택하면 고객 구성과 TOP 고객을 확인할 수 있습니다.";
   // STEP67-9H-2: 비교 모드에서는 Brand A(Primary)에 이번 기간 데이터가 없어도 전체를
   // 숨기지 않는다 — #entityCompositionCompareBlock이 Brand A/B 각자의 상태를 이미
   // 독립적으로 정직하게 보여주므로(renderEntityCompareComposition, 이 함수보다 먼저
