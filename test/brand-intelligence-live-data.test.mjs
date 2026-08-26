@@ -67,3 +67,23 @@ test("Brand Intelligence uses canonical product names and live ECOUNT inventory"
   assert.match(js, /async function refreshEntityCompareCustomerComposition\(month = currentEntityPeriodMonthKey\(\)\)/);
   assert.match(js, /renderEntityCompositionSection\(\);[\s\S]{0,120}renderEntityCompareComposition\(\);/);
 });
+
+test("Customer Composition distinguishes no selection from a selected brand with zero customers", async () => {
+  const js = await readFile(new URL("outputs/samplas-marketing-os.js", root), "utf8");
+  const start = js.indexOf("function renderEntityCompositionEmpty()");
+  const end = js.indexOf("\n}\n\n// STEP67-6", start) + 2;
+  const source = js.slice(start, end);
+  const empty = { hidden: false, title: { textContent: "" }, message: { textContent: "" }, querySelector(selector) { return selector === "h4" ? this.title : this.message; } };
+  const content = { hidden: false };
+  const run = (brandCode) => Function("$", "brandIdentityState", "entityCompareState", `${source}; renderEntityCompositionEmpty();`)(
+    (selector) => selector === "#entityCompositionEmpty" ? empty : content,
+    { brandCode },
+    { enabled: false }
+  );
+
+  run(null);
+  assert.equal(empty.message.textContent, "브랜드를 선택하면 고객 구성과 TOP 고객을 확인할 수 있습니다.");
+  run("B00000KU");
+  assert.equal(empty.title.textContent, "선택한 기간에 고객 데이터가 없습니다");
+  assert.equal(empty.message.textContent, "이 기간에 선택 브랜드로 확인된 오프라인 고객 구매가 없습니다.");
+});
