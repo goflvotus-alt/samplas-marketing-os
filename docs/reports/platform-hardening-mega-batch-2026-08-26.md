@@ -292,3 +292,94 @@ canonical 미동기화 gap이 아직 실제 데이터 수준에서 해소되지 
 PASS"를 뜻하는 완전한 COMPLETE 대신 PARTIAL COMPLETE로 판정한다. 이
 gap의 해결 방법은 정확히 파악되어 있고(§P-1), 사용자 승인만 있으면
 즉시 실행 가능한 상태다.
+
+---
+
+## Follow-up Resolution — Canonical Brand Master Sync (2026-08-26, 후속)
+
+사용자가 위 PARTIAL COMPLETE 판정과 §P-1 진단을 승인함에 따라 후속 조치를
+수행했다. **위 본문(Purpose~Q. Verdict)은 당시 실제 관측 결과이므로
+수정하지 않고 그대로 보존**한다.
+
+### Discovered Gap(재확인)
+
+```
+LOCAL  canonical work/brand-master.json: sha256 d8cc6bd1ceff395e864bea5cb61015b504b5df56d3d055b4a7fee8981d9a28ff
+       brand count 295, name_aliases raw entries 68, B0000COL(MEANTIME X SUNDAYOFFCLUB) 존재
+RENDER (업로드 전) /api/intelligence/brands: count 277, aliasCount 293
+RENDER (업로드 전) /api/inventory/overview: brandRollup count 252
+LOCAL  /api/intelligence/brands: count 278, aliasCount 361
+```
+예상된 divergence(278/361 vs 277/293)와 정확히 일치 — 새로운 원인 없음.
+
+### Canonical Upload
+
+```
+node scripts/upload-work-snapshots-to-render.mjs --dry-run brand-master.json
+  → {"dryRun": true, "files": ["brand-master.json"]}   (정확히 1개, 다른 snapshot 없음)
+
+node scripts/upload-work-snapshots-to-render.mjs --overwrite brand-master.json
+  → {"ok": true, "overwrite": true, "uploaded": ["brand-master.json"]}
+```
+`brand-master.json` 단 하나만 업로드 — derived registry/inventory/product-registry/
+price-audit/sales/store-master/monthly archive 어느 것도 업로드하지 않음.
+
+### Auto-Rebuild Production Verification(이번 검증의 핵심)
+
+canonical 업로드 **직후, 파생 파일을 수동으로 건드리지 않은 채** 바로
+`GET /api/intelligence/brands`를 호출:
+
+```
+RENDER (canonical 업로드 후, 최초 조회): count 278, aliasCount 361
+```
+Batch 7에서 구현한 hash-gated auto-rebuild(`ensureBrandRegistryFresh()`)가
+**production에서 실제로 작동함을 확인** — canonical stat 변경 감지 →
+content hash mismatch 확인 → 두 파생 파일 자동 재생성, 사람이 파생
+파일을 수동으로 다시 만들어 업로드하지 않았다.
+
+전체 브랜드 목록 단위로 재확인(단순 count 일치가 아니라 실제 내용 일치):
+```
+LOCAL id-set == RENDER id-set: True (both 278)
+only in local: {} / only in render: {}
+B0000COL(MEANTIME X SUNDAYOFFCLUB) RENDER 브랜드 목록에 존재: True
+```
+
+### Inventory Downstream Recovery
+
+```
+RENDER /api/inventory/overview brandRollup count: 252(업로드 전) → 246(업로드 후)
+```
+Local 기준값(246)과 일치 — Brand Registry gap의 하위 증상이었던 Inventory
+rollup 분산도 canonical sync 하나로 함께 해소됨(별도 조치 불필요, §M 진단과
+일치).
+
+### Brand Registry / Inventory Parity
+
+```
+node scripts/verify-render-snapshot-sync.mjs --only brand-registry,inventory
+[PASS] INVENTORY: summary/coverage/brandRollup(ex. recentSalesQty) match, count=246
+[PASS] BRAND REGISTRY: local(278/361) render(278/361)
+```
+
+### Full Production Smoke(13/13)
+
+```
+node scripts/verify-render-snapshot-sync.mjs
+
+STATUS PASS / TODAY PASS / MONTHLY CURRENT PASS / HISTORICAL MONTHLY PASS /
+ANNUAL PASS / CLIENTS PASS / ECOUNT CURRENT MONTH PASS / STORE MASTER PASS /
+INVENTORY PASS / BRAND REGISTRY PASS / PRODUCT REGISTRY PASS /
+PRICE AUDIT PASS / FRONTEND PASS
+
+VERDICT: PRODUCTION BASELINE HEALTHY
+```
+Price Audit(generatedAt/summary 불변), Product Registry(entries=3596 exact
+match), Frontend(sha256 불변) 등 다른 어떤 도메인도 회귀 없음 — 이번
+batch에서 `brand-master.json` 외 어떤 snapshot도 업로드하지 않았으므로
+당연한 결과.
+
+### Final Verdict
+
+```
+BATCH 7 PLATFORM HARDENING COMPLETE — PRODUCTION AUTOMATION READY
+```

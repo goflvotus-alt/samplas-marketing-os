@@ -155,8 +155,19 @@ canonical**을 기준으로 파생 파일을 재생성해, 그동안 가려져 �
 당연히 맞겠지"라고 가정하지 말 것 — 이 파일이 Render에 명시적으로
 업로드된 적이 없으므로, 다음에 브랜드/alias를 추가할 때는 반드시
 `node scripts/upload-work-snapshots-to-render.mjs --overwrite
-brand-master.json`을 함께 실행해야 한다(아직 미승인/미실행 상태로 남아있음
-— 별도 승인 후 진행).
+brand-master.json`을 함께 실행해야 한다.
+
+**해소(Batch 7 후속, 2026-08-26)**: 사용자 승인 후 위 명령으로
+`brand-master.json`을 Render에 최초로 업로드. 파생 파일을 수동으로 다시
+만들지 않고 canonical 업로드만 수행했는데, 바로 다음 `GET
+/api/intelligence/brands` 호출에서 auto-rebuild가 자동으로 반응해
+278/361로 정확히 일치(Render 자체 브랜드 목록도 Local과 id 단위로
+완전히 동일, `B0000COL` 포함) — canonical sync → auto-rebuild 체인이
+production에서 실제로 작동함을 확인. Inventory `brandRollup`도 252→246으로
+함께 회복(별도 조치 불필요). 상세:
+`docs/reports/platform-hardening-mega-batch-2026-08-26.md`의 "Follow-up
+Resolution" 섹션. **이 gap은 다시 재발할 수 있다** — 위 "해결 전 규칙"은
+앞으로도 그대로 유효하다.
 
 ## 6. Reports — 보존 정책
 
@@ -227,13 +238,12 @@ current, Clients, ECOUNT current month)는 재시도 후에도 다르면 FAIL이
 4. 데이터 mismatch는 이 문서/report에 근거를 남기고, 실제 upload/overwrite
    실행은 별도 승인을 받은 뒤에만 한다(자동 실행 금지).
 
-### 알려진 미해결 항목(2026-08-26 기준)
-`work/brand-master.json`이 Render에 한 번도 업로드된 적이 없어 Brand
-Registry가 278/361(Local) vs 277/293(Render)로 벌어져 있음(위 §5 참조).
-승인 후 `node scripts/upload-work-snapshots-to-render.mjs --overwrite
-brand-master.json` 실행 → 자동 rebuild가 Render에서 즉시 재발동 →
-`npm run verify:production --only brand-registry,inventory`로 재검증하는
-순서로 해소 예정.
+### 알려진 미해결 항목 — 해소됨(2026-08-26)
+~~`work/brand-master.json`이 Render에 한 번도 업로드된 적이 없어 Brand
+Registry가 278/361(Local) vs 277/293(Render)로 벌어져 있음.~~ 사용자 승인
+후 canonical 업로드 + auto-rebuild로 해소, `npm run verify:production`
+13/13 PASS 확인(위 §5 "해소(Batch 7 후속)" 참조). 현재 알려진 미해결
+production data gap 없음 — 이후 재발 시 이 섹션에 새로 기록할 것.
 
 ---
 
