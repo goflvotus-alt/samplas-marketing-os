@@ -5,6 +5,7 @@ import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { URL, fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { KNOWN_STORE_CODES, readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
+import { RENDER_SNAPSHOT_MONTHLY_PATTERN, isAllowedRenderSnapshotPath } from "./scripts/render-snapshot-manifest.mjs";
 import { refreshMonthlySales } from "./scripts/refresh-monthly-sales.mjs";
 import { enrichMetaProductBreakdown, applyRuntimeAutoEnrichment } from "./scripts/meta-product-registry-link.mjs";
 import {
@@ -2551,19 +2552,8 @@ const productSalesHistoryFile = () => join(workDir, "product-sales-history.json"
 const brandMasterFile = () => join(workDir, "brand-master.json");
 const brandSourcingMasterFile = () => join(workDir, "brand-sourcing-master.json");
 const productBrandMapFile = () => join(workDir, "product-brand-map.json");
-const workDataUploadPaths = new Set([
-  "brand-master.json",
-  "price-audit.json",
-  "today-product-sync-issues.json",
-  "store-master.json",
-  "product-registry.json",
-  "intelligence/brand-master-list.json",
-  "intelligence/brand-aliases.json",
-  "ecount-inventory/latest.json",
-  "ecount-inventory/diagnostic.json"
-]);
-const monthlyWorkDataPathPattern = /^(?:ecount-sales|monthly)\/(\d{4}-(?:0[1-9]|1[0-2]))(?:\.(?:APGUJEONG|VAIL))?\.json$/;
-export const isAllowedWorkDataUploadPath = (relativePath) => workDataUploadPaths.has(relativePath) || monthlyWorkDataPathPattern.test(relativePath);
+const monthlyWorkDataPathPattern = RENDER_SNAPSHOT_MONTHLY_PATTERN;
+export const isAllowedWorkDataUploadPath = isAllowedRenderSnapshotPath;
 
 async function uploadWorkDataFiles(payload) {
   const files = Array.isArray(payload?.files) ? payload.files : [];

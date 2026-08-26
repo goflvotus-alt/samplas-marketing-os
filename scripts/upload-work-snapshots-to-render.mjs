@@ -1,21 +1,16 @@
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  RENDER_SNAPSHOT_EXPLICIT_PATHS,
+  RENDER_SNAPSHOT_MONTHLY_PATTERN,
+  isAllowedRenderSnapshotPath
+} from "./render-snapshot-manifest.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const monthlyPathPattern = /^(?:ecount-sales|monthly)\/\d{4}-(?:0[1-9]|1[0-2])(?:\.(?:APGUJEONG|VAIL))?\.json$/;
-const explicitPaths = [
-  "brand-master.json",
-  "price-audit.json",
-  "today-product-sync-issues.json",
-  "store-master.json",
-  "product-registry.json",
-  "ecount-inventory/latest.json",
-  "ecount-inventory/diagnostic.json",
-  "intelligence/brand-aliases.json",
-  "intelligence/brand-master-list.json"
-];
-const allowedPath = (relativePath) => explicitPaths.includes(relativePath) || monthlyPathPattern.test(relativePath);
+const monthlyPathPattern = RENDER_SNAPSHOT_MONTHLY_PATTERN;
+const explicitPaths = RENDER_SNAPSHOT_EXPLICIT_PATHS;
+const allowedPath = isAllowedRenderSnapshotPath;
 
 export async function discoverWorkSnapshotPaths(workDir = join(root, "work")) {
   const found = [...explicitPaths];
