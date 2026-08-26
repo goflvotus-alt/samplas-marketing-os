@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { basename, posix as pathPosix } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const detailDatePattern = /^(\d{4})\/(\d{2})\/(\d{2})\s*-\s*(\d+)$/;
+const detailDatePattern = /^(?:([0-9]{4})\/([0-9]{2})\/([0-9]{2})|([0-9]{4})([0-9]{2})([0-9]{2}))\s*-\s*([0-9]+)$/;
 
 export function loadEcountOfflineSalesExcel(filePath, options = {}) {
   if (!filePath) throw new Error("ECOUNT Excel file path is required");
@@ -20,7 +20,10 @@ export function loadEcountOfflineSalesExcel(filePath, options = {}) {
     const rawDateNo = cleanText(row[header.columns.dateNo] || "");
     const match = rawDateNo.match(detailDatePattern);
     if (!match) continue;
-    const [, year, month, day, slipNo] = match;
+    const [, slashYear, slashMonth, slashDay, compactYear, compactMonth, compactDay, slipNo] = match;
+    const year = slashYear || compactYear;
+    const month = slashMonth || compactMonth;
+    const day = slashDay || compactDay;
     const date = `${year}-${month}-${day}`;
     const salesAmount = parseNumber(row[header.columns.salesAmount]);
     const quantity = parseNumber(row[header.columns.quantity]);
