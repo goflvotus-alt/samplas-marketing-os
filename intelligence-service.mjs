@@ -1018,17 +1018,28 @@ async function loadProductRegistryProdCds() {
 }
 
 // work/ecount-sales/*.json(월별 오프라인 매출)을 전부 읽어 순수 계산 함수(buildOfflineSalesIndex)에 넘긴다.
-async function buildEcountOfflineSalesIndexFromDisk() {
-  const names = (await safeReaddir(ecountSalesDir)).filter((name) => /^\d{4}-\d{2}\.json$/.test(name));
-  const monthlyFiles = [];
+// STORE-BATCH-B 이후: 파일을 직접 파싱하지 않고 readEcountOfflineSalesSnapshot()(매장별
+// 분리 스냅샷 병합 + 레거시 단일 파일 fallback + double-count 방지를 이미 처리하는 공용
+// 리더)을 월별로 호출한다 — loadEcountClientLines()와 동일한 패턴(어떤 월이 존재하는지만
+// 디렉터리에서 찾고, 실제 라인 읽기/병합/precedence는 전부 그 공용 리더에 위임).
+// 과거에는 정확히 "{month}.json"만 인식하는 자체 정규식을 썼는데, warehouse-routing 이후
+// "{month}.{storeCode}.json"만 있는 달(예: 2026-09)의 오프라인 매출을 전부 놓치는
+// pipeline gap이었다(docs/reports/inventory-intelligence-v2-preaudit-2026-08-26.md 참고).
+export async function buildEcountOfflineSalesIndexFromDisk(workDirOverride) {
+  const effectiveWorkDir = workDirOverride || workRoot;
+  const dir = join(effectiveWorkDir, "ecount-sales");
+  const names = await safeReaddir(dir);
+  const months = new Set();
   for (const name of names) {
-    try {
-      const snapshot = JSON.parse(await readFile(join(ecountSalesDir, name), "utf8"));
-      const rows = Array.isArray(snapshot?.rows) ? snapshot.rows : [];
-      monthlyFiles.push({ month: snapshot?.month ?? name, rows });
-    } catch {
-      continue;
-    }
+    const match = name.match(/^(\d{4}-\d{2})(?:\.[A-Z0-9_]+)?\.json$/);
+    if (match) months.add(match[1]);
+  }
+  const monthlyFiles = [];
+  for (const month of [...months].sort()) {
+    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir: effectiveWorkDir });
+    if (!snapshot) continue;
+    const rows = Array.isArray(snapshot?.rows) ? snapshot.rows : Array.isArray(snapshot?.salesLines) ? snapshot.salesLines : [];
+    monthlyFiles.push({ month: snapshot?.month ?? month, rows });
   }
   return buildOfflineSalesIndex(monthlyFiles);
 }
