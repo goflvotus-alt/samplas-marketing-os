@@ -14687,6 +14687,7 @@ async function refreshEntityCustomerComposition(brandCode, month) {
       })
     };
   }
+  renderEntityProductSection();
   rebuildEntityCategoryRows();
   rebuildEntityColorRows();
   const compareDataset = entityCompositionDataset(data, compareKey);
