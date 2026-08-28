@@ -1150,7 +1150,7 @@ function storeIntelligenceRange() {
 }
 
 function storeIntelUnavailableHtml(reason) {
-  return `<div class="store-intel-unavailable"><strong>데이터 연결 전</strong><span>${esc(reason)}</span></div>`;
+  return `<div class="store-intel-unavailable"><strong>사용 불가</strong><span>${esc(reason)}</span></div>`;
 }
 
 function storeIntelCoverageText(data) {
@@ -1198,7 +1198,7 @@ async function loadStoreIntelligence(storeCode) {
 
 async function renderApgujeongIntelligenceView() {
   const seq = ++storeIntelligenceRenderSeq;
-  const note = $("#ApgujeongIntelligence .store-intel-mock-note");
+  const note = $("#ApgujeongIntelligence .store-intel-source-note");
   if (note) note.textContent = "Store Intelligence 데이터를 불러오는 중입니다.";
   const data = await loadStoreIntelligence("APGUJEONG");
   if (seq !== storeIntelligenceRenderSeq || data?.error) {
@@ -1212,7 +1212,7 @@ async function renderApgujeongIntelligenceView() {
     { label: sales.latestDay ? `${sales.latestDay.slice(5).replace("-", "/")} 매출` : "최신 반영일 매출", value: apiWon(sales.latestDaySales), delta: `기간 누적 ${apiWon(sales.periodSales)}` },
     { label: "구매 고객 수", value: `${apiNum(clients.summary?.totalClients)}명`, delta: "store-scoped offline" },
     { label: "주문 건수", value: `${apiNum(sales.orderCount)}건`, delta: "전표 기준" },
-    { label: "객단가", value: apiWon(sales.avgOrderValue), delta: "Clients canonical 기준" },
+    { label: "객단가", value: apiWon(sales.avgOrderValue), delta: "매출 ÷ 고유 전표" },
     { label: "재구매 고객 비중", value: "-", delta: data.definitions?.repeatCustomer?.reason || "정의 미확정" }
   ];
   $("#apgujeongIntelKpiRow").innerHTML = kpis.map((k) => salesKpiCard(k.label, k.value, k.delta)).join("");
@@ -1245,15 +1245,18 @@ async function renderApgujeongIntelligenceView() {
   if (customerTypes.length) storeIntelDonutHtml("apgujeongIntelCustomerTypeDonut", "apgujeongIntelCustomerTypeDonutLegend", customerTypes, `${apiNum(totalClients)}명`);
 
   const recent = clients.recentClients || [];
+  const typeLabels = new Map(typeRows.map((row) => [row.type, row.label]));
   $("#apgujeongIntelRecentCustomersTable tbody").innerHTML = recent.length ? recent.map((row) => (
-    `<tr><td>${esc(row.name)}</td><td>${esc(row.latestPurchaseDate || "-")}</td><td>${apiNum(row.purchaseCount)}건</td><td>${apiWon(row.totalSales)}</td><td>담당 관계 데이터 미연결</td></tr>`
+    `<tr><td>${esc(row.name)}</td><td>${esc(row.latestPurchaseDate || "-")}</td><td>${apiNum(row.purchaseCount)}건</td><td>${apiWon(row.totalSales)}</td><td>${esc(typeLabels.get(row.clientType) || row.clientType || "-")}</td></tr>`
   )).join("") : `<tr><td colspan="5">최근 구매 고객 데이터 없음</td></tr>`;
-  $("#apgujeongIntelInsightList").innerHTML = storeIntelUnavailableHtml(data.insights.reason);
+  $("#apgujeongIntelInsightList").innerHTML = data.insights?.available
+    ? storeIntelInsightListHtml(data.insights.items || [])
+    : storeIntelUnavailableHtml(data.insights?.reason);
 }
 
 async function renderVailIntelligenceView() {
   const seq = ++storeIntelligenceRenderSeq;
-  const note = $("#VailIntelligence .store-intel-mock-note");
+  const note = $("#VailIntelligence .store-intel-source-note");
   const badge = $("#VailIntelligence .store-intel-header-badge");
   const title = $("#VailIntelligence .home-hero h3");
   if (badge) badge.textContent = "SAMPLAS VEIL";
@@ -1270,7 +1273,7 @@ async function renderVailIntelligenceView() {
     { label: sales.latestDay ? `${sales.latestDay.slice(5).replace("-", "/")} 매출` : "최신 반영일 매출", value: apiWon(sales.latestDaySales), delta: `기간 누적 ${apiWon(sales.periodSales)}` },
     { label: "판매 수량", value: `${apiNum(sales.quantity)}개`, delta: "ECOUNT Offline" },
     { label: "주문 건수", value: `${apiNum(sales.orderCount)}건`, delta: "전표 기준" },
-    { label: "객단가", value: apiWon(sales.avgOrderValue), delta: "Clients canonical 기준" },
+    { label: "객단가", value: apiWon(sales.avgOrderValue), delta: "매출 ÷ 고유 전표" },
     { label: "신규 고객 비중", value: "-", delta: data.definitions?.newCustomer?.reason || "정의 미확정" }
   ];
   $("#vailIntelKpiRow").innerHTML = kpis.map((k) => salesKpiCard(k.label, k.value, k.delta)).join("");
@@ -1301,11 +1304,11 @@ async function renderVailIntelligenceView() {
     });
   }).join("") : storeIntelUnavailableHtml(data.brands?.reason || "표시 가능한 canonical 브랜드 없음");
 
-  const categories = data.categories?.items || [];
+  const categories = data.categories?.available ? data.categories.items || [] : [];
   if (categories.length) {
     storeIntelDonutHtml("vailIntelCategoryDonut", "vailIntelCategoryDonutLegend", categories.map((row, index) => ({
       ...row, color: STORE_INTELLIGENCE_COLORS[index % STORE_INTELLIGENCE_COLORS.length]
-    })), data.categories.coverage?.coveragePct ? "분류 비중" : "미분류");
+    })), "분류 비중");
   } else {
     const categoryDonut = $("#vailIntelCategoryDonut");
     if (categoryDonut) categoryDonut.style.background = "var(--paper)";
@@ -1314,7 +1317,9 @@ async function renderVailIntelligenceView() {
   $("#vailIntelSellThroughKpi").innerHTML = storeIntelUnavailableHtml(data.sellThrough.reason);
   $("#vailIntelInventoryKpi").innerHTML = storeIntelUnavailableHtml(data.inventory.reason);
   $("#vailIntelNewBrandTable tbody").innerHTML = `<tr><td colspan="4">${esc(data.newBrands.reason)}</td></tr>`;
-  $("#vailIntelInsightList").innerHTML = storeIntelUnavailableHtml(data.insights.reason);
+  $("#vailIntelInsightList").innerHTML = data.insights?.available
+    ? storeIntelInsightListHtml(data.insights.items || [])
+    : storeIntelUnavailableHtml(data.insights?.reason);
 }
 
 // STEP66-1 SECTION 1: Hero Status Badge 색 매핑. docs/DESIGN_SYSTEM.md 8번(Status

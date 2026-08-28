@@ -79,7 +79,7 @@ test("8. Apgujeong brand x stylist section exists (table + customer type donut)"
 test("9. Apgujeong recent customers section exists (5-column table)", () => {
   assert.match(html, /최근 구매 고객 \(상위 5명\)/);
   assert.match(html, /id="apgujeongIntelRecentCustomersTable"/);
-  assert.match(html, /<th>고객명<\/th><th>최근 구매일<\/th><th>구매 횟수<\/th><th>총 구매 금액<\/th><th>담당 스타일리스트<\/th>/);
+  assert.match(html, /<th>고객명<\/th><th>최근 구매일<\/th><th>구매 횟수<\/th><th>총 구매 금액<\/th><th>고객 유형<\/th>/);
 });
 
 test("10. Apgujeong today's insight section exists", () => {

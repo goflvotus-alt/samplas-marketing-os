@@ -2252,7 +2252,7 @@
             <p class="topbar-subtitle">스타일리스트 유형 고객 중심의 인사이트</p>
           </div>
         </div>
-        <p class="store-intel-mock-note">MOCK / UI SHELL — placeholder 데이터입니다. 실제 매출·고객 데이터는 다음 배치에서 연결됩니다.</p>
+        <p class="store-intel-source-note">Store Intelligence 데이터를 불러오는 중입니다.</p>
 
         <div class="section-block">
           <div id="apgujeongIntelKpiRow" class="store-intel-kpi-row"></div>
@@ -2318,7 +2318,7 @@
               <div class="store-intel-panel-head"><h4>최근 구매 고객 (상위 5명)</h4></div>
               <div class="store-intel-table-wrap">
                 <table id="apgujeongIntelRecentCustomersTable">
-                  <thead><tr><th>고객명</th><th>최근 구매일</th><th>구매 횟수</th><th>총 구매 금액</th><th>담당 스타일리스트</th></tr></thead>
+                  <thead><tr><th>고객명</th><th>최근 구매일</th><th>구매 횟수</th><th>총 구매 금액</th><th>고객 유형</th></tr></thead>
                   <tbody></tbody>
                 </table>
               </div>
@@ -2331,8 +2331,7 @@
         </div>
       </section>
 
-      <!-- STORE-INTEL-UI-A: UI Shell only — 실제 상품/재고/Sell-through 연결 없음.
-           MOCK_VAIL_INTELLIGENCE에서 채운다. -->
+      <!-- Store Intelligence: 실제 매장 데이터만 표시하며 미지원 지표는 사용 불가로 표시한다. -->
       <section id="VailIntelligence" class="view store-intel-accent-vail">
         <div class="section-title home-hero">
           <div>
@@ -2341,7 +2340,7 @@
             <p class="topbar-subtitle">MD와 상품 소비자 중심의 인사이트</p>
           </div>
         </div>
-        <p class="store-intel-mock-note">MOCK / UI SHELL — placeholder 데이터입니다. 실제 매출·재고 데이터는 다음 배치에서 연결됩니다.</p>
+        <p class="store-intel-source-note">Store Intelligence 데이터를 불러오는 중입니다.</p>
 
         <div class="section-block">
           <div id="vailIntelKpiRow" class="store-intel-kpi-row"></div>
@@ -2407,6 +2406,6 @@
   </div>
   <div id="productBrandOrderPopover" class="brand-order-popover" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="./samplas-marketing-os.js?v=20260815-category-color-intelligence"></script>
+  <script src="./samplas-marketing-os.js?v=20260828-store-intelligence-real-data"></script>
 </body>
 </html>

@@ -4385,7 +4385,17 @@ export function composeStoreIntelligencePayload({ store, since, until, snapshots
   }));
   const missingMonths = instagramRangeMonthKeys(since, until).filter((month) => !snapshots.some((snapshot) => snapshot?.month === month));
   const products = buildStoreProductIntelligence(lines, identityContext?.productRegistry, identityContext?.brandRegistry);
-  const offlineSales = Number(canonicalSales?.offlineSales?.offlineSalesAmount || 0);
+  const periodSales = Number(canonicalSales?.offlineSales?.offlineSalesAmount || 0);
+  const orderCount = Number(clients?.summary?.offlineOrderCount || 0);
+  const topBrand = brandItems[0] || null;
+  const topProduct = products.items[0] || null;
+  const stylistType = (clients?.typeBreakdown || []).find((row) => row.type === "stylist");
+  const insights = [
+    `${since} ~ ${until} 매장 매출 ${periodSales.toLocaleString("ko-KR")}원 · ${orderCount.toLocaleString("ko-KR")}건`,
+    topBrand && `TOP 브랜드 ${topBrand.brand_name || topBrand.brand_code} · ${Number(topBrand.salesAmount || topBrand.canonicalPaidAmount || 0).toLocaleString("ko-KR")}원`,
+    store.storeCode === "APGUJEONG" && stylistType && `스타일리스트 유형 고객 매출 ${Number(stylistType.salesAmount || 0).toLocaleString("ko-KR")}원 · ${Number(stylistType.clientCount || 0).toLocaleString("ko-KR")}명`,
+    store.storeCode === "VAIL" && topProduct && `TOP 상품 ${topProduct.product_name || topProduct.product_code} · ${Number(topProduct.quantitySold || 0).toLocaleString("ko-KR")}개`
+  ].filter(Boolean);
   return {
     store: { code: store.storeCode, displayName: store.storeCode === "VAIL" ? "VEIL" : store.displayName },
     coverage: {
@@ -4398,12 +4408,12 @@ export function composeStoreIntelligencePayload({ store, since, until, snapshots
     },
     sales: snapshots.length ? {
       available: true,
-      periodSales: Number(canonicalSales?.offlineSales?.offlineSalesAmount || 0),
+      periodSales,
       latestDay: latestDay?.date || null,
       latestDaySales: latestDay ? Number(latestDay.offlineSalesAmount || 0) : null,
       quantity: Number(clients?.summary?.offlineQuantity || 0),
-      orderCount: Number(clients?.summary?.offlineOrderCount || 0),
-      avgOrderValue: Number(clients?.summary?.avgOrderValue || 0)
+      orderCount,
+      avgOrderValue: orderCount > 0 ? periodSales / orderCount : null
     } : { available: false, reason: "매장 매출 데이터 미업로드" },
     brands: snapshots.length ? { available: true, items: brandItems } : { available: false, reason: "매장 매출 데이터 미업로드", items: [] },
     clients: snapshots.length ? {
@@ -4414,16 +4424,11 @@ export function composeStoreIntelligencePayload({ store, since, until, snapshots
       recentClients
     } : { available: false, reason: "매장 고객 데이터 미업로드" },
     products: snapshots.length ? products : { available: false, reason: "매장 매출 데이터 미업로드", items: [] },
-    categories: snapshots.length ? {
-      available: true,
-      items: [{ code: "UNKNOWN", name: "미분류", salesAmount: offlineSales, share: offlineSales ? 100 : 0 }],
-      coverage: { classifiedSales: 0, unclassifiedSales: offlineSales, coveragePct: 0 },
-      reason: "canonical category 데이터 미연결"
-    } : { available: false, reason: "매장 매출 데이터 미업로드", items: [] },
-    inventory: { available: false, reason: "매장별 재고 데이터 미연결" },
-    sellThrough: { available: false, reason: "입고 데이터 미연결" },
-    newBrands: { available: false, reason: "입점일 데이터 미연결" },
-    insights: { available: false, reason: "인사이트 규칙 미정의" },
+    categories: { available: false, reason: "확정 상품의 canonical category 연결 없음", items: [] },
+    inventory: { available: false, reason: "ECOUNT 재고에 매장별 창고 구분이 없어 계산 불가" },
+    sellThrough: { available: false, reason: "기간 시작 재고와 입고일 source가 없어 계산 불가" },
+    newBrands: { available: false, reason: "canonical 입점일 source가 없어 계산 불가" },
+    insights: snapshots.length ? { available: true, method: "deterministic", items: insights } : { available: false, reason: "매장 매출 데이터 미업로드", items: [] },
     relationships: { available: false, reason: "담당 관계 데이터 미연결" },
     brandClientCross: { available: false, reason: "브랜드 교차 집계 연결 대기" },
     definitions: { repeatCustomer: { available: false, reason: "정의 미확정" }, newCustomer: { available: false, reason: "정의 미확정" } }

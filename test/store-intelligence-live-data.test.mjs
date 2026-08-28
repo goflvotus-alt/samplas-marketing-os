@@ -33,7 +33,7 @@ function vailPayload() {
     }],
     canonicalSales: { offlineSales: { offlineSalesAmount: 70200 } },
     clients: {
-      summary: { totalClients: 1, offlineQuantity: 1, offlineOrderCount: 1, avgOrderValue: 70200 },
+      summary: { totalClients: 1, offlineQuantity: 1, offlineOrderCount: 1, avgOrderValue: 1 },
       typeBreakdown: [{ type: "samplas_press", label: "SAMPLAS PRESS", clientCount: 1, salesAmount: 70200 }],
       stylistTop10: [],
       clients: [{ clientId: "1", name: "고객", clientType: "samplas_press", latestPurchaseDate: "2026-08-13", purchaseCount: 1, totalSales: 70200 }]
@@ -61,9 +61,13 @@ test("unsupported sections are unavailable, never fabricated zero arrays", () =>
   assert.equal(payload.products.available, true);
   assert.equal(payload.products.items.length, 0);
   assert.equal(payload.products.coverage.unresolvedLines, 1);
-  assert.equal(payload.categories.items[0].name, "미분류");
-  assert.equal(payload.categories.items[0].salesAmount, 70200);
-  for (const key of ["inventory", "sellThrough", "newBrands", "insights", "relationships", "brandClientCross"]) {
+  assert.equal(payload.categories.available, false);
+  assert.deepEqual(payload.categories.items, []);
+  assert.equal(payload.insights.available, true);
+  assert.equal(payload.insights.method, "deterministic");
+  assert.match(payload.insights.items[0], /70,200원 · 1건/);
+  assert.match(payload.insights.items[1], /PACOSPLY · 70,200원/);
+  for (const key of ["inventory", "sellThrough", "newBrands", "relationships", "brandClientCross"]) {
     assert.equal(payload[key].available, false, key);
     assert.ok(payload[key].reason, key);
   }
@@ -126,4 +130,10 @@ test("Store Intelligence source contains no former mock objects or fabricated va
     "MOCK_APGUJEONG_INTELLIGENCE", "MOCK_VAIL_INTELLIGENCE", "8,420,000원", "5,180,000원",
     "382,700원", "167,100원", "Archive Wool Coat", "Signature Knit Top", "1,240개", "182,600,000원"
   ]) assert.doesNotMatch(source, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), forbidden);
+});
+
+test("Store Intelligence HTML contains no mock or placeholder disclosure", async () => {
+  const source = await readFile(new URL("../outputs/samplas-marketing-os.html", import.meta.url), "utf8");
+  const storeRegion = source.slice(source.indexOf('id="ApgujeongIntelligence"'), source.indexOf("</main>"));
+  assert.doesNotMatch(storeRegion, /MOCK|placeholder|UI Shell/i);
 });
