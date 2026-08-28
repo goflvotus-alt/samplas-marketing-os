@@ -20,6 +20,9 @@ export async function importEcountOfflineSalesSnapshot(filePath, options = {}) {
   if (!filePath) throw new Error("ECOUNT Excel file path is required");
   const loaded = loadEcountOfflineSalesExcel(filePath, options);
   const month = monthFromLoadedSales(loaded);
+  if (options.expectedMonth && month !== options.expectedMonth) {
+    throw new Error(`파일명 월 ${options.expectedMonth}과 XLSX 데이터 월 ${month}이 일치하지 않습니다.`);
+  }
   const workDir = resolve(options.workDir || join(process.cwd(), "work"));
   const snapshotDir = options.outputDir ? resolve(options.outputDir) : join(workDir, "ecount-sales");
   await mkdir(snapshotDir, { recursive: true });

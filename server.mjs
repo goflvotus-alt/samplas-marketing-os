@@ -70,6 +70,7 @@ const port = Number(env.PORT || 8787);
 const host = env.HOST || "127.0.0.1";
 const graphVersion = env.GRAPH_VERSION || "v25.0";
 const isMainModule = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const operatorSessions = new Set();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -566,7 +567,7 @@ const server = isMainModule ? createServer(async (req, res) => {
     }
     if (url.pathname === "/api/ecount-sales/import") {
       if (req.method !== "POST") return json(res, { error: "POST만 지원합니다." }, 405);
-      if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      if (!isAuthorizedEcountImport(req)) return json(res, { error: "Production 업로드 권한을 확인할 수 없습니다." }, 401);
       try {
         const data = await importEcountOfflineSalesUpload(req);
         return json(res, data);
@@ -574,6 +575,14 @@ const server = isMainModule ? createServer(async (req, res) => {
         const message = safeErrorMessage(error);
         return json(res, { error: message }, error.status || 400);
       }
+    }
+    if (url.pathname === "/api/operator/session") {
+      if (req.method !== "POST") return json(res, { error: "POST만 지원합니다." }, 405);
+      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Production 업로드 권한을 확인할 수 없습니다." }, 401);
+      const token = randomUUID();
+      operatorSessions.add(token);
+      res.setHeader("Set-Cookie", `samplas_operator=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${isLocalRequest(req) ? "" : "; Secure"}`);
+      return json(res, { ok: true });
     }
     if (url.pathname === "/api/diagnostics/product-join-report") {
       // 상품 Join 진단용 읽기 전용 API. 토큰/시크릿은 포함하지 않는다.
@@ -1627,7 +1636,8 @@ async function importEcountOfflineSalesUpload(req) {
       writeArchive: writeMonthlyArchive,
       storeCode: warehouseRouted ? null : store.storeCode,
       sourceWarehouseCode: warehouseRouted ? null : store.source?.warehouseCode || null,
-      sourceWarehouseName: warehouseRouted ? null : store.source?.warehouseName || null
+      sourceWarehouseName: warehouseRouted ? null : store.source?.warehouseName || null,
+      force: true
     });
     const result = results[0];
     if (!result) {
@@ -1804,6 +1814,18 @@ function isAuthorizedInternalRequest(req) {
 function isLocalRequest(req) {
   const requestHost = String(req.headers.host || "").split(":")[0];
   return requestHost === "127.0.0.1" || requestHost === "localhost" || requestHost === "::1";
+}
+
+function isAuthorizedEcountImport(req) {
+  if (isLocalRequest(req) || isAuthorizedInternalRequest(req)) return true;
+  const origin = String(req.headers.origin || "");
+  try {
+    if (!origin || new URL(origin).host !== String(req.headers.host || "")) return false;
+  } catch {
+    return false;
+  }
+  const cookies = Object.fromEntries(String(req.headers.cookie || "").split(";").map((part) => part.trim().split("=")).filter(([key, value]) => key && value));
+  return operatorSessions.has(cookies.samplas_operator);
 }
 
 async function fetchCafe24Orders(startDate, endDate, options = {}) {

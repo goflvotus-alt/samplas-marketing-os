@@ -13138,7 +13138,7 @@ function ecountWizardModalNode() {
         <strong id="ecountWizardTitle" class="ecount-wizard-title">Monthly Sales — ECOUNT 판매현황 업로드</strong>
         <p class="ecount-wizard-desc">ECOUNT 판매현황에서 기간을 조회한 뒤 XLSX 파일 하나를 업로드하세요. 창고명 기준으로 압구정 매장 / SAMPLAS VEIL 매출이 자동 분류됩니다.</p>
         ${ecountWizardUploadSlotHtml()}
-        <p class="ecount-wizard-note">처리 순서: XLSX 업로드 → 창고명 기준 매장 자동 분류 → APGUJEONG / VAIL Snapshot 생성 → Monthly 데이터 재계산. 로컬 Marketing OS(127.0.0.1:8787)에만 반영되며, Render 운영 배포는 별도로 진행합니다.</p>
+        <p class="ecount-wizard-note">ECOUNT 판매현황 XLSX를 업로드하면 창고 기준으로 APGUJEONG / VEIL 매출이 자동 분류되어 현재 운영 환경에 즉시 반영됩니다.</p>
       </div>`;
     document.body.appendChild(modal);
   }
@@ -13189,12 +13189,29 @@ async function postEcountOfflineFile(file, timeoutMs = 60000) {
     } catch {
       body = { error: `응답을 읽지 못했습니다: ${text.slice(0, 100)}` };
     }
+    body.status = response.status;
     if (!response.ok && !body.error) body.error = `API 오류 ${response.status}`;
     return body;
   } catch (error) {
     return { error: error.name === "AbortError" ? "응답 지연" : error.message };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function authorizeEcountProductionUpload() {
+  const username = window.prompt("Production 운영 계정");
+  if (username === null) return false;
+  const password = window.prompt("Production 운영 비밀번호");
+  if (password === null) return false;
+  try {
+    const response = await fetch("/api/operator/session", {
+      method: "POST",
+      headers: { Authorization: `Basic ${btoa(`${username}:${password}`)}` }
+    });
+    return response.ok;
+  } finally {
+    // 입력값은 이 호출 이후 저장하지 않는다.
   }
 }
 
@@ -13215,7 +13232,12 @@ async function ecountWizardHandleApplyClick() {
   status.hidden = false;
   status.classList.remove("is-error");
   try {
-    const result = await postEcountOfflineFile(file);
+    let result = await postEcountOfflineFile(file);
+    if (result?.status === 401) {
+      status.textContent = "Production 업로드 권한을 확인해주세요.";
+      if (await authorizeEcountProductionUpload()) result = await postEcountOfflineFile(file);
+      else result = { error: "Production 업로드 권한을 확인할 수 없습니다. 페이지를 새로고침하거나 운영 권한 설정을 확인해주세요." };
+    }
     if (result?.error) {
       status.textContent = `적용 실패: ${result.error}`;
       status.classList.add("is-error");

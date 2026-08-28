@@ -82,7 +82,9 @@ export async function refreshMonthlySales(folder, options = {}) {
   for (const file of files) {
     const startedAt = Date.now();
     const xlsxPath = join(resolve(folder), file.name);
-    const detected = await refreshStatusForFile(xlsxPath, file.month, workDir, storeCode);
+    const detected = options.force
+      ? { status: "FORCED", reason: "Uploaded workbook validation required" }
+      : await refreshStatusForFile(xlsxPath, file.month, workDir, storeCode);
     log(`[${file.month}] ${file.name}\n${detected.status}`);
     if (detected.status === "FRESH") {
       log("Skipped");
@@ -103,7 +105,7 @@ export async function refreshMonthlySales(folder, options = {}) {
 
     const result = { month: file.month, status: detected.status, snapshot: "FAIL", archive: "SKIP", reason: detected.reason, duration: 0 };
     try {
-      const imported = await importSnapshot(xlsxPath, { workDir, storeCode, sourceWarehouseCode, sourceWarehouseName });
+      const imported = await importSnapshot(xlsxPath, { workDir, storeCode, sourceWarehouseCode, sourceWarehouseName, expectedMonth: file.month });
       if (imported?.snapshot?.month !== file.month) throw new Error(`Filename month ${file.month} does not match snapshot month ${imported?.snapshot?.month || "unknown"}`);
       result.snapshot = "PASS";
       log("Snapshot\nPASS");
