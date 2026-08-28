@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-27T15:17:15.586Z",
+  "generatedAt": "2026-08-28T02:50:47.404Z",
   "mode": "product_registry_phase1_diagnostic_only",
   "source": {
     "diagnostic": "work/cafe24-ecount-product-matching-diagnostic.json",
@@ -12,12 +12,12 @@
   },
   "summary": {
     "registryCount": 3596,
-    "verifiedCount": 595,
+    "verifiedCount": 597,
     "confidenceDistribution": {
-      "100": 595,
+      "100": 597,
       "95-99": 987,
       "80-94": 25,
-      "60-79": 1820,
+      "60-79": 1818,
       "0-59": 169
     },
     "brandCounts": [
@@ -5857,9 +5857,9 @@
       "brandId": "B00000MJ",
       "brandName": "레저렉션13",
       "canonicalProductName": "26-AC011 BLACK",
-      "status": "ambiguous",
-      "confidence": 67,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14559",
         "productCode": "P0000VNZ",
@@ -5868,31 +5868,43 @@
       "ecount": {
         "matchedProducts": [
           {
-            "prodCd": "RES253AC00800",
-            "barcode": "RES253AC00800",
-            "productName": "RESURRECITON 13 / 25-AC011 black",
-            "size": "OS",
-            "supplier": null,
-            "consignment": false
+            "prodCd": "RES261AC00100",
+            "productName": "RESURRECITON 13 / 26-AC011 black",
+            "size": "OS"
           }
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "fuzzy_ambiguous"
         ],
         "evidence": [
-          "normalized_brand",
-          "product_name_token_similarity"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "exact_model_style_code",
+          "unique_ecount_family"
         ],
-        "pendingReasons": [
-          "manual_review_required",
-          "multiple_fuzzy_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "exact_model_style_code",
+            "unique_ecount_family"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_model_conflict",
+            "no_family_ambiguity"
+          ]
+        }
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-08-28T02:50:47.404Z"
     },
     {
       "canonicalProductId": "CP-C24-14887",
@@ -5946,9 +5958,9 @@
       "brandId": "B00000MJ",
       "brandName": "레저렉션13",
       "canonicalProductName": "26-T011 BLACK",
-      "status": "ambiguous",
-      "confidence": 67,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "14563",
         "productCode": "P0000VOD",
@@ -5957,63 +5969,53 @@
       "ecount": {
         "matchedProducts": [
           {
-            "prodCd": "POP263RES02202",
-            "barcode": "POP263RES02202",
-            "productName": "RESURRECITON 13 / 25-T011 black / S SIZE",
-            "size": "S",
-            "supplier": null,
-            "consignment": false
+            "prodCd": "RES261ST00102",
+            "productName": "RESURRECITON 13 / 26-T011 black",
+            "size": "S"
           },
           {
-            "prodCd": "POP263RES02204",
-            "barcode": "POP263RES02204",
-            "productName": "RESURRECITON 13 / 25-T011 black / L SIZE",
-            "size": "L",
-            "supplier": null,
-            "consignment": false
+            "prodCd": "RES261ST00103",
+            "productName": "RESURRECITON 13 / 26-T011 black",
+            "size": "M"
           },
           {
-            "prodCd": "RES253LT01302",
-            "barcode": "RES253LT01302",
-            "productName": "RESURRECITON 13 / 25-T011 black",
-            "size": "S",
-            "supplier": null,
-            "consignment": false
-          },
-          {
-            "prodCd": "RES253LT01303",
-            "barcode": "RES253LT01303",
-            "productName": "RESURRECITON 13 / 25-T011 black",
-            "size": "M",
-            "supplier": null,
-            "consignment": false
-          },
-          {
-            "prodCd": "RES253LT01304",
-            "barcode": "RES253LT01304",
-            "productName": "RESURRECITON 13 / 25-T011 black",
-            "size": "L",
-            "supplier": null,
-            "consignment": false
+            "prodCd": "RES261ST00104",
+            "productName": "RESURRECITON 13 / 26-T011 black",
+            "size": "L"
           }
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "fuzzy_ambiguous"
         ],
         "evidence": [
-          "normalized_brand",
-          "product_name_token_similarity"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "exact_model_style_code",
+          "unique_ecount_family"
         ],
-        "pendingReasons": [
-          "manual_review_required",
-          "multiple_fuzzy_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "exact_model_style_code",
+            "unique_ecount_family"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_model_conflict",
+            "no_family_ambiguity"
+          ]
+        }
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-08-28T02:50:47.404Z"
     },
     {
       "canonicalProductId": "CP-C24-14561",

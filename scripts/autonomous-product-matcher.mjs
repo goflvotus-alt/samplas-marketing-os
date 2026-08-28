@@ -30,6 +30,15 @@ export function normalizeIdentity(value) {
     .trim();
 }
 
+export function extractStrongModelTokens(value) {
+  return normalizeIdentity(value)
+    .split(" ")
+    .filter((token) =>
+      /^(?=.*[A-Z])(?=.*\d)[A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(token) &&
+      !/^\d{2}(?:SS|FW|AW)$/.test(token)
+    );
+}
+
 export function parseEcountIdentity(row) {
   let productName = nameOf(row);
   const slash = productName.indexOf("/");
@@ -92,6 +101,17 @@ export function decideEntry(entry, aliases, index) {
   if (!candidates.length) return { tier: "NO_CANDIDATE", reason: "no_exact_trusted_brand_title_candidate", candidates };
   const families = new Set(candidates.map((row) => familyOf(codeOf(row))));
   if (families.size !== 1) return { tier: "AMBIGUOUS", reason: "multiple_exact_product_families", candidates };
+  const modelTokens = extractStrongModelTokens(entry.canonicalProductName);
+  if (modelTokens.length) {
+    return {
+      tier: "AUTO_SAFE",
+      reason: "trusted_brand_exact_title_model_unique_family",
+      candidates,
+      replaceCandidateSet: !codesEqual(candidates, entry?.ecount?.matchedProducts || []),
+      evidence: ["trusted_brand_alias", "exact_normalized_product_title", "exact_model_style_code", "unique_ecount_family"],
+      negativeChecks: ["no_brand_conflict", "no_title_conflict", "no_model_conflict", "no_family_ambiguity"]
+    };
+  }
   const evidence = new Set(entry?.matching?.evidence || []);
   if (!evidence.has("normalized_brand") || !evidence.has("normalized_product_name")) {
     return { tier: "SAFE_REVIEW", reason: "existing_diagnostic_lacks_independent_exact_evidence", candidates };
@@ -117,7 +137,11 @@ export function auditRegistry(registry, priceAudit, fullProducts, brandMaster = 
     const entry = byId.get(row.canonicalProductId);
     if (entry?.verified) return { row, entry, decision: { tier: "DATA_ISSUE", reason: row.reason, candidates: [] } };
     const decision = decideEntry(entry, aliases, index);
-    if (decision.tier === "AUTO_SAFE" && row.reason !== "low_confidence_registry_match_with_price_diff") {
+    if (
+      decision.tier === "AUTO_SAFE" &&
+      row.reason !== "low_confidence_registry_match_with_price_diff" &&
+      decision.reason !== "trusted_brand_exact_title_model_unique_family"
+    ) {
       decision.tier = "DATA_ISSUE";
       decision.reason = row.reason;
     }
@@ -132,11 +156,17 @@ export function backtestRegistry(registry, fullProducts, brandMaster = { brands:
   const trusted = (registry.entries || []).filter((entry) => entry?.verified && entry?.status === "confirmed" && entry?.brandId && entry?.ecount?.matchedProducts?.length);
   const index = buildExactIndex(fullProducts);
   let autoSafe = 0;
+  let correct = 0;
+  let wrong = 0;
   for (const entry of trusted) {
     const holdoutAliases = buildTrustedBrandAliases(trusted.filter((candidate) => candidate !== entry), brandMaster.brands || brandMaster);
-    if (decideEntry(entry, holdoutAliases, index).tier === "AUTO_SAFE") autoSafe += 1;
+    const decision = decideEntry(entry, holdoutAliases, index);
+    if (decision.tier !== "AUTO_SAFE") continue;
+    autoSafe += 1;
+    if (codesEqual(decision.candidates, entry.ecount.matchedProducts)) correct += 1;
+    else wrong += 1;
   }
-  return { total: trusted.length, autoSafe, correct: autoSafe, wrong: 0, abstained: trusted.length - autoSafe, precision: autoSafe ? 1 : null };
+  return { total: trusted.length, autoSafe, correct, wrong, abstained: trusted.length - autoSafe, precision: autoSafe ? correct / autoSafe : null };
 }
 
 async function main() {
@@ -163,6 +193,13 @@ async function main() {
   }
   const now = new Date().toISOString();
   for (const { entry, decision } of proposals) {
+    if (decision.replaceCandidateSet) {
+      entry.ecount.matchedProducts = decision.candidates.map((candidate) => ({
+        prodCd: codeOf(candidate),
+        productName: nameOf(candidate),
+        size: sizeOf(candidate) || null
+      }));
+    }
     entry.status = "confirmed";
     entry.confidence = 100;
     entry.verified = true;

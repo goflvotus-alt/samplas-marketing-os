@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildExactIndex, buildTrustedBrandAliases, decideEntry } from "../scripts/autonomous-product-matcher.mjs";
+import { auditRegistry, buildExactIndex, buildTrustedBrandAliases, decideEntry, extractStrongModelTokens } from "../scripts/autonomous-product-matcher.mjs";
 
 const match = (prodCd, productName, size = "M") => ({ prodCd, productName, size });
 const trusted = {
@@ -9,6 +9,34 @@ const trusted = {
   matching: { evidence: ["normalized_brand", "normalized_product_name"] }
 };
 const aliases = buildTrustedBrandAliases([trusted]);
+
+{
+  assert.deepEqual(extractStrongModelTokens("26-AC011 BLACK"), ["26-AC011"]);
+  assert.deepEqual(extractStrongModelTokens("25SS MODEL 2026 100000 SIZE 2"), []);
+}
+
+{
+  const model = { ...trusted, canonicalProductName: "26-AC011 BLACK", ecount: { matchedProducts: [match("OLD00100", "BRAND A / 25-AC011 BLACK", "OS")] } };
+  const current = match("NEW00100", "BRAND A / 26-AC011 BLACK", "OS");
+  const decision = decideEntry(model, aliases, buildExactIndex([current]));
+  assert.equal(decision.tier, "AUTO_SAFE");
+  assert.equal(decision.replaceCandidateSet, true);
+}
+
+{
+  const model = { ...trusted, canonicalProductName: "US-011 JACKET" };
+  const candidates = [match("AAA00101", "BRAND A / US-011 JACKET"), match("BBB00101", "BRAND A / US-011 JACKET")];
+  assert.equal(decideEntry(model, aliases, buildExactIndex(candidates)).tier, "AMBIGUOUS");
+}
+
+{
+  const model = { ...trusted, canonicalProductId: "MODEL", canonicalProductName: "26-T011 BLACK", status: "ambiguous", verified: false };
+  const registry = { entries: [model] };
+  const priceAudit = { rows: [{ canonicalProductId: "MODEL", status: "REVIEW_REQUIRED", reason: "ecount_sku_prices_disagree" }] };
+  const products = [match("NEW00102", "BRAND A / 26-T011 BLACK")];
+  const brandMaster = { brands: [{ brand_code: "B1", brand_name: "BRAND A", active: true }] };
+  assert.equal(auditRegistry(registry, priceAudit, products, brandMaster).decisions[0].decision.tier, "AUTO_SAFE");
+}
 
 {
   const masterAliases = buildTrustedBrandAliases([], {
