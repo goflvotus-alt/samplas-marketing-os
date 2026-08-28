@@ -43,8 +43,14 @@ export function parseEcountIdentity(row) {
   return { brand: normalizeIdentity(brand), title: normalizeIdentity(productName) };
 }
 
-export function buildTrustedBrandAliases(entries) {
+export function buildTrustedBrandAliases(entries, brands = []) {
   const aliases = new Map();
+  for (const brand of brands) {
+    if (!brand?.brand_code || brand?.active === false) continue;
+    aliases.set(brand.brand_code, new Set(
+      [brand.brand_name, ...(brand.name_aliases || [])].map(normalizeIdentity).filter(Boolean)
+    ));
+  }
   for (const entry of entries) {
     if (!entry?.verified || entry?.status !== "confirmed" || !entry?.brandId) continue;
     for (const match of entry?.ecount?.matchedProducts || []) {
@@ -102,8 +108,8 @@ export function decideEntry(entry, aliases, index) {
   };
 }
 
-export function auditRegistry(registry, priceAudit, fullProducts) {
-  const aliases = buildTrustedBrandAliases(registry.entries || []);
+export function auditRegistry(registry, priceAudit, fullProducts, brandMaster = { brands: [] }) {
+  const aliases = buildTrustedBrandAliases(registry.entries || [], brandMaster.brands || brandMaster);
   const index = buildExactIndex(fullProducts);
   const byId = new Map((registry.entries || []).map((entry) => [entry.canonicalProductId, entry]));
   const rows = (priceAudit.rows || []).filter((row) => ["MATCH_REQUIRED", "REVIEW_REQUIRED"].includes(row.status));
@@ -122,12 +128,12 @@ export function auditRegistry(registry, priceAudit, fullProducts) {
   return { aliases, index, decisions, summary };
 }
 
-export function backtestRegistry(registry, fullProducts) {
+export function backtestRegistry(registry, fullProducts, brandMaster = { brands: [] }) {
   const trusted = (registry.entries || []).filter((entry) => entry?.verified && entry?.status === "confirmed" && entry?.brandId && entry?.ecount?.matchedProducts?.length);
   const index = buildExactIndex(fullProducts);
   let autoSafe = 0;
   for (const entry of trusted) {
-    const holdoutAliases = buildTrustedBrandAliases(trusted.filter((candidate) => candidate !== entry));
+    const holdoutAliases = buildTrustedBrandAliases(trusted.filter((candidate) => candidate !== entry), brandMaster.brands || brandMaster);
     if (decideEntry(entry, holdoutAliases, index).tier === "AUTO_SAFE") autoSafe += 1;
   }
   return { total: trusted.length, autoSafe, correct: autoSafe, wrong: 0, abstained: trusted.length - autoSafe, precision: autoSafe ? 1 : null };
@@ -135,17 +141,19 @@ export function backtestRegistry(registry, fullProducts) {
 
 async function main() {
   const apply = process.argv.includes("--apply");
-  const [registryText, priceAuditText, fullText] = await Promise.all([
+  const [registryText, priceAuditText, fullText, brandMasterText] = await Promise.all([
     readFile(join(workDir, "product-registry.json"), "utf8"),
     readFile(join(workDir, "price-audit.json"), "utf8"),
-    readFile(join(workDir, "ecount-inventory", "full-products-candidate.json"), "utf8")
+    readFile(join(workDir, "ecount-inventory", "full-products-candidate.json"), "utf8"),
+    readFile(join(workDir, "brand-master.json"), "utf8")
   ]);
   const registry = JSON.parse(registryText);
   const priceAudit = JSON.parse(priceAuditText);
   const fullRaw = JSON.parse(fullText);
+  const brandMaster = JSON.parse(brandMasterText);
   const fullProducts = Array.isArray(fullRaw) ? fullRaw : fullRaw.products || fullRaw.rows || fullRaw.items || [];
-  const audit = auditRegistry(registry, priceAudit, fullProducts);
-  const backtest = backtestRegistry(registry, fullProducts);
+  const audit = auditRegistry(registry, priceAudit, fullProducts, brandMaster);
+  const backtest = backtestRegistry(registry, fullProducts, brandMaster);
   console.log(JSON.stringify({ version: VERSION, backtest, unresolved: audit.decisions.length, tiers: audit.summary }, null, 2));
   if (!apply) return;
   const proposals = audit.decisions.filter((item) => item.decision.tier === "AUTO_SAFE");

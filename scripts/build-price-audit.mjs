@@ -30,6 +30,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { fetchAllCafe24ProductsFullCatalog } from "./cafe24-script-client.mjs";
 
 const rootDir = resolve(fileURLToPath(import.meta.url), "..", "..");
 const workDir = join(rootDir, "work");
@@ -232,6 +233,18 @@ export async function buildPriceAudit(options = {}) {
     : eligible;
   const targets = options.limit ? selected.slice(0, options.limit) : selected;
 
+  let catalog = { products: options.cafe24Products || [], pagesFetched: 0, stoppedReason: options.cafe24Products ? "injected" : "fetch_failed" };
+  if (!options.cafe24Products) {
+    try {
+      catalog = await fetchAllCafe24ProductsFullCatalog();
+    } catch (error) {
+      console.error(`[price-audit] full catalog unavailable; falling back to product detail requests: ${error.message}`);
+    }
+  }
+  const cafe24ByProductNo = new Map(catalog.products.map((product) => [String(product.product_no), product]));
+  let detailRequests = 0;
+  let discountRequests = 0;
+
   console.error(`[price-audit] ${targets.length} registry entries with a Cafe24 productNo (of ${eligible.length} total, ${registry.entries.length} in registry)`);
 
   const rows = await mapWithConcurrency(targets, CONCURRENCY, async (entry) => {
@@ -284,19 +297,26 @@ export async function buildPriceAudit(options = {}) {
 
     if (ecountSkus.length) {
       try {
-        const detailRes = await fetchWithRetry(
-          `${baseUrl}/api/cafe24/products/${encodeURIComponent(productNo)}`,
-          { headers }
-        );
+        let product = cafe24ByProductNo.get(String(productNo)) || null;
+        let detailBody = null;
+        let detailRes = null;
+        if (!product) {
+          detailRequests += 1;
+          detailRes = await fetchWithRetry(
+            `${baseUrl}/api/cafe24/products/${encodeURIComponent(productNo)}`,
+            { headers }
+          );
+          detailBody = await detailRes.json();
+          if (detailRes.ok && !detailBody.error) product = detailBody.product || {};
+        }
         await sleep(100);
+        discountRequests += 1;
         const discountRes = await fetchWithRetry(
           `${baseUrl}/api/cafe24/products/${encodeURIComponent(productNo)}/discountprice`,
           { headers }
         );
-        const detailBody = await detailRes.json();
         const discountBody = await discountRes.json();
-        if (detailRes.ok && !detailBody.error) {
-          const product = detailBody.product || {};
+        if (product) {
           const discountprice = discountRes.ok && !discountBody.error ? (discountBody.discountprice || {}) : {};
           const priced = effectiveCafe24Price(product, discountprice);
           cafe24Price = priced.salePrice;
@@ -305,7 +325,7 @@ export async function buildPriceAudit(options = {}) {
           cafe24Selling = product.selling ?? null;
           cafe24Fetched = true;
         } else {
-          fetchError = detailBody.error || `http_${detailRes.status}`;
+          fetchError = detailBody?.error || `http_${detailRes?.status || "missing_product"}`;
         }
       } catch (error) {
         fetchError = error.message;
@@ -382,6 +402,14 @@ export async function buildPriceAudit(options = {}) {
     registryTotal: registry.entries.length,
     eligibleTotal: eligible.length,
     auditedTotal: rows.length,
+    requestStats: {
+      catalogPages: catalog.pagesFetched,
+      catalogStoppedReason: catalog.stoppedReason,
+      catalogProducts: catalog.products.length,
+      detailRequests,
+      discountRequests,
+      totalRequests: catalog.pagesFetched + detailRequests + discountRequests
+    },
     summary,
     rows
   };

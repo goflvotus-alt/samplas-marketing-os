@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-27T13:41:34.759Z",
+  "generatedAt": "2026-08-27T15:17:15.586Z",
   "mode": "product_registry_phase1_diagnostic_only",
   "source": {
     "diagnostic": "work/cafe24-ecount-product-matching-diagnostic.json",
@@ -12,12 +12,12 @@
   },
   "summary": {
     "registryCount": 3596,
-    "verifiedCount": 566,
+    "verifiedCount": 595,
     "confidenceDistribution": {
-      "100": 566,
+      "100": 595,
       "95-99": 987,
       "80-94": 25,
-      "60-79": 1849,
+      "60-79": 1820,
       "0-59": 169
     },
     "brandCounts": [
@@ -1510,9 +1510,9 @@
       "brandId": "B00000VJ",
       "brandName": "게릿 제이콥",
       "canonicalProductName": "CARGO PANTS - green black",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9759",
         "productCode": "P0000OLJ",
@@ -1539,20 +1539,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-9754",
@@ -1616,9 +1632,9 @@
       "brandId": "B00000VJ",
       "brandName": "게릿 제이콥",
       "canonicalProductName": "T-SHIRT - white green",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9750",
         "productCode": "P0000OLA",
@@ -1661,29 +1677,45 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-9753",
       "brandId": "B00000VJ",
       "brandName": "게릿 제이콥",
       "canonicalProductName": "WIDE LEG JEANS - indigo blue",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9753",
         "productCode": "P0000OLD",
@@ -1710,20 +1742,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-12182",
@@ -28710,9 +28758,9 @@
       "brandId": "B00000TZ",
       "brandName": "AESIR STUDIOS",
       "canonicalProductName": "MEN - Richter - Polo",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11233",
         "productCode": "P0000QQB",
@@ -28739,29 +28787,45 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-11230",
       "brandId": "B00000TZ",
       "brandName": "AESIR STUDIOS",
       "canonicalProductName": "MEN - SANCTUM - CUT OFF PANTS",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11230",
         "productCode": "P0000QPY",
@@ -28804,20 +28868,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-13006",
@@ -29052,9 +29132,9 @@
       "brandId": "B00000TZ",
       "brandName": "AESIR STUDIOS",
       "canonicalProductName": "Unisex -Chili - Tanktop men white",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11770",
         "productCode": "P0000RKS",
@@ -29081,20 +29161,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-11491",
@@ -29150,9 +29246,9 @@
       "brandId": "B00000TZ",
       "brandName": "AESIR STUDIOS",
       "canonicalProductName": "WOMEN - LINDISS - CORSET HOODIE",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11225",
         "productCode": "P0000QPT",
@@ -29187,20 +29283,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-13019",
@@ -29264,9 +29376,9 @@
       "brandId": "B00000TZ",
       "brandName": "AESIR STUDIOS",
       "canonicalProductName": "WOMEN - PARIS BABY TEE",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9944",
         "productCode": "P0000OSM",
@@ -29301,20 +29413,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-13021",
@@ -30119,9 +30247,9 @@
       "brandId": "B00000VP",
       "brandName": "ALMOST BLACK",
       "canonicalProductName": "REVIRSEBLE SKA L2B JACKET BLACK",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9867",
         "productCode": "P0000OPN",
@@ -30148,20 +30276,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-9852",
@@ -35809,9 +35953,9 @@
       "brandId": "B00000WT",
       "brandName": "FORBIDDEN KN0WLEDGE",
       "canonicalProductName": "OG Sin Hoodies Creame",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10978",
         "productCode": "P0000QGG",
@@ -35854,20 +35998,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-13375",
@@ -65448,9 +65608,9 @@
       "brandId": "B00000TZ",
       "brandName": null,
       "canonicalProductName": "WOMEN - LINDISS - FLARED JOGGER WITH BELT",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11224",
         "productCode": "P0000QPS",
@@ -65477,29 +65637,45 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-11222",
       "brandId": "B00000TZ",
       "brandName": null,
       "canonicalProductName": "WOMEN - ILUMIA - FUR SKIRT",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11222",
         "productCode": "P0000QPQ",
@@ -65526,20 +65702,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-11228",
@@ -66672,9 +66864,9 @@
       "brandId": "B00000TZ",
       "brandName": null,
       "canonicalProductName": "WOMEN - EVE - CORSET FUR DRESS",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11220",
         "productCode": "P0000QPO",
@@ -66701,20 +66893,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-11223",
@@ -66819,9 +67027,9 @@
       "brandId": "B00000TZ",
       "brandName": null,
       "canonicalProductName": "Women - Freya - Faux fur Tanktop",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11490",
         "productCode": "P0000QZY",
@@ -66856,29 +67064,45 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-11769",
       "brandId": "B00000TZ",
       "brandName": null,
       "canonicalProductName": "Unisex -Chilli -Tanktop women white",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11769",
         "productCode": "P0000RKR",
@@ -66905,20 +67129,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-13005",
@@ -73735,9 +73975,9 @@
       "brandId": "B00000VP",
       "brandName": null,
       "canonicalProductName": "HEART DROP PAINT EMBROIDERY WASHED WORK PANTS BLACK",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9865",
         "productCode": "P0000OPL",
@@ -73772,29 +74012,45 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-9862",
       "brandId": "B00000VP",
       "brandName": null,
       "canonicalProductName": "HEART DROP PAINT EMBROIDERY WASHED WORK PANTS BEIGE",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9862",
         "productCode": "P0000OPI",
@@ -73829,20 +74085,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-9861",
@@ -74110,9 +74382,9 @@
       "brandId": "B00000VP",
       "brandName": null,
       "canonicalProductName": "HEART DROP PAINT EMBROIDERY WASHED WORK JACKET BLACK",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9866",
         "productCode": "P0000OPM",
@@ -74147,29 +74419,45 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-9864",
       "brandId": "B00000VP",
       "brandName": null,
       "canonicalProductName": "HEART DROP PAINT EMBROIDERY WASHED WORK JACKET BEIGE",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9864",
         "productCode": "P0000OPK",
@@ -74204,20 +74492,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-9859",
@@ -89504,9 +89808,9 @@
       "brandId": "B00000QY",
       "brandName": null,
       "canonicalProductName": "FUNNEL-NECK TRACK JACKET BARITONE BLUE",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10523",
         "productCode": "P0000POT",
@@ -89533,20 +89837,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-10520",
@@ -101342,9 +101662,9 @@
       "brandId": "B00000WQ",
       "brandName": null,
       "canonicalProductName": "CAROLYN LOW-RISE LEGGINGS BLACK",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11453",
         "productCode": "P0000QYN",
@@ -101371,20 +101691,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-11452",
@@ -102937,9 +103273,9 @@
       "brandId": "B00000WT",
       "brandName": null,
       "canonicalProductName": "OG Sin Hoodies Brown",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10977",
         "productCode": "P0000QGF",
@@ -102982,29 +103318,45 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-10976",
       "brandId": "B00000WT",
       "brandName": null,
       "canonicalProductName": "Armored Thermal Angels Cross Olive",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10976",
         "productCode": "P0000QGE",
@@ -103047,29 +103399,45 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-10975",
       "brandId": "B00000WT",
       "brandName": null,
       "canonicalProductName": "Armored Thermal Hands Circle Black",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "10975",
         "productCode": "P0000QGD",
@@ -103112,20 +103480,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-10974",
@@ -105290,9 +105674,9 @@
       "brandId": "B00000VJ",
       "brandName": null,
       "canonicalProductName": "CARGO SHORTS - green black",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9757",
         "productCode": "P0000OLH",
@@ -105319,20 +105703,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-9755",
@@ -128243,9 +128643,9 @@
       "brandId": "B00000VD",
       "brandName": null,
       "canonicalProductName": "Tears of Eros Sweatshirt Ash",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9730",
         "productCode": "P0000OKG",
@@ -128272,20 +128672,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-9729",
@@ -128635,9 +129051,9 @@
       "brandId": "B00000VD",
       "brandName": null,
       "canonicalProductName": "Ruined Bb Tee Black",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "9721",
         "productCode": "P0000OJX",
@@ -128672,20 +129088,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-13344",
@@ -139898,9 +140330,9 @@
       "brandId": "B00000UU",
       "brandName": null,
       "canonicalProductName": "BLACK JEWEL EMBROIDERY FITTED T-SHIRT BLACK",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "11104",
         "productCode": "P0000QLC",
@@ -139927,20 +140359,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-11105",
@@ -174034,9 +174482,9 @@
       "brandId": "B00000WE",
       "brandName": null,
       "canonicalProductName": "Beige Waxed Bomber",
-      "status": "ambiguous",
-      "confidence": 78,
-      "verified": false,
+      "status": "confirmed",
+      "confidence": 100,
+      "verified": true,
       "cafe24": {
         "productNo": "12064",
         "productCode": "P0000RWA",
@@ -174071,20 +174519,36 @@
         ]
       },
       "matching": {
-        "strategy": "diagnostic_candidate_review",
+        "strategy": "autonomous_exact_brand_title_family_v1",
         "diagnosticType": [
           "exact_one_to_many"
         ],
         "evidence": [
-          "normalized_brand",
-          "normalized_product_name"
+          "trusted_brand_alias",
+          "exact_normalized_product_title",
+          "unique_ecount_family",
+          "existing_candidate_set_equal"
         ],
-        "pendingReasons": [
-          "multiple_exact_candidates"
-        ]
+        "pendingReasons": [],
+        "autonomous": {
+          "version": "autonomous_exact_brand_title_family_v1",
+          "confidenceTier": "AUTO_SAFE",
+          "positiveEvidence": [
+            "trusted_brand_alias",
+            "exact_normalized_product_title",
+            "unique_ecount_family",
+            "existing_candidate_set_equal"
+          ],
+          "negativeChecks": [
+            "no_brand_conflict",
+            "no_title_conflict",
+            "no_family_ambiguity",
+            "no_candidate_set_drift"
+          ]
+        }
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-27T15:17:15.586Z"
     },
     {
       "canonicalProductId": "CP-C24-12063",

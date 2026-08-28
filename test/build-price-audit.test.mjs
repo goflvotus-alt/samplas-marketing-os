@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { classify, resolvePolicy } from "../scripts/build-price-audit.mjs";
+import { fetchAllCafe24ProductsFullCatalog } from "../scripts/cafe24-script-client.mjs";
 
 function registryEntry(overrides = {}) {
   return {
@@ -8,6 +9,20 @@ function registryEntry(overrides = {}) {
     confidence: 100,
     ...overrides
   };
+}
+
+{
+  const products = Array.from({ length: 201 }, (_, i) => ({ product_no: i + 1 }));
+  const fetched = await fetchAllCafe24ProductsFullCatalog({
+    pageSize: 100,
+    env: { CAFE24_PROXY_BASE_URL: "https://example.invalid" },
+    fetchImpl: async (url) => {
+      const since = Number(new URL(url).searchParams.get("since_product_no"));
+      const page = products.filter((product) => product.product_no > since).slice(0, 100);
+      return { ok: true, text: async () => JSON.stringify({ products: page }) };
+    }
+  });
+  assert.equal(fetched.products.length, 201, "full catalog snapshot must retain products beyond the first two pages");
 }
 
 // 1. ONLINE 100,000 / ECOUNT 100,000 => MATCH

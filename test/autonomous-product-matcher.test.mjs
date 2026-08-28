@@ -11,6 +11,15 @@ const trusted = {
 const aliases = buildTrustedBrandAliases([trusted]);
 
 {
+  const masterAliases = buildTrustedBrandAliases([], {
+    brands: [{ brand_code: "B2", brand_name: "브랜드 비", name_aliases: ["BRAND B"], active: true }]
+  }.brands);
+  const unmatched = { ...trusted, brandId: "B2", ecount: { matchedProducts: [] } };
+  const index = buildExactIndex([match("BBB00101", "BRAND B / MODEL BLACK")]);
+  assert.equal(decideEntry(unmatched, masterAliases, index).tier, "SAFE_REVIEW");
+}
+
+{
   const index = buildExactIndex(trusted.ecount.matchedProducts);
   assert.equal(decideEntry(trusted, aliases, index).tier, "AUTO_SAFE");
 }
