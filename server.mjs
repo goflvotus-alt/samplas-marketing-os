@@ -4448,7 +4448,7 @@ export async function buildStoreIntelligencePayload({ storeCode: storeCodeValue,
   const [canonicalSales, clients, identityContext] = await Promise.all([
     buildCanonicalTotalSales({ since, until, storeCode: store.storeCode }),
     buildClientsOverview({ since, until, cafe24Orders: [], storeCode: store.storeCode }),
-    loadResolverContext()
+    loadResolverContext({ workDir })
   ]);
   return composeStoreIntelligencePayload({ store, since, until, snapshots, canonicalSales, clients, identityContext });
 }
