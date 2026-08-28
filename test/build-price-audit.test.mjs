@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { classify, resolvePolicy } from "../scripts/build-price-audit.mjs";
 import { fetchAllCafe24ProductsFullCatalog } from "../scripts/cafe24-script-client.mjs";
 
 function registryEntry(overrides = {}) {
   return {
+    canonicalProductName: "PRODUCT",
     ecount: { matchedProducts: [{ prodCd: "SKU001" }] },
     verified: true,
     confidence: 100,
@@ -60,6 +62,27 @@ assert.equal(classify({
   ecountPriceConsistent: true,
   cafe24Fetched: false
 }).status, "MATCH_REQUIRED", "ECOUNT 연결이 없으면 MATCH_REQUIRED");
+assert.equal(classify({ registryEntry: registryEntry({ canonicalProductName: "상품명 없음", ecount: { matchedProducts: [] } }) }).status, "DATA_ISSUE", "missing identity is a data issue");
+
+for (const [resolutionState, expected] of Object.entries({
+  HUMAN_REVIEW_REQUIRED: "HUMAN_REVIEW_REQUIRED",
+  GENUINE_AMBIGUOUS: "GENUINE_AMBIGUOUS",
+  SPECIAL_PRODUCT: "SPECIAL_PRODUCT",
+  HISTORICAL_OR_INACTIVE: "HISTORICAL",
+  TRUE_NO_COUNTERPART: "NO_COUNTERPART",
+  DATA_QUALITY_ISSUE: "REVIEW_REQUIRED"
+})) {
+  assert.equal(classify({ registryEntry: registryEntry({ verified: false, resolutionState }), cafe24Fetched: false }).status, expected);
+}
+assert.equal(classify({
+  registryEntry: registryEntry({ resolutionState: "SPECIAL_PRODUCT" }),
+  cafe24Price: 100000, ecountPrice: 100000, ecountPriceConsistent: true, cafe24Fetched: true
+}).status, "MATCH", "human-confirmed mapping takes precedence over terminal metadata");
+
+{
+  const ui = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
+  for (const token of ["HUMAN_REVIEW_REQUIRED", "GENUINE_AMBIGUOUS", "TERMINAL", "DATA_ISSUE", "사람 검토 필요", "조치 불필요"]) assert.match(ui, new RegExp(token));
+}
 
 // 5/6. Commercial Policy 10% — 원인 추정(causeHint)이 어느 쪽을 확인하라고 가리키는지만
 // 검증한다(가격을 자동 변경하지 않음, resolvePolicy는 참고 정보만 계산).
@@ -97,7 +120,7 @@ assert.equal(classify({
   ecountPrice: 100000,
   ecountPriceConsistent: false,
   cafe24Fetched: true
-}).status, "REVIEW_REQUIRED", "ECOUNT SKU 가격이 서로 다르면 REVIEW_REQUIRED");
+}).status, "DATA_ISSUE", "ECOUNT SKU 가격이 서로 다르면 DATA_ISSUE");
 
 console.log("build-price-audit classification tests passed");
 
@@ -112,7 +135,7 @@ console.log("build-price-audit classification tests passed");
     cafe24Fetched: true
   });
 
-  assert.equal(result.status, "REVIEW_REQUIRED");
+  assert.equal(result.status, "DATA_ISSUE");
   assert.equal(result.reason, "ecount_master_price_missing");
 }
 
@@ -127,7 +150,7 @@ console.log("build-price-audit classification tests passed");
     cafe24Fetched: true
   });
 
-  assert.equal(result.status, "REVIEW_REQUIRED");
+  assert.equal(result.status, "DATA_ISSUE");
   assert.equal(result.reason, "ecount_master_price_missing");
 }
 
@@ -144,7 +167,7 @@ console.log("missing ECOUNT price regression tests passed");
     cafe24Fetched: true
   });
 
-  assert.equal(result.status, "REVIEW_REQUIRED");
+  assert.equal(result.status, "DATA_ISSUE");
   assert.equal(result.reason, "cafe24_price_missing_or_invalid");
 }
 
@@ -158,7 +181,7 @@ console.log("missing ECOUNT price regression tests passed");
     cafe24Fetched: true
   });
 
-  assert.equal(result.status, "REVIEW_REQUIRED");
+  assert.equal(result.status, "DATA_ISSUE");
   assert.equal(result.reason, "cafe24_price_missing_or_invalid");
 }
 

@@ -87,6 +87,9 @@ const codesEqual = (left, right) =>
   left.map(codeOf).sort().join(",") === right.map(codeOf).sort().join(",");
 
 export function decideEntry(entry, aliases, index) {
+  if (!entry?.verified && entry?.resolutionTerminal) {
+    return { tier: "NO_CANDIDATE", reason: "explicit_terminal_resolution_state", candidates: [] };
+  }
   if (!entry || !entry.canonicalProductName || entry.canonicalProductName === "상품명 없음") {
     return { tier: "DATA_ISSUE", reason: "missing_product_identity", candidates: [] };
   }
@@ -132,7 +135,10 @@ export function auditRegistry(registry, priceAudit, fullProducts, brandMaster = 
   const aliases = buildTrustedBrandAliases(registry.entries || [], brandMaster.brands || brandMaster);
   const index = buildExactIndex(fullProducts);
   const byId = new Map((registry.entries || []).map((entry) => [entry.canonicalProductId, entry]));
-  const rows = (priceAudit.rows || []).filter((row) => ["MATCH_REQUIRED", "REVIEW_REQUIRED"].includes(row.status));
+  const rows = (priceAudit.rows || []).filter((row) => [
+    "MATCH_REQUIRED", "REVIEW_REQUIRED", "HUMAN_REVIEW_REQUIRED", "GENUINE_AMBIGUOUS",
+    "SPECIAL_PRODUCT", "HISTORICAL", "NO_COUNTERPART", "DATA_ISSUE"
+  ].includes(row.status));
   const decisions = rows.map((row) => {
     const entry = byId.get(row.canonicalProductId);
     if (entry?.verified) return { row, entry, decision: { tier: "DATA_ISSUE", reason: row.reason, candidates: [] } };

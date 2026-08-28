@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { auditRegistry, buildExactIndex, buildTrustedBrandAliases, decideEntry, extractStrongModelTokens } from "../scripts/autonomous-product-matcher.mjs";
+import { classifyOperationalResolution, resolutionSummary } from "../scripts/product-resolution-state.mjs";
 
 const match = (prodCd, productName, size = "M") => ({ prodCd, productName, size });
 const trusted = {
@@ -85,5 +86,22 @@ const aliases = buildTrustedBrandAliases([trusted]);
 {
   const noIndependentEvidence = { ...trusted, matching: { evidence: ["normalized_brand"] } };
   assert.equal(decideEntry(noIndependentEvidence, aliases, buildExactIndex(trusted.ecount.matchedProducts)).tier, "SAFE_REVIEW");
+}
+{
+  const terminal = { verified: false, resolutionTerminal: true, canonicalProductName: "개인결제창" };
+  assert.equal(decideEntry(terminal, new Map(), new Map()).reason, "explicit_terminal_resolution_state");
+  assert.notEqual(decideEntry({ ...terminal, verified: true }, new Map(), new Map()).reason, "explicit_terminal_resolution_state", "human-confirmed identity wins");
+}
+{
+  const cases = [
+    [{ entry: { brandId: "B0000000" }, decision: { tier: "NO_CANDIDATE" } }, "SPECIAL_PRODUCT"],
+    [{ entry: {}, decision: { tier: "NO_CANDIDATE" }, cafe24Product: { display: "F", selling: "F" } }, "HISTORICAL_OR_INACTIVE"],
+    [{ entry: { ecount: { matchedProducts: [] } }, decision: { tier: "NO_CANDIDATE" }, cafe24Product: { display: "T", selling: "T" } }, "TRUE_NO_COUNTERPART"],
+    [{ entry: {}, decision: { tier: "SAFE_REVIEW", reason: "candidate_drift" } }, "HUMAN_REVIEW_REQUIRED"],
+    [{ entry: {}, decision: { tier: "AMBIGUOUS", reason: "multiple" } }, "GENUINE_AMBIGUOUS"],
+    [{ entry: {}, decision: { tier: "DATA_ISSUE", reason: "bad_data" } }, "DATA_QUALITY_ISSUE"]
+  ];
+  for (const [input, expected] of cases) assert.equal(classifyOperationalResolution(input).state, expected);
+  assert.deepEqual(resolutionSummary(cases.map(([, resolutionState]) => ({ resolutionState }))), Object.fromEntries(cases.map(([, state]) => [state, 1])));
 }
 console.log("autonomous product matcher tests passed");

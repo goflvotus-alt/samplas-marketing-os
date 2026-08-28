@@ -38,6 +38,14 @@ const outputPath = join(workDir, "price-audit.json");
 
 const CONCURRENCY = 1; // Cafe24 rate-limit protection
 const PRICE_TOLERANCE_KRW = 100; // rounding/float tolerance, not a VAT adjustment
+const RESOLUTION_STATUS = {
+  HUMAN_REVIEW_REQUIRED: "HUMAN_REVIEW_REQUIRED",
+  GENUINE_AMBIGUOUS: "GENUINE_AMBIGUOUS",
+  SPECIAL_PRODUCT: "SPECIAL_PRODUCT",
+  HISTORICAL_OR_INACTIVE: "HISTORICAL",
+  TRUE_NO_COUNTERPART: "NO_COUNTERPART",
+  DATA_QUALITY_ISSUE: "DATA_ISSUE"
+};
 
 function parseArgs(argv) {
   const options = { limit: null };
@@ -154,6 +162,12 @@ export function classify({
   ecountPriceComplete = true,
   cafe24Fetched
 }) {
+  if (registryEntry.resolutionState && registryEntry.resolutionState !== "DATA_QUALITY_ISSUE" && !registryEntry.verified) {
+    return { status: RESOLUTION_STATUS[registryEntry.resolutionState] || "REVIEW_REQUIRED", reason: registryEntry.resolutionReason || "explicit_operational_resolution" };
+  }
+  if (!registryEntry.canonicalProductName || registryEntry.canonicalProductName === "상품명 없음") {
+    return { status: "DATA_ISSUE", reason: "missing_product_identity" };
+  }
   if (!registryEntry.ecount.matchedProducts.length) {
     return { status: "MATCH_REQUIRED", reason: "no_ecount_sku_connected" };
   }
@@ -165,13 +179,13 @@ export function classify({
     !Number.isFinite(cafe24Price) ||
     cafe24Price <= 0
   ) {
-    return { status: "REVIEW_REQUIRED", reason: "cafe24_price_missing_or_invalid" };
+    return { status: "DATA_ISSUE", reason: "cafe24_price_missing_or_invalid" };
   }
   if (!ecountPriceComplete) {
-    return { status: "REVIEW_REQUIRED", reason: "ecount_master_price_missing" };
+    return { status: "DATA_ISSUE", reason: "ecount_master_price_missing" };
   }
   if (!ecountPriceConsistent) {
-    return { status: "REVIEW_REQUIRED", reason: "ecount_sku_prices_disagree" };
+    return { status: "DATA_ISSUE", reason: "ecount_sku_prices_disagree" };
   }
   const lowConfidenceMatch = !registryEntry.verified && Number(registryEntry.confidence || 0) < 90;
   const diff = cafe24Price - ecountPrice;
@@ -393,7 +407,11 @@ export async function buildPriceAudit(options = {}) {
     };
   });
 
-  const summary = { MATCH: 0, ECOUNT_HIGHER: 0, ECOUNT_LOWER: 0, MATCH_REQUIRED: 0, REVIEW_REQUIRED: 0 };
+  const summary = {
+    MATCH: 0, ECOUNT_HIGHER: 0, ECOUNT_LOWER: 0, MATCH_REQUIRED: 0, REVIEW_REQUIRED: 0,
+    HUMAN_REVIEW_REQUIRED: 0, GENUINE_AMBIGUOUS: 0, SPECIAL_PRODUCT: 0,
+    HISTORICAL: 0, NO_COUNTERPART: 0, DATA_ISSUE: 0
+  };
   for (const row of rows) summary[row.status] = (summary[row.status] || 0) + 1;
 
   return {
@@ -427,6 +445,12 @@ async function main() {
   console.log(`- ECOUNT_LOWER: ${result.summary.ECOUNT_LOWER}`);
   console.log(`- MATCH_REQUIRED: ${result.summary.MATCH_REQUIRED}`);
   console.log(`- REVIEW_REQUIRED: ${result.summary.REVIEW_REQUIRED}`);
+  console.log(`- HUMAN_REVIEW_REQUIRED: ${result.summary.HUMAN_REVIEW_REQUIRED}`);
+  console.log(`- GENUINE_AMBIGUOUS: ${result.summary.GENUINE_AMBIGUOUS}`);
+  console.log(`- SPECIAL_PRODUCT: ${result.summary.SPECIAL_PRODUCT}`);
+  console.log(`- HISTORICAL: ${result.summary.HISTORICAL}`);
+  console.log(`- NO_COUNTERPART: ${result.summary.NO_COUNTERPART}`);
+  console.log(`- DATA_ISSUE: ${result.summary.DATA_ISSUE}`);
   await writeFile(outputPath, JSON.stringify(result, null, 2));
   console.log(`- output: work/price-audit.json`);
 }

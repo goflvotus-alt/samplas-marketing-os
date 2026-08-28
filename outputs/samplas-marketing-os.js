@@ -1691,7 +1691,11 @@ const PRICE_AUDIT_FILTERS = [
   { key: "CAFE24_DISCOUNT_MISSING", label: "Cafe24 할인 미적용", match: (r) => priceOpsCategory(r) === "CAFE24_DISCOUNT_MISSING" },
   { key: "PRODUCT_MATCH_SUSPECT", label: "상품 매칭 오류 의심", match: (r) => priceOpsCategory(r) === "PRODUCT_MATCH_SUSPECT" },
   { key: "MATCH_REQUIRED", label: "상품 매칭 필요", match: (r) => r.status === "MATCH_REQUIRED" },
-  { key: "REVIEW_REQUIRED", label: "추가 확인", match: (r) => r.status === "REVIEW_REQUIRED" }
+  { key: "REVIEW_REQUIRED", label: "추가 확인", match: (r) => r.status === "REVIEW_REQUIRED" },
+  { key: "HUMAN_REVIEW_REQUIRED", label: "사람 검토", match: (r) => r.status === "HUMAN_REVIEW_REQUIRED" },
+  { key: "GENUINE_AMBIGUOUS", label: "구조적 모호", match: (r) => r.status === "GENUINE_AMBIGUOUS" },
+  { key: "TERMINAL", label: "조치 불필요", match: (r) => ["SPECIAL_PRODUCT", "HISTORICAL", "NO_COUNTERPART"].includes(r.status) },
+  { key: "DATA_ISSUE", label: "데이터 오류", match: (r) => r.status === "DATA_ISSUE" }
 ];
 
 // "다시 확인" 버튼은 scripts/build-price-audit.mjs 전체 재실행(Cafe24 API 약 7,176회,
@@ -1895,6 +1899,12 @@ function priceAuditCauseText(row) {
   if (category === "CAFE24_DISCOUNT_MISSING") return "ECOUNT 할인 중 · Cafe24 정가 판매 → Cafe24 판매가 확인";
   if (category === "PRODUCT_MATCH_SUSPECT") return "가격보다 연결 확인 우선 → Product Registry 검수";
   if (row.status === "MATCH_REQUIRED") return "Product Registry 연결 필요";
+  if (row.status === "HUMAN_REVIEW_REQUIRED") return "사람의 상품 연결 판단 필요";
+  if (row.status === "GENUINE_AMBIGUOUS") return "복수 상품군이 동일하게 일치";
+  if (row.status === "SPECIAL_PRODUCT") return "개인결제·운영용 특수 상품";
+  if (row.status === "HISTORICAL") return "판매 또는 진열이 종료된 상품";
+  if (row.status === "NO_COUNTERPART") return "신뢰할 수 있는 ECOUNT 대응 상품 없음";
+  if (row.status === "DATA_ISSUE") return "원천 데이터 수정 필요";
   if (row.reason === "low_confidence_registry_match_with_price_diff") return "Registry 연결 신뢰도 낮음";
   if (row.reason === "ecount_sku_prices_disagree") return "ECOUNT SKU 가격 불일치";
   if (row.reason === "cafe24_price_fetch_failed") return "Cafe24 가격 조회 실패";
@@ -1908,6 +1918,12 @@ function priceAuditStatusLabel(row) {
   if (category === "PRODUCT_MATCH_SUSPECT") return "매칭 오류 의심";
   if (row.status === "MATCH_REQUIRED") return "매칭 필요";
   if (row.status === "REVIEW_REQUIRED") return "추가 확인";
+  if (row.status === "HUMAN_REVIEW_REQUIRED") return "사람 검토";
+  if (row.status === "GENUINE_AMBIGUOUS") return "구조적 모호";
+  if (row.status === "SPECIAL_PRODUCT") return "특수 상품";
+  if (row.status === "HISTORICAL") return "판매 종료";
+  if (row.status === "NO_COUNTERPART") return "대응 없음";
+  if (row.status === "DATA_ISSUE") return "데이터 오류";
   return row.status;
 }
 
@@ -1921,6 +1937,7 @@ function priceAuditStatusTone(row) {
   if (category === "CAFE24_DISCOUNT_MISSING") return "info";
   if (category === "PRODUCT_MATCH_SUSPECT") return "warn";
   if (row.status === "MATCH_REQUIRED") return "warn";
+  if (["HUMAN_REVIEW_REQUIRED", "GENUINE_AMBIGUOUS", "DATA_ISSUE"].includes(row.status)) return "warn";
   return "neutral";
 }
 
@@ -1977,8 +1994,10 @@ function renderTodayOpsCheck() {
     priceOpsCounts.ECOUNT_DISCOUNT_MISSING +
     priceOpsCounts.CAFE24_DISCOUNT_MISSING +
     priceOpsCounts.PRODUCT_MATCH_SUSPECT;
-  const matchRequired = s.MATCH_REQUIRED || 0;
-  const reviewRequired = s.REVIEW_REQUIRED || 0;
+  const humanReview = s.HUMAN_REVIEW_REQUIRED || 0;
+  const ambiguous = s.GENUINE_AMBIGUOUS || 0;
+  const terminal = (s.SPECIAL_PRODUCT || 0) + (s.HISTORICAL || 0) + (s.NO_COUNTERPART || 0);
+  const dataIssue = s.DATA_ISSUE || 0;
   const cafe24UpdateProducts = groupProductSyncRows(
     productSyncIssuesState.cafe24UpdateRequired || []
   );
@@ -1997,13 +2016,21 @@ function renderTodayOpsCheck() {
         <button type="button" class="today-ops-subpill" data-price-audit-filter="PRODUCT_MATCH_SUSPECT">매칭 의심 ${apiNum(priceOpsCounts.PRODUCT_MATCH_SUSPECT)}</button>
       </div>
     </article>`,
-    `<article class="today-ops-card ops-secondary" data-price-audit-filter="MATCH_REQUIRED">
-      <span>상품 매칭 필요</span><strong>${apiNum(matchRequired)}건</strong>
-      <p>Product Registry 연결 필요</p>
+    `<article class="today-ops-card ops-secondary" data-price-audit-filter="HUMAN_REVIEW_REQUIRED">
+      <span>사람 검토 필요</span><strong>${apiNum(humanReview)}건</strong>
+      <p>후보는 있으나 판단 필요</p>
     </article>`,
-    `<article class="today-ops-card ops-tertiary" data-price-audit-filter="REVIEW_REQUIRED">
-      <span>추가 확인 필요</span><strong>${apiNum(reviewRequired)}건</strong>
-      <p>낮은 신뢰도 매칭 · 데이터 확인</p>
+    `<article class="today-ops-card ops-tertiary" data-price-audit-filter="GENUINE_AMBIGUOUS">
+      <span>구조적 모호</span><strong>${apiNum(ambiguous)}건</strong>
+      <p>복수 상품군 · 자동 확정 금지</p>
+    </article>`,
+    `<article class="today-ops-card ops-tertiary" data-price-audit-filter="TERMINAL">
+      <span>조치 불필요</span><strong>${apiNum(terminal)}건</strong>
+      <p>특수 상품 · 판매 종료 · 대응 없음</p>
+    </article>`,
+    `<article class="today-ops-card ops-secondary" data-price-audit-filter="DATA_ISSUE">
+      <span>데이터 수정 필요</span><strong>${apiNum(dataIssue)}건</strong>
+      <p>가격 · 상품명 · 원천 데이터 확인</p>
     </article>`,
     `<article class="today-ops-card ops-secondary" data-product-sync-type="CAFE24_UPDATE">
       <span>Cafe24 업데이트 필요</span><strong>${apiNum(cafe24UpdateRequired)}건</strong>

@@ -903,7 +903,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "missing_product_identity",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12693",
@@ -932,7 +936,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "missing_product_identity",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13723",
@@ -961,7 +969,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "missing_product_identity",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11129",
@@ -1041,7 +1053,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12587",
@@ -1347,7 +1363,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11338",
@@ -3693,7 +3713,11 @@
         "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-19T03:47:37.803Z"
+      "updatedAt": "2026-08-19T03:47:37.803Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "cafe24_price_missing_or_invalid",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13785",
@@ -4467,7 +4491,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "ecount_sku_prices_disagree",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12498",
@@ -5245,7 +5273,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9136",
@@ -5274,7 +5306,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9137",
@@ -5303,7 +5339,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9146",
@@ -5332,7 +5372,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9145",
@@ -5406,7 +5450,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8518",
@@ -5435,7 +5483,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12815",
@@ -5904,7 +5956,11 @@
         }
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-08-28T02:50:47.404Z"
+      "updatedAt": "2026-08-28T02:50:47.404Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "cafe24_price_missing_or_invalid",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14887",
@@ -6364,7 +6420,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13087",
@@ -6477,7 +6537,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14256",
@@ -6550,7 +6614,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13080",
@@ -6631,7 +6699,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9618",
@@ -7389,7 +7461,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14763",
@@ -8359,7 +8435,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13702",
@@ -9281,7 +9361,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12421",
@@ -9443,7 +9527,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13735",
@@ -9849,7 +9937,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12424",
@@ -10091,7 +10183,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14387",
@@ -10173,7 +10269,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14388",
@@ -10255,7 +10355,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14389",
@@ -10337,7 +10441,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13746",
@@ -10908,7 +11016,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12416",
@@ -11206,7 +11318,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12417",
@@ -11288,7 +11404,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10551",
@@ -11385,7 +11505,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10552",
@@ -11482,7 +11606,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14398",
@@ -11620,7 +11748,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13744",
@@ -11911,7 +12043,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14392",
@@ -11940,7 +12076,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14394",
@@ -12102,7 +12242,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14395",
@@ -12131,7 +12275,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14396",
@@ -12364,7 +12512,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13728",
@@ -12438,7 +12590,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10557",
@@ -12503,7 +12659,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10558",
@@ -12568,7 +12728,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9421",
@@ -12634,7 +12798,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13738",
@@ -12863,7 +13031,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12418",
@@ -13025,7 +13197,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12419",
@@ -13187,7 +13363,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10564",
@@ -13316,7 +13496,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14402",
@@ -13390,7 +13574,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13724",
@@ -13886,7 +14074,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12413",
@@ -14208,7 +14400,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12414",
@@ -14530,7 +14726,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13731",
@@ -14775,7 +14975,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14385",
@@ -14804,7 +15008,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11096",
@@ -14833,7 +15041,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10739",
@@ -14862,7 +15074,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13114",
@@ -14891,7 +15107,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13115",
@@ -14920,7 +15140,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12978",
@@ -14949,7 +15173,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12979",
@@ -14978,7 +15206,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12981",
@@ -15007,7 +15239,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12985",
@@ -15036,7 +15272,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12155",
@@ -15128,7 +15368,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12150",
@@ -15278,7 +15522,11 @@
         "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-19T05:32:19.472Z"
+      "updatedAt": "2026-08-19T05:32:19.472Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "ecount_sku_prices_disagree",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12144",
@@ -15374,7 +15622,11 @@
         "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-19T05:32:19.472Z"
+      "updatedAt": "2026-08-19T05:32:19.472Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "ecount_sku_prices_disagree",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10924",
@@ -15491,7 +15743,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13798",
@@ -15547,7 +15803,11 @@
         "pendingReasons": []
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-08-19T05:32:19.472Z"
+      "updatedAt": "2026-08-19T05:32:19.472Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "ecount_sku_prices_disagree",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12151",
@@ -15640,7 +15900,11 @@
         "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-19T05:32:19.472Z"
+      "updatedAt": "2026-08-19T05:32:19.472Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "ecount_sku_prices_disagree",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11644",
@@ -15729,7 +15993,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "regenerated_family_differs_from_existing_candidates",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10931",
@@ -15779,7 +16047,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10916",
@@ -15864,7 +16136,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13791",
@@ -15989,7 +16265,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13790",
@@ -16045,7 +16325,11 @@
         "pendingReasons": []
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-19T05:32:19.472Z"
+      "updatedAt": "2026-08-19T05:32:19.472Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "ecount_sku_prices_disagree",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14505",
@@ -16686,7 +16970,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-7883",
@@ -16919,7 +17207,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "regenerated_family_differs_from_existing_candidates",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-7871",
@@ -16948,7 +17240,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11256",
@@ -16977,7 +17273,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11764",
@@ -17067,7 +17367,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11258",
@@ -17117,7 +17421,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-5020",
@@ -17185,7 +17493,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-6910",
@@ -17214,7 +17526,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10575",
@@ -17243,7 +17559,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-6906",
@@ -17358,7 +17678,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12454",
@@ -17778,7 +18102,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12457",
@@ -18111,7 +18439,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11992",
@@ -18209,7 +18541,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12748",
@@ -18973,7 +19309,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14229",
@@ -19053,7 +19393,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10709",
@@ -19168,7 +19512,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-5638",
@@ -19197,7 +19545,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12760",
@@ -19263,7 +19615,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12752",
@@ -19460,7 +19816,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10780",
@@ -19546,7 +19906,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14407",
@@ -19575,7 +19939,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12869",
@@ -19689,7 +20057,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12871",
@@ -19771,7 +20143,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12865",
@@ -19800,7 +20176,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12872",
@@ -19874,7 +20254,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11441",
@@ -19962,7 +20346,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14824",
@@ -20043,7 +20431,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11442",
@@ -20116,7 +20508,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10289",
@@ -21209,7 +21605,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12132",
@@ -23438,7 +23838,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11745",
@@ -23993,7 +24397,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13558",
@@ -24488,7 +24896,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9045",
@@ -24556,7 +24968,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12616",
@@ -28037,7 +28453,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8065",
@@ -28159,7 +28579,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9441",
@@ -28224,7 +28648,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14078",
@@ -28338,7 +28766,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11880",
@@ -28411,7 +28843,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13503",
@@ -31004,7 +31440,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13091",
@@ -31033,7 +31473,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13848",
@@ -31062,7 +31506,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14636",
@@ -31091,7 +31539,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14016",
@@ -31120,7 +31572,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13090",
@@ -31149,7 +31605,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12975",
@@ -31178,7 +31638,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13638",
@@ -31207,7 +31671,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14713",
@@ -31236,7 +31704,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14680",
@@ -31265,7 +31737,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13105",
@@ -31294,7 +31770,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13491",
@@ -31323,7 +31803,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13062",
@@ -31352,7 +31836,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13068",
@@ -31381,7 +31869,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12925",
@@ -31410,7 +31902,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12927",
@@ -31439,7 +31935,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13865",
@@ -31468,7 +31968,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14638",
@@ -31497,7 +32001,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14639",
@@ -31526,7 +32034,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14640",
@@ -31555,7 +32067,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13287",
@@ -31584,7 +32100,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13239",
@@ -31613,7 +32133,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13886",
@@ -31642,7 +32166,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13092",
@@ -31671,7 +32199,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13093",
@@ -31700,7 +32232,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13094",
@@ -31729,7 +32265,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13178",
@@ -31758,7 +32298,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14720",
@@ -31787,7 +32331,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14681",
@@ -31816,7 +32364,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13959",
@@ -31845,7 +32397,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13441",
@@ -31874,7 +32430,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13442",
@@ -31903,7 +32463,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13443",
@@ -31932,7 +32496,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13420",
@@ -31961,7 +32529,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13421",
@@ -31990,7 +32562,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13845",
@@ -32019,7 +32595,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14649",
@@ -32048,7 +32628,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14826",
@@ -32077,7 +32661,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13340",
@@ -32106,7 +32694,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13883",
@@ -32135,7 +32727,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13684",
@@ -32164,7 +32760,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13685",
@@ -32193,7 +32793,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13686",
@@ -32222,7 +32826,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13711",
@@ -32251,7 +32859,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14017",
@@ -32280,7 +32892,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13063",
@@ -32309,7 +32925,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14710",
@@ -32338,7 +32958,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14711",
@@ -32367,7 +32991,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14744",
@@ -32396,7 +33024,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14782",
@@ -32425,7 +33057,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14384",
@@ -32454,7 +33090,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13338",
@@ -32483,7 +33123,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13339",
@@ -32512,7 +33156,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13113",
@@ -32541,7 +33189,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14355",
@@ -32570,7 +33222,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14566",
@@ -32599,7 +33255,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14599",
@@ -32628,7 +33288,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14600",
@@ -32657,7 +33321,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13394",
@@ -32686,7 +33354,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13303",
@@ -32715,7 +33387,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13304",
@@ -32744,7 +33420,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14608",
@@ -32773,7 +33453,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14653",
@@ -32802,7 +33486,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13177",
@@ -32831,7 +33519,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14719",
@@ -32860,7 +33552,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14721",
@@ -32889,7 +33585,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14726",
@@ -32918,7 +33618,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12924",
@@ -32947,7 +33651,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13151",
@@ -32976,7 +33684,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13189",
@@ -33005,7 +33717,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13274",
@@ -33034,7 +33750,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13887",
@@ -33063,7 +33783,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13929",
@@ -33092,7 +33816,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13152",
@@ -33121,7 +33849,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13721",
@@ -33150,7 +33882,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13722",
@@ -33179,7 +33915,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14416",
@@ -33208,7 +33948,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13965",
@@ -33237,7 +33981,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13095",
@@ -33266,7 +34014,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13285",
@@ -33295,7 +34047,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13286",
@@ -33324,7 +34080,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13341",
@@ -33353,7 +34113,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13342",
@@ -33382,7 +34146,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13710",
@@ -33411,7 +34179,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13800",
@@ -33440,7 +34212,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14282",
@@ -33469,7 +34245,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14432",
@@ -33498,7 +34278,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14433",
@@ -33527,7 +34311,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13687",
@@ -33556,7 +34344,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13960",
@@ -33585,7 +34377,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14197",
@@ -33614,7 +34410,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14517",
@@ -33643,7 +34443,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14567",
@@ -33672,7 +34476,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14635",
@@ -33701,7 +34509,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13961",
@@ -33730,7 +34542,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13195",
@@ -33759,7 +34575,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13964",
@@ -33788,7 +34608,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14030",
@@ -33817,7 +34641,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14036",
@@ -33846,7 +34674,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14299",
@@ -33875,7 +34707,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13079",
@@ -33904,7 +34740,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13962",
@@ -33933,7 +34773,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14270",
@@ -33962,7 +34806,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14678",
@@ -33991,7 +34839,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13555",
@@ -34020,7 +34872,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13966",
@@ -34049,7 +34905,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14237",
@@ -34078,7 +34938,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14271",
@@ -34107,7 +34971,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13846",
@@ -34136,7 +35004,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "SPECIAL_PRODUCT",
+      "resolutionReason": "operational_cafe24_record",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13192",
@@ -34571,7 +35443,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14112",
@@ -34831,7 +35707,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11931",
@@ -34912,7 +35792,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11933",
@@ -34993,7 +35877,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:08:29.788Z",
-      "updatedAt": "2026-07-19T05:08:29.788Z"
+      "updatedAt": "2026-07-19T05:08:29.788Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8669",
@@ -35850,7 +36738,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10888",
@@ -36649,7 +37541,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-5382",
@@ -36699,7 +37595,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11613",
@@ -37082,7 +37982,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14596",
@@ -37111,7 +38015,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14207",
@@ -37259,7 +38167,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14598",
@@ -37288,7 +38200,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "TRUE_NO_COUNTERPART",
+      "resolutionReason": "no_ecount_candidate_after_complete_catalog",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12674",
@@ -38609,7 +39525,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13346",
@@ -38885,7 +39805,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14375",
@@ -40724,7 +41648,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12071",
@@ -40924,7 +41852,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14812",
@@ -40974,7 +41906,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14806",
@@ -41394,7 +42330,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14809",
@@ -41606,7 +42546,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14791",
@@ -41760,7 +42704,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14792",
@@ -41809,7 +42757,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14787",
@@ -42254,7 +43206,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11574",
@@ -42504,7 +43460,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14797",
@@ -43322,7 +44282,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11368",
@@ -43351,7 +44315,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13138",
@@ -43380,7 +44348,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13137",
@@ -43409,7 +44381,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12267",
@@ -43438,7 +44414,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11364",
@@ -43467,7 +44447,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12858",
@@ -43496,7 +44480,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12849",
@@ -43887,7 +44875,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12712",
@@ -44398,7 +45390,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12343",
@@ -44427,7 +45423,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14823",
@@ -45251,7 +46251,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13938",
@@ -45280,7 +46284,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11756",
@@ -45309,7 +46317,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11761",
@@ -45338,7 +46350,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-7190",
@@ -46121,7 +47137,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13619",
@@ -46386,7 +47406,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10418",
@@ -46517,7 +47541,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10419",
@@ -46718,7 +47746,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10942",
@@ -46747,7 +47779,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10947",
@@ -46776,7 +47812,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12348",
@@ -46805,7 +47845,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12558",
@@ -46834,7 +47878,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12547",
@@ -46863,7 +47911,11 @@
         ]
       },
       "createdAt": "2026-08-12T12:39:07.189Z",
-      "updatedAt": "2026-08-12T12:39:07.189Z"
+      "updatedAt": "2026-08-12T12:39:07.189Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12545",
@@ -46892,7 +47944,11 @@
         ]
       },
       "createdAt": "2026-07-19T05:29:36.915Z",
-      "updatedAt": "2026-07-19T05:29:36.915Z"
+      "updatedAt": "2026-07-19T05:29:36.915Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "existing_diagnostic_lacks_independent_exact_evidence",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11519",
@@ -48311,7 +49367,11 @@
         ]
       },
       "createdAt": "2026-08-18T04:24:04.818Z",
-      "updatedAt": "2026-08-18T04:24:04.818Z"
+      "updatedAt": "2026-08-18T04:24:04.818Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10617",
@@ -48611,7 +49671,11 @@
         ]
       },
       "createdAt": "2026-08-18T04:24:04.818Z",
-      "updatedAt": "2026-08-18T04:24:04.818Z"
+      "updatedAt": "2026-08-18T04:24:04.818Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9040",
@@ -50327,7 +51391,11 @@
         ]
       },
       "createdAt": "2026-08-18T04:24:04.818Z",
-      "updatedAt": "2026-08-18T04:24:04.818Z"
+      "updatedAt": "2026-08-18T04:24:04.818Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12664",
@@ -51046,7 +52114,11 @@
         ]
       },
       "createdAt": "2026-08-18T04:24:04.818Z",
-      "updatedAt": "2026-08-18T04:24:04.818Z"
+      "updatedAt": "2026-08-18T04:24:04.818Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "regenerated_family_differs_from_existing_candidates",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-12508",
@@ -51134,7 +52206,11 @@
         "pendingReasons": []
       },
       "createdAt": "2026-08-18T04:24:04.818Z",
-      "updatedAt": "2026-08-19T08:28:28.414Z"
+      "updatedAt": "2026-08-19T08:28:28.414Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "cafe24_price_missing_or_invalid",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14828",
@@ -51199,7 +52275,11 @@
         ]
       },
       "createdAt": "2026-08-18T04:24:04.818Z",
-      "updatedAt": "2026-08-18T04:24:04.818Z"
+      "updatedAt": "2026-08-18T04:24:04.818Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "regenerated_family_differs_from_existing_candidates",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14510",
@@ -52677,7 +53757,11 @@
         ]
       },
       "createdAt": "2026-08-18T05:34:01.421Z",
-      "updatedAt": "2026-08-18T05:34:01.421Z"
+      "updatedAt": "2026-08-18T05:34:01.421Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "regenerated_family_differs_from_existing_candidates",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10930",
@@ -52742,7 +53826,11 @@
         ]
       },
       "createdAt": "2026-08-18T05:34:01.421Z",
-      "updatedAt": "2026-08-18T05:34:01.421Z"
+      "updatedAt": "2026-08-18T05:34:01.421Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "regenerated_family_differs_from_existing_candidates",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-10321",
@@ -53243,7 +54331,11 @@
         ]
       },
       "createdAt": "2026-08-18T05:34:01.421Z",
-      "updatedAt": "2026-08-18T05:34:01.421Z"
+      "updatedAt": "2026-08-18T05:34:01.421Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-11063",
@@ -92419,7 +93511,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-14115",
@@ -163516,7 +164612,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9196",
@@ -163565,7 +164665,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9047",
@@ -163752,7 +164856,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9054",
@@ -163809,7 +164917,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-7007",
@@ -163931,7 +165043,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8311",
@@ -163980,7 +165096,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-7468",
@@ -164029,7 +165149,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-4388",
@@ -164806,7 +165930,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-7096",
@@ -165128,7 +166256,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8440",
@@ -165177,7 +166309,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8456",
@@ -165226,7 +166362,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8459",
@@ -165314,7 +166454,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8461",
@@ -165363,7 +166507,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8462",
@@ -165412,7 +166560,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8437",
@@ -165461,7 +166613,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HISTORICAL_OR_INACTIVE",
+      "resolutionReason": "cafe24_display_or_selling_inactive",
+      "resolutionTerminal": true,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-8763",
@@ -166151,7 +167307,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9120",
@@ -166200,7 +167360,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9341",
@@ -167105,7 +168269,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-5705",
@@ -167681,7 +168849,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9031",
@@ -167730,7 +168902,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "HUMAN_REVIEW_REQUIRED",
+      "resolutionReason": "product_name_identity_failure",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9033",
@@ -167795,7 +168971,11 @@
         ]
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-18T08:35:12.908Z"
+      "updatedAt": "2026-08-18T08:35:12.908Z",
+      "resolutionState": "GENUINE_AMBIGUOUS",
+      "resolutionReason": "multiple_exact_product_families",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9036",
@@ -167931,7 +169111,11 @@
         "pendingReasons": []
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-19T05:32:19.472Z"
+      "updatedAt": "2026-08-19T05:32:19.472Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "ecount_sku_prices_disagree",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-13794",
@@ -167987,7 +169171,11 @@
         "pendingReasons": []
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-19T05:32:19.472Z"
+      "updatedAt": "2026-08-19T05:32:19.472Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "ecount_sku_prices_disagree",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-9104",
@@ -175713,7 +176901,11 @@
         "pendingReasons": []
       },
       "createdAt": "2026-08-18T08:35:12.908Z",
-      "updatedAt": "2026-08-19T05:37:27.214Z"
+      "updatedAt": "2026-08-19T05:37:27.214Z",
+      "resolutionState": "DATA_QUALITY_ISSUE",
+      "resolutionReason": "ecount_sku_prices_disagree",
+      "resolutionTerminal": false,
+      "resolutionSource": "batch13_operational_normalization_v1"
     },
     {
       "canonicalProductId": "CP-C24-6781",
@@ -180676,5 +181868,14 @@
       }
     }
   ],
-  "note": "BI-BATCH-B2: registry rebuilt from a fresher Cafe24 catalog (product-dashboard-proxy, 824 products) via the existing pipeline (buildCafe24EcountProductMatchingDiagnostic + buildProductRegistryFromDiagnostic), then merged with 56 prior entries whose productNo the new source did not cover, to avoid silently dropping previously-tracked mappings (rollback safety)."
+  "note": "BI-BATCH-B2: registry rebuilt from a fresher Cafe24 catalog (product-dashboard-proxy, 824 products) via the existing pipeline (buildCafe24EcountProductMatchingDiagnostic + buildProductRegistryFromDiagnostic), then merged with 56 prior entries whose productNo the new source did not cover, to avoid silently dropping previously-tracked mappings (rollback safety).",
+  "resolutionSummary": {
+    "DATA_QUALITY_ISSUE": 15,
+    "HUMAN_REVIEW_REQUIRED": 93,
+    "TRUE_NO_COUNTERPART": 22,
+    "GENUINE_AMBIGUOUS": 47,
+    "HISTORICAL_OR_INACTIVE": 12,
+    "SPECIAL_PRODUCT": 109
+  },
+  "resolutionClassifiedAt": "2026-08-28T04:01:31.811Z"
 }
