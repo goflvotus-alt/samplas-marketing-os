@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   checkHistoricalMonthly,
   checkBrandRegistry,
+  checkEcountCurrentMonth,
   checkProductRegistry,
   checkInventory,
   deepEqual
@@ -58,6 +59,18 @@ test("checkBrandRegistry: FAIL when alias counts differ", async (t) => {
   });
   const result = await checkBrandRegistry("http://local", "http://render");
   assert.equal(result.status, "FAIL");
+});
+
+test("checkEcountCurrentMonth: separate import timestamps do not create false drift", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => jsonResponse({
+    sources: [{
+      storeCode: "APGUJEONG",
+      sourceFileName: "2026-08.xlsx",
+      importedAt: url.startsWith("http://local") ? "local-time" : "production-time"
+    }]
+  }));
+  const result = await checkEcountCurrentMonth("http://local", "http://render");
+  assert.equal(result.status, "PASS");
 });
 
 const entryA = { canonicalProductId: "CP-1", status: "confirmed" };

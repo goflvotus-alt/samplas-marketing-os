@@ -269,10 +269,15 @@ export async function checkEcountCurrentMonth(local, render) {
   const month = currentMonthSeoul();
   const path = `/api/ecount-sales/monthly?month=${month}`;
   const [l, r] = await Promise.all([getJson(local, path), getJson(render, path)]);
-  const ok = deepEqual(l.body?.sources, r.body?.sources);
+  // Production UI import and Local validation are separate runs, so importedAt is
+  // expected to differ even when the canonical business snapshot is identical.
+  const stableSources = (sources) => (sources || []).map(({ importedAt, ...source }) => source);
+  const ok = deepEqual(stableSources(l.body?.sources), stableSources(r.body?.sources));
   return {
     status: ok ? "PASS" : "WARN",
-    detail: ok ? `sources match, month=${month}` : `local=${JSON.stringify(l.body?.sources)} render=${JSON.stringify(r.body?.sources)}`
+    detail: ok
+      ? `sources match (excluding importedAt), month=${month}`
+      : `local=${JSON.stringify(l.body?.sources)} render=${JSON.stringify(r.body?.sources)}`
   };
 }
 

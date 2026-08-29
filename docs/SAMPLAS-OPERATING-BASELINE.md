@@ -49,6 +49,7 @@ main branch = 배포 기준. origin/main에 push되면 Render가 코드를 자�
 | Domain | Primary Authority | Local Role | Render Role |
 |---|---|---|---|
 | Today / Monthly(당월) | Render | Test/compare | Production |
+| ECOUNT Monthly Sales XLSX | **Render UI direct import** | Development/validation import | Validate, warehouse-route, atomically persist and serve immediately |
 | Historical Monthly/Annual | Render production archive | Local regeneration/validation(`buildMonthlyArchive()`) | Canonical operational |
 | Clients / Store Intelligence | Render | Validation | Production |
 | Inventory | Render latest uploaded snapshot | Sync(`sync-ecount-inventory.mjs`)/validation | Production |
@@ -168,6 +169,21 @@ production에서 실제로 작동함을 확인. Inventory `brandRollup`도 252�
 `docs/reports/platform-hardening-mega-batch-2026-08-26.md`의 "Follow-up
 Resolution" 섹션. **이 gap은 다시 재발할 수 있다** — 위 "해결 전 규칙"은
 앞으로도 그대로 유효하다.
+
+### ECOUNT Monthly Sales 예외 — Production 직접 import(Batch 15)
+
+ECOUNT 판매현황 XLSX의 정상 운영 경로는 Render Production의 Monthly Sales
+업로드 UI다. 운영자가 XLSX 하나를 선택하면 서버가 파일/월/창고를 검증하고,
+2026-08 이후 데이터는 APGUJEONG/VAIL로 분리한 뒤 Production `WORK_DIR`의
+두 snapshot을 원자적으로 갱신한다. 성공 직후 Today, Monthly, Annual,
+Clients, Store Intelligence, Inventory Operations가 같은 데이터를 읽는다.
+
+Local 업로드는 개발/검증용이다. 정상 운영에서 더 이상 "Local 업로드 → 별도
+Render snapshot sync"를 수행하지 않는다. 장애 복구나 과거 데이터 보정처럼
+명시적으로 승인된 예외에만 `upload-work-snapshots-to-render.mjs`를 사용한다.
+Production 업로드는 기존 운영 Basic 자격 증명으로 짧은 HttpOnly/SameSite
+operator session을 만든 뒤 same-origin 요청으로 수행하며, 비밀값은 browser
+source나 응답에 포함하지 않는다.
 
 ## 6. Reports — 보존 정책
 
