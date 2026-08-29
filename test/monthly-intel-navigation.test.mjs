@@ -220,5 +220,5 @@ test("12. compact Online Summary preserves paidAmount/orderCount/averageOrderVal
 
 test("12b. overall brand ranking keeps canonical total-sales filtering and sorting", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /const performanceBrandSales = brandSales\s*\n\s*\.filter\(\(item\) => !isExcludedBrandPerformance\(item\)\)\s*\n\s*\.sort\(\(left, right\) => brandPerformancePaidAmount\(right\) - brandPerformancePaidAmount\(left\)\);/);
+  assert.match(fn, /const performanceBrandSales = performanceBrandSource\s*\n\s*\.filter\(\(item\) => !isExcludedBrandPerformance\(item\)\)\s*\n\s*\.sort\(\(left, right\) => brandPerformancePaidAmount\(right\) - brandPerformancePaidAmount\(left\)\);/);
 });

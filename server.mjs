@@ -4498,10 +4498,26 @@ function crossBrandPeriodBrandRow(row) {
   };
 }
 
+function crossBrandPeriodIdentityCoverage(brandSales = []) {
+  const totalRevenue = brandSales.reduce((total, row) => total + Number(row.revenue || 0), 0);
+  const unassignedRevenue = brandSales
+    .filter((row) => row.brand_code === "UNASSIGNED")
+    .reduce((total, row) => total + Number(row.revenue || 0), 0);
+  const complete = unassignedRevenue === 0;
+  return {
+    totalRevenue,
+    assignedRevenue: totalRevenue - unassignedRevenue,
+    unassignedRevenue,
+    status: complete ? "COMPLETE" : "INCOMPLETE",
+    complete
+  };
+}
+
 async function buildCrossBrandPeriodWindow(range) {
   const commerceSource = await buildBrandSalesDiagnostics(range.startDate, range.endDate);
   const { brandSales } = await buildMonthlyArchiveBrandSales(range.startDate, range.endDate, commerceSource);
-  return brandSales.map(crossBrandPeriodBrandRow);
+  const rows = brandSales.map(crossBrandPeriodBrandRow);
+  return { brandSales: rows, coverage: crossBrandPeriodIdentityCoverage(rows) };
 }
 
 // STEP67 cross-brand-partial-period P1: base/comparison 두 기간을 한 번의 요청으로
@@ -4518,8 +4534,8 @@ async function buildCrossBrandComparisonPeriodPayload({ baseMonth, comparisonMon
   ]);
   return {
     cutoff,
-    base: { brandSales: base },
-    comparison: { brandSales: comparison }
+    base,
+    comparison
   };
 }
 

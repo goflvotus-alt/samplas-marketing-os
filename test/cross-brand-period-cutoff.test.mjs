@@ -40,6 +40,10 @@ function loadCrossBrandPeriodBrandRow() {
   return Function(`${sourceOf("crossBrandPeriodBrandRow")}; return crossBrandPeriodBrandRow;`)();
 }
 
+function loadCrossBrandPeriodIdentityCoverage() {
+  return Function(`${sourceOf("crossBrandPeriodIdentityCoverage")}; return crossBrandPeriodIdentityCoverage;`)();
+}
+
 // ---------------------------------------------------------------------------
 // 1. Aug 11 vs Jul 11
 // ---------------------------------------------------------------------------
@@ -158,6 +162,30 @@ test("15. a brand absent from the cutoff window's brandSales array is simply not
   assert.equal(brandSales.find((row) => row.brand_code === "B00000WW"), undefined);
 });
 
+test("cutoff identity coverage is complete only when no revenue is UNASSIGNED", () => {
+  const coverage = loadCrossBrandPeriodIdentityCoverage();
+  assert.deepEqual(coverage([
+    { brand_code: "B00000SA", revenue: 100 },
+    { brand_code: "B00000KU", revenue: 200 }
+  ]), {
+    totalRevenue: 300,
+    assignedRevenue: 300,
+    unassignedRevenue: 0,
+    status: "COMPLETE",
+    complete: true
+  });
+  assert.deepEqual(coverage([
+    { brand_code: "B00000SA", revenue: 100 },
+    { brand_code: "UNASSIGNED", revenue: 200 }
+  ]), {
+    totalRevenue: 300,
+    assignedRevenue: 100,
+    unassignedRevenue: 200,
+    status: "INCOMPLETE",
+    complete: false
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Invalid input hygiene
 // ---------------------------------------------------------------------------
@@ -180,6 +208,7 @@ test("server route wires the new endpoint to the resolver and existing canonical
   const windowFnSource = sourceOf("buildCrossBrandPeriodWindow");
   assert.match(windowFnSource, /buildBrandSalesDiagnostics\(range\.startDate, range\.endDate\)/);
   assert.match(windowFnSource, /buildMonthlyArchiveBrandSales\(range\.startDate, range\.endDate, commerceSource\)/);
+  assert.match(windowFnSource, /coverage: crossBrandPeriodIdentityCoverage\(rows\)/);
   // 16. work/monthly 캐시(readMonthlyArchive/writeMonthlyArchive)를 이 경로가 전혀
   // 참조하지 않는지 구조적으로 확인 — stale-archive 캐시와 무관함을 보증한다.
   assert.doesNotMatch(payloadFnSource, /readMonthlyArchive|writeMonthlyArchive/);

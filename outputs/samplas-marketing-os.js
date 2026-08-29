@@ -4876,16 +4876,21 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
 
   const previousMonth = previousMonthKey(month);
   const { monthStart, monthEnd } = monthlyReportMonthRange(month);
+  const isCurrentMonthBrandComparison = month === todayDateKey().slice(0, 7) && Boolean(previousMonth);
+  const currentMonthBrandComparison = isCurrentMonthBrandComparison
+    ? getJson(`/api/reports/monthly-comparison-cutoff?base=${month}&compare=${previousMonth}`, 30000)
+    : Promise.resolve(null);
   // MONTHLY CLEANUP: Mission teaser/chapter placeholder가 제거되어 이 render는 더 이상
   // Intelligence Service의 mission 목록을 소비하지 않는다. 엔드포인트/계산/다른 화면의
   // 사용은 그대로 둔다 — 여기서는 Monthly만의 fetch 호출을 없앤다.
-  const [archive, previousArchive, brandMasterResult, offlineSnapshot, previousOfflineSnapshot, canonicalSales] = await Promise.all([
+  const [archive, previousArchive, brandMasterResult, offlineSnapshot, previousOfflineSnapshot, canonicalSales, brandComparison] = await Promise.all([
     getJson(`/api/reports/monthly?month=${month}`, 8000),
     previousMonth ? getJson(`/api/reports/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" }),
     getSharedJson("/api/brand-master", 12000),
     getJson(`/api/ecount-sales/monthly?month=${month}&includeStoreBrands=1`, 12000),
     previousMonth ? getJson(`/api/ecount-sales/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" }),
-    getJson(`/api/sales/total?since=${monthStart}&until=${monthEnd}`, 12000)
+    getJson(`/api/sales/total?since=${monthStart}&until=${monthEnd}`, 12000),
+    currentMonthBrandComparison
   ]);
   if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
   registerBrandMasterResponse(brandMasterResult);
@@ -4926,7 +4931,18 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const previousCommerce = previousArchive.error ? {} : previousArchive.commerce || {};
   const previousBrandSales = previousArchive.error ? [] : previousCommerce.brandSales || [];
   const brandSales = commerce.brandSales || [];
-  const performanceBrandSales = brandSales
+  const currentMonthComparisonComplete = brandComparison
+    && !brandComparison.error
+    && brandComparison.cutoff?.cutoffNormalized === true
+    && brandComparison.base?.coverage?.complete === true
+    && brandComparison.comparison?.coverage?.complete === true;
+  const performanceBrandSource = isCurrentMonthBrandComparison && currentMonthComparisonComplete
+    ? brandComparison.base.brandSales || []
+    : brandSales;
+  const performancePreviousBrandSource = isCurrentMonthBrandComparison
+    ? currentMonthComparisonComplete ? brandComparison.comparison.brandSales || [] : []
+    : previousBrandSales;
+  const performanceBrandSales = performanceBrandSource
     .filter((item) => !isExcludedBrandPerformance(item))
     .sort((left, right) => brandPerformancePaidAmount(right) - brandPerformancePaidAmount(left));
   const archiveStatusLabel = {
@@ -5050,7 +5066,12 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   // MONTHLY-INTEL-NAV: 매장 매출 비율 도넛은 ALL 모드에서만 의미가 있다(Store Focus 모드는
   // 이미 한 매장만 보고 있으므로 비율 도넛이 필요 없다) — 기존 storeScopeNote/
   // monthlyAllStoreBreakdownNote의 ALL-게이트와 동일한 원칙.
-  const previousBrandByCode = new Map(previousBrandSales.map((row) => [monthlyReportBrandCode(row), row]));
+  const previousBrandByCode = new Map(performancePreviousBrandSource.map((row) => [monthlyReportBrandCode(row), row]));
+  const brandComparisonNote = isCurrentMonthBrandComparison
+    ? currentMonthComparisonComplete
+      ? `${entityCompareCutoffRangeLabel(brandComparison.cutoff.base)} vs ${entityCompareCutoffRangeLabel(brandComparison.cutoff.comparison)}`
+      : "비교 불가 · 브랜드 identity coverage가 완전하지 않습니다."
+    : "완결월 전체 기간 비교";
   const overallBrandPerformanceBlock = performanceBrandSales.length ? `<section class="monthly-report-block">
     <div class="monthly-report-block-head"><h4>전체 브랜드 TOP 5</h4><span>canonical brand · 온라인 + 오프라인</span></div>
     <div class="monthly-report-rank">
@@ -5069,6 +5090,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
         }
       })}
     </div>
+    <p class="monthly-report-fnote ${isCurrentMonthBrandComparison && !currentMonthComparisonComplete ? "monthly-report-muted" : ""}">${esc(brandComparisonNote)}</p>
   </section>` : `<article class="action-item"><strong>브랜드 성과 데이터 없음</strong><p>해당 월의 canonical brand 매출을 확인할 수 없습니다.</p></article>`;
 
   target.innerHTML = `
