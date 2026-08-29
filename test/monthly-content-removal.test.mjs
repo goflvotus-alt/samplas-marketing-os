@@ -53,7 +53,7 @@ test("3. no leftover content.*/formatMix/topContent/aboveAverageSaveRatePosts re
 // Content Intelligence (only the Monthly UI rendering of it was removed).
 test("4. the underlying /api/reports/monthly fetch (archive.content source) is unchanged", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /getJson\(`\/api\/reports\/monthly\?month=\$\{month\}`, 8000\)/);
+  assert.match(fn, /getJson\(`\/api\/reports\/monthly\?month=\$\{month\}`, isCurrentMonthBrandComparison \? 30000 : 8000\)/);
 });
 
 test("4b. archive is destructured/used as a whole object (archive.content is never deleted from the response shape)", () => {
