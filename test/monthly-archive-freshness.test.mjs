@@ -93,17 +93,19 @@ test("2. archive older than the source snapshot, or missing its marker entirely,
 // ---------------------------------------------------------------------------
 test("3. stale archive calls mergeOfflineBrandSales; fresh archive returns the same reference untouched", async () => {
   const calls = [];
+  const resolverCalls = [];
   const spyMerge = (args) => { calls.push(args); return [{ brand_code: "SPY", offlineSalesAmount: 1 }]; };
   const enrich = loadEnrichMonthlyArchiveBrandSales({
     readEcountOfflineSalesSnapshot: async () => ({ importedAt: "2026-08-05T04:35:11.454Z", salesLines: [] }),
-    loadResolverContext: async () => ({}),
+    loadResolverContext: async (options) => { resolverCalls.push(options); return {}; },
     mergeOfflineBrandSales: spyMerge,
-    workDir: "/tmp/unused"
+    workDir: "/runtime/work"
   });
 
   const staleArchive = { month: "2026-07", commerce: { brandSalesBasis: "online_offline", brandSales: [] } };
   const staleResult = await enrich(staleArchive, "2026-07");
   assert.equal(calls.length, 1, "stale archive (missing brandSalesSourceImportedAt) must trigger a re-merge");
+  assert.equal(resolverCalls[0].workDir, "/runtime/work", "historical enrichment must use the server canonical runtime workDir");
   assert.notEqual(staleResult, staleArchive, "a rebuilt archive is a new object");
   assert.equal(staleResult.commerce.brandSalesSourceImportedAt, "2026-08-05T04:35:11.454Z");
 
@@ -111,6 +113,18 @@ test("3. stale archive calls mergeOfflineBrandSales; fresh archive returns the s
   const freshResult = await enrich(freshArchive, "2026-07");
   assert.equal(calls.length, 1, "fresh archive must not trigger another merge");
   assert.equal(freshResult, freshArchive, "fresh archive is returned by reference (no rebuild)");
+});
+
+test("current Monthly and cutoff first merge use the server canonical runtime workDir", async () => {
+  const resolverCalls = [];
+  const build = loadBuildMonthlyArchiveBrandSales({
+    readEcountOfflineSalesSnapshot: async () => ({ importedAt: "2026-08-29T00:00:00.000Z", salesLines: [] }),
+    loadResolverContext: async (options) => { resolverCalls.push(options); return {}; },
+    mergeOfflineBrandSales: () => [],
+    workDir: "/runtime/work"
+  });
+  await build("2026-08-01", "2026-08-29", { brands: [], products: [], totals: {} });
+  assert.equal(resolverCalls[0].workDir, "/runtime/work");
 });
 
 // ---------------------------------------------------------------------------

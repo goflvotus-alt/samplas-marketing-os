@@ -4307,6 +4307,7 @@ async function buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSourc
       ? snapshot.rows
       : [];
   const identityContext = await loadResolverContext({
+    workDir,
     onlineCatalog: { brands: commerceSource?.brands || [], products: commerceSource?.products || [] }
   });
   const brandSales = mergeOfflineBrandSales({
@@ -4572,6 +4573,7 @@ async function enrichMonthlyArchiveBrandSales(archive, month) {
       ? snapshot.rows
       : [];
   const identityContext = await loadResolverContext({
+    workDir,
     onlineCatalog: {
       brands: archive?.commerce?.brandSales || [],
       products: archive?.commerce?.productSales || []
