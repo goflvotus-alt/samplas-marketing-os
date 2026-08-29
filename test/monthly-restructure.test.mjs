@@ -48,7 +48,7 @@ test("3. Monthly Goal Progress card list (#nextActions) no longer includes an ad
 // reusable later (only the Monthly UI rendering of it was removed).
 test("4. the underlying /api/reports/monthly fetch (archive.marketing source) is unchanged", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /getJson\(`\/api\/reports\/monthly\?month=\$\{month\}`, 8000\)/);
+  assert.match(fn, /getJson\(`\/api\/reports\/monthly\?month=\$\{month\}`, isCurrentMonthBrandComparison \? 30000 : 8000\)/);
 });
 
 // 5. monthlyReportBrandSignalsBlock no longer takes/renders a reconciliation (ad) label

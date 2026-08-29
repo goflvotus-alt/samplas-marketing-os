@@ -4884,7 +4884,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   // Intelligence Service의 mission 목록을 소비하지 않는다. 엔드포인트/계산/다른 화면의
   // 사용은 그대로 둔다 — 여기서는 Monthly만의 fetch 호출을 없앤다.
   const [archive, previousArchive, brandMasterResult, offlineSnapshot, previousOfflineSnapshot, canonicalSales, brandComparison] = await Promise.all([
-    getJson(`/api/reports/monthly?month=${month}`, 8000),
+    getJson(`/api/reports/monthly?month=${month}`, isCurrentMonthBrandComparison ? 30000 : 8000),
     previousMonth ? getJson(`/api/reports/monthly?month=${previousMonth}`, 8000) : Promise.resolve({ error: "직전 월 없음" }),
     getSharedJson("/api/brand-master", 12000),
     getJson(`/api/ecount-sales/monthly?month=${month}&includeStoreBrands=1`, 12000),
