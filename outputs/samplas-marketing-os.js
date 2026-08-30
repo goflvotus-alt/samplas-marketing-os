@@ -1234,7 +1234,10 @@ async function renderApgujeongIntelligenceView() {
   })).join("") : storeIntelUnavailableHtml("해당 기간 스타일리스트 유형 고객 없음");
 
   $("#apgujeongIntelStylistCustomerBars").innerHTML = storeIntelUnavailableHtml(data.relationships.reason);
-  $("#apgujeongIntelStylistBrandTable tbody").innerHTML = `<tr><td colspan="4">${esc(data.brandClientCross.reason)}</td></tr>`;
+  const stylistBrands = data.brandClientCross?.available ? data.brandClientCross.items || [] : [];
+  $("#apgujeongIntelStylistBrandTable tbody").innerHTML = stylistBrands.length ? stylistBrands.map((row) => (
+    `<tr><td>${esc(row.stylist)}</td><td>${esc(row.brandName)}</td><td>${apiWon(row.revenue)}</td><td>${Number(row.share || 0).toFixed(1)}%</td></tr>`
+  )).join("") : `<tr><td colspan="4">${esc(data.brandClientCross?.reason || "확인된 canonical 브랜드 구매 없음")}</td></tr>`;
 
   const totalClients = typeRows.reduce((sum, row) => sum + Number(row.clientCount || 0), 0);
   const typeColors = new Map([["stylist", 0], ["customer", 1], ["samplas_press", 2], ["foreign", 3], ["ff", 4]]);

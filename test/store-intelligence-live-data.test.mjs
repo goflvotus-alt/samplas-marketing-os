@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { buildBrandRegistry } from "../scripts/brand-engine.mjs";
-import { buildStoreProductIntelligence, composeStoreIntelligencePayload } from "../server.mjs";
+import { buildBrandClientCross, buildStoreCategoryIntelligence, buildStoreIntelligencePayload, buildStoreProductIntelligence, composeStoreIntelligencePayload } from "../server.mjs";
 
 const brandMaster = {
   brands: [{ brand_code: "B-PAC", brand_name: "PACOSPLY", name_aliases: [], active: true }]
@@ -61,16 +61,56 @@ test("unsupported sections are unavailable, never fabricated zero arrays", () =>
   assert.equal(payload.products.available, true);
   assert.equal(payload.products.items.length, 0);
   assert.equal(payload.products.coverage.unresolvedLines, 1);
-  assert.equal(payload.categories.available, false);
-  assert.deepEqual(payload.categories.items, []);
+  assert.equal(payload.categories.available, true);
+  assert.equal(payload.categories.coverage.unclassifiedRevenue, 70200);
   assert.equal(payload.insights.available, true);
   assert.equal(payload.insights.method, "deterministic");
   assert.match(payload.insights.items[0], /70,200원 · 1건/);
   assert.match(payload.insights.items[1], /PACOSPLY · 70,200원/);
-  for (const key of ["inventory", "sellThrough", "newBrands", "relationships", "brandClientCross"]) {
+  for (const key of ["inventory", "sellThrough", "newBrands", "relationships"]) {
     assert.equal(payload[key].available, false, key);
     assert.ok(payload[key].reason, key);
   }
+});
+
+test("Brand x Stylist reuses canonical Clients lines and retains unresolved revenue in coverage", () => {
+  const result = buildBrandClientCross([{ clientId: "c1", name: "스타일리스트 A", clientType: "stylist", purchaseDetails: [
+    { canonicalBrandCode: "B1", canonicalBrandName: "BRAND 1", salesAmount: 600 },
+    { canonicalBrandCode: "B2", canonicalBrandName: "BRAND 2", salesAmount: 300 },
+    { canonicalBrandCode: null, canonicalBrandName: null, salesAmount: 100 }
+  ] }, { clientId: "c2", name: "일반 고객", clientType: "customer", purchaseDetails: [{ canonicalBrandCode: "B1", salesAmount: 999 }] }]);
+  assert.deepEqual(result.items, [{ clientId: "c1", stylist: "스타일리스트 A", brandCode: "B1", brandName: "BRAND 1", revenue: 600, totalStylistRevenue: 1000, share: 60 }]);
+  assert.deepEqual(result.coverage, { totalRevenue: 1000, assignedRevenue: 900, unassignedRevenue: 100 });
+});
+
+test("Store categories use exact Product Registry identity, approved category rules, and retain UNCLASSIFIED accounting", () => {
+  const context = { ...identityContext, productRegistry: { entries: [{
+    canonicalProductId: "CP-1", brandId: "B-PAC", brandName: "PACOSPLY", canonicalProductName: "PACOSPLY / TOP",
+    verified: true, status: "confirmed", cafe24: { productNo: "1" },
+    ecount: { matchedProducts: [{ productName: "PACOSPLY / TOP", size: "M", prodCd: "PAC261LT00101" }] }
+  }] }, categoryMaster: { manualOverrides: [], modelAssignments: [] } };
+  const result = buildStoreCategoryIntelligence([
+    { isOfflineRevenue: true, productName: "PACOSPLY / TOP", specification: "M", quantity: 2, salesAmount: 800, date: "2026-08-01", slipNo: "1" },
+    { isOfflineRevenue: true, productName: "UNKNOWN", specification: "M", quantity: 1, salesAmount: 200, date: "2026-08-01", slipNo: "2" }
+  ], context);
+  assert.deepEqual(result.coverage, { totalRevenue: 1000, assignedRevenue: 800, unclassifiedRevenue: 200 });
+  assert.equal(result.items.find((row) => row.code === "TOP").share, 80);
+  assert.equal(result.items.find((row) => row.code === "UNCLASSIFIED").share, 20);
+});
+
+test("APGUJEONG and VAIL category accounting reconciles to each canonical store total", async () => {
+  for (const storeCode of ["APGUJEONG", "VAIL"]) {
+    const payload = await buildStoreIntelligencePayload({ storeCode, since: "2026-08-01", until: "2026-08-30" });
+    assert.equal(payload.categories.items.reduce((sum, row) => sum + row.revenue, 0), payload.sales.periodSales);
+    assert.equal(payload.categories.coverage.assignedRevenue + payload.categories.coverage.unclassifiedRevenue, payload.sales.periodSales);
+  }
+});
+
+test("unsupported customer-history definitions and explicitly deferred P3 fields remain unavailable", () => {
+  const payload = vailPayload();
+  assert.equal(payload.definitions.repeatCustomer.available, false);
+  assert.equal(payload.definitions.newCustomer.available, false);
+  for (const key of ["sellThrough", "newBrands", "relationships"]) assert.equal(payload[key].available, false, key);
 });
 
 test("store products use exact confirmed Product Registry matches", () => {

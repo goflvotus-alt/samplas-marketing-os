@@ -54,7 +54,8 @@ import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
 // 떨어진 상품에 한해서만 STEP63-2B Integrated Pipeline을 보조 조회로 사용한다(새 Resolver
 // 작성 금지, 기존 자산 재사용).
 import { resolveIdentity, loadResolverContext } from "./scripts/unified-identity-resolver.mjs";
-import { buildStoreProductIdentityIndex, resolveStoreProductIdentity } from "./scripts/store-product-identity.mjs";
+import { buildStoreProductIdentityIndex, resolveStoreProductIdentity, storeProductIdentityKey } from "./scripts/store-product-identity.mjs";
+import { classifyProductCategory } from "./scripts/category-classification-rules.mjs";
 // STEP67 cross-brand-partial-period P1: 진행 중인 base 기간과 완결된 comparison 기간을
 // "같은 경과일"로 정규화하는 순수 날짜 계산만 담당(판매 계산 로직 없음, docs/reports/
 // NEXT-CROSS-BRAND-PARTIAL-PERIOD-plan.md §6 그대로 구현).
@@ -4384,6 +4385,75 @@ export function buildStoreProductIntelligence(lines = [], productRegistry = {}, 
   };
 }
 
+const STORE_CATEGORY_NAMES = new Map([
+  ["TOP", "상의"], ["BOTTOM", "하의"], ["OUTER", "아우터"], ["DRESS", "드레스"],
+  ["BAG", "가방"], ["FOOTWEAR", "신발"], ["HEADWEAR", "모자"], ["JEWELRY", "주얼리"],
+  ["ACCESSORY", "액세서리"], ["OTHER", "기타"], ["UNCLASSIFIED", "미분류"]
+]);
+
+export function buildStoreCategoryIntelligence(lines = [], identityContext = {}) {
+  const index = buildStoreProductIdentityIndex(identityContext.productRegistry);
+  const master = identityContext.categoryMaster || {};
+  const byProductNo = new Map((master.manualOverrides || []).filter((row) => row?.productNo).map((row) => [String(row.productNo), row.categoryCode]));
+  const byProductCode = new Map();
+  for (const row of master.manualOverrides || []) if (row?.productCode) byProductCode.set(String(row.productCode), row.categoryCode);
+  for (const row of master.modelAssignments || []) for (const code of row?.productCodes || []) byProductCode.set(String(code), row.categoryCode);
+  const categories = new Map();
+  let totalRevenue = 0;
+  for (const line of lines.filter((row) => row?.isOfflineRevenue === true)) {
+    const revenue = Number(line?.salesAmount || 0);
+    totalRevenue += revenue;
+    const resolution = resolveStoreProductIdentity(line, index, identityContext.brandRegistry);
+    let code = "UNCLASSIFIED";
+    if (resolution.status === "resolved") {
+      const product = (resolution.entry?.ecount?.matchedProducts || []).find((row) => (
+        storeProductIdentityKey(row?.productName, row?.size) === storeProductIdentityKey(line.productName, line.specification)
+      ));
+      code = classifyProductCategory({
+        productNo: resolution.entry?.cafe24?.productNo,
+        productName: resolution.entry?.canonicalProductName || product?.productName,
+        prodCd: product?.prodCd,
+        overrides: { byProductNo, byProductCode }
+      }).code;
+    }
+    const current = categories.get(code) || { code, name: STORE_CATEGORY_NAMES.get(code) || code, revenue: 0, itemCount: 0, orderKeys: new Set() };
+    current.revenue += revenue;
+    current.itemCount += Number(line?.quantity || 0);
+    current.orderKeys.add(`${line?.date || ""}|${line?.documentNo || line?.slipNo || ""}`);
+    categories.set(code, current);
+  }
+  const items = [...categories.values()].map(({ orderKeys, ...row }) => ({
+    ...row,
+    transactionCount: orderKeys.size,
+    share: totalRevenue ? row.revenue / totalRevenue * 100 : 0
+  })).sort((left, right) => right.revenue - left.revenue || left.code.localeCompare(right.code));
+  const unclassifiedRevenue = items.find((row) => row.code === "UNCLASSIFIED")?.revenue || 0;
+  return { available: true, items, coverage: { totalRevenue, assignedRevenue: totalRevenue - unclassifiedRevenue, unclassifiedRevenue } };
+}
+
+export function buildBrandClientCross(clients = []) {
+  const items = [];
+  let totalRevenue = 0;
+  let assignedRevenue = 0;
+  for (const client of clients.filter((row) => row?.clientType === "stylist")) {
+    const brandRevenue = new Map();
+    const details = Array.isArray(client.purchaseDetails) ? client.purchaseDetails : [];
+    const stylistRevenue = details.reduce((sum, row) => sum + Number(row?.salesAmount || 0), 0);
+    totalRevenue += stylistRevenue;
+    for (const row of details) {
+      if (!row?.canonicalBrandCode) continue;
+      const current = brandRevenue.get(row.canonicalBrandCode) || { brandCode: row.canonicalBrandCode, brandName: row.canonicalBrandName || row.canonicalBrandCode, revenue: 0 };
+      current.revenue += Number(row.salesAmount || 0);
+      brandRevenue.set(row.canonicalBrandCode, current);
+      assignedRevenue += Number(row.salesAmount || 0);
+    }
+    const top = [...brandRevenue.values()].sort((left, right) => right.revenue - left.revenue || left.brandName.localeCompare(right.brandName, "ko"))[0];
+    if (top) items.push({ clientId: client.clientId, stylist: client.name, ...top, totalStylistRevenue: stylistRevenue, share: stylistRevenue ? top.revenue / stylistRevenue * 100 : 0 });
+  }
+  items.sort((left, right) => right.revenue - left.revenue || left.stylist.localeCompare(right.stylist, "ko"));
+  return { available: true, items, coverage: { totalRevenue, assignedRevenue, unassignedRevenue: totalRevenue - assignedRevenue } };
+}
+
 export function composeStoreIntelligencePayload({ store, since, until, snapshots = [], canonicalSales, clients, identityContext }) {
   const lines = snapshots.flatMap((snapshot) => (
     Array.isArray(snapshot?.salesLines) ? snapshot.salesLines : Array.isArray(snapshot?.rows) ? snapshot.rows : []
@@ -4409,6 +4479,8 @@ export function composeStoreIntelligencePayload({ store, since, until, snapshots
   }));
   const missingMonths = instagramRangeMonthKeys(since, until).filter((month) => !snapshots.some((snapshot) => snapshot?.month === month));
   const products = buildStoreProductIntelligence(lines, identityContext?.productRegistry, identityContext?.brandRegistry);
+  const categories = buildStoreCategoryIntelligence(lines, identityContext);
+  const brandClientCross = buildBrandClientCross(clientRows);
   const periodSales = Number(canonicalSales?.offlineSales?.offlineSalesAmount || 0);
   const orderCount = Number(clients?.summary?.offlineOrderCount || 0);
   const topBrand = brandItems[0] || null;
@@ -4448,13 +4520,13 @@ export function composeStoreIntelligencePayload({ store, since, until, snapshots
       recentClients
     } : { available: false, reason: "매장 고객 데이터 미업로드" },
     products: snapshots.length ? products : { available: false, reason: "매장 매출 데이터 미업로드", items: [] },
-    categories: { available: false, reason: "확정 상품의 canonical category 연결 없음", items: [] },
+    categories: snapshots.length ? categories : { available: false, reason: "매장 매출 데이터 미업로드", items: [] },
     inventory: { available: false, reason: "ECOUNT 재고에 매장별 창고 구분이 없어 계산 불가" },
     sellThrough: { available: false, reason: "기간 시작 재고와 입고일 source가 없어 계산 불가" },
     newBrands: { available: false, reason: "canonical 입점일 source가 없어 계산 불가" },
     insights: snapshots.length ? { available: true, method: "deterministic", items: insights } : { available: false, reason: "매장 매출 데이터 미업로드", items: [] },
     relationships: { available: false, reason: "담당 관계 데이터 미연결" },
-    brandClientCross: { available: false, reason: "브랜드 교차 집계 연결 대기" },
+    brandClientCross: snapshots.length ? brandClientCross : { available: false, reason: "매장 고객 데이터 미업로드", items: [] },
     definitions: { repeatCustomer: { available: false, reason: "정의 미확정" }, newCustomer: { available: false, reason: "정의 미확정" } }
   };
 }
@@ -4469,12 +4541,13 @@ export async function buildStoreIntelligencePayload({ storeCode: storeCodeValue,
   const snapshots = (await Promise.all(instagramRangeMonthKeys(since, until).map((month) => (
     readEcountOfflineSalesSnapshot(month, { workDir, storeCode: store.storeCode })
   )))).filter(Boolean);
-  const [canonicalSales, clients, identityContext] = await Promise.all([
+  const [canonicalSales, clients, identityContext, categoryMaster] = await Promise.all([
     buildCanonicalTotalSales({ since, until, storeCode: store.storeCode }),
     buildClientsOverview({ since, until, cafe24Orders: [], storeCode: store.storeCode }),
-    loadResolverContext({ workDir })
+    loadResolverContext({ workDir }),
+    readFile(join(workDir, "category-master.json"), "utf8").then(JSON.parse)
   ]);
-  return composeStoreIntelligencePayload({ store, since, until, snapshots, canonicalSales, clients, identityContext });
+  return composeStoreIntelligencePayload({ store, since, until, snapshots, canonicalSales, clients, identityContext: { ...identityContext, categoryMaster } });
 }
 
 // STEP67 cross-brand-partial-period P1: 정규화된(day-cutoff 포함 가능) 기간 하나에
