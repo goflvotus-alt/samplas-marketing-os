@@ -802,7 +802,7 @@ function renderNav() {
   nav.innerHTML = groups.map((group) => `
     <div class="nav-group">
       <p class="nav-group-label">${esc(group.label)}</p>
-      ${navItems.filter((item) => item.group === group.key).map((item) => (
+      ${navItems.filter((item) => item.group === group.key && !item.hidden).map((item) => (
         `<button type="button" data-view="${esc(item.view)}" data-route="${esc(item.hash)}">${esc(item.label)}${item.sublabel ? `<small class="nav-sublabel">${esc(item.sublabel)}</small>` : ""}</button>`
       )).join("")}
     </div>

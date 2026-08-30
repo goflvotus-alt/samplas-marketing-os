@@ -122,6 +122,8 @@ test("missing diagnostic artifact is an explicit P3 INCOMPLETE state, not an unc
 test("incomplete Category Review is hidden from Production navigation and shown explicitly on direct access", async () => {
   const source = await readFile(join(root, "outputs/samplas-marketing-os.js"), "utf8");
   assert.match(source, /view: "CategoryReview"[^\n]+hidden: true/);
+  assert.match(source, /item\.group === group\.key && !item\.hidden/);
+  assert.match(source, /navItems\.filter\(\(item\) => item\.hidden\)[\s\S]+hidden>/);
   assert.match(source, /CATEGORY REVIEW INCOMPLETE/);
 });
 
