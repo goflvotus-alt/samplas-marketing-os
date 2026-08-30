@@ -181,6 +181,8 @@ test("Clients storeCoverage distinguishes missing upload from a real zero", () =
 
 test("20/21. Brand APGUJEONG/VAIL offline revenue is correct and store-isolated", () => withTemp(async (dir) => {
   const workDir = join(dir, "work");
+  await mkdir(workDir, { recursive: true });
+  await writeFile(join(workDir, "brand-master.json"), await readFile(new URL("../work/brand-master.json", import.meta.url)));
   await writeStoreSnapshot(workDir, "2026-08", "APGUJEONG", [offlineLineFixture({ date: "2026-08-01", storeCode: "APGUJEONG", amount: 60000, customerName: "매장방문고객", slipNo: "1" })]);
   await writeStoreSnapshot(workDir, "2026-08", "VAIL", [offlineLineFixture({ date: "2026-08-02", storeCode: "VAIL", amount: 25000, customerName: "매장방문고객", slipNo: "2" })]);
   const apgujeong = await buildBrandCustomerComposition("B00000SK", "2026-08", {}, "APGUJEONG", workDir);

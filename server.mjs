@@ -532,7 +532,7 @@ const server = isMainModule ? createServer(async (req, res) => {
         const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir, storeCode });
         if (!snapshot) return json(res, { error: "ECOUNT offline sales snapshot not found", month, storeCode: storeCode || null }, 404);
         if (url.searchParams.get("includeStoreBrands") === "1" && !storeCode) {
-          const identityContext = await loadResolverContext();
+          const identityContext = await loadResolverContext({ workDir });
           snapshot.storeBrandSales = buildStoreOfflineBrandSales(snapshot, {
             since: `${month}-01`,
             until: monthEndKey(month),
@@ -2695,8 +2695,9 @@ async function readBrandMasterFile() {
       updatedAt: parsed.updatedAt || null,
       brands: brands.map((entry) => normalizeBrandMasterEntry(entry)).filter(Boolean)
     };
-  } catch {
-    return { updatedAt: null, brands: [] };
+  } catch (error) {
+    await logApiError("brand_master_read", error, { file });
+    throw Object.assign(new Error(`Brand Master source failure: ${safeErrorMessage(error)}`), { status: 500, cause: error });
   }
 }
 
@@ -3738,7 +3739,7 @@ async function buildBrandSalesDiagnostics(since, until) {
   // 다시 읽지 않음). 온라인 카탈로그 2차 조회(Priority 2b)는 여기서는 필요 없다 — Brand
   // Dashboard 자신이 이미 그 기간의 온라인 카탈로그이므로, UNASSIGNED로 남은 상품은
   // Priority 1(Product Registry verified, cafe24ProductNo 매칭)만으로 충분하다.
-  const identityResolverContext = await loadResolverContext();
+  const identityResolverContext = await loadResolverContext({ workDir });
 
   if (env.CAFE24_PROXY_BASE_URL) {
     const [dashboard, ordersResult, brandMaster] = await Promise.all([
@@ -3939,7 +3940,7 @@ async function buildPromotionSummary(categoryNo, since, until) {
     fetchCafe24Orders(since, until, { limit: 500 }).catch((error) => ({ error: error.message, orders: [], totals: {} })),
     readBrandMasterWithSeed()
   ]);
-  const identityResolverContext = await loadResolverContext();
+  const identityResolverContext = await loadResolverContext({ workDir });
   const catalog = dashboard.products || [];
   const promotionCatalog = catalog.filter((product) => (product.categoryNos || []).map(String).includes(categoryNoStr));
 
@@ -4622,6 +4623,7 @@ export async function buildBrandCustomerComposition(brandCode, month, commerceSo
   const storesIncluded = Array.isArray(snapshot?.storesIncluded) ? snapshot.storesIncluded : [];
   const storeHasData = !storeCode || storesIncluded.includes(storeCode);
   const identityContext = await loadResolverContext({
+    workDir: workDirOverride || workDir,
     onlineCatalog: { brands: commerceSource?.brands || [], products: commerceSource?.products || [] }
   });
   const typeBuckets = new Map();

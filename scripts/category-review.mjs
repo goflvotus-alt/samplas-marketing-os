@@ -74,7 +74,20 @@ export function buildCategoryReviewWorkspace(audit, master) {
 }
 
 export async function loadCategoryReviewWorkspace({ auditPath, masterPath }) {
-  return buildCategoryReviewWorkspace(await readJson(auditPath), await readJson(masterPath));
+  try {
+    return { available: true, status: "READY", ...buildCategoryReviewWorkspace(await readJson(auditPath), await readJson(masterPath)) };
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    return {
+      available: false,
+      status: "INCOMPLETE",
+      reason: "Category Review operational artifact is not configured",
+      taxonomy: CATEGORY_REVIEW_TAXONOMY,
+      summary: null,
+      brands: [],
+      models: []
+    };
+  }
 }
 
 async function writeJsonAtomic(path, value) {

@@ -16,7 +16,7 @@ const navItems = [
   { view: "Sales", label: "Commerce", hash: "commerce", group: "management", hidden: false },
   { view: "Content", label: "Content", hash: "content", group: "management", hidden: false },
   { view: "ProductRegistry", label: "Product Registry", hash: "product-registry", group: "management", hidden: false },
-  { view: "CategoryReview", label: "Category Review", hash: "category-review", group: "management", hidden: false },
+  { view: "CategoryReview", label: "Category Review", hash: "category-review", group: "management", hidden: true },
   { view: "Settings", label: "Master Data", hash: "master-data", group: "management", hidden: false },
   { view: "Settings", label: "Settings", hash: "settings", group: "management", hidden: false },
   // STORE-INTEL-UI-A: 기존 3개 그룹(공용 운영/관리·분석/hidden)과 별개인 새 그룹
@@ -4820,7 +4820,7 @@ async function renderAnnualArchiveFlow(month, renderSeq) {
   }
   target.innerHTML = `<article class="action-item"><strong>연간 흐름 확인 중</strong><p>${esc(year)}년 월별 아카이브를 불러오고 있습니다.</p></article>`;
   const [settled, brandMasterResult] = await Promise.all([
-    Promise.allSettled(months.map((item) => getJson(`/api/reports/monthly?month=${item}`, 8000))),
+    Promise.allSettled(months.map((item) => getJson(`/api/reports/monthly?month=${item}`, item === todayDateKey().slice(0, 7) ? 30000 : 8000))),
     getSharedJson("/api/brand-master", 12000)
   ]);
   if (renderSeq !== undefined && renderSeq !== reportsRenderSeq) return;
@@ -16292,6 +16292,10 @@ async function renderCategoryReviewView() {
   if (seq !== categoryReviewRenderSeq) return;
   if (result.error || !result.workspace) {
     target.innerHTML = `<article class="category-review-card empty-state"><strong>CATEGORY REVIEW LOAD FAILED</strong><p>${esc(result.message || result.error || "데이터를 불러오지 못했습니다.")}</p></article>`;
+    return;
+  }
+  if (result.workspace.available === false) {
+    target.innerHTML = `<article class="category-review-card empty-state"><strong>CATEGORY REVIEW INCOMPLETE</strong><p>${esc(result.workspace.reason || "Production 운영 데이터가 구성되지 않았습니다.")}</p></article>`;
     return;
   }
   categoryReviewState.workspace = result.workspace;

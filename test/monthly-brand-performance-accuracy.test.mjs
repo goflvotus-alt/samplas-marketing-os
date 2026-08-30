@@ -19,6 +19,10 @@ test("completed months retain full previous archive comparison without an extra 
   assert.match(monthly, /: previousBrandSales;/);
 });
 
+test("Annual allows the live current-month archive the same warmup window", () => {
+  assert.match(js, /item === todayDateKey\(\)\.slice\(0, 7\) \? 30000 : 8000/);
+});
+
 test("identity-incomplete cutoff data cannot generate fake deltas", () => {
   assert.match(monthly, /brandComparison\.base\?\.coverage\?\.complete === true/);
   assert.match(monthly, /brandComparison\.comparison\?\.coverage\?\.complete === true/);

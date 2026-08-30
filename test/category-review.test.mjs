@@ -107,6 +107,24 @@ test("workspace builder reports remaining/completed progress deterministically",
   assert.equal(workspace.brands.find((brand) => brand.brand === "PACOSPLY").progress, 1);
 });
 
+test("missing diagnostic artifact is an explicit P3 INCOMPLETE state, not an uncontrolled error", async () => {
+  const paths = await fixtureFiles();
+  const workspace = await loadCategoryReviewWorkspace({
+    auditPath: `${paths.auditPath}.missing`,
+    masterPath: paths.masterPath
+  });
+  assert.equal(workspace.available, false);
+  assert.equal(workspace.status, "INCOMPLETE");
+  assert.equal(workspace.summary, null);
+  assert.deepEqual(workspace.models, []);
+});
+
+test("incomplete Category Review is hidden from Production navigation and shown explicitly on direct access", async () => {
+  const source = await readFile(join(root, "outputs/samplas-marketing-os.js"), "utf8");
+  assert.match(source, /view: "CategoryReview"[^\n]+hidden: true/);
+  assert.match(source, /CATEGORY REVIEW INCOMPLETE/);
+});
+
 test("APGUJEONG and VAIL canonical offline totals remain unchanged", async () => {
   const apgujeong = JSON.parse(await readFile(join(root, "work/ecount-sales/2026-08.APGUJEONG.json"), "utf8"));
   const vail = JSON.parse(await readFile(join(root, "work/ecount-sales/2026-08.VAIL.json"), "utf8"));

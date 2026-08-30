@@ -810,6 +810,9 @@ async function handleCategoryReviewGet(res) {
 }
 
 async function handleCategoryReviewPatch(req, res) {
+  if (!existsSync(categoryReviewAuditFile)) {
+    return json(res, { ok: false, status: "INCOMPLETE", available: false, error: "Category Review is not configured in Production" }, 409);
+  }
   const parsedBody = await readJsonBody(req);
   if (!parsedBody.ok) return json(res, { ok: false, error: "Bad Request", message: parsedBody.message }, 400);
   const body = parsedBody.value || {};
@@ -3232,7 +3235,7 @@ export async function buildClientsOverview(options = {}) {
   // 그 값을 얻으려면 buildBrandSalesDiagnostics()를 추가로 호출해야 하는데, 이는 Clients
   // 요청마다 새로운 Cafe24 상품 카탈로그 조회를 발생시켜 "불필요한 새 API 반복 호출 금지"
   // 지시사항과 충돌한다(work/reports/STEP63-3.md 4번 항목에 이 판단 근거를 상세히 기록).
-  const identityResolverContext = await loadResolverContext();
+  const identityResolverContext = await loadResolverContext({ workDir: options.workDir || workRoot });
 
   const ecountClients = await loadEcountClientLines(options.workDir);
   // STEP49-2A-2: 주입 경로도 canonicalizeCafe24ClientOrders()로 기존 캐시 경로와 동일한
