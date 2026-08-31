@@ -3,12 +3,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  checkMonthlyCurrent,
   checkHistoricalMonthly,
   checkBrandRegistry,
   checkEcountCurrentMonth,
   checkProductRegistry,
   checkInventory,
-  deepEqual
+  approvedClientsExclusionTotal,
+  deepEqual,
+  liveSourceBoundary,
+  validateProductionAnnual,
+  validateProductionClients,
+  validateProductionMonthly,
+  verificationExitCode
 } from "../scripts/verify-render-snapshot-sync.mjs";
 
 function jsonResponse(body) {
@@ -23,6 +30,46 @@ function mockFetch(routes) {
       if (isMatch) return jsonResponse(respond(url));
     }
     throw new Error(`no mock route for ${path}`);
+  };
+}
+
+const currentMonth = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(new Date());
+const [currentYear, currentMonthNumber] = currentMonth.split("-").map(Number);
+const currentMonthEnd = `${currentMonth}-${String(new Date(currentYear, currentMonthNumber, 0).getDate()).padStart(2, "0")}`;
+
+function liveMonthlyFixture({ total = 100, sourceThrough } = {}) {
+  return {
+    sourceThrough,
+    sales: {
+      periodStart: `${currentMonth}-01`,
+      periodEnd: currentMonthEnd,
+      onlineSales: { paidAmount: total - 70 },
+      offlineSales: { offlineSalesAmount: 70 },
+      totalSales: { amount: total }
+    }
+  };
+}
+
+const onlineFixture = { dailySales: [{ paidAmount: 10 }, { paidAmount: 20 }] };
+const ecountFixture = {
+  periodStart: `${currentMonth}-01`,
+  totalOfflineSales: 70,
+  dailySales: [{ offlineSalesAmount: 40 }, { offlineSalesAmount: 30 }],
+  rows: [
+    { isOfflineRevenue: true, storeCode: "APGUJEONG", salesAmount: 40 },
+    { isOfflineRevenue: true, storeCode: "VAIL", salesAmount: 30 }
+  ]
+};
+
+function mockCurrentLiveFetch({ localTotal = 100, renderTotal = 100, localSourceThrough, renderSourceThrough } = {}) {
+  return async (url) => {
+    if (url.includes("/api/diagnostics/brand-sales")) return jsonResponse(onlineFixture);
+    if (url.includes("/api/ecount-sales/monthly")) return jsonResponse(ecountFixture);
+    const isLocal = url.startsWith("http://local");
+    return jsonResponse(liveMonthlyFixture({
+      total: isLocal ? localTotal : renderTotal,
+      sourceThrough: isLocal ? localSourceThrough : renderSourceThrough
+    }));
   };
 }
 
@@ -50,6 +97,72 @@ test("checkHistoricalMonthly: FAIL and names the mismatching month", async (t) =
   const result = await checkHistoricalMonthly("http://local", "http://render");
   assert.equal(result.status, "FAIL");
   assert.match(result.detail, /2026-01/);
+});
+
+test("same current-live values pass", async (t) => {
+  t.mock.method(globalThis, "fetch", mockCurrentLiveFetch());
+  assert.equal((await checkMonthlyCurrent("http://local", "http://render")).status, "PASS");
+});
+
+test("different current-live values pass when Production internally reconciles", async (t) => {
+  t.mock.method(globalThis, "fetch", mockCurrentLiveFetch({ localTotal: 999, renderTotal: 100 }));
+  const result = await checkMonthlyCurrent("http://local", "http://render");
+  assert.equal(result.status, "PASS");
+  assert.match(result.detail, /LIVE SOURCE DIFFERENCE — NOT COMPARABLE/);
+});
+
+test("Production Annual exact month sum passes", () => {
+  assert.equal(validateProductionAnnual({ "2026-01": 40, "2026-02": 60 }, 100).ok, true);
+});
+
+test("Production Annual mismatch fails", () => {
+  assert.equal(validateProductionAnnual({ "2026-01": 40, "2026-02": 60 }, 99).ok, false);
+});
+
+test("Production offline store mismatch fails", () => {
+  const broken = { ...ecountFixture, rows: [{ isOfflineRevenue: true, storeCode: "APGUJEONG", salesAmount: 69 }] };
+  assert.equal(validateProductionMonthly(currentMonth, liveMonthlyFixture(), onlineFixture, broken).ok, false);
+});
+
+test("matching sourceThrough enables strict live parity", async (t) => {
+  t.mock.method(globalThis, "fetch", mockCurrentLiveFetch({ localTotal: 999, renderTotal: 100, localSourceThrough: "cutoff-a", renderSourceThrough: "cutoff-a" }));
+  assert.equal((await checkMonthlyCurrent("http://local", "http://render")).status, "FAIL");
+});
+
+test("different sourceThrough skips strict live parity", async (t) => {
+  t.mock.method(globalThis, "fetch", mockCurrentLiveFetch({ localTotal: 999, renderTotal: 100, localSourceThrough: "cutoff-a", renderSourceThrough: "cutoff-b" }));
+  assert.equal((await checkMonthlyCurrent("http://local", "http://render")).status, "PASS");
+  assert.equal(liveSourceBoundary({ sourceThrough: "cutoff-a" }), "cutoff-a");
+});
+
+test("legitimate live timing differences produce exit code zero", () => {
+  assert.equal(verificationExitCode([{ status: "PASS" }, { status: "INFO" }]), 0);
+  assert.equal(verificationExitCode([{ status: "PASS" }, { status: "FAIL" }]), 1);
+});
+
+test("Production Clients internal accounting accepts an explained non-negative residual", () => {
+  const clients = {
+    periodStart: `${currentMonth}-01`, periodEnd: currentMonthEnd,
+    summary: { totalSalesAmount: 90, onlineSalesAmount: 30, offlineSalesAmount: 60, onlineOrderCount: 1, offlineOrderCount: 2, orderCount: 3 },
+    typeBreakdown: [{ salesAmount: 90 }], clients: [{ totalSales: 90 }]
+  };
+  const result = validateProductionClients(clients, 100, 10);
+  assert.equal(result.ok, true);
+  assert.equal(result.residual, 10);
+});
+
+test("Production Clients fails when residual is not an approved logistics/gift exclusion", () => {
+  const rows = [
+    { isOfflineRevenue: true, date: `${currentMonth}-02`, customerName: "택배", salesAmount: 10 },
+    { isOfflineRevenue: true, date: `${currentMonth}-03`, customerName: "일반 고객", salesAmount: 20 }
+  ];
+  assert.equal(approvedClientsExclusionTotal({ rows }, `${currentMonth}-01`, currentMonthEnd), 10);
+  const clients = {
+    periodStart: `${currentMonth}-01`, periodEnd: currentMonthEnd,
+    summary: { totalSalesAmount: 90, onlineSalesAmount: 30, offlineSalesAmount: 60, onlineOrderCount: 1, offlineOrderCount: 2, orderCount: 3 },
+    typeBreakdown: [{ salesAmount: 90 }], clients: [{ totalSales: 90 }]
+  };
+  assert.equal(validateProductionClients(clients, 100, 9).ok, false);
 });
 
 test("checkBrandRegistry: FAIL when alias counts differ", async (t) => {

@@ -57,6 +57,89 @@ function currentMonthSeoul() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(new Date());
 }
 
+function monthEndKey(month) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const day = new Date(year, monthNumber, 0).getDate();
+  return `${month}-${String(day).padStart(2, "0")}`;
+}
+
+export function liveSourceBoundary(body) {
+  return body?.sourceThrough ?? body?.cutoff
+    ?? body?.sales?.sourceThrough ?? body?.sales?.cutoff
+    ?? body?.archiveReference?.sourceThrough ?? body?.archiveReference?.cutoff
+    ?? null;
+}
+
+function sum(rows, key) {
+  return (rows || []).reduce((total, row) => total + Number(row?.[key] || 0), 0);
+}
+
+export function validateProductionMonthly(month, monthly, online, ecount) {
+  const onlineAmount = monthly?.sales?.onlineSales?.paidAmount;
+  const offlineAmount = monthly?.sales?.offlineSales?.offlineSalesAmount;
+  const totalAmount = monthly?.sales?.totalSales?.amount;
+  const onlineDaily = sum(online?.dailySales, "paidAmount");
+  const offlineDaily = sum(ecount?.dailySales, "offlineSalesAmount");
+  const byStore = { APGUJEONG: 0, VAIL: 0 };
+  for (const row of ecount?.rows || ecount?.salesLines || []) {
+    if (row?.isOfflineRevenue === true && row.storeCode in byStore) byStore[row.storeCode] += Number(row.salesAmount || 0);
+  }
+  const required = [onlineAmount, offlineAmount, totalAmount, ecount?.totalOfflineSales];
+  const periodOk = monthly?.sales?.periodStart === `${month}-01`
+    && monthly?.sales?.periodEnd === monthEndKey(month)
+    && ecount?.periodStart === `${month}-01`;
+  const ok = required.every(Number.isFinite)
+    && Array.isArray(online?.dailySales)
+    && Array.isArray(ecount?.dailySales)
+    && periodOk
+    && onlineDaily === onlineAmount
+    && offlineDaily === offlineAmount
+    && ecount.totalOfflineSales === offlineAmount
+    && byStore.APGUJEONG + byStore.VAIL === offlineAmount
+    && onlineAmount + offlineAmount === totalAmount
+    && onlineDaily + offlineDaily === totalAmount;
+  return {
+    ok,
+    detail: `month=${month} online=${onlineAmount} offline=${offlineAmount} total=${totalAmount} byStore=${JSON.stringify(byStore)}`
+  };
+}
+
+export function validateProductionAnnual(monthlyTotals, annualTotal) {
+  const values = Object.values(monthlyTotals || {});
+  const expected = values.reduce((total, value) => total + Number(value || 0), 0);
+  return { ok: values.length > 0 && values.every(Number.isFinite) && Number.isFinite(annualTotal) && expected === annualTotal, expected, annualTotal };
+}
+
+export function approvedClientsExclusionTotal(ecount, since, until) {
+  return (ecount?.rows || ecount?.salesLines || []).reduce((total, row) => {
+    const name = String(row?.customerName || "").trim();
+    const date = String(row?.date || "");
+    const approved = name === "택배" || name.includes("기프트");
+    return row?.isOfflineRevenue === true && date >= since && date <= until && approved
+      ? total + Number(row.salesAmount || 0)
+      : total;
+  }, 0);
+}
+
+export function validateProductionClients(clients, canonicalTotal, approvedExclusionTotal) {
+  const summary = clients?.summary;
+  const total = summary?.totalSalesAmount;
+  const componentTotal = Number(summary?.onlineSalesAmount) + Number(summary?.offlineSalesAmount);
+  const typeTotal = sum(clients?.typeBreakdown, "salesAmount");
+  const clientTotal = sum(clients?.clients, "totalSales");
+  const residual = Number(canonicalTotal) - Number(total);
+  const ok = Number.isFinite(total)
+    && Number.isFinite(canonicalTotal)
+    && clients?.periodStart && clients?.periodEnd
+    && componentTotal === total
+    && typeTotal === total
+    && clientTotal === total
+    && Number(summary?.onlineOrderCount) + Number(summary?.offlineOrderCount) === Number(summary?.orderCount)
+    && Number.isFinite(approvedExclusionTotal)
+    && residual === approvedExclusionTotal;
+  return { ok, residual, detail: `clients=${total} canonical=${canonicalTotal} approvedExclusionResidual=${residual}` };
+}
+
 // 2026-01부터 currentMonth 직전 달까지 — Batch 4.6에서 확정된 canonical historical range.
 function historicalMonths() {
   const current = currentMonthSeoul();
@@ -71,6 +154,10 @@ function historicalMonths() {
 
 export function deepEqual(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function verificationExitCode(results) {
+  return results.some((result) => result.status === "FAIL") ? 1 : 0;
 }
 
 async function runCheck(name, fn) {
@@ -108,26 +195,18 @@ export async function checkHistoricalMonthly(local, render) {
 }
 
 export async function checkAnnual(local, render) {
-  // 전용 /annual API가 없음(Batch 4/4.6에서 확인) — 연초~현재월 합계 비교로 대체.
+  // 전용 /annual API가 없음 — Production Annual UI와 동일하게 Production 월 응답만 합산한다.
   const months = [...historicalMonths(), currentMonthSeoul()];
-  let lSum = 0;
-  let rSum = 0;
+  const productionMonths = {};
   for (const month of months) {
-    const [l, r] = await Promise.all([
-      getJson(local, `/api/reports/monthly?month=${month}`),
-      getJson(render, `/api/reports/monthly?month=${month}`)
-    ]);
-    lSum += l.body?.sales?.totalSales?.amount || 0;
-    rSum += r.body?.sales?.totalSales?.amount || 0;
+    const response = await getJson(render, `/api/reports/monthly?month=${month}`);
+    productionMonths[month] = response.body?.sales?.totalSales?.amount;
   }
-  // 당월이 섞여 있어 live timing drift 허용 — 완전 일치가 이상적이나, 두 호출 사이 실시간
-  // 주문이 끼면 미세한 delta가 날 수 있어 0.01% 이내 오차는 WARN으로만 표시.
-  const delta = lSum - rSum;
-  if (delta === 0) return { status: "PASS", detail: `sum(${months[0]}~${months.at(-1)}) local=${lSum} render=${rSum}` };
-  const pct = lSum ? Math.abs(delta) / lSum : 1;
+  const annualTotal = Object.values(productionMonths).reduce((total, value) => total + Number(value || 0), 0);
+  const validation = validateProductionAnnual(productionMonths, annualTotal);
   return {
-    status: pct < 0.0001 ? "WARN" : "FAIL",
-    detail: `local=${lSum} render=${rSum} delta=${delta} (당월 포함이라 live timing 오차 가능)`
+    status: validation.ok ? "PASS" : "FAIL",
+    detail: `production sum(${months[0]}~${months.at(-1)})=${annualTotal}`
   };
 }
 
@@ -242,26 +321,49 @@ export async function checkTodayLive(local, render) {
 export async function checkMonthlyCurrent(local, render) {
   const month = currentMonthSeoul();
   const path = `/api/reports/monthly?month=${month}`;
-  const [l, r] = await Promise.all([getJson(local, path), getJson(render, path)]);
+  const since = `${month}-01`;
+  const until = todayKeySeoul();
+  const [l, r, online, ecount] = await Promise.all([
+    getJson(local, path),
+    getJson(render, path),
+    getJson(render, `/api/diagnostics/brand-sales?since=${since}&until=${until}`),
+    getJson(render, `/api/ecount-sales/monthly?month=${month}`)
+  ]);
   const lt = l.body?.sales?.totalSales?.amount;
   const rt = r.body?.sales?.totalSales?.amount;
+  const localBoundary = liveSourceBoundary(l.body);
+  const renderBoundary = liveSourceBoundary(r.body);
+  if (localBoundary && renderBoundary && localBoundary === renderBoundary && lt !== rt) {
+    return { status: "FAIL", detail: `matching sourceThrough=${localBoundary} but local=${lt} render=${rt}` };
+  }
+  const validation = validateProductionMonthly(month, r.body, online.body, ecount.body);
   return {
-    status: lt === rt ? "PASS" : "WARN",
-    detail: `month=${month} local=${lt} render=${rt}`
+    status: validation.ok ? "PASS" : "FAIL",
+    detail: `${validation.detail}; ${lt === rt ? "live parity exact" : `LIVE SOURCE DIFFERENCE — NOT COMPARABLE local=${lt} render=${rt}`}`
   };
 }
 
 export async function checkClients(local, render) {
-  const since = "2026-08-01"; // 월 시작 고정, until은 오늘 — Batch 리포트들과 동일한 패턴
+  const month = currentMonthSeoul();
+  const since = `${month}-01`;
   const until = todayKeySeoul();
   const path = `/api/intelligence/clients?since=${since}&until=${until}`;
-  const [l, r] = await Promise.all([getJson(local, path), getJson(render, path)]);
-  const ls = l.body?.summary;
-  const rs = r.body?.summary;
-  const ok = ls?.totalClients === rs?.totalClients && ls?.orderCount === rs?.orderCount;
+  const [l, r, monthly, ecount] = await Promise.all([
+    getJson(local, path),
+    getJson(render, path),
+    getJson(render, `/api/reports/monthly?month=${month}`),
+    getJson(render, `/api/ecount-sales/monthly?month=${month}`)
+  ]);
+  const approvedExclusions = approvedClientsExclusionTotal(ecount.body, since, until);
+  const validation = validateProductionClients(r.body, monthly.body?.sales?.totalSales?.amount, approvedExclusions);
+  const localBoundary = liveSourceBoundary(l.body);
+  const renderBoundary = liveSourceBoundary(r.body);
+  if (localBoundary && renderBoundary && localBoundary === renderBoundary && !deepEqual(l.body?.summary, r.body?.summary)) {
+    return { status: "FAIL", detail: `matching sourceThrough=${localBoundary} but Clients summaries differ` };
+  }
   return {
-    status: ok ? "PASS" : "WARN",
-    detail: `local(${ls?.totalClients}/${ls?.orderCount}) render(${rs?.totalClients}/${rs?.orderCount})`
+    status: validation.ok ? "PASS" : "FAIL",
+    detail: `${validation.detail}; ${deepEqual(l.body?.summary, r.body?.summary) ? "live parity exact" : "LIVE SOURCE DIFFERENCE — NOT COMPARABLE"}`
   };
 }
 
@@ -319,7 +421,7 @@ async function main() {
 
   if (args.json) {
     console.log(JSON.stringify({ local: args.local, render: args.render, results, verdict }, null, 2));
-    process.exitCode = results.some((r) => r.status === "FAIL") ? 1 : 0;
+    process.exitCode = verificationExitCode(results);
     return;
   }
 
@@ -333,7 +435,7 @@ async function main() {
   for (const r of results) {
     console.log(`[${r.status}] ${r.label}: ${r.detail || r.name}`);
   }
-  process.exitCode = results.some((r) => r.status === "FAIL") ? 1 : 0;
+  process.exitCode = verificationExitCode(results);
 }
 
 const isDirectRun = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
