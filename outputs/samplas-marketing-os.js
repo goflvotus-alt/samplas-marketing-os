@@ -3686,6 +3686,7 @@ function monthlyIntelPopoverCard(titleHtml, rows, ctaLabel) {
 function monthlyIntelBrandLabelHtml(item, currentAmount, previousAmount, quantitySold, rank) {
   const code = monthlyReportBrandCode(item);
   const name = brandPerformanceDisplayName(item);
+  if (!code) return esc(name);
   const rows = [["이번 달 매출", esc(apiWon(currentAmount))]];
   const deltaParts = monthlyIntelDeltaParts(currentAmount, previousAmount);
   if (deltaParts) {
@@ -4516,12 +4517,12 @@ function bindAnnualBrandDetailTriggers(scope = document) {
     trigger.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      showAnnualBrandDetailPopover(trigger);
+      openBrandIntelligenceByCode(trigger.dataset.annualBrandDetail);
     });
     trigger.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      showAnnualBrandDetailPopover(trigger);
+      openBrandIntelligenceByCode(trigger.dataset.annualBrandDetail);
     });
   });
 }
@@ -4542,6 +4543,12 @@ function annualArchiveMonthRangeLabel(rows) {
 
 function annualArchiveComparisonDelta(current, previous) {
   return monthlyReportDelta(current, previous, apiWon).replace("전월 대비", "첫 3개월 대비");
+}
+
+function annualBrandIntelligenceRowAttrs(item) {
+  const code = monthlyReportBrandCode(item);
+  if (!code) return "";
+  return `tabindex="0" role="button" data-annual-brand-detail="${esc(code)}" aria-label="${esc(`${brandPerformanceDisplayName(item)} — Brand Intelligence로 이동`)}"`;
 }
 
 function annualArchiveBrandPerformanceBlock(rows) {
@@ -4576,6 +4583,7 @@ function annualArchiveBrandPerformanceBlock(rows) {
           valueFn: (item) => item.currentSales,
           labelFn: brandPerformanceDisplayName,
           subFn: (item) => annualArchiveComparisonDelta(item.currentSales, item.previousSales),
+          attrsFn: annualBrandIntelligenceRowAttrs,
           extraFn: (item) => {
             const series = monthlyReportBrandTrendFromRows(rows, monthlyReportBrandCode(item));
             return brandTrendDetailTriggerHtml(item, series, "annual-rising", "Annual 상승 브랜드 월별 실결제 추세");
@@ -4592,6 +4600,7 @@ function annualArchiveBrandPerformanceBlock(rows) {
           valueFn: (item) => item.currentSales,
           labelFn: brandPerformanceDisplayName,
           subFn: (item) => annualArchiveComparisonDelta(item.currentSales, item.previousSales),
+          attrsFn: annualBrandIntelligenceRowAttrs,
           extraFn: (item) => {
             const series = monthlyReportBrandTrendFromRows(rows, monthlyReportBrandCode(item));
             return brandTrendDetailTriggerHtml(item, series, "annual-falling", "Annual 하락 브랜드 월별 실결제 추세");
@@ -4611,7 +4620,7 @@ function annualArchiveBrandPerformanceBlock(rows) {
         valueFn: (item) => item.salesAmount,
         labelFn: brandPerformanceDisplayName,
         subFn: (item) => monthlyReportBrandCode(item),
-        attrsFn: (item) => `tabindex="0" role="button" data-annual-brand-detail="${esc(monthlyReportBrandCode(item))}" aria-label="${esc(`${brandPerformanceDisplayName(item)} 판매 상세 보기`)}"`,
+        attrsFn: annualBrandIntelligenceRowAttrs,
         formatValue: (value) => apiWon(value)
       })}
     </div>
@@ -13684,6 +13693,13 @@ function resolveBrandCodeToSelectorName(brandCode) {
   return null;
 }
 
+function openBrandIntelligenceByCode(brandCode) {
+  const name = resolveBrandCodeToSelectorName(brandCode);
+  if (!name) return;
+  setActiveView("BrandDashboard", { routeHash: "brand-dashboard" });
+  selectBrandSelectorName(name);
+}
+
 // STEP61-1: Brand Selector가 확정한 Identity를 Monthly Archive의 commerce.brandSales와
 // 대조해 같은 canonical brand로 이어지는지 확인한다(콘솔 로그만 — Hero/Monthly UI는 이번
 // STEP에서 손대지 않는다). Entity Period Control이 이미 갖고 있는 entityPeriodState(연/월)를
@@ -20134,7 +20150,7 @@ function bind() {
     if (annualBrandDetail) {
       event.preventDefault();
       event.stopPropagation();
-      showAnnualBrandDetailPopover(annualBrandDetail);
+      openBrandIntelligenceByCode(annualBrandDetail.dataset.annualBrandDetail);
       return;
     }
     const annualBar = event.target.closest("[data-annual-month]");

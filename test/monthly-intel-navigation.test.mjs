@@ -100,6 +100,33 @@ test("4c. the brand click handler resolves at click time and no-ops silently on 
   assert.match(body, /selectBrandSelectorName\(name\);/);
 });
 
+test("4e. Annual TOP5, rising, and falling rows reuse the canonical Brand Intelligence contract", () => {
+  const annualFn = js.match(/function annualArchiveBrandPerformanceBlock\([\s\S]*?\n}/)?.[0] || "";
+  assert.equal((annualFn.match(/attrsFn: annualBrandIntelligenceRowAttrs/g) || []).length, 3);
+  const attrsFn = js.match(/function annualBrandIntelligenceRowAttrs\([\s\S]*?\n}/)?.[0] || "";
+  assert.match(attrsFn, /const code = monthlyReportBrandCode\(item\);/);
+  assert.match(attrsFn, /if \(!code\) return "";/);
+  assert.match(attrsFn, /tabindex="0" role="button" data-annual-brand-detail=/);
+  assert.doesNotMatch(attrsFn, /brand_name/);
+});
+
+test("4f. Annual click, Enter, and Space all use the same Brand Intelligence helper", () => {
+  const openFn = js.match(/function openBrandIntelligenceByCode\([\s\S]*?\n}/)?.[0] || "";
+  assert.match(openFn, /resolveBrandCodeToSelectorName\(brandCode\)/);
+  assert.match(openFn, /setActiveView\("BrandDashboard", \{ routeHash: "brand-dashboard" \}\);/);
+  assert.match(openFn, /selectBrandSelectorName\(name\);/);
+  const bindFn = js.match(/function bindAnnualBrandDetailTriggers\([\s\S]*?\n}/)?.[0] || "";
+  assert.equal((bindFn.match(/openBrandIntelligenceByCode\(trigger\.dataset\.annualBrandDetail\)/g) || []).length, 2);
+  assert.match(bindFn, /event\.key !== "Enter" && event\.key !== " "/);
+  const delegatedClick = js.match(/const annualBrandDetail = event\.target\.closest\("\[data-annual-brand-detail\]"\);[\s\S]*?return;/)?.[0] || "";
+  assert.match(delegatedClick, /openBrandIntelligenceByCode\(annualBrandDetail\.dataset\.annualBrandDetail\)/);
+});
+
+test("4g. Monthly rows without canonical brandCode remain non-interactive", () => {
+  const fnMatch = js.match(/function monthlyIntelBrandLabelHtml\([\s\S]*?\n}/)?.[0] || "";
+  assert.match(fnMatch, /if \(!code\) return esc\(name\);/);
+});
+
 test("4d. BON CO / POP CO / SUN CO style raw operational names are never used as canonical brand identity — brand_code is always the key", () => {
   const fnMatch = js.match(/function monthlyIntelBrandLabelHtml\([\s\S]*?\n}/);
   assert.doesNotMatch(fnMatch[0], /brand_name/, "must key off brand_code via monthlyReportBrandCode, not a raw name field");
