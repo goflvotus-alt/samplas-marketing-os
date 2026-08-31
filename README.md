@@ -238,6 +238,9 @@ CAFE24_REDIRECT_URI=https://samplas-marketing-os.onrender.com/api/cafe24/oauth/c
 CAFE24_SCOPES=
 CAFE24_PROXY_SECRET=
 CAFE24_PROXY_BASIC_AUTH=
+# Production ECOUNT operator login 전용. Cafe24 proxy 인증과 공유하지 않습니다.
+# 형식: username:password
+SAMPLAS_OPERATOR_BASIC_AUTH=username:password
 ```
 
 Future Naver Search Ads:

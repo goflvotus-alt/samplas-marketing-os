@@ -579,7 +579,7 @@ const server = isMainModule ? createServer(async (req, res) => {
     }
     if (url.pathname === "/api/operator/session") {
       if (req.method !== "POST") return json(res, { error: "POST만 지원합니다." }, 405);
-      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Production 업로드 권한을 확인할 수 없습니다." }, 401);
+      if (!isAuthorizedOperatorRequest(req)) return json(res, { error: "Production 업로드 권한을 확인할 수 없습니다." }, 401);
       const token = randomUUID();
       operatorSessions.add(token);
       res.setHeader("Set-Cookie", `samplas_operator=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${isLocalRequest(req) ? "" : "; Secure"}`);
@@ -1810,6 +1810,14 @@ function isAuthorizedInternalRequest(req) {
     return auth.slice("Basic ".length) === Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64");
   }
   return false;
+}
+
+export function isAuthorizedOperatorRequest(req, credentials = env.SAMPLAS_OPERATOR_BASIC_AUTH) {
+  const expected = String(credentials || "");
+  const separator = expected.indexOf(":");
+  if (separator <= 0 || separator === expected.length - 1) return false;
+  const auth = String(req?.headers?.authorization || "");
+  return auth === `Basic ${Buffer.from(expected).toString("base64")}`;
 }
 
 function isLocalRequest(req) {
