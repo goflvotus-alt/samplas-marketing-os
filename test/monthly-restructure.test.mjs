@@ -136,11 +136,28 @@ test("11. setActiveView toggles #annualArchiveFlow / #monthlyArchiveReport / #mo
   assert.match(fn, /\$\("#monthlyFreshnessHeader"\)\?\.toggleAttribute\("hidden", routeHash === "annual-report"\)/);
 });
 
-test("11b. renderReportsMonth's dual-render call (Monthly + Annual) is unchanged (visibility is CSS-only, not a fetch change)", () => {
+test("11b. renderReportsMonth loads only the active Monthly or Annual route", () => {
   const fnMatch = js.match(/function renderReportsMonth\([\s\S]*?\n}/);
   assert.notEqual(fnMatch, null);
   assert.match(fnMatch[0], /renderMonthlyArchiveReport\(month, renderSeq\)/);
   assert.match(fnMatch[0], /renderAnnualArchiveFlow\(month, renderSeq\)/);
+  assert.match(fnMatch[0], /\(options\.routeHash \|\| normalizedRouteHash\(currentRouteHash\(\)\)\) === "annual-report"/);
+  assert.match(fnMatch[0], /renderAnnualArchiveFlow\(month, renderSeq\);\s+return;/);
+});
+
+test("11b-2. route changes pass the destination hash into the lazy report renderer", () => {
+  const fn = js.match(/function setActiveView\(view, options = \{\}\) \{[\s\S]*?\n}/)?.[0] || "";
+  assert.match(fn, /renderReportsMonth\(reportsMonth \|\| selectedMonth\(\)\.month, \{ routeHash \}\)/);
+});
+
+test("11c. current-month comparison starts only after primary Monthly markup renders", () => {
+  const fn = monthlyReportFnBody();
+  const primaryRender = fn.indexOf("target.innerHTML = `");
+  const cutoffFetch = fn.lastIndexOf("getJson(`/api/reports/monthly-comparison-cutoff");
+  assert.ok(primaryRender >= 0);
+  assert.ok(cutoffFetch > primaryRender);
+  assert.match(fn, /비교 확인 중 · 현재 브랜드 금액을 먼저 표시합니다\./);
+  assert.match(fn, /brandTarget\.innerHTML = renderBrandPerformanceBlock\(\)/);
 });
 
 // 12. Monthly/Annual DOM order — Goal Progress no longer sits above the report,

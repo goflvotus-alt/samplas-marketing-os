@@ -71,10 +71,10 @@ test("4. Monthly TOC contains the five performance IA destinations", () => {
   assert.equal(chapterCount, 4);
 });
 
-test("4b. Commerce chapter's closing </section> is the last markup before the template ends (no trailing block)", () => {
+test("4b. Commerce chapter's closing </section> is the last markup in the primary template", () => {
   const fn = monthlyReportFnBody();
-  const templateEnd = fn.match(/<\/section>\s*\n\s*`;\s*\n}/);
-  assert.notEqual(templateEnd, null, "template must end immediately after Commerce's closing </section>, no display:none husk or trailing block");
+  const templateEnd = fn.match(/<\/section>\s*\n\s*`;/);
+  assert.notEqual(templateEnd, null, "primary template must end immediately after Commerce's closing </section>, no hidden markup husk");
 });
 
 // 5. no unnecessary display:none was used to hide the removed chapter

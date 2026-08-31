@@ -15,7 +15,7 @@ test("current Monthly Brand Performance uses the existing same-elapsed-day cutof
 });
 
 test("completed months retain full previous archive comparison without an extra cutoff request", () => {
-  assert.match(monthly, /const currentMonthBrandComparison = isCurrentMonthBrandComparison[\s\S]*?: Promise\.resolve\(null\)/);
+  assert.match(monthly, /if \(isCurrentMonthBrandComparison\) \{\s*brandComparison = await getJson\(`\/api\/reports\/monthly-comparison-cutoff/);
   assert.match(monthly, /: previousBrandSales;/);
 });
 

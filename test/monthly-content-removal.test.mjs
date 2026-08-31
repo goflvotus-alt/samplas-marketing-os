@@ -92,7 +92,7 @@ test("6. report chapters appear in source order Sales → Store → Brand → On
 
 test("7. Commerce chapter is the last thing in the template (true DOM removal, not display:none)", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /<\/section>\s*\n\s*`;\s*\n}/, "Commerce chapter's closing tag must be immediately followed by the end of the template literal");
+  assert.match(fn, /<\/section>\s*\n\s*`;/, "Commerce chapter's closing tag must be immediately followed by the end of the primary template literal");
   assert.doesNotMatch(fn, /style="display:\s*none"/);
   assert.doesNotMatch(fn, /\bhidden\b[^>]*>[\s\n]*<\/section>/);
 });
