@@ -4531,6 +4531,15 @@ export function composeStoreIntelligencePayload({ store, since, until, snapshots
   };
 }
 
+export async function readOptionalStoreCategoryMaster(baseWorkDir = workDir) {
+  try {
+    return JSON.parse(await readFile(join(baseWorkDir, "category-master.json"), "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 export async function buildStoreIntelligencePayload({ storeCode: storeCodeValue, since: sinceValue, until: untilValue } = {}) {
   const since = assertInstagramRangeDate(sinceValue, "since");
   const until = assertInstagramRangeDate(untilValue, "until");
@@ -4545,7 +4554,7 @@ export async function buildStoreIntelligencePayload({ storeCode: storeCodeValue,
     buildCanonicalTotalSales({ since, until, storeCode: store.storeCode }),
     buildClientsOverview({ since, until, cafe24Orders: [], storeCode: store.storeCode }),
     loadResolverContext({ workDir }),
-    readFile(join(workDir, "category-master.json"), "utf8").then(JSON.parse)
+    readOptionalStoreCategoryMaster(workDir)
   ]);
   return composeStoreIntelligencePayload({ store, since, until, snapshots, canonicalSales, clients, identityContext: { ...identityContext, categoryMaster } });
 }

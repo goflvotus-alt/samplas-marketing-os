@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildBrandRegistry } from "../scripts/brand-engine.mjs";
-import { buildBrandClientCross, buildStoreCategoryIntelligence, buildStoreIntelligencePayload, buildStoreProductIntelligence, composeStoreIntelligencePayload } from "../server.mjs";
+import { buildBrandClientCross, buildStoreCategoryIntelligence, buildStoreIntelligencePayload, buildStoreProductIntelligence, composeStoreIntelligencePayload, readOptionalStoreCategoryMaster } from "../server.mjs";
 
 const brandMaster = {
   brands: [{ brand_code: "B-PAC", brand_name: "PACOSPLY", name_aliases: [], active: true }]
@@ -96,6 +98,31 @@ test("Store categories use exact Product Registry identity, approved category ru
   assert.deepEqual(result.coverage, { totalRevenue: 1000, assignedRevenue: 800, unclassifiedRevenue: 200 });
   assert.equal(result.items.find((row) => row.code === "TOP").share, 80);
   assert.equal(result.items.find((row) => row.code === "UNCLASSIFIED").share, 20);
+});
+
+test("missing Category Master is optional but corrupt JSON remains an error", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "samplas-store-category-"));
+  assert.equal(await readOptionalStoreCategoryMaster(dir), null);
+  await writeFile(join(dir, "category-master.json"), "{broken", "utf8");
+  await assert.rejects(readOptionalStoreCategoryMaster(dir), SyntaxError);
+});
+
+test("Brand x Stylist and TOP brands remain populated without Category Master", () => {
+  const stylistPayload = composeStoreIntelligencePayload({
+    store: { storeCode: "APGUJEONG", displayName: "압구정 매장" },
+    since: "2026-08-01",
+    until: "2026-08-14",
+    snapshots: [{
+      month: "2026-08",
+      salesLines: [{ date: "2026-08-13", productName: "PACOSPLY / WonderLand T-shirts BLACK", specification: "2", quantity: 1, salesAmount: 70200, isOfflineRevenue: true, storeCode: "APGUJEONG" }]
+    }],
+    canonicalSales: { offlineSales: { offlineSalesAmount: 70200 } },
+    clients: { summary: {}, typeBreakdown: [], stylistTop10: [], clients: [{ clientId: "1", name: "스타일리스트", clientType: "stylist", purchaseDetails: [{ canonicalBrandCode: "B-PAC", canonicalBrandName: "PACOSPLY", salesAmount: 70200 }] }] },
+    identityContext: { ...identityContext, categoryMaster: null }
+  });
+  assert.equal(stylistPayload.brandClientCross.items.length, 1);
+  assert.equal(stylistPayload.brands.items.length, 1);
+  assert.equal(stylistPayload.categories.coverage.assignedRevenue + stylistPayload.categories.coverage.unclassifiedRevenue, stylistPayload.sales.periodSales);
 });
 
 test("APGUJEONG and VAIL category accounting reconciles to each canonical store total", async () => {
