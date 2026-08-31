@@ -406,7 +406,9 @@ function operationsDateRange(data = selectedMonth()) {
   return { since: monthSince, until: monthUntil, label: "이번 달" };
 }
 
-async function getJson(url, timeoutMs = 8000) {
+const inFlightJsonRequests = new Map();
+
+async function fetchJson(url, timeoutMs = 8000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -432,6 +434,13 @@ async function getJson(url, timeoutMs = 8000) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function getJson(url, timeoutMs = 8000) {
+  if (inFlightJsonRequests.has(url)) return inFlightJsonRequests.get(url);
+  const request = fetchJson(url, timeoutMs).finally(() => inFlightJsonRequests.delete(url));
+  inFlightJsonRequests.set(url, request);
+  return request;
 }
 
 // 브랜드 코드 → 영문 Canonical Name 전역 캐시. 세션 동안 여러 화면이 /api/diagnostics/
@@ -496,24 +505,8 @@ function brandCanonicalDisplayName(brandLike = {}) {
   return "미분류";
 }
 
-let sharedJsonRequests = new Map();
-
-function resetSharedJsonRequests() {
-  sharedJsonRequests = new Map();
-}
-
 function getSharedJson(url, timeoutMs = 8000) {
-  const key = url;
-  if (sharedJsonRequests.has(key)) return sharedJsonRequests.get(key);
-  const request = getJson(url, timeoutMs).then((body) => {
-    if (body?.error) sharedJsonRequests.delete(key);
-    return body;
-  }, (error) => {
-    sharedJsonRequests.delete(key);
-    throw error;
-  });
-  sharedJsonRequests.set(key, request);
-  return request;
+  return getJson(url, timeoutMs);
 }
 
 async function postJson(url, payload, timeoutMs = 8000) {
@@ -748,6 +741,7 @@ function setActiveView(view, options = {}) {
   const locationHash = currentRouteHash();
   const routeHash = options.routeHash || (hashViewMap[locationHash] === targetView ? locationHash : viewHashMap[targetView]);
   const reportsRouteChanged = targetView === "Reports" && normalizedRouteHash(locationHash) !== routeHash;
+  const shouldLoadRoute = options.updateHash !== false || !monthlyData.length;
   $$(".nav button").forEach((node) => node.classList.toggle("active", node.dataset.route === routeHash));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.id === targetView));
   $("#monthlyDestinationLayout")?.toggleAttribute("hidden", routeHash === "annual-report");
@@ -760,20 +754,25 @@ function setActiveView(view, options = {}) {
   $("#monthlyFreshnessHeader")?.toggleAttribute("hidden", routeHash === "annual-report");
   setTopbarTitle(targetView, routeHash);
   updateTopbarControls(targetView);
-  if (targetView === "Intelligence") refreshActiveIntelligencePanel();
-  if (targetView === "Content" && monthlyData.length) renderContentOperations(selectedMonth());
-  if (targetView === "Clients") refreshClientsView();
-  if (targetView === "ProductRegistry") renderProductRegistryView();
-  if (targetView === "CategoryReview") renderCategoryReviewView();
-  if (targetView === "InventoryOverview") renderInventoryWorkspaceView({ reset: true });
-  if (targetView === "InventoryIntelligence") renderInventoryIntelligenceView();
-  if (targetView === "Calendar") renderCalendarView();
-  if (targetView === "PromotionSummary") renderPromotionSummaryView();
+  if (targetView === "Intelligence" && shouldLoadRoute) refreshActiveIntelligencePanel();
+  if (targetView === "Content" && monthlyData.length && shouldLoadRoute) {
+    renderContentOperations(selectedMonth());
+    renderStoryInsights();
+  }
+  if (targetView === "Editorial AI" && monthlyData.length && shouldLoadRoute) renderEditorialAi(selectedMonth());
+  if (targetView === "Clients" && shouldLoadRoute) refreshClientsView();
+  if (targetView === "ProductRegistry" && shouldLoadRoute) renderProductRegistryView();
+  if (targetView === "CategoryReview" && shouldLoadRoute) renderCategoryReviewView();
+  if (targetView === "InventoryOverview" && shouldLoadRoute) renderInventoryWorkspaceView({ reset: true });
+  if (targetView === "InventoryIntelligence" && shouldLoadRoute) renderInventoryIntelligenceView();
+  if (targetView === "Calendar" && shouldLoadRoute) renderCalendarView();
+  if (targetView === "PromotionSummary" && shouldLoadRoute) renderPromotionSummaryView();
   // Store Intelligence는 동일한 read-only endpoint에서 매장 코드만 바꿔 조회한다.
-  if (targetView === "ApgujeongIntelligence") renderApgujeongIntelligenceView();
-  if (targetView === "VailIntelligence") renderVailIntelligenceView();
+  if (targetView === "ApgujeongIntelligence" && shouldLoadRoute) renderApgujeongIntelligenceView();
+  if (targetView === "VailIntelligence" && shouldLoadRoute) renderVailIntelligenceView();
   if (targetView === "Overview" && todayViewDirty && monthlyData.length) renderTodayView(selectedMonth());
   if (reportsRouteChanged && monthlyData.length) renderReportsMonth(reportsMonth || selectedMonth().month, { routeHash });
+  if (["Advertising", "Sales", "Product", "Settings"].includes(targetView) && monthlyData.length && shouldLoadRoute) renderOtherSections(selectedMonth());
   if (targetView === "Intelligence" && monthlyData.length) renderActiveDestinationCards(selectedMonth());
   if (options.updateHash === false && ["Reports", "Sales", "Settings"].includes(targetView) && monthlyData.length) renderActiveDestinationCards(selectedMonth());
   if (options.updateHash !== false) updateViewHash(targetView, routeHash);
@@ -5237,9 +5236,12 @@ function renderGrowthChart() {
 
 function renderOtherSections(data) {
   const posts = data.posts || [];
-  renderCards("reelsReport", posts.filter((post) => post.type === "릴스"), "feed");
-  renderCards("cardnewsReport", posts.filter((post) => post.type === "카드뉴스"), "cardnews");
-  renderCards("conversionGrid", [...posts].sort((a, b) => Number(b.websiteClicks || 0) - Number(a.websiteClicks || 0)).slice(0, 6));
+  if ($("#Content")?.classList.contains("active")) {
+    renderCards("reelsReport", posts.filter((post) => post.type === "릴스"), "feed");
+    renderCards("cardnewsReport", posts.filter((post) => post.type === "카드뉴스"), "cardnews");
+    renderCards("conversionGrid", [...posts].sort((a, b) => Number(b.websiteClicks || 0) - Number(a.websiteClicks || 0)).slice(0, 6));
+  }
+  if ($("#Advertising")?.classList.contains("active")) {
   $("#adAiBriefing").innerHTML = `<article class="action-item"><strong>관리 필요 캠페인 확인 중</strong><p>Meta 자체 귀속 지표 기준으로 확인하고 있습니다.</p></article>`;
   $("#marketingSummaryHero").innerHTML = `<article class="action-item"><strong>Marketing 데이터 확인 중</strong><p>Meta Ads와 Commerce 매출을 불러오고 있습니다.</p></article>`;
   $("#marketingSummaryBriefing").innerHTML = `<article class="action-item"><strong>관리 필요 캠페인 확인 중</strong><p>Meta 자체 귀속 지표 기준으로 확인하고 있습니다.</p></article>`;
@@ -5256,6 +5258,8 @@ function renderOtherSections(data) {
   $("#metaBrandContributionRows").innerHTML = `<tr><td colspan="6">데이터를 불러오고 있습니다.</td></tr>`;
   hideAdOrganicSection();
   renderAdvertising(data);
+  }
+  if ($("#Sales")?.classList.contains("active")) {
   $("#salesHealthBanner").innerHTML = `<span class="status-dot"></span><strong>Sales Health 확인 중</strong><span class="note">Meta · Cafe24 데이터를 불러오고 있습니다.</span>`;
   commerceSummaryState = { cafe: null, comparison: null, totalSales: null };
   $("#commerceSummaryHero").innerHTML = `<article class="action-item"><strong>Commerce 데이터 확인 중</strong><p>Cafe24 canonical 데이터를 불러오고 있습니다.</p></article>`;
@@ -5263,13 +5267,18 @@ function renderOtherSections(data) {
   $("#commerceSummaryPayments").innerHTML = `<article class="action-item"><strong>결제수단 확인 중</strong><p>결제수단 구성을 불러오고 있습니다.</p></article>`;
   renderCafe24Sales(data);
   renderAdComparison(data);
+  }
+  if ($("#Product")?.classList.contains("active")) {
   $("#productDashboardBanner").innerHTML = `<span class="status-dot"></span><strong>상품 Dashboard 확인 중</strong><span class="note">Cafe24 Orders · Products 데이터를 불러오고 있습니다.</span>`;
   $("#productDashboardRows").innerHTML = `<tr><td colspan="7">상품 데이터를 불러오고 있습니다.</td></tr>`;
   renderProductDashboard(data);
+  }
+  if ($("#Settings")?.classList.contains("active")) {
   renderApiHealthCenter(data);
   renderScoreWeightsSettings();
   renderCafe24ProductDiagnostics();
   renderBrandMasterSettings();
+  }
 }
 
 const SCORE_FACTOR_LABELS = {
@@ -10479,17 +10488,18 @@ async function updateSync(data) {
 }
 
 function renderAll() {
-  resetSharedJsonRequests();
   const data = selectedMonth();
   reportsMonth = data.month;
   renderMonthRail();
   if (todayViewActive()) renderTodayView(data);
   else todayViewDirty = true;
   renderActiveDestinationCards(data);
-  renderReportsMonth(reportsMonth);
-  renderContentTabs();
-  renderContentOperations(data);
-  renderEditorialAi(data);
+  if ($("#Reports")?.classList.contains("active")) renderReportsMonth(reportsMonth);
+  if ($("#Content")?.classList.contains("active")) {
+    renderContentTabs();
+    renderContentOperations(data);
+  }
+  if (viewFromHash() === "Editorial AI") renderEditorialAi(data);
   renderOtherSections(data);
   updateSync(data);
   // 2026-07-17 버그 수정: 상단 #monthSelect(연/월 드롭다운)의 onchange가 이 renderAll()
@@ -10502,7 +10512,6 @@ function renderAll() {
 }
 
 function renderOperationsSections() {
-  resetSharedJsonRequests();
   const renderSeq = ++operationsRenderSeq;
   const data = selectedMonth();
   const setPending = (selector, html) => {
@@ -21825,4 +21834,3 @@ renderNav();
 bind();
 handleCafe24OAuthRedirect();
 loadMonths();
-renderStoryInsights();

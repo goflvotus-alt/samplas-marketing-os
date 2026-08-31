@@ -43,8 +43,8 @@ test("4. VAIL Intelligence view section exists in HTML", () => {
 test("3b/4b. both views are wired into the route maps (viewHashMap) and render on activation (setActiveView)", () => {
   assert.match(js, /ApgujeongIntelligence: "store-apgujeong-intelligence"/);
   assert.match(js, /VailIntelligence: "store-vail-intelligence"/);
-  assert.match(js, /if \(targetView === "ApgujeongIntelligence"\) renderApgujeongIntelligenceView\(\);/);
-  assert.match(js, /if \(targetView === "VailIntelligence"\) renderVailIntelligenceView\(\);/);
+  assert.match(js, /if \(targetView === "ApgujeongIntelligence" && shouldLoadRoute\) renderApgujeongIntelligenceView\(\);/);
+  assert.match(js, /if \(targetView === "VailIntelligence" && shouldLoadRoute\) renderVailIntelligenceView\(\);/);
 });
 
 // 5/6. exactly 5 KPI cards per screen from each live renderer.
