@@ -83,7 +83,8 @@ test("deepEqual: order-independent key comparison via JSON.stringify (same key o
 
 test("checkHistoricalMonthly: PASS when every past month matches", async (t) => {
   t.mock.method(globalThis, "fetch", mockFetch([
-    [/\/api\/reports\/monthly/, () => ({ sales: { totalSales: { amount: 100 } } })]
+    [/month=2026-01/, () => ({ provenance: { source: "same-new" }, sales: { totalSales: { amount: 100 } } })],
+    [/\/api\/reports\/monthly/, () => ({ commerce: { brandSalesSourceImportedAt: "same-legacy" }, sales: { totalSales: { amount: 100 } } })]
   ]));
   const result = await checkHistoricalMonthly("http://local", "http://render");
   assert.equal(result.status, "PASS");
@@ -120,6 +121,40 @@ test("historical differing provenance is WARN/NOT COMPARABLE, while matching pro
 test("matching historical provenance keeps mismatched totals strict", async (t) => {
   t.mock.method(globalThis, "fetch", async (url) => jsonResponse({
     provenance: { ecount: { importedAt: "same-close" } },
+    sales: { totalSales: { amount: url.startsWith("http://local") ? 100 : 200 } }
+  }));
+  assert.equal((await checkHistoricalMonthly("http://local", "http://render")).status, "FAIL");
+});
+
+test("legacy importedAt preserves strict matching-boundary comparison", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => jsonResponse({
+    commerce: { brandSalesSourceImportedAt: "same-close" },
+    sales: { totalSales: { amount: url.startsWith("http://local") ? 100 : 200 } }
+  }));
+  assert.equal((await checkHistoricalMonthly("http://local", "http://render")).status, "FAIL");
+});
+
+test("legacy importedAt difference classifies the real August boundary as NOT COMPARABLE", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => {
+    const isLocal = url.startsWith("http://local");
+    const isAugust = url.includes("month=2026-08");
+    return jsonResponse({
+      commerce: { brandSalesSourceImportedAt: isLocal ? "2026-08-29T02:39:32.335Z" : "2026-08-31T10:59:32.605Z" },
+      sales: { totalSales: { amount: isAugust ? (isLocal ? 258618720 : 286579520) : 100 } }
+    });
+  });
+  const result = await checkHistoricalMonthly("http://local", "http://render");
+  assert.equal(result.status, "WARN");
+  assert.match(result.detail, /NOT COMPARABLE.*2026-08/);
+});
+
+test("missing legacy boundary remains strict and explicit provenance takes precedence", async (t) => {
+  assert.deepEqual(historicalArchiveProvenance({
+    provenance: { source: "explicit" },
+    commerce: { brandSalesSourceImportedAt: "legacy" }
+  }), { source: "explicit" });
+  t.mock.method(globalThis, "fetch", async (url) => jsonResponse({
+    commerce: url.startsWith("http://local") ? { brandSalesSourceImportedAt: "local-only" } : {},
     sales: { totalSales: { amount: url.startsWith("http://local") ? 100 : 200 } }
   }));
   assert.equal((await checkHistoricalMonthly("http://local", "http://render")).status, "FAIL");

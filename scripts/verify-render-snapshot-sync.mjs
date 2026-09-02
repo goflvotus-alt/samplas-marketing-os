@@ -71,7 +71,10 @@ export function liveSourceBoundary(body) {
 }
 
 export function historicalArchiveProvenance(body) {
-  return body?.provenance || body?.sales?.provenance || null;
+  const explicit = body?.provenance || body?.sales?.provenance;
+  if (explicit) return explicit;
+  const importedAt = body?.commerce?.brandSalesSourceImportedAt;
+  return importedAt ? { legacyBrandSalesSourceImportedAt: importedAt } : null;
 }
 
 function sum(rows, key) {
