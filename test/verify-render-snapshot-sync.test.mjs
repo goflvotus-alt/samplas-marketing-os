@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   checkMonthlyCurrent,
+  checkAnnual,
+  checkClients,
   checkHistoricalMonthly,
   checkBrandRegistry,
   checkEcountCurrentMonth,
@@ -12,6 +14,7 @@ import {
   approvedClientsExclusionTotal,
   deepEqual,
   liveSourceBoundary,
+  historicalArchiveProvenance,
   validateProductionAnnual,
   validateProductionClients,
   validateProductionMonthly,
@@ -99,6 +102,29 @@ test("checkHistoricalMonthly: FAIL and names the mismatching month", async (t) =
   assert.match(result.detail, /2026-01/);
 });
 
+test("historical differing provenance is WARN/NOT COMPARABLE, while matching provenance stays strict", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => {
+    const isLocal = url.startsWith("http://local");
+    return jsonResponse({
+      provenance: { ecount: { importedAt: isLocal ? "local-close" : "production-close" } },
+      sales: { periodStart: "2026-01-01", periodEnd: "2026-01-31", totalSales: { amount: isLocal ? 100 : 200 } }
+    });
+  });
+  const result = await checkHistoricalMonthly("http://local", "http://render");
+  assert.equal(result.status, "WARN");
+  assert.match(result.detail, /NOT COMPARABLE/);
+  assert.equal(historicalArchiveProvenance({ provenance: { source: "x" } }).source, "x");
+  assert.equal(historicalArchiveProvenance({ generatedAt: "x" }), null);
+});
+
+test("matching historical provenance keeps mismatched totals strict", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => jsonResponse({
+    provenance: { ecount: { importedAt: "same-close" } },
+    sales: { totalSales: { amount: url.startsWith("http://local") ? 100 : 200 } }
+  }));
+  assert.equal((await checkHistoricalMonthly("http://local", "http://render")).status, "FAIL");
+});
+
 test("same current-live values pass", async (t) => {
   t.mock.method(globalThis, "fetch", mockCurrentLiveFetch());
   assert.equal((await checkMonthlyCurrent("http://local", "http://render")).status, "PASS");
@@ -133,6 +159,49 @@ test("different sourceThrough skips strict live parity", async (t) => {
   t.mock.method(globalThis, "fetch", mockCurrentLiveFetch({ localTotal: 999, renderTotal: 100, localSourceThrough: "cutoff-a", renderSourceThrough: "cutoff-b" }));
   assert.equal((await checkMonthlyCurrent("http://local", "http://render")).status, "PASS");
   assert.equal(liveSourceBoundary({ sourceThrough: "cutoff-a" }), "cutoff-a");
+});
+
+test("missing current ECOUNT is WARN only when Monthly exposes honest unavailable nulls", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url.includes("/api/ecount-sales/monthly")) return { status: 404, text: async () => JSON.stringify({ error: "not found", month: currentMonth }) };
+    if (url.includes("/api/diagnostics/brand-sales")) return jsonResponse({ dailySales: [] });
+    return jsonResponse({ sales: {
+      periodStart: `${currentMonth}-01`, periodEnd: currentMonthEnd,
+      onlineSales: { paidAmount: 0 }, offlineSales: { offlineSalesAmount: null }, totalSales: { amount: null },
+      coverage: { online: true, offline: false, complete: false, missingMonths: [currentMonth] }
+    } });
+  });
+  assert.equal((await checkMonthlyCurrent("http://local", "http://render")).status, "WARN");
+});
+
+test("wrong-month ECOUNT reuse remains FAIL", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url.includes("/api/ecount-sales/monthly")) return jsonResponse({ periodStart: "2026-08-01", totalOfflineSales: 1, dailySales: [], rows: [] });
+    if (url.includes("/api/diagnostics/brand-sales")) return jsonResponse({ dailySales: [] });
+    return jsonResponse(liveMonthlyFixture());
+  });
+  assert.equal((await checkMonthlyCurrent("http://local", "http://render")).status, "FAIL");
+});
+
+test("Clients missing ECOUNT requires explicit unavailable coverage", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url.includes("/api/ecount-sales/monthly")) return { status: 404, text: async () => JSON.stringify({ error: "not found" }) };
+    if (url.includes("/api/intelligence/clients")) return jsonResponse({
+      periodStart: `${currentMonth}-01`, periodEnd: currentMonthEnd,
+      coverage: { offline: { available: false, missingMonths: [currentMonth] } },
+      summary: { onlineSalesAmount: 0, offlineSalesAmount: null, totalSalesAmount: null }
+    });
+    return jsonResponse({ sales: { totalSales: { amount: null } } });
+  });
+  assert.equal((await checkClients("http://local", "http://render")).status, "WARN");
+});
+
+test("Annual completed history survives unavailable current month", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url.includes(`month=${currentMonth}`)) return { status: 400, text: async () => JSON.stringify({ error: "optional source unavailable" }) };
+    return jsonResponse({ sales: { totalSales: { amount: 100 } } });
+  });
+  assert.equal((await checkAnnual("http://local", "http://render")).status, "WARN");
 });
 
 test("legitimate live timing differences produce exit code zero", () => {

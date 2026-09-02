@@ -718,7 +718,19 @@ const server = isMainModule ? createServer(async (req, res) => {
       try {
         const cafe24 = await fetchCafe24Orders(since, until, { limit: 500 });
         const overview = await buildClientsOverview({ since, until, cafe24Orders: cafe24.orders, storeCode });
-        return json(res, { ok: true, ...overview });
+        const coverage = await buildClientsSourceCoverage(since, until, storeCode, !cafe24.error);
+        const summary = coverage.offline.available ? overview.summary : {
+          ...overview.summary,
+          totalPurchaseCount: null,
+          totalSalesAmount: null,
+          avgOrderValue: null,
+          offlineSalesAmount: null,
+          orderCount: null,
+          offlineOrderCount: null,
+          quantity: null,
+          offlineQuantity: null
+        };
+        return json(res, { ok: true, ...overview, summary, coverage, storeCoverage: coverage.offline });
       } catch (error) {
         return json(res, { ok: false, error: "Internal Server Error", message: safeErrorMessage(error) }, 500);
       }
@@ -4160,6 +4172,7 @@ async function buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource) {
   }
 
   const offlineComplete = missingMonths.length === 0 && partialMonths.length === 0;
+  const offlineAmount = offlineComplete ? offlineSalesAmount : null;
   return {
     periodStart: monthStart,
     periodEnd: monthEnd,
@@ -4167,10 +4180,10 @@ async function buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource) {
       paidAmount: onlinePaidAmount
     },
     offlineSales: {
-      offlineSalesAmount
+      offlineSalesAmount: offlineAmount
     },
     totalSales: {
-      amount: onlinePaidAmount + offlineSalesAmount
+      amount: offlineComplete ? onlinePaidAmount + offlineSalesAmount : null
     },
     coverage: {
       online: true,
@@ -4178,8 +4191,61 @@ async function buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource) {
       complete: offlineComplete,
       partialMonths,
       missingMonths
+    },
+    provenance: {
+      periodStart: monthStart,
+      periodEnd: monthEnd,
+      cafe24: {
+        source: commerceSource?.source || null,
+        through: monthEnd
+      },
+      ecount: {
+        available: Boolean(snapshot),
+        importedAt: snapshot?.importedAt || null,
+        periodStart: snapshot?.periodStart || null,
+        periodEnd: snapshot?.periodEnd || null
+      }
     }
   };
+}
+
+async function buildClientsSourceCoverage(since, until, storeCode, onlineAvailable = true) {
+  const includedMonths = [];
+  const missingMonths = [];
+  const partialMonths = [];
+  for (const month of instagramRangeMonthKeys(since, until)) {
+    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir, storeCode: storeCode || undefined });
+    if (!snapshot) {
+      missingMonths.push(month);
+      continue;
+    }
+    includedMonths.push(month);
+    const requested = monthRequestBounds(month, since, until);
+    if (String(snapshot.periodStart || "") > requested.start || String(snapshot.periodEnd || "") < requested.end) partialMonths.push(month);
+  }
+  const offlineAvailable = missingMonths.length === 0 && partialMonths.length === 0;
+  return {
+    online: { available: onlineAvailable, status: onlineAvailable ? "available" : "unavailable" },
+    offline: {
+      available: offlineAvailable,
+      status: offlineAvailable ? "available" : "unavailable",
+      storesIncluded: storeCode && includedMonths.length ? [storeCode] : [],
+      includedMonths,
+      missingMonths,
+      partialMonths
+    },
+    complete: onlineAvailable && offlineAvailable
+  };
+}
+
+async function monthlyOptionalSource(load) {
+  try {
+    const data = await load();
+    if (data?.error) return { available: false, error: safeErrorMessage(data.error), data: {} };
+    return { available: true, error: null, data };
+  } catch (error) {
+    return { available: false, error: safeErrorMessage(error), data: {} };
+  }
 }
 
 export async function buildMonthlyArchive(month) {
@@ -4189,12 +4255,15 @@ export async function buildMonthlyArchive(month) {
 
   const monthStart = `${month}-01`;
   const monthEnd = monthEndKey(month);
-  const [commerceSource, metaSummary, metaFullReport, instagram] = await Promise.all([
+  const [commerceSource, metaSummaryResult, metaFullReportResult, instagramResult] = await Promise.all([
     buildBrandSalesDiagnostics(monthStart, monthEnd),
-    buildMetaAdsSummaryWithCache(monthStart, monthEnd),
-    buildMetaAdsFullReportWithCache(monthStart, monthEnd),
-    buildInstagramMonthlyDataWithCache(month)
+    monthlyOptionalSource(() => buildMetaAdsSummaryWithCache(monthStart, monthEnd)),
+    monthlyOptionalSource(() => buildMetaAdsFullReportWithCache(monthStart, monthEnd)),
+    monthlyOptionalSource(() => buildInstagramMonthlyDataWithCache(month))
   ]);
+  const metaSummary = metaSummaryResult.data;
+  const metaFullReport = metaFullReportResult.data;
+  const instagram = instagramResult.data;
 
   const commerceTotals = commerceSource.totals || {};
   const { brandSales, sourceImportedAt: brandSalesSourceImportedAt } = await buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSource);
@@ -4212,8 +4281,9 @@ export async function buildMonthlyArchive(month) {
   const sales = await buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource);
 
   const metaTotals = metaSummary.totals || {};
-  const spend = Number(metaTotals.spend || 0);
-  const purchaseValue = Number(metaTotals.purchaseValue || 0);
+  const metaAvailable = metaSummaryResult.available && metaFullReportResult.available;
+  const spend = metaAvailable ? Number(metaTotals.spend || 0) : null;
+  const purchaseValue = metaAvailable ? Number(metaTotals.purchaseValue || 0) : null;
   const paidAmount = Number(commerce.paidAmount || 0);
   const cafeReady = !commerceSource.error && !commerceSource.cacheWarning && Number.isFinite(paidAmount);
   const metaReady = !metaSummary.error && metaTotals.purchaseValue !== null && metaTotals.purchaseValue !== undefined && metaTotals.purchaseValue !== "";
@@ -4226,15 +4296,16 @@ export async function buildMonthlyArchive(month) {
     : (Math.abs(Number(reconciliation.spendDiff || 0)) <= spendTolerance && Math.abs(Number(reconciliation.purchaseValueDiff || 0)) <= purchaseValueTolerance ? "matched" : "mismatch");
   const fullReportRows = metaFullReport.rows || [];
   const marketing = {
+    status: { available: metaAvailable, error: metaAvailable ? null : metaSummaryResult.error || metaFullReportResult.error },
     spend,
     purchaseValue,
-    adSpendShare: paidAmount > 0 ? spend / paidAmount * 100 : null,
+    adSpendShare: metaAvailable && paidAmount > 0 ? spend / paidAmount * 100 : null,
     mismatchRate: comparable ? Math.abs(purchaseValue - paidAmount) / paidAmount * 100 : null,
     comparable,
-    activeCampaignCount: fullReportRows.filter(isMetaAdsExecutedRow).length,
-    inactiveCampaignCount: fullReportRows.filter((row) => !isMetaAdsExecutedRow(row)).length,
-    unlistedCampaignCount: Number(reconciliation.unlistedCampaignCount || 0),
-    reconciliationStatus,
+    activeCampaignCount: metaAvailable ? fullReportRows.filter(isMetaAdsExecutedRow).length : null,
+    inactiveCampaignCount: metaAvailable ? fullReportRows.filter((row) => !isMetaAdsExecutedRow(row)).length : null,
+    unlistedCampaignCount: metaAvailable ? Number(reconciliation.unlistedCampaignCount || 0) : null,
+    reconciliationStatus: metaAvailable ? reconciliationStatus : null,
     attentionCampaigns: []
   };
 
@@ -4273,16 +4344,17 @@ export async function buildMonthlyArchive(month) {
     };
   });
   const content = {
-    totalViews: postSum(posts, "views"),
-    totalShares: postSum(posts, "shares"),
-    totalLikes: postSum(posts, "likes"),
-    totalSaves: postSum(posts, "saves"),
-    averageSaveRate,
-    postCount: posts.length,
-    followerDelta: account.followerDelta ?? null,
-    formatMix,
-    topContent: topPostsBy((post) => post.views, 3),
-    aboveAverageSaveRatePosts: posts.filter((post) => postMetrics(post).saveRate > averageSaveRate).slice(0, 3)
+      status: { available: instagramResult.available, error: instagramResult.error },
+      totalViews: instagramResult.available ? postSum(posts, "views") : null,
+      totalShares: instagramResult.available ? postSum(posts, "shares") : null,
+      totalLikes: instagramResult.available ? postSum(posts, "likes") : null,
+      totalSaves: instagramResult.available ? postSum(posts, "saves") : null,
+      averageSaveRate: instagramResult.available ? averageSaveRate : null,
+      postCount: instagramResult.available ? posts.length : null,
+      followerDelta: instagramResult.available ? account.followerDelta ?? null : null,
+      formatMix: instagramResult.available ? formatMix : [],
+      topContent: instagramResult.available ? topPostsBy((post) => post.views, 3) : [],
+      aboveAverageSaveRatePosts: instagramResult.available ? posts.filter((post) => postMetrics(post).saveRate > averageSaveRate).slice(0, 3) : []
   };
 
   return {
@@ -4291,6 +4363,7 @@ export async function buildMonthlyArchive(month) {
     dataVersion: 1,
     status: "draft",
     sales,
+    provenance: sales.provenance,
     commerce,
     marketing,
     content

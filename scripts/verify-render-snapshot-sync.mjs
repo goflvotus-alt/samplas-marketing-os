@@ -70,6 +70,10 @@ export function liveSourceBoundary(body) {
     ?? null;
 }
 
+export function historicalArchiveProvenance(body) {
+  return body?.provenance || body?.sales?.provenance || null;
+}
+
 function sum(rows, key) {
   return (rows || []).reduce((total, row) => total + Number(row?.[key] || 0), 0);
 }
@@ -179,6 +183,7 @@ export async function checkStatus(local, render) {
 export async function checkHistoricalMonthly(local, render) {
   const months = historicalMonths();
   const mismatches = [];
+  const notComparable = [];
   for (const month of months) {
     const [l, r] = await Promise.all([
       getJson(local, `/api/reports/monthly?month=${month}`),
@@ -186,27 +191,44 @@ export async function checkHistoricalMonthly(local, render) {
     ]);
     const lt = l.body?.sales?.totalSales?.amount;
     const rt = r.body?.sales?.totalSales?.amount;
-    if (lt !== rt) mismatches.push(`${month}: local=${lt} render=${rt}`);
+    if (lt === rt) continue;
+    const localProvenance = historicalArchiveProvenance(l.body);
+    const renderProvenance = historicalArchiveProvenance(r.body);
+    if (localProvenance && renderProvenance && !deepEqual(localProvenance, renderProvenance)) {
+      notComparable.push(`${month}: local=${lt} render=${rt}`);
+    } else {
+      mismatches.push(`${month}: local=${lt} render=${rt}`);
+    }
   }
   if (!months.length) return { status: "PASS", detail: "no historical months before current month yet" };
-  return mismatches.length
-    ? { status: "FAIL", detail: mismatches.join("; ") }
-    : { status: "PASS", detail: `${months.length}/${months.length} months match (${months[0]}~${months.at(-1)})` };
+  if (mismatches.length) return { status: "FAIL", detail: mismatches.join("; ") };
+  if (notComparable.length) return { status: "WARN", detail: `NOT COMPARABLE — ${notComparable.join("; ")}` };
+  return { status: "PASS", detail: `${months.length}/${months.length} months match (${months[0]}~${months.at(-1)})` };
 }
 
 export async function checkAnnual(local, render) {
   // 전용 /annual API가 없음 — Production Annual UI와 동일하게 Production 월 응답만 합산한다.
   const months = [...historicalMonths(), currentMonthSeoul()];
+  const completedMonths = historicalMonths();
   const productionMonths = {};
-  for (const month of months) {
+  for (const month of completedMonths) {
     const response = await getJson(render, `/api/reports/monthly?month=${month}`);
-    productionMonths[month] = response.body?.sales?.totalSales?.amount;
+    const amount = response.body?.sales?.totalSales?.amount;
+    if (response.status !== 200 || !Number.isFinite(amount)) return { status: "FAIL", detail: `completed month ${month} is invalid` };
+    productionMonths[month] = amount;
   }
+  const currentMonth = currentMonthSeoul();
+  const current = await getJson(render, `/api/reports/monthly?month=${currentMonth}`);
+  const currentAmount = current.body?.sales?.totalSales?.amount;
   const annualTotal = Object.values(productionMonths).reduce((total, value) => total + Number(value || 0), 0);
   const validation = validateProductionAnnual(productionMonths, annualTotal);
+  if (!validation.ok) return { status: "FAIL", detail: `completed sum(${completedMonths[0]}~${completedMonths.at(-1)})=${annualTotal}` };
+  if (current.status !== 200 || !Number.isFinite(currentAmount)) {
+    return { status: "WARN", detail: `completed sum(${completedMonths[0]}~${completedMonths.at(-1)})=${annualTotal}; current ${currentMonth}=EXPECTED UNAVAILABLE` };
+  }
   return {
-    status: validation.ok ? "PASS" : "FAIL",
-    detail: `production sum(${months[0]}~${months.at(-1)})=${annualTotal}`
+    status: "PASS",
+    detail: `production sum(${months[0]}~${months.at(-1)})=${annualTotal + currentAmount}`
   };
 }
 
@@ -331,6 +353,23 @@ export async function checkMonthlyCurrent(local, render) {
   ]);
   const lt = l.body?.sales?.totalSales?.amount;
   const rt = r.body?.sales?.totalSales?.amount;
+  if (ecount.status === 404) {
+    const coverage = r.body?.sales?.coverage;
+    const honestUnavailable = r.status === 200
+      && r.body?.sales?.periodStart === `${month}-01`
+      && coverage?.offline === false
+      && coverage?.missingMonths?.includes(month)
+      && r.body?.sales?.offlineSales?.offlineSalesAmount === null
+      && rt === null
+      && Number.isFinite(r.body?.sales?.onlineSales?.paidAmount);
+    return {
+      status: honestUnavailable ? "WARN" : "FAIL",
+      detail: honestUnavailable ? `month=${month} EXPECTED UNAVAILABLE — ECOUNT snapshot not uploaded` : `month=${month} missing ECOUNT is not represented honestly`
+    };
+  }
+  if (ecount.status !== 200 || ecount.body?.periodStart?.slice(0, 7) !== month) {
+    return { status: "FAIL", detail: `month=${month} wrong or malformed ECOUNT snapshot` };
+  }
   const localBoundary = liveSourceBoundary(l.body);
   const renderBoundary = liveSourceBoundary(r.body);
   if (localBoundary && renderBoundary && localBoundary === renderBoundary && lt !== rt) {
@@ -355,6 +394,18 @@ export async function checkClients(local, render) {
     getJson(render, `/api/ecount-sales/monthly?month=${month}`)
   ]);
   const approvedExclusions = approvedClientsExclusionTotal(ecount.body, since, until);
+  if (ecount.status === 404) {
+    const honestUnavailable = r.status === 200
+      && r.body?.periodStart === since
+      && r.body?.coverage?.offline?.available === false
+      && r.body?.coverage?.offline?.missingMonths?.includes(month)
+      && r.body?.summary?.offlineSalesAmount === null
+      && r.body?.summary?.totalSalesAmount === null;
+    return {
+      status: honestUnavailable ? "WARN" : "FAIL",
+      detail: honestUnavailable ? `month=${month} EXPECTED UNAVAILABLE — Clients offline coverage incomplete` : `month=${month} Clients masks unavailable offline as zero`
+    };
+  }
   const validation = validateProductionClients(r.body, monthly.body?.sales?.totalSales?.amount, approvedExclusions);
   const localBoundary = liveSourceBoundary(l.body);
   const renderBoundary = liveSourceBoundary(r.body);
