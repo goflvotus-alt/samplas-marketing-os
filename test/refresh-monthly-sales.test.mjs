@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { refreshMonthlySales, validateMonthlyArchive } from "../scripts/refresh-monthly-sales.mjs";
+import { historicalFinalCloseDate, isHistoricalMonthFinalClosed, refreshMonthlySales, validateMonthlyArchive } from "../scripts/refresh-monthly-sales.mjs";
 
 const archive = (online = 70, offline = 30) => ({
   month: "2026-07",
@@ -51,6 +51,77 @@ test("current month writes snapshot only", () => withTemp(async (dir) => {
   assert.equal(results[0].snapshot, "PASS");
   assert.equal(results[0].archive, "SKIP");
   assert.equal(archiveCalls, 0);
+}));
+
+test("saved final historical month rejects before snapshot write and preserves every byte", () => withTemp(async (dir) => {
+  const folder = join(dir, "sales");
+  const workDir = join(dir, "work");
+  await mkdir(folder);
+  await mkdir(join(workDir, "monthly"), { recursive: true });
+  await mkdir(join(workDir, "ecount-sales"), { recursive: true });
+  await writeFile(join(folder, "2026.07.xlsx"), "fixture");
+  const files = [
+    join(workDir, "ecount-sales", "2026-07.APGUJEONG.json"),
+    join(workDir, "ecount-sales", "2026-07.VAIL.json"),
+    join(workDir, "monthly", "2026-07.json")
+  ];
+  await writeFile(files[0], "APGUJEONG-before\n");
+  await writeFile(files[1], "VAIL-before\n");
+  await writeFile(files[2], `${JSON.stringify({ ...archive(), archiveStatus: "saved" }, null, 2)}\n`);
+  const before = await Promise.all(files.map((file) => readFile(file)));
+  let imported = false;
+  const [result] = await refreshMonthlySales(folder, {
+    workDir, currentMonth: "2026-08", referenceDate: new Date("2026-08-08T00:00:00+09:00"), force: true, log: () => {},
+    importSnapshot: async () => { imported = true; }
+  });
+  assert.equal(result.code, "HISTORICAL_MONTH_ALREADY_CLOSED");
+  assert.equal(result.snapshot, "FAIL");
+  assert.equal(result.archive, "SKIP");
+  assert.equal(imported, false);
+  const after = await Promise.all(files.map((file) => readFile(file)));
+  assert.deepEqual(after, before);
+}));
+
+test("previous month remains mutable through day 7 KST and locks at day 8", () => withTemp(async (dir) => {
+  const folder = join(dir, "sales");
+  const workDir = join(dir, "work");
+  await mkdir(folder);
+  await mkdir(join(workDir, "monthly"), { recursive: true });
+  await writeFile(join(folder, "2026.08.xlsx"), "fixture");
+  await writeFile(join(workDir, "monthly", "2026-08.json"), JSON.stringify({ month: "2026-08", archiveStatus: "saved" }));
+  let imports = 0;
+  const run = (referenceDate) => refreshMonthlySales(folder, {
+    workDir, currentMonth: "2026-09", referenceDate, force: true, log: () => {},
+    importSnapshot: async () => { imports += 1; return { snapshot: { month: "2026-08" } }; },
+    buildArchive: async () => archive(), writeArchive: async () => {}
+  });
+  assert.equal((await run(new Date("2026-09-01T00:00:00+09:00")))[0].snapshot, "PASS");
+  assert.equal((await run(new Date("2026-09-07T23:59:59+09:00")))[0].snapshot, "PASS");
+  assert.equal((await run(new Date("2026-09-08T00:00:00+09:00")))[0].code, "HISTORICAL_MONTH_ALREADY_CLOSED");
+  assert.equal((await run(new Date("2026-10-01T00:00:00+09:00")))[0].code, "HISTORICAL_MONTH_ALREADY_CLOSED");
+  assert.equal(imports, 2);
+}));
+
+test("historical final-close dates use KST and handle year/leap-month boundaries", () => {
+  assert.equal(historicalFinalCloseDate("2026-08"), "2026-09-08");
+  assert.equal(historicalFinalCloseDate("2026-12"), "2027-01-08");
+  assert.equal(historicalFinalCloseDate("2028-02"), "2028-03-08");
+  assert.equal(isHistoricalMonthFinalClosed("2026-08", new Date("2026-09-07T14:59:59Z")), false);
+  assert.equal(isHistoricalMonthFinalClosed("2026-08", new Date("2026-09-07T15:00:00Z")), true);
+});
+
+test("repeated current-month imports remain allowed", () => withTemp(async (dir) => {
+  const folder = join(dir, "sales");
+  await mkdir(folder);
+  await writeFile(join(folder, "2026.08.xlsx"), "fixture");
+  let imports = 0;
+  const options = {
+    workDir: join(dir, "work"), currentMonth: "2026-08", force: true, log: () => {},
+    importSnapshot: async () => { imports += 1; return { snapshot: { month: "2026-08" } }; }
+  };
+  assert.equal((await refreshMonthlySales(folder, options))[0].snapshot, "PASS");
+  assert.equal((await refreshMonthlySales(folder, options))[0].snapshot, "PASS");
+  assert.equal(imports, 2);
 }));
 
 test("archive failure keeps a successful snapshot and releases the lock", () => withTemp(async (dir) => {

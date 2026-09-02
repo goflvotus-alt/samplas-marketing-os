@@ -574,7 +574,7 @@ const server = isMainModule ? createServer(async (req, res) => {
         return json(res, data);
       } catch (error) {
         const message = safeErrorMessage(error);
-        return json(res, { error: message }, error.status || 400);
+        return json(res, { error: message, ...(error.code ? { code: error.code } : {}) }, error.status || 400);
       }
     }
     if (url.pathname === "/api/operator/session") {
@@ -1660,7 +1660,7 @@ async function importEcountOfflineSalesUpload(req) {
       );
     }
     if (result.snapshot === "FAIL" || result.archive === "FAIL") {
-      throw Object.assign(new Error(result.reason || "XLSX 처리에 실패했습니다."), { status: 400 });
+      throw Object.assign(new Error(result.reason || "XLSX 처리에 실패했습니다."), { status: 400, code: result.code });
     }
     const snapshot = await readEcountOfflineSalesSnapshot(result.month, { workDir, storeCode: warehouseRouted ? undefined : store.storeCode });
     const storeResults = warehouseRouted ? await Promise.all(stores.map(async (item) => {

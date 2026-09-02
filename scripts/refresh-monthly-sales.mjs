@@ -12,6 +12,35 @@ const currentMonth = () => new Intl.DateTimeFormat("en-CA", {
   month: "2-digit"
 }).format(new Date());
 const reason = (error) => String(error?.message || error || "Unknown error");
+export const HISTORICAL_MONTH_ALREADY_CLOSED = "HISTORICAL_MONTH_ALREADY_CLOSED";
+
+const seoulDateKey = (date = new Date()) => new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit"
+}).format(date);
+
+export function historicalFinalCloseDate(month) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, monthNumber, 8)).toISOString().slice(0, 10);
+}
+
+export function isHistoricalMonthFinalClosed(month, referenceDate = new Date()) {
+  return seoulDateKey(referenceDate) >= historicalFinalCloseDate(month);
+}
+
+async function assertHistoricalMonthOpen(month, nowMonth, workDir, referenceDate) {
+  if (month >= nowMonth) return;
+  try {
+    const archive = JSON.parse(await readFile(join(workDir, "monthly", `${month}.json`), "utf8"));
+    if (archive?.month === month && archive?.archiveStatus === "saved" && isHistoricalMonthFinalClosed(month, referenceDate)) {
+      throw Object.assign(new Error("해당 월은 이미 마감된 과거 월입니다. 일반 업로드로 기존 마감 데이터를 변경할 수 없습니다."), {
+        code: HISTORICAL_MONTH_ALREADY_CLOSED
+      });
+    }
+  } catch (error) {
+    if (error?.code === "ENOENT" || error instanceof SyntaxError) return;
+    throw error;
+  }
+}
 
 export async function monthlySnapshotStatus(xlsxPath, snapshotPath) {
   const xlsx = await stat(xlsxPath);
@@ -64,6 +93,7 @@ export async function refreshMonthlySales(folder, options = {}) {
   const workDir = resolve(options.workDir || join(root, "work"));
   const log = options.log || console.log;
   const nowMonth = options.currentMonth || currentMonth();
+  const referenceDate = options.referenceDate || new Date();
   const importSnapshot = options.importSnapshot || importEcountOfflineSalesSnapshot;
   const buildArchive = options.buildArchive;
   const writeArchive = options.writeArchive;
@@ -105,6 +135,7 @@ export async function refreshMonthlySales(folder, options = {}) {
 
     const result = { month: file.month, status: detected.status, snapshot: "FAIL", archive: "SKIP", reason: detected.reason, duration: 0 };
     try {
+      await assertHistoricalMonthOpen(file.month, nowMonth, workDir, referenceDate);
       const imported = await importSnapshot(xlsxPath, { workDir, storeCode, sourceWarehouseCode, sourceWarehouseName, expectedMonth: file.month });
       if (imported?.snapshot?.month !== file.month) throw new Error(`Filename month ${file.month} does not match snapshot month ${imported?.snapshot?.month || "unknown"}`);
       result.snapshot = "PASS";
@@ -130,6 +161,7 @@ export async function refreshMonthlySales(folder, options = {}) {
         }
       }
     } catch (error) {
+      if (error?.code) result.code = error.code;
       result.reason = reason(error);
       log(`Snapshot\nFAIL\nReason\n${result.reason}\nRefresh FAIL`);
     } finally {

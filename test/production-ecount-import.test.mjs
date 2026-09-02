@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { isAuthorizedOperatorRequest } from "../server.mjs";
 
 const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
@@ -86,6 +88,34 @@ test("operator session and ECOUNT import use the dedicated credential over real 
     const authenticatedImport = await httpCall(port, "/api/ecount-sales/import", { headers: { Origin: "https://production.example", Cookie: cookie } });
     assert.notEqual(authenticatedImport.status, 401);
   });
+});
+
+test("saved historical close returns an explicit HTTP conflict before parsing or writing snapshots", async () => {
+  const workDir = await mkdtemp(join(tmpdir(), "historical-close-http-"));
+  try {
+    await mkdir(join(workDir, "monthly"), { recursive: true });
+    await writeFile(join(workDir, "monthly", "2026-07.json"), JSON.stringify({ month: "2026-07", archiveStatus: "saved" }));
+    await writeFile(join(workDir, "store-master.json"), JSON.stringify({ stores: [{
+      storeCode: "APGUJEONG", displayName: "압구정 매장",
+      source: { warehouseCode: "100", warehouseName: "매장" }
+    }] }));
+    await withServer({ WORK_DIR: workDir, SAMPLAS_OPERATOR_BASIC_AUTH: "operator:correct" }, async (port) => {
+      const session = await httpCall(port, "/api/operator/session", { headers: { Authorization: basic("operator:correct") } });
+      const response = await httpCall(port, "/api/ecount-sales/import", {
+        headers: {
+          Origin: "https://production.example",
+          Cookie: session.headers["set-cookie"]?.[0],
+          "X-Ecount-File-Name": "2026-07.xlsx",
+          "X-Ecount-Store-Code": "APGUJEONG"
+        },
+        body: "not-an-xlsx"
+      });
+      assert.equal(response.status, 400);
+      assert.equal(JSON.parse(response.body).code, "HISTORICAL_MONTH_ALREADY_CLOSED");
+    });
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
 });
 
 test("Cafe24 proxy credentials never authorize an operator session but retain internal auth", async () => {

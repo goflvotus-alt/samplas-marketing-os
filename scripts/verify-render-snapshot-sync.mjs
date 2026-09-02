@@ -111,6 +111,39 @@ export function validateProductionMonthly(month, monthly, online, ecount) {
   };
 }
 
+export function validateProductionMonthlyPartial(month, monthly, online, ecount) {
+  const monthStart = `${month}-01`;
+  const monthEnd = monthEndKey(month);
+  const sourceEnd = String(ecount?.periodEnd || "");
+  const onlineAmount = monthly?.sales?.onlineSales?.paidAmount;
+  const offlineDaily = sum(ecount?.dailySales, "offlineSalesAmount");
+  const byStore = { APGUJEONG: 0, VAIL: 0 };
+  for (const row of ecount?.rows || ecount?.salesLines || []) {
+    if (row?.isOfflineRevenue === true && row.storeCode in byStore) byStore[row.storeCode] += Number(row.salesAmount || 0);
+  }
+  const coverage = monthly?.sales?.coverage;
+  const provenance = monthly?.sales?.provenance?.ecount;
+  const ok = ecount?.periodStart === monthStart
+    && /^\d{4}-\d{2}-\d{2}$/.test(sourceEnd)
+    && sourceEnd >= monthStart && sourceEnd < monthEnd
+    && Number.isFinite(ecount?.totalOfflineSales)
+    && Array.isArray(ecount?.dailySales)
+    && Array.isArray(online?.dailySales)
+    && offlineDaily === ecount.totalOfflineSales
+    && byStore.APGUJEONG + byStore.VAIL === ecount.totalOfflineSales
+    && sum(online.dailySales, "paidAmount") === onlineAmount
+    && monthly?.sales?.periodStart === monthStart
+    && monthly?.sales?.periodEnd === monthEnd
+    && monthly?.sales?.offlineSales?.offlineSalesAmount === null
+    && monthly?.sales?.totalSales?.amount === null
+    && coverage?.online === true && coverage?.offline === false && coverage?.complete === false
+    && coverage?.partialMonths?.includes(month)
+    && !coverage?.missingMonths?.includes(month)
+    && provenance?.periodStart === ecount.periodStart
+    && provenance?.periodEnd === ecount.periodEnd;
+  return { ok, detail: `month=${month} source=${ecount?.periodStart}..${sourceEnd} offline=${ecount?.totalOfflineSales} byStore=${JSON.stringify(byStore)}` };
+}
+
 export function validateProductionAnnual(monthlyTotals, annualTotal) {
   const values = Object.values(monthlyTotals || {});
   const expected = values.reduce((total, value) => total + Number(value || 0), 0);
@@ -128,13 +161,22 @@ export function approvedClientsExclusionTotal(ecount, since, until) {
   }, 0);
 }
 
-export function validateProductionClients(clients, canonicalTotal, approvedExclusionTotal) {
+export function validateProductionClients(clients, canonicalTotal, approvedExclusionTotal, source = null) {
   const summary = clients?.summary;
   const total = summary?.totalSalesAmount;
   const componentTotal = Number(summary?.onlineSalesAmount) + Number(summary?.offlineSalesAmount);
   const typeTotal = sum(clients?.typeBreakdown, "salesAmount");
   const clientTotal = sum(clients?.clients, "totalSales");
   const residual = Number(canonicalTotal) - Number(total);
+  const sourceOk = !source || (
+    clients?.periodStart === source.since
+    && clients?.periodEnd === source.until
+    && source.canonical?.periodStart === source.since
+    && source.canonical?.periodEnd === source.until
+    && Number(source.canonical?.onlineSales?.paidAmount) + Number(source.canonical?.offlineSales?.offlineSalesAmount) === Number(source.canonical?.totalSales?.amount)
+    && Number(source.canonical?.offlineSales?.byStore?.APGUJEONG || 0) + Number(source.canonical?.offlineSales?.byStore?.VAIL || 0) === Number(source.canonical?.offlineSales?.offlineSalesAmount)
+    && source.canonical?.coverage?.complete === true
+  );
   const ok = Number.isFinite(total)
     && Number.isFinite(canonicalTotal)
     && clients?.periodStart && clients?.periodEnd
@@ -143,7 +185,8 @@ export function validateProductionClients(clients, canonicalTotal, approvedExclu
     && clientTotal === total
     && Number(summary?.onlineOrderCount) + Number(summary?.offlineOrderCount) === Number(summary?.orderCount)
     && Number.isFinite(approvedExclusionTotal)
-    && residual === approvedExclusionTotal;
+    && residual === approvedExclusionTotal
+    && sourceOk;
   return { ok, residual, detail: `clients=${total} canonical=${canonicalTotal} approvedExclusionResidual=${residual}` };
 }
 
@@ -373,6 +416,17 @@ export async function checkMonthlyCurrent(local, render) {
   if (ecount.status !== 200 || ecount.body?.periodStart?.slice(0, 7) !== month) {
     return { status: "FAIL", detail: `month=${month} wrong or malformed ECOUNT snapshot` };
   }
+  const sourceEnd = String(ecount.body?.periodEnd || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sourceEnd) || sourceEnd.slice(0, 7) !== month || sourceEnd > monthEndKey(month)) {
+    return { status: "FAIL", detail: `month=${month} malformed ECOUNT source period` };
+  }
+  if (sourceEnd < monthEndKey(month)) {
+    const validation = validateProductionMonthlyPartial(month, r.body, online.body, ecount.body);
+    return {
+      status: validation.ok ? "WARN" : "FAIL",
+      detail: validation.ok ? `CURRENT SOURCE PARTIAL — ${validation.detail}` : `dishonest partial — ${validation.detail}`
+    };
+  }
   const localBoundary = liveSourceBoundary(l.body);
   const renderBoundary = liveSourceBoundary(r.body);
   if (localBoundary && renderBoundary && localBoundary === renderBoundary && lt !== rt) {
@@ -390,10 +444,10 @@ export async function checkClients(local, render) {
   const since = `${month}-01`;
   const until = todayKeySeoul();
   const path = `/api/intelligence/clients?since=${since}&until=${until}`;
-  const [l, r, monthly, ecount] = await Promise.all([
+  const [l, r, canonical, ecount] = await Promise.all([
     getJson(local, path),
     getJson(render, path),
-    getJson(render, `/api/reports/monthly?month=${month}`),
+    getJson(render, `/api/sales/total?since=${since}&until=${until}`),
     getJson(render, `/api/ecount-sales/monthly?month=${month}`)
   ]);
   const approvedExclusions = approvedClientsExclusionTotal(ecount.body, since, until);
@@ -409,7 +463,7 @@ export async function checkClients(local, render) {
       detail: honestUnavailable ? `month=${month} EXPECTED UNAVAILABLE — Clients offline coverage incomplete` : `month=${month} Clients masks unavailable offline as zero`
     };
   }
-  const validation = validateProductionClients(r.body, monthly.body?.sales?.totalSales?.amount, approvedExclusions);
+  const validation = validateProductionClients(r.body, canonical.body?.totalSales?.amount, approvedExclusions, { since, until, canonical: canonical.body });
   const localBoundary = liveSourceBoundary(l.body);
   const renderBoundary = liveSourceBoundary(r.body);
   if (localBoundary && renderBoundary && localBoundary === renderBoundary && !deepEqual(l.body?.summary, r.body?.summary)) {

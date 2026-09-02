@@ -18,6 +18,7 @@ import {
   validateProductionAnnual,
   validateProductionClients,
   validateProductionMonthly,
+  validateProductionMonthlyPartial,
   verificationExitCode
 } from "../scripts/verify-render-snapshot-sync.mjs";
 
@@ -56,6 +57,7 @@ function liveMonthlyFixture({ total = 100, sourceThrough } = {}) {
 const onlineFixture = { dailySales: [{ paidAmount: 10 }, { paidAmount: 20 }] };
 const ecountFixture = {
   periodStart: `${currentMonth}-01`,
+  periodEnd: currentMonthEnd,
   totalOfflineSales: 70,
   dailySales: [{ offlineSalesAmount: 40 }, { offlineSalesAmount: 30 }],
   rows: [
@@ -209,6 +211,30 @@ test("missing current ECOUNT is WARN only when Monthly exposes honest unavailabl
   assert.equal((await checkMonthlyCurrent("http://local", "http://render")).status, "WARN");
 });
 
+test("honest current partial ECOUNT is WARN while false-complete and malformed partial fail", async (t) => {
+  const partialEnd = `${currentMonth}-02`;
+  const partialEcount = { ...ecountFixture, periodEnd: partialEnd };
+  const partialMonthly = {
+    sales: {
+      periodStart: `${currentMonth}-01`, periodEnd: currentMonthEnd,
+      onlineSales: { paidAmount: 30 }, offlineSales: { offlineSalesAmount: null }, totalSales: { amount: null },
+      coverage: { online: true, offline: false, complete: false, partialMonths: [currentMonth], missingMonths: [] },
+      provenance: { ecount: { periodStart: `${currentMonth}-01`, periodEnd: partialEnd } }
+    }
+  };
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url.includes("/api/ecount-sales/monthly")) return jsonResponse(partialEcount);
+    if (url.includes("/api/diagnostics/brand-sales")) return jsonResponse(onlineFixture);
+    return jsonResponse(partialMonthly);
+  });
+  assert.equal((await checkMonthlyCurrent("http://local", "http://render")).status, "WARN");
+  assert.equal(validateProductionMonthlyPartial(currentMonth, partialMonthly, onlineFixture, partialEcount).ok, true);
+  assert.equal(validateProductionMonthlyPartial(currentMonth, {
+    ...partialMonthly, sales: { ...partialMonthly.sales, coverage: { ...partialMonthly.sales.coverage, complete: true } }
+  }, onlineFixture, partialEcount).ok, false);
+  assert.equal(validateProductionMonthlyPartial(currentMonth, partialMonthly, onlineFixture, { ...partialEcount, periodEnd: "bad" }).ok, false);
+});
+
 test("wrong-month ECOUNT reuse remains FAIL", async (t) => {
   t.mock.method(globalThis, "fetch", async (url) => {
     if (url.includes("/api/ecount-sales/monthly")) return jsonResponse({ periodStart: "2026-08-01", totalOfflineSales: 1, dailySales: [], rows: [] });
@@ -253,6 +279,24 @@ test("Production Clients internal accounting accepts an explained non-negative r
   const result = validateProductionClients(clients, 100, 10);
   assert.equal(result.ok, true);
   assert.equal(result.residual, 10);
+});
+
+test("Production Clients validates the same-cutoff canonical source and rejects period mismatch", () => {
+  const since = `${currentMonth}-01`;
+  const until = currentMonthEnd;
+  const clients = {
+    periodStart: since, periodEnd: until,
+    summary: { totalSalesAmount: 90, onlineSalesAmount: 30, offlineSalesAmount: 60, onlineOrderCount: 1, offlineOrderCount: 2, orderCount: 3 },
+    typeBreakdown: [{ salesAmount: 90 }], clients: [{ totalSales: 90 }]
+  };
+  const canonical = {
+    periodStart: since, periodEnd: until,
+    onlineSales: { paidAmount: 30 },
+    offlineSales: { offlineSalesAmount: 70, byStore: { APGUJEONG: 40, VAIL: 30 } },
+    totalSales: { amount: 100 }, coverage: { complete: true }
+  };
+  assert.equal(validateProductionClients(clients, 100, 10, { since, until, canonical }).ok, true);
+  assert.equal(validateProductionClients(clients, 100, 10, { since, until: `${currentMonth}-02`, canonical }).ok, false);
 });
 
 test("Production Clients fails when residual is not an approved logistics/gift exclusion", () => {
