@@ -12,11 +12,13 @@ import {
   checkProductRegistry,
   checkInventory,
   approvedClientsExclusionTotal,
+  classifyRequestedCoverage,
   deepEqual,
   liveSourceBoundary,
   historicalArchiveProvenance,
   validateProductionAnnual,
   validateProductionClients,
+  validateProductionClientsPartial,
   validateProductionMonthly,
   validateProductionMonthlyPartial,
   verificationExitCode
@@ -38,6 +40,7 @@ function mockFetch(routes) {
 }
 
 const currentMonth = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(new Date());
+const currentToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const [currentYear, currentMonthNumber] = currentMonth.split("-").map(Number);
 const currentMonthEnd = `${currentMonth}-${String(new Date(currentYear, currentMonthNumber, 0).getDate()).padStart(2, "0")}`;
 
@@ -235,6 +238,38 @@ test("honest current partial ECOUNT is WARN while false-complete and malformed p
   assert.equal(validateProductionMonthlyPartial(currentMonth, partialMonthly, onlineFixture, { ...partialEcount, periodEnd: "bad" }).ok, false);
 });
 
+test("coverage classifier accepts month-start, mid-month, and interior subsets without weakening complete/invalid", () => {
+  const start = `${currentMonth}-01`;
+  assert.equal(classifyRequestedCoverage(start, currentMonthEnd, start, currentMonthEnd), "COMPLETE");
+  assert.equal(classifyRequestedCoverage(start, currentMonthEnd, start, `${currentMonth}-02`), "PARTIAL");
+  assert.equal(classifyRequestedCoverage(start, currentMonthEnd, `${currentMonth}-02`, `${currentMonth}-02`), "PARTIAL");
+  assert.equal(classifyRequestedCoverage(start, currentMonthEnd, `${currentMonth}-05`, `${currentMonth}-10`), "PARTIAL");
+  assert.equal(classifyRequestedCoverage(start, currentMonthEnd, "bad", `${currentMonth}-02`), "INVALID");
+  assert.equal(classifyRequestedCoverage(start, currentMonthEnd, `${currentMonth}-02`, `${currentMonth}-01`), "INVALID");
+});
+
+test("mid-month Monthly partial is WARN and still rejects dishonest complete metadata", async (t) => {
+  const sourceDate = `${currentMonth}-02`;
+  const ecount = { ...ecountFixture, periodStart: sourceDate, periodEnd: sourceDate };
+  const monthly = { sales: {
+    periodStart: `${currentMonth}-01`, periodEnd: currentMonthEnd,
+    onlineSales: { paidAmount: 30 }, offlineSales: { offlineSalesAmount: null }, totalSales: { amount: null },
+    coverage: { online: true, offline: false, complete: false, partialMonths: [currentMonth], missingMonths: [] },
+    provenance: { ecount: { periodStart: sourceDate, periodEnd: sourceDate } }
+  } };
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url.includes("/api/ecount-sales/monthly")) return jsonResponse(ecount);
+    if (url.includes("/api/diagnostics/brand-sales")) return jsonResponse(onlineFixture);
+    return jsonResponse(monthly);
+  });
+  assert.equal((await checkMonthlyCurrent("http://local", "http://render")).status, "WARN");
+  assert.equal(validateProductionMonthlyPartial(currentMonth, monthly, onlineFixture, ecount).ok, true);
+  assert.equal(validateProductionMonthlyPartial(currentMonth, { sales: {
+    ...monthly.sales, offlineSales: { offlineSalesAmount: 70 }, totalSales: { amount: 100 },
+    coverage: { ...monthly.sales.coverage, complete: true }
+  } }, onlineFixture, ecount).ok, false);
+});
+
 test("wrong-month ECOUNT reuse remains FAIL", async (t) => {
   t.mock.method(globalThis, "fetch", async (url) => {
     if (url.includes("/api/ecount-sales/monthly")) return jsonResponse({ periodStart: "2026-08-01", totalOfflineSales: 1, dailySales: [], rows: [] });
@@ -297,6 +332,41 @@ test("Production Clients validates the same-cutoff canonical source and rejects 
   };
   assert.equal(validateProductionClients(clients, 100, 10, { since, until, canonical }).ok, true);
   assert.equal(validateProductionClients(clients, 100, 10, { since, until: `${currentMonth}-02`, canonical }).ok, false);
+});
+
+test("Clients mid-month partial is honest WARN while false complete remains invalid", async (t) => {
+  const since = `${currentMonth}-01`;
+  const until = currentToday;
+  const sourceDate = `${currentMonth}-02`;
+  const ecount = { ...ecountFixture, periodStart: sourceDate, periodEnd: sourceDate };
+  const canonical = {
+    periodStart: since, periodEnd: until,
+    onlineSales: { paidAmount: 30 }, offlineSales: { offlineSalesAmount: 70, byStore: { APGUJEONG: 40, VAIL: 30 } },
+    totalSales: { amount: 100 },
+    coverage: { online: true, offline: false, complete: false, partialMonths: [currentMonth], missingMonths: [] }
+  };
+  const clients = {
+    periodStart: since, periodEnd: until,
+    summary: { onlineSalesAmount: 30, offlineSalesAmount: null, totalSalesAmount: null },
+    coverage: {
+      online: { available: true },
+      offline: { available: false, partialMonths: [currentMonth], missingMonths: [] },
+      complete: false
+    }
+  };
+  assert.equal(validateProductionClientsPartial(clients, canonical, ecount, since, until).ok, true);
+  assert.equal(validateProductionClientsPartial({
+    ...clients,
+    summary: { onlineSalesAmount: 30, offlineSalesAmount: 70, totalSalesAmount: 100 },
+    coverage: { ...clients.coverage, complete: true, offline: { ...clients.coverage.offline, available: true } }
+  }, canonical, ecount, since, until).ok, false);
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url.includes("/api/intelligence/clients")) return jsonResponse(clients);
+    if (url.includes("/api/sales/total")) return jsonResponse(canonical);
+    if (url.includes("/api/ecount-sales/monthly")) return jsonResponse(ecount);
+    return jsonResponse(clients);
+  });
+  assert.equal((await checkClients("http://local", "http://render")).status, "WARN");
 });
 
 test("Production Clients fails when residual is not an approved logistics/gift exclusion", () => {
