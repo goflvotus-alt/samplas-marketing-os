@@ -128,15 +128,15 @@ test("7. monthlyIntelKpiPopoverRows supports the includeAmountDelta flag (총매
 });
 
 test("7b. order count and AOV popovers pass includeAmountDelta=false (no amount-diff row for counts)", () => {
-  const orderCalls = (js.match(/monthlyIntelKpiPopoverRows\("이번 달 주문", commerce\.orderCount, previousCommerce\.orderCount, apiNum, false\)/g) || []).length;
-  const aovCalls = (js.match(/monthlyIntelKpiPopoverRows\("이번 달 객단가", commerce\.averageOrderValue, previousCommerce\.averageOrderValue, apiWon, false\)/g) || []).length;
+  const orderCalls = (js.match(/monthlyIntelKpiPopoverRows\("이번 달 주문", commerce\.orderCount, comparablePreviousCommerce\.orderCount, apiNum, false\)/g) || []).length;
+  const aovCalls = (js.match(/monthlyIntelKpiPopoverRows\("이번 달 객단가", commerce\.averageOrderValue, comparablePreviousCommerce\.averageOrderValue, apiWon, false\)/g) || []).length;
   assert.ok(orderCalls >= 1, "order count KPI card must exist with includeAmountDelta=false");
   assert.ok(aovCalls >= 1, "AOV KPI card must exist with includeAmountDelta=false");
 });
 
 test("7c. total sales / online sales KPI cards use includeAmountDelta default (true, both amount+percent rows)", () => {
   assert.match(js, /monthlyIntelKpiPopoverRows\("이번 달", totalSalesAmountForLink, totalSalesPreviousForLink, apiWon\)/);
-  assert.match(js, /monthlyIntelKpiPopoverRows\("이번 달", salesOnlineAmount, summaryPreviousCommerce\.paidAmount, apiWon\)/);
+  assert.match(js, /monthlyIntelKpiPopoverRows\("이번 달", salesOnlineAmount, comparablePreviousCommerce\.paidAmount, apiWon\)/);
 });
 
 test("7d. offline sales (ALL-mode combined) still has no click destination — hover-only, no fabricated store-specific data", () => {

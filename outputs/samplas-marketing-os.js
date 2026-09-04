@@ -772,6 +772,7 @@ function setActiveView(view, options = {}) {
   if (targetView === "VailIntelligence" && shouldLoadRoute) renderVailIntelligenceView();
   if (targetView === "Overview" && todayViewDirty && monthlyData.length) renderTodayView(selectedMonth());
   if (reportsRouteChanged && monthlyData.length) renderReportsMonth(reportsMonth || selectedMonth().month, { routeHash });
+  if (targetView === "Reports" && routeHash === "monthly-report" && options.updateHash !== false && monthlyData.length) renderActiveDestinationCards(selectedMonth());
   if (["Advertising", "Sales", "Product", "Settings"].includes(targetView) && monthlyData.length && shouldLoadRoute) renderOtherSections(selectedMonth());
   if (targetView === "Intelligence" && monthlyData.length) renderActiveDestinationCards(selectedMonth());
   if (options.updateHash === false && ["Reports", "Sales", "Settings"].includes(targetView) && monthlyData.length) renderActiveDestinationCards(selectedMonth());
@@ -877,14 +878,24 @@ function renderMonthSelect() {
   const current = select.value;
   select.innerHTML = "";
   select.innerHTML = rows.map((item) => `<option value="${item.month}">${item.month}</option>`).join("");
+  const lifecycleMonth = todayDateKey().slice(0, 7);
   const bestMonth = rows.find((item) => (item.posts || []).length || Number(item.account?.reach || 0) || Number(item.account?.views || 0));
-  select.value = rows.some((item) => item.month === current) ? current : bestMonth?.month || rows[0]?.month || "2026-07";
-  select.onchange = renderAll;
+  select.value = rows.some((item) => item.month === current)
+    ? current
+    : rows.some((item) => item.month === lifecycleMonth) ? lifecycleMonth : bestMonth?.month || rows[0]?.month || "2026-07";
+  refreshEcountOfflineCard(select.value);
+  select.onchange = () => {
+    refreshEcountOfflineCard(select.value);
+    renderAll();
+  };
 }
 
 function setSelectedMonthValue(month) {
   const select = $("#monthSelect");
-  if (select && uniqueMonthlyDataRows().some((item) => item.month === month)) select.value = month;
+  if (select && uniqueMonthlyDataRows().some((item) => item.month === month)) {
+    select.value = month;
+    refreshEcountOfflineCard(month);
+  }
 }
 
 function setReportsMonth(month, options = {}) {
@@ -4749,6 +4760,7 @@ function monthlyStoreCoverageLabel(period) {
 
 function monthlyStorePerformanceBlock(offlineSnapshot, previousOfflineSnapshot) {
   const canonicalOfflineSales = arguments[2];
+  const comparisonAllowed = arguments[3] !== false;
   const current = computeMonthlyStoreOfflineBreakdown(offlineSnapshot);
   const previous = computeMonthlyStoreOfflineBreakdown(previousOfflineSnapshot);
   const canonicalByStore = canonicalOfflineSales?.byStore || {};
@@ -4760,16 +4772,16 @@ function monthlyStorePerformanceBlock(offlineSnapshot, previousOfflineSnapshot) 
     const previousIncluded = previous.storesIncluded.includes(code);
     const amount = included ? Number(canonicalByStore[code]) : null;
     const share = included && offlineTotal > 0 ? monthlyReportRatio(amount, offlineTotal) : null;
-    const delta = included && previousIncluded
+    const delta = comparisonAllowed && included && previousIncluded
       ? monthlyReportDelta(amount, previous.byStore[code], apiWon)
-      : "전월 비교 데이터 없음";
+      : comparisonAllowed ? "전월 비교 데이터 없음" : "비교 불가 · 부분 집계";
     const viewName = code === "APGUJEONG" ? "ApgujeongIntelligence" : "VailIntelligence";
     const coverage = included ? monthlyStoreCoverageLabel(current.periods[code]) : "미업로드";
     const topBrands = (offlineSnapshot?.storeBrandSales?.[code] || [])
       .filter((item) => !isExcludedBrandPerformance(item))
       .slice(0, 5);
     const popoverRows = included
-      ? [["매출", esc(apiWon(amount))], ["오프라인 내 비중", esc(pct(share))], ["데이터 기간", esc(coverage)], ...(previousIncluded ? [["전월 대비", esc(delta)]] : [])]
+      ? [["매출", esc(apiWon(amount))], ["오프라인 내 비중", esc(pct(share))], ["데이터 기간", esc(coverage)], ...(comparisonAllowed && previousIncluded ? [["전월 대비", esc(delta)]] : [])]
       : [["상태", "매장별 분리 데이터 미업로드"]];
     return `<article class="monthly-store-performance-card">
       <div class="monthly-store-performance-head">
@@ -4978,9 +4990,9 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   // 문장도 제거한다 — Content/Advertising 상세는 앞으로 Content Intelligence가 책임진다.
   // archive.content/marketing 필드 자체와 계산 로직은 그대로 두고(서버/API 변경 없음),
   // Monthly의 요약 문장 렌더링에서만 제외한다.
-  const monthlySummary = [
-    monthlyReportDirectionText("온라인 실제 매출은", commerce.paidAmount, summaryPreviousCommerce.paidAmount, { formatter: apiWon })
-  ].join(". ");
+  const monthlySummary = archive.sales?.coverage?.complete === true
+    ? monthlyReportDirectionText("온라인 실제 매출은", commerce.paidAmount, summaryPreviousCommerce.paidAmount, { formatter: apiWon })
+    : "현재 월은 부분 집계 중이며 완결월과의 증감 비교를 표시하지 않습니다";
   const liveDraftNotice = archive.archiveStatus === "live"
     ? "현재 화면은 Live Draft 기준입니다."
     : "";
@@ -4996,11 +5008,17 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   const hasCanonicalTotalSales = hasApiValue(salesTotalAmount);
   const hasOnlineSales = hasApiValue(salesOnlineAmount);
   const hasOfflineSales = hasApiValue(salesOfflineAmount);
+  const hasPartialOfflineSales = !hasOfflineSales && !offlineSnapshot?.error && hasApiValue(offlineSnapshot?.totalOfflineSales);
+  const displayedOfflineAmount = hasOfflineSales ? Number(salesOfflineAmount) : hasPartialOfflineSales ? Number(offlineSnapshot.totalOfflineSales) : null;
+  const displayedTotalAmount = hasCanonicalTotalSales
+    ? Number(salesTotalAmount)
+    : hasOnlineSales && hasPartialOfflineSales ? Number(salesOnlineAmount) + displayedOfflineAmount : salesOnlineAmount;
   const offlinePeriodEnd = !offlineSnapshot?.error && /^\d{4}-\d{2}-\d{2}$/.test(String(offlineSnapshot?.periodEnd || ""))
     ? String(offlineSnapshot.periodEnd)
     : "";
-  const hasSalesSummary = hasCanonicalTotalSales || hasOnlineSales || hasOfflineSales;
+  const hasSalesSummary = hasCanonicalTotalSales || hasOnlineSales || hasOfflineSales || hasPartialOfflineSales;
   const salesCoverageComplete = salesCoverage.complete === true;
+  const comparablePreviousCommerce = salesCoverageComplete ? summaryPreviousCommerce : {};
   const salesCoverageLabel = salesCoverageComplete ? "통합 매출 기준 완료" : "확보 데이터 기준";
   const salesCoverageNote = hasCanonicalTotalSales
     ? salesCoverageComplete
@@ -5024,8 +5042,8 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     }
     return rows;
   }
-  const totalSalesAmountForLink = hasCanonicalTotalSales ? salesTotalAmount : salesOnlineAmount;
-  const totalSalesPreviousForLink = hasCanonicalTotalSales ? previousSalesTotalAmount : summaryPreviousCommerce.paidAmount;
+  const totalSalesAmountForLink = displayedTotalAmount;
+  const totalSalesPreviousForLink = salesCoverageComplete ? (hasCanonicalTotalSales ? previousSalesTotalAmount : summaryPreviousCommerce.paidAmount) : undefined;
   const totalSalesLink = monthlyIntelLink(
     `<strong>${apiWon(totalSalesAmountForLink)}</strong>`,
     `${hasCanonicalTotalSales ? "총매출" : "온라인 매출"} 상세 — Commerce로 이동`,
@@ -5036,27 +5054,27 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
     `<strong>${apiWon(salesOnlineAmount)}</strong>`,
     "온라인 매출 상세 — Commerce로 이동",
     'data-jump-view="Sales"',
-    monthlyIntelPopoverCard("이번 달 온라인 매출", monthlyIntelKpiPopoverRows("이번 달", salesOnlineAmount, summaryPreviousCommerce.paidAmount, apiWon), "Commerce")
+    monthlyIntelPopoverCard("이번 달 온라인 매출", monthlyIntelKpiPopoverRows("이번 달", salesOnlineAmount, comparablePreviousCommerce.paidAmount, apiWon), "Commerce")
   );
-  const offlineSalesHover = hasOfflineSales
-    ? `<span class="monthly-intel-link monthly-intel-hover-only" tabindex="0"><strong>${apiWon(salesOfflineAmount)}</strong><span class="monthly-intel-popover" aria-hidden="true">${monthlyIntelPopoverCard("이번 달 오프라인 매출", [["금액", esc(apiWon(salesOfflineAmount))], ["구성", "압구정 + VEIL 합계"]], "")}</span></span>`
+  const offlineSalesHover = hasOfflineSales || hasPartialOfflineSales
+    ? `<span class="monthly-intel-link monthly-intel-hover-only" tabindex="0"><strong>${apiWon(displayedOfflineAmount)}</strong><span class="monthly-intel-popover" aria-hidden="true">${monthlyIntelPopoverCard("이번 달 오프라인 매출", [["금액", esc(apiWon(displayedOfflineAmount))], ["상태", hasOfflineSales ? "완료" : "부분 집계"], ["구성", "압구정 + VEIL 합계"]], "")}</span></span>`
     : `<strong>데이터 없음</strong>`;
   const onlineOrdersLink = monthlyIntelLink(
     `<strong>${apiNum(commerce.orderCount)}</strong>`,
     "온라인 주문수 상세 — Commerce로 이동",
     'data-jump-view="Sales"',
-    monthlyIntelPopoverCard("이번 달 온라인 주문수", monthlyIntelKpiPopoverRows("이번 달 주문", commerce.orderCount, previousCommerce.orderCount, apiNum, false), "Commerce")
+    monthlyIntelPopoverCard("이번 달 온라인 주문수", monthlyIntelKpiPopoverRows("이번 달 주문", commerce.orderCount, comparablePreviousCommerce.orderCount, apiNum, false), "Commerce")
   );
   const onlineAovLink = monthlyIntelLink(
     `<strong>${apiWon(commerce.averageOrderValue)}</strong>`,
     "온라인 객단가 상세 — Commerce로 이동",
     'data-jump-view="Sales"',
-    monthlyIntelPopoverCard("이번 달 온라인 객단가", monthlyIntelKpiPopoverRows("이번 달 객단가", commerce.averageOrderValue, previousCommerce.averageOrderValue, apiWon, false), "Commerce")
+    monthlyIntelPopoverCard("이번 달 온라인 객단가", monthlyIntelKpiPopoverRows("이번 달 객단가", commerce.averageOrderValue, comparablePreviousCommerce.averageOrderValue, apiWon, false), "Commerce")
   );
   const salesSummaryBlock = hasSalesSummary ? `
     <div class="monthly-sales-structure-grid">
-      <article class="monthly-sales-structure-card is-total"><span>TOTAL</span>${totalSalesLink}<em>${esc(monthlyReportDelta(totalSalesAmountForLink, totalSalesPreviousForLink, apiWon))}</em></article>
-      <article class="monthly-sales-structure-card"><span>OFFLINE</span>${offlineSalesHover}<em>${hasOfflineSales ? "ECOUNT" : "데이터 없음"}</em></article>
+      <article class="monthly-sales-structure-card is-total"><span>${salesCoverageComplete ? "TOTAL" : "PARTIAL TOTAL"}</span>${totalSalesLink}<em>${salesCoverageComplete ? esc(monthlyReportDelta(totalSalesAmountForLink, totalSalesPreviousForLink, apiWon)) : "비교 불가 · 부분 집계"}</em></article>
+      <article class="monthly-sales-structure-card"><span>OFFLINE</span>${offlineSalesHover}<em>${hasOfflineSales ? "ECOUNT" : hasPartialOfflineSales ? `부분 집계 · ${esc(offlineSnapshot.periodStart || "-")} ~ ${esc(offlineSnapshot.periodEnd || "-")}` : "데이터 없음"}</em></article>
       <article class="monthly-sales-structure-card"><span>ONLINE</span>${onlineSalesLink}<em>Cafe24 실제 결제</em></article>
     </div>
     ${storeFilterState === "ALL" ? monthlyStoreDonutBlock(offlineSnapshot) : ""}
@@ -5153,7 +5171,7 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
         <span>03</span>
         <div><p class="eyebrow">Store Performance</p><h3>오프라인 매장 성과</h3></div>
       </div>
-      ${monthlyStorePerformanceBlock(offlineSnapshot, previousOfflineSnapshot, canonicalSales?.offlineSales)}
+      ${monthlyStorePerformanceBlock(offlineSnapshot, previousOfflineSnapshot, hasPartialOfflineSales ? { byStore: computeMonthlyStoreOfflineBreakdown(offlineSnapshot).byStore } : canonicalSales?.offlineSales, salesCoverageComplete)}
     </section>
 
     <section id="monthly-report-ch4" class="monthly-report-chapter">
@@ -6242,6 +6260,14 @@ async function renderCampaignPeriodComparison(target, renderSeq) {
   const { executionStart, executionEnd, comparisonStart, comparisonEnd } = range;
   const executionDays = campaignComparisonInclusiveDays(executionStart, executionEnd);
   const comparisonDays = campaignComparisonInclusiveDays(comparisonStart, comparisonEnd);
+
+  if (executionDays !== comparisonDays) {
+    target.innerHTML = [
+      campaignComparisonSettingsHtml(range),
+      `<article class="action-item"><strong>기간 비교 불가</strong><p>대상 기간과 비교 기간의 경과일이 달라 증감률을 표시하지 않습니다.</p></article>`
+    ].join("");
+    return;
+  }
 
   campaignPeriodComparisonState.loading = true;
   const loadingStartedAt = Date.now();
@@ -8012,10 +8038,16 @@ async function renderCafe24Sales(data, renderSeq) {
   const range = operationsDateRange(data);
   const startDate = range.since;
   const endDate = range.until;
-  const [sales, totalSales] = await Promise.all([
+  const historicalMonth = endDate === monthEnd(data.month) && data.month < todayDateKey().slice(0, 7);
+  let [sales, totalSales, historicalArchive] = await Promise.all([
     getSharedJson(`/api/diagnostics/brand-sales?since=${startDate}&until=${endDate}`, 8000),
-    getJson(`/api/sales/total?since=${startDate}&until=${endDate}${storeFilterState !== "ALL" ? `&store=${storeFilterState}` : ""}`, 10000)
+    getJson(`/api/sales/total?since=${startDate}&until=${endDate}${storeFilterState !== "ALL" ? `&store=${storeFilterState}` : ""}`, 10000),
+    historicalMonth ? getJson(`/api/reports/monthly?month=${data.month}`, 8000) : Promise.resolve(null)
   ]);
+  if (historicalArchive?.archiveStatus === "saved" && !historicalArchive.error) {
+    sales = { ...historicalArchive.commerce, totals: { paidAmount: historicalArchive.commerce?.paidAmount, orderCount: historicalArchive.commerce?.orderCount, averageOrderValue: historicalArchive.commerce?.averageOrderValue } };
+    totalSales = historicalArchive.sales;
+  }
   if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
   // STEP48A: 매출 요약(Hero/Compare/결제수단) 카드는 재확인 결과 오프라인/ECOUNT를 전혀
   // 포함하지 않는 Cafe24 LIVE 값만 사용해 status는 "live"를 유지한다. 다만 화면 상단 KPI
@@ -8134,17 +8166,17 @@ function commerceOnlineOfflineSplit() {
   const storeHasData = !storeCode || storesIncluded.includes(storeCode);
   const offline = hasApiValue(offlineRaw) && storeHasData ? Number(offlineRaw) : null;
   const total = storeCode ? null : (hasApiValue(totalRaw) ? Number(totalRaw) : (Number.isFinite(online) && Number.isFinite(offline) ? online + offline : (Number.isFinite(online) ? online : null)));
-  return { online, offline, total, cafeTotals, storeCode, storeHasData };
+  return { online, offline, total, cafeTotals, storeCode, storeHasData, partial: totalSales?.coverage?.complete !== true };
 }
 
 function renderCommercePrimaryKpi() {
   const target = $("#commercePrimaryKpi");
   if (!target) return;
-  const { online, offline, total, storeCode, storeHasData } = commerceOnlineOfflineSplit();
+  const { online, offline, total, storeCode, storeHasData, partial } = commerceOnlineOfflineSplit();
   const offlineLabel = storeCode ? `오프라인 (${STORE_FILTER_LABELS[storeCode] || storeCode})` : "오프라인";
   const rows = storeCode
     ? [["온라인 (전체, 매장 무관)", online], [offlineLabel, offline]]
-    : [["총매출", total], ["온라인", online], ["오프라인", offline]];
+    : [[partial ? "확인된 부분 매출" : "총매출", total], ["온라인", online], ["오프라인", offline]];
   target.innerHTML = rows.map(([label, value]) => {
     const empty = label.startsWith("오프라인") && storeCode && !storeHasData ? "데이터 없음" : "-";
     return `<article class="action-item ad-summary-card ad-core-kpi-card"><span>${esc(label)}</span><strong>${value === null ? empty : apiWon(value)}</strong></article>`;
@@ -8311,13 +8343,14 @@ function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = nul
     };
   }
   if (onlineAvailable && offlineAvailable) {
+    const partial = totalSales?.coverage?.complete !== true;
     return {
-      label: "총매출",
+      label: partial ? "확인된 부분 매출" : "총매출",
       value: apiWon(onlineSales + offlineSales),
-      note: `온라인 ${apiWon(onlineSales)} · 오프라인 ${apiWon(offlineSales)}`,
+      note: `${partial ? "부분 집계 · " : ""}온라인 ${apiWon(onlineSales)} · 오프라인 ${apiWon(offlineSales)}`,
       ready: true,
       segments: [
-        { key: "total", label: "총매출", value: apiWon(onlineSales + offlineSales), primary: true },
+        { key: "total", label: partial ? "확인된 부분 매출" : "총매출", value: apiWon(onlineSales + offlineSales), primary: true },
         { key: "online", label: "온라인", value: apiWon(onlineSales) },
         { key: "offline", label: "오프라인", value: apiWon(offlineSales) }
       ]
@@ -8793,10 +8826,14 @@ function todaySalesCalendarLoadingHtml(monthKey) {
   </section>`;
 }
 
-function todaySalesCalendarSummaryHtml(rows = [], onlineData = {}, offlineData = {}) {
+function todaySalesCalendarSummaryHtml(rows = [], onlineData = {}, offlineData = {}, historicalArchive = null) {
   const onlineTotal = rows.reduce((sumValue, row) => sumValue + (row.onlineAvailable ? Number(row.onlineSales || 0) : 0), 0);
   const offlineTotal = rows.reduce((sumValue, row) => sumValue + (row.offlineAvailable ? Number(row.offlineSales || 0) : 0), 0);
-  const total = onlineTotal + offlineTotal;
+  const archivedOnline = historicalArchive?.archiveStatus === "saved" ? historicalArchive?.sales?.onlineSales?.paidAmount : null;
+  const archivedOffline = historicalArchive?.archiveStatus === "saved" ? historicalArchive?.sales?.offlineSales?.offlineSalesAmount : null;
+  const archivedTotal = historicalArchive?.archiveStatus === "saved" ? historicalArchive?.sales?.totalSales?.amount : null;
+  const total = hasApiValue(archivedTotal) ? Number(archivedTotal) : onlineTotal + offlineTotal;
+  const archivedUnallocated = hasApiValue(archivedTotal) ? Number(archivedTotal) - onlineTotal - offlineTotal : 0;
   const onlineOrderCount = rows.reduce((sumValue, row) => sumValue + (row.onlineAvailable ? Number(row.onlineOrderCount || 0) : 0), 0);
   const onlineQuantity = Number(onlineData?.totals?.quantitySold);
   const onlineExcludedOrders = Number(onlineData?.excludedOrderCount);
@@ -8847,11 +8884,11 @@ function todaySalesCalendarSummaryHtml(rows = [], onlineData = {}, offlineData =
     <div class="monthly-report-hero-main">
       <span>월 누적 총매출</span>
       <strong>${apiWon(total)}</strong>
-      <p class="monthly-report-muted">일별 온라인 + 오프라인 합산</p>
+      <p class="monthly-report-muted">${hasApiValue(archivedTotal) ? `Saved Archive 월 합계 · 일별 귀속 ${apiWon(onlineTotal + offlineTotal)}${archivedUnallocated ? ` · 미배분 ${apiWon(archivedUnallocated)}` : ""}` : "일별 온라인 + 오프라인 합산"}</p>
     </div>
     <div class="monthly-report-side">
-      ${summaryRow("온라인 매출", onlineData.error ? "미확인" : apiWon(onlineTotal), "summary-online-sales")}
-      ${summaryRow("오프라인 매출", offlineData.error ? "미확인" : apiWon(offlineTotal), "summary-offline-sales")}
+      ${summaryRow("온라인 매출", hasApiValue(archivedOnline) ? apiWon(archivedOnline) : onlineData.error ? "미확인" : apiWon(onlineTotal), "summary-online-sales")}
+      ${summaryRow("오프라인 매출", hasApiValue(archivedOffline) ? apiWon(archivedOffline) : offlineData.error ? "미확인" : apiWon(offlineTotal), "summary-offline-sales")}
       ${summaryRow("온라인 주문", onlineData.error ? "미확인" : `${apiNum(onlineOrderCount)}건`, "summary-online-orders")}
       ${summaryRow("오프라인 매출 건수", offlineData.error ? "미확인" : `${apiNum(offlineRevenueLineCount)}건`, "summary-offline-lines")}
     </div>
@@ -8875,6 +8912,31 @@ function todaySalesCalendarCoverageNote(monthKey, onlineData = {}, offlineData =
   return notes.length ? `<p class="monthly-report-fnote">${notes.map(esc).join(" · ")}</p>` : "";
 }
 
+function historicalArchiveDailyOnline(archive) {
+  if (archive?.archiveStatus !== "saved") return null;
+  const byDate = new Map();
+  const seenOrders = new Set();
+  for (const brand of archive.commerce?.brandSales || []) {
+    for (const order of brand.orderHistory || []) {
+      const orderKey = `${brand.brand_code || ""}|${order.orderId || ""}`;
+      if (seenOrders.has(orderKey)) continue;
+      seenOrders.add(orderKey);
+      const date = String(order.orderDate || order.products?.[0]?.orderDate || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const current = byDate.get(date) || { date, paidAmount: 0, orderCount: 0 };
+      current.paidAmount += (order.products || []).reduce((sum, product) => sum + Number(product?.canonicalPaidAmount || 0), 0);
+      current.orderCount += 1;
+      byDate.set(date, current);
+    }
+  }
+  return {
+    totals: { paidAmount: Number(archive.sales?.onlineSales?.paidAmount), orderCount: Number(archive.commerce?.orderCount || 0) },
+    dailySales: [...byDate.values()],
+    paymentMethods: archive.commerce?.paymentMethods || [],
+    excludedOrderCount: archive.commerce?.excludedOrderCount
+  };
+}
+
 async function renderTodaySalesCalendar(monthKey = todaySalesCalendarMonth) {
   const target = $("#todaySalesCalendar");
   if (!target) return;
@@ -8895,10 +8957,13 @@ async function renderTodaySalesCalendar(monthKey = todaySalesCalendarMonth) {
   } else {
     target.innerHTML = todaySalesCalendarLoadingHtml(monthKey);
   }
-  const [onlineData, offlineData] = await Promise.all([
+  const historicalMonth = monthKey < todayDateKey().slice(0, 7);
+  let [onlineData, offlineData, historicalArchive] = await Promise.all([
     getJson(`/api/diagnostics/brand-sales?since=${start}&until=${end}`, 12000),
-    getJson(`/api/ecount-sales/monthly?month=${monthKey}`, 8000)
+    getJson(`/api/ecount-sales/monthly?month=${monthKey}`, 8000),
+    historicalMonth ? getJson(`/api/reports/monthly?month=${monthKey}`, 8000) : Promise.resolve(null)
   ]);
+  onlineData = historicalArchiveDailyOnline(historicalArchive) || onlineData;
   if (renderSeq !== todaySalesCalendarRenderSeq) return;
   const rows = buildTodaySalesCalendarRows(monthKey, onlineData, offlineData);
   const maxDailySales = rows.reduce((max, row) => Math.max(max, Number(row.totalSales || 0)), 0);
@@ -8913,8 +8978,9 @@ async function renderTodaySalesCalendar(monthKey = todaySalesCalendarMonth) {
       </div>
       ${todaySalesCalendarMonthSwitchHtml(monthKey)}
     </div>
-    ${todaySalesCalendarSummaryHtml(rows, onlineData, offlineData)}
+    ${todaySalesCalendarSummaryHtml(rows, onlineData, offlineData, historicalArchive)}
     ${todaySalesCalendarCoverageNote(monthKey, onlineData, offlineData)}
+    ${historicalArchive?.archiveStatus === "saved" ? `<p class="monthly-report-fnote">월 합계는 immutable Saved Archive 기준입니다.</p>` : ""}
     <div class="today-sales-calendar-weekdays">
       ${["일", "월", "화", "수", "목", "금", "토"].map((day) => `<span>${day}</span>`).join("")}
     </div>
@@ -12263,7 +12329,9 @@ function clientsTypeDetail(row, summary) {
 function renderClientsTypeBreakdown(typeBreakdown = [], summary = {}) {
   const target = $("#clientsTypeBreakdown");
   if (!target) return;
-  const totalSalesAmount = Number(summary.totalSalesAmount || 0);
+  const summaryTotal = hasApiValue(summary.totalSalesAmount) ? Number(summary.totalSalesAmount) : null;
+  const detailTotal = typeBreakdown.reduce((sum, row) => sum + Number(row?.salesAmount || 0), 0);
+  const totalSalesAmount = summaryTotal !== null ? summaryTotal : detailTotal;
   clientsDonutRanges = [];
   clientsDonutActiveType = null;
   if (!typeBreakdown.length || totalSalesAmount <= 0) {
@@ -12289,8 +12357,8 @@ function renderClientsTypeBreakdown(typeBreakdown = [], summary = {}) {
     <div class="ops-summary-hero-main clients-donut-card">
       <div class="clients-donut" style="background: conic-gradient(${gradientStops})" role="img" aria-label="고객 유형별 매출 비율: ${esc(donutAriaLabel)}">
         <div class="clients-donut-center">
-          <strong>${apiWon(summary.totalSalesAmount)}</strong>
-          <span>전체 실제 매출</span>
+          <strong>${apiWon(totalSalesAmount)}</strong>
+          <span>${summaryTotal !== null ? "전체 실제 매출" : "확인된 상세 매출 · 부분 집계"}</span>
         </div>
       </div>
       <ul class="clients-donut-legend">
@@ -13330,7 +13398,11 @@ async function refreshEcountOfflineCard(month) {
   const time = card.querySelector(".refresh-card-time");
   const data = await getJson(`/api/ecount-sales/monthly?month=${encodeURIComponent(month)}`, 8000);
   const ok = !data?.error;
-  const partial = ok && Array.isArray(data.storesMissing) && data.storesMissing.length > 0 && Array.isArray(data.storesIncluded) && data.storesIncluded.length > 0;
+  const expectedEnd = boundedMonthUntil(month);
+  const partial = ok && (
+    (Array.isArray(data.storesMissing) && data.storesMissing.length > 0 && Array.isArray(data.storesIncluded) && data.storesIncluded.length > 0) ||
+    String(data.periodStart || "") > `${month}-01` || String(data.periodEnd || "") < expectedEnd
+  );
   if (badge) {
     badge.classList.remove("good", "warn", "error", "unknown");
     badge.classList.add(!ok ? "error" : partial ? "warn" : "good");

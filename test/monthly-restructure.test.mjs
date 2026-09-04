@@ -121,8 +121,8 @@ test("10. Sales Structure reuses existing canonical sales fields, no mock data",
 // same monthlyReportDelta call, no new calculation.
 test("10b. Summary total-sales hero reuses the existing monthlyReportDelta helper (no new calculation)", () => {
   const fn = monthlyReportFnBody();
-  assert.match(fn, /const totalSalesAmountForLink = hasCanonicalTotalSales \? salesTotalAmount : salesOnlineAmount;/);
-  assert.match(fn, /const totalSalesPreviousForLink = hasCanonicalTotalSales \? previousSalesTotalAmount : summaryPreviousCommerce\.paidAmount;/);
+  assert.match(fn, /const totalSalesAmountForLink = displayedTotalAmount;/);
+  assert.match(fn, /const totalSalesPreviousForLink = salesCoverageComplete \?/);
   assert.match(fn, /monthlyReportDelta\(totalSalesAmountForLink, totalSalesPreviousForLink, apiWon\)/);
 });
 

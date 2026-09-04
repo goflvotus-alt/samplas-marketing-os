@@ -719,7 +719,7 @@ const server = isMainModule ? createServer(async (req, res) => {
         const cafe24 = await fetchCafe24Orders(since, until, { limit: 500 });
         const overview = await buildClientsOverview({ since, until, cafe24Orders: cafe24.orders, storeCode });
         const coverage = await buildClientsSourceCoverage(since, until, storeCode, !cafe24.error);
-        const summary = coverage.offline.available ? overview.summary : {
+        let summary = coverage.offline.available ? overview.summary : {
           ...overview.summary,
           totalPurchaseCount: null,
           totalSalesAmount: null,
@@ -730,7 +730,15 @@ const server = isMainModule ? createServer(async (req, res) => {
           quantity: null,
           offlineQuantity: null
         };
-        return json(res, { ok: true, ...overview, summary, coverage, storeCoverage: coverage.offline });
+        let accounting = null;
+        const month = since.slice(0, 7);
+        if (!storeCode && since === `${month}-01` && until === monthEndKey(month) && month < currentMonth()) {
+          const archive = await readMonthlyArchive(month);
+          if (archive?.archiveStatus === "saved" && Number.isFinite(Number(archive?.sales?.totalSales?.amount))) {
+            ({ summary, accounting } = reconcileHistoricalClientsSummary(summary, overview.summary, archive));
+          }
+        }
+        return json(res, { ok: true, ...overview, summary, coverage, storeCoverage: coverage.offline, ...(accounting ? { accounting } : {}) });
       } catch (error) {
         return json(res, { ok: false, error: "Internal Server Error", message: safeErrorMessage(error) }, 500);
       }
@@ -4512,15 +4520,36 @@ export function buildStoreCategoryIntelligence(lines = [], identityContext = {})
   return { available: true, items, coverage: { totalRevenue, assignedRevenue: totalRevenue - unclassifiedRevenue, unclassifiedRevenue } };
 }
 
-export function buildBrandClientCross(clients = []) {
+export function reconcileHistoricalClientsSummary(summary, detailSummary, archive) {
+  const totalSalesAmount = Number(archive.sales.totalSales.amount);
+  const attributedRevenue = Number(detailSummary?.totalSalesAmount || 0);
+  return {
+    summary: {
+      ...summary,
+      onlineSalesAmount: Number(archive.sales.onlineSales.paidAmount),
+      offlineSalesAmount: Number(archive.sales.offlineSales.offlineSalesAmount),
+      totalSalesAmount,
+      avgOrderValue: Number(summary?.totalPurchaseCount || 0) > 0 ? totalSalesAmount / Number(summary.totalPurchaseCount) : null
+    },
+    accounting: {
+      basis: "saved_monthly_archive",
+      attributedRevenue,
+      unassignedRevenue: totalSalesAmount - attributedRevenue
+    }
+  };
+}
+
+export function buildBrandClientCross(clients = [], canonicalTotalRevenue = null) {
   const items = [];
   let totalRevenue = 0;
   let assignedRevenue = 0;
   for (const client of clients.filter((row) => row?.clientType === "stylist")) {
     const brandRevenue = new Map();
     const details = Array.isArray(client.purchaseDetails) ? client.purchaseDetails : [];
-    const stylistRevenue = details.reduce((sum, row) => sum + Number(row?.salesAmount || 0), 0);
+    const detailRevenue = details.reduce((sum, row) => sum + Number(row?.salesAmount || 0), 0);
+    const stylistRevenue = client?.totalSales !== null && client?.totalSales !== undefined && Number.isFinite(Number(client.totalSales)) ? Number(client.totalSales) : detailRevenue;
     totalRevenue += stylistRevenue;
+    if (detailRevenue > stylistRevenue) continue;
     for (const row of details) {
       if (!row?.canonicalBrandCode) continue;
       const current = brandRevenue.get(row.canonicalBrandCode) || { brandCode: row.canonicalBrandCode, brandName: row.canonicalBrandName || row.canonicalBrandCode, revenue: 0 };
@@ -4532,7 +4561,11 @@ export function buildBrandClientCross(clients = []) {
     if (top) items.push({ clientId: client.clientId, stylist: client.name, ...top, totalStylistRevenue: stylistRevenue, share: stylistRevenue ? top.revenue / stylistRevenue * 100 : 0 });
   }
   items.sort((left, right) => right.revenue - left.revenue || left.stylist.localeCompare(right.stylist, "ko"));
-  return { available: true, items, coverage: { totalRevenue, assignedRevenue, unassignedRevenue: totalRevenue - assignedRevenue } };
+  const accountingTotal = canonicalTotalRevenue !== null && canonicalTotalRevenue !== undefined && Number.isFinite(Number(canonicalTotalRevenue)) ? Number(canonicalTotalRevenue) : totalRevenue;
+  if (assignedRevenue > accountingTotal) {
+    return { available: true, items: [], coverage: { totalRevenue: accountingTotal, assignedRevenue: 0, unassignedRevenue: accountingTotal } };
+  }
+  return { available: true, items, coverage: { totalRevenue: accountingTotal, assignedRevenue, unassignedRevenue: accountingTotal - assignedRevenue } };
 }
 
 export function composeStoreIntelligencePayload({ store, since, until, snapshots = [], canonicalSales, clients, identityContext }) {
@@ -4561,8 +4594,8 @@ export function composeStoreIntelligencePayload({ store, since, until, snapshots
   const missingMonths = instagramRangeMonthKeys(since, until).filter((month) => !snapshots.some((snapshot) => snapshot?.month === month));
   const products = buildStoreProductIntelligence(lines, identityContext?.productRegistry, identityContext?.brandRegistry);
   const categories = buildStoreCategoryIntelligence(lines, identityContext);
-  const brandClientCross = buildBrandClientCross(clientRows);
   const periodSales = Number(canonicalSales?.offlineSales?.offlineSalesAmount || 0);
+  const brandClientCross = buildBrandClientCross(clientRows, periodSales);
   const orderCount = Number(clients?.summary?.offlineOrderCount || 0);
   const topBrand = brandItems[0] || null;
   const topProduct = products.items[0] || null;

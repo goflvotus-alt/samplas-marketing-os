@@ -37,7 +37,7 @@ test("store split never fabricates missing store values", () => {
   assert.match(fn, /"전월 비교 데이터 없음"/);
   assert.doesNotMatch(fn, /매장별 판매 데이터 업로드 후 표시됩니다/);
   assert.match(js, /getJson\(`\/api\/sales\/total\?since=\$\{monthStart\}&until=\$\{monthEnd\}`/);
-  assert.match(js, /monthlyStorePerformanceBlock\(offlineSnapshot, previousOfflineSnapshot, canonicalSales\?\.offlineSales\)/);
+  assert.match(js, /monthlyStorePerformanceBlock\(offlineSnapshot, previousOfflineSnapshot,[\s\S]*salesCoverageComplete\)/);
 });
 
 test("store TOP brands reuse canonical identity and never cross store boundaries", async () => {
