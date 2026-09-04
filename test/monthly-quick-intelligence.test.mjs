@@ -81,15 +81,17 @@ test("4b. overall brand TOP5 passes its own canonical total and previous row, no
 
 // 5. dynamic Brand Intelligence navigation is preserved end-to-end: click-time resolution by
 // canonical brand_code (not name matching), no per-brand hardcoding in the click handler
-test("5. resolveBrandCodeToSelectorName + brand click handler are unchanged (dynamic per-row navigation preserved)", () => {
+test("5. brand click handler keeps exact-code navigation through the shared Brand Intelligence helper", () => {
   const resolverBody = fn("resolveBrandCodeToSelectorName");
   assert.match(resolverBody, /monthlyReportBrandCode\(entry\)/);
   assert.match(resolverBody, /\.trim\(\)\.toUpperCase\(\) === normalized/);
   const handlerMatch = js.match(/const brandLink = event\.target\.closest\("\[data-monthly-intel-brand-code\]"\);\s*\n\s*if \(brandLink\) \{([\s\S]*?)\n\s*\}\s*\n\s*return;\s*\n\s*\}/);
   assert.notEqual(handlerMatch, null);
-  assert.match(handlerMatch[1], /resolveBrandCodeToSelectorName\(brandLink\.dataset\.monthlyIntelBrandCode\)/);
-  assert.match(handlerMatch[1], /setActiveView\("BrandDashboard", \{ routeHash: "brand-dashboard" \}\);/);
-  assert.match(handlerMatch[1], /selectBrandSelectorName\(name\);/);
+  assert.match(handlerMatch[1], /openBrandIntelligenceByCode\(brandLink\.dataset\.monthlyIntelBrandCode, reportsMonth \|\| selectedMonth\(\)\.month\)/);
+  const helperBody = fn("openBrandIntelligenceByCode");
+  assert.match(helperBody, /resolveBrandCodeToSelectorName\(brandCode\)/);
+  assert.match(helperBody, /setActiveView\("BrandDashboard", \{ routeHash: "brand-dashboard" \}\);/);
+  assert.match(helperBody, /selectBrandSelectorName\(name\);/);
 });
 
 test("5b. brand_code is read from the row's own canonical field, never a raw operational name (BON CO/POP CO/SUN CO style)", () => {

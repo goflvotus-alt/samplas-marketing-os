@@ -91,13 +91,11 @@ test("4b. resolveBrandCodeToSelectorName matches by exact brand_code equality on
   assert.match(fnMatch[0], /\.trim\(\)\.toUpperCase\(\) === normalized/);
 });
 
-test("4c. the brand click handler resolves at click time and no-ops silently on failure (no fake destination)", () => {
+test("4c. the brand click handler delegates to the exact-code helper with the active report month", () => {
   const handlerMatch = js.match(/const brandLink = event\.target\.closest\("\[data-monthly-intel-brand-code\]"\);\s*\n\s*if \(brandLink\) \{([\s\S]*?)\n\s*\}\s*\n\s*return;\s*\n\s*\}/);
   assert.notEqual(handlerMatch, null);
   const body = handlerMatch[1];
-  assert.match(body, /resolveBrandCodeToSelectorName\(brandLink\.dataset\.monthlyIntelBrandCode\)/);
-  assert.match(body, /setActiveView\("BrandDashboard", \{ routeHash: "brand-dashboard" \}\);/);
-  assert.match(body, /selectBrandSelectorName\(name\);/);
+  assert.match(body, /openBrandIntelligenceByCode\(brandLink\.dataset\.monthlyIntelBrandCode, reportsMonth \|\| selectedMonth\(\)\.month\)/);
 });
 
 test("4e. Annual TOP5, rising, and falling rows reuse the canonical Brand Intelligence contract", () => {

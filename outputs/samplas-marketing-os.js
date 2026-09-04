@@ -904,7 +904,7 @@ function setReportsMonth(month, options = {}) {
   if (options.syncGlobal !== false) setSelectedMonthValue(month);
   renderMonthRail();
   renderReportsMonth(reportsMonth, options);
-  renderActiveDestinationCards(selectedMonth());
+  if (monthlyDestinationViewActive()) renderTodaySalesCalendar(reportsMonth);
 }
 
 // Reports used to list every month as a row of pills (its own month picker,
@@ -5044,11 +5044,14 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   }
   const totalSalesAmountForLink = displayedTotalAmount;
   const totalSalesPreviousForLink = salesCoverageComplete ? (hasCanonicalTotalSales ? previousSalesTotalAmount : summaryPreviousCommerce.paidAmount) : undefined;
+  const totalSalesLabel = salesCoverageComplete
+    ? "이번 달 총매출"
+    : hasPartialOfflineSales ? "확인된 부분 매출" : "이번 달 온라인 매출";
   const totalSalesLink = monthlyIntelLink(
     `<strong>${apiWon(totalSalesAmountForLink)}</strong>`,
-    `${hasCanonicalTotalSales ? "총매출" : "온라인 매출"} 상세 — Commerce로 이동`,
+    `${salesCoverageComplete ? "총매출" : hasPartialOfflineSales ? "확인된 부분 매출" : "온라인 매출"} 상세 — Commerce로 이동`,
     'data-jump-view="Sales"',
-    monthlyIntelPopoverCard(esc(hasCanonicalTotalSales ? "이번 달 총매출" : "이번 달 온라인 매출"), monthlyIntelKpiPopoverRows("이번 달", totalSalesAmountForLink, totalSalesPreviousForLink, apiWon), "Commerce")
+    monthlyIntelPopoverCard(esc(totalSalesLabel), monthlyIntelKpiPopoverRows("이번 달", totalSalesAmountForLink, totalSalesPreviousForLink, apiWon), "Commerce")
   );
   const onlineSalesLink = monthlyIntelLink(
     `<strong>${apiWon(salesOnlineAmount)}</strong>`,
@@ -8322,6 +8325,7 @@ function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = nul
   // 없음). storesIncluded에 없는 매장은 "미분류"로 정직하게 표시하고 0원으로 단정하지
   // 않는다(위 storeBreakdown과 동일 원칙).
   if (totalAvailable) {
+    const partial = totalSales?.coverage?.complete !== true;
     const storeSegments = byStore
       ? ["APGUJEONG", "VAIL"].map((code) => ({
         key: code,
@@ -8330,13 +8334,13 @@ function todaySummarySalesInfo(totalSales = {}, cafeTotals = {}, storeCode = nul
       }))
       : [];
     return {
-      label: "총매출",
+      label: partial ? "확인된 부분 매출" : "총매출",
       value: apiWon(canonicalTotal),
-      note: `온라인 ${onlineAvailable ? apiWon(onlineSales) : "데이터 없음"} · 오프라인 ${offlineAvailable ? apiWon(offlineSales) : "데이터 없음"}`,
+      note: `${partial ? "부분 집계 · " : ""}온라인 ${onlineAvailable ? apiWon(onlineSales) : "데이터 없음"} · 오프라인 ${offlineAvailable ? apiWon(offlineSales) : "데이터 없음"}`,
       storeBreakdown,
       ready: true,
       segments: [
-        { key: "total", label: "총매출", value: apiWon(canonicalTotal), primary: true },
+        { key: "total", label: partial ? "확인된 부분 매출" : "총매출", value: apiWon(canonicalTotal), primary: true },
         { key: "online", label: "온라인", value: onlineAvailable ? apiWon(onlineSales) : "데이터 없음" },
         ...storeSegments
       ]
@@ -12188,7 +12192,7 @@ async function refreshClientsView() {
   statusTarget.className = "ad-status-banner good";
   statusTarget.innerHTML = `<span class="status-dot"></span><strong>고객 데이터 연결됨</strong><span class="note">${esc(range.label)} · ${esc(data.periodStart || range.since)} ~ ${esc(data.periodEnd || range.until)}</span>`;
   clientsOverviewState = data;
-  renderClientsSummaryCards(data.summary || {}, (data.typeBreakdown || []).find((row) => row.type === "ff") || {}, data.storeCode || null, data.storeCoverage || null);
+  renderClientsSummaryCards(data.summary || {}, (data.typeBreakdown || []).find((row) => row.type === "ff") || {}, data.storeCode || null, data.storeCoverage || null, data.accounting || null);
   renderClientsTypeBreakdown(data.typeBreakdown || [], data.summary || {});
   renderClientsTop10(data.stylistTop10 || [], data.pressTop10 || [], data.ffTop10 || []);
   renderClientsList();
@@ -12210,7 +12214,7 @@ async function refreshClientsView() {
 // 오프라인 고객 활동"만 보여준다). storeCoverage.includedMonths가 비어있으면(=이 기간에
 // 그 매장 분리 업로드가 전혀 없음) 0명/0원을 확정된 값처럼 보여주지 않고 정직하게
 // "데이터 없음"으로 표시한다.
-function renderClientsSummaryCards(summary = {}, ff = {}, storeCode = null, storeCoverage = null) {
+function renderClientsSummaryCards(summary = {}, ff = {}, storeCode = null, storeCoverage = null, accounting = null) {
   const target = $("#clientsSummaryCards");
   if (!target) return;
   if (storeCode) {
@@ -12227,13 +12231,16 @@ function renderClientsSummaryCards(summary = {}, ff = {}, storeCode = null, stor
     ].join("");
     return;
   }
+  const accountingDisclosure = accounting && hasApiValue(accounting.attributedRevenue) && hasApiValue(accounting.unassignedRevenue)
+    ? salesKpiCard("미귀속 매출", apiWon(accounting.unassignedRevenue), `고객 귀속 ${apiWon(accounting.attributedRevenue)} + 미귀속 ${apiWon(accounting.unassignedRevenue)} = 전체 ${apiWon(summary.totalSalesAmount)}`)
+    : "";
   target.innerHTML = [
     salesKpiCard("전체 고객 수", `${apiNum(summary.totalClients)}명`, "기간 내 구매가 발생한 고객 기준"),
     salesKpiCard("전체 구매 건수", `${apiNum(summary.totalPurchaseCount)}건`, "온라인(개인결제창) + 오프라인 합산"),
     salesKpiCard("전체 매출", apiWon(summary.totalSalesAmount), "온라인(개인결제창) + 오프라인 합산"),
     salesKpiCard("평균 구매금액", apiWon(summary.avgOrderValue), "전체 매출 / 전체 구매 건수"),
     salesKpiCard("FF · 직원 구매", `${apiNum(ff.purchaseCount)}건`, `${apiNum(ff.clientCount)}명 · ${apiWon(ff.salesAmount)}`)
-  ].join("");
+  ].join("") + accountingDisclosure;
 }
 
 // hex(#rrggbb) 색을 흰색 쪽으로 amount(0~1)만큼 섞는다. 새 색상을 추가하는 게 아니라
@@ -13765,9 +13772,16 @@ function resolveBrandCodeToSelectorName(brandCode) {
   return null;
 }
 
-function openBrandIntelligenceByCode(brandCode) {
+function openBrandIntelligenceByCode(brandCode, monthKey = reportsMonth || selectedMonth().month) {
   const name = resolveBrandCodeToSelectorName(brandCode);
   if (!name) return;
+  const [year, month] = String(monthKey || "").split("-").map(Number);
+  if (Number.isInteger(year) && Number.isInteger(month)) {
+    entityPeriodState.mode = "monthly";
+    entityPeriodState.year = year;
+    entityPeriodState.month = month;
+    renderEntityPeriodControl();
+  }
   setActiveView("BrandDashboard", { routeHash: "brand-dashboard" });
   selectBrandSelectorName(name);
 }
@@ -14131,17 +14145,17 @@ async function initBrandSelector() {
   registerProductRegistryCanonicalNames(productRegistry?.registry?.entries || productRegistry?.entries);
   registerBrandMasterResponse(result);
   const brands = Array.isArray(result?.brands) ? result.brands : [];
-  const activeBrands = brands.filter((brand) => brand?.active !== false && String(brand?.brand_code || "").trim() !== "B0000000");
+  const selectableBrands = brands.filter((brand) => brand?.active !== false && String(brand?.brand_code || "").trim() !== "B0000000");
   // STEP61-1: Brand Identity Layer. 이름만 뽑아 버리던 것을, brandCanonicalDisplayName()
   // 결과를 키로 원본 항목까지 함께 보관한다(같은 표시 이름이 여러 brand_code에 걸리는
   // 경우는 첫 항목을 canonical로 채택 — 기존 names 배열의 Set 중복 제거와 동일한 규칙).
   const identityByName = new Map();
-  activeBrands.forEach((brand) => {
+  brands.filter((brand) => String(brand?.brand_code || "").trim() !== "B0000000").forEach((brand) => {
     const name = brandCanonicalDisplayName(brand);
     if (name && name !== "미분류" && !identityByName.has(name)) identityByName.set(name, brand);
   });
   brandSelectorIdentityByName = identityByName;
-  brandSelectorAllBrands = [...identityByName.keys()].sort((a, b) => a.localeCompare(b, "ko"));
+  brandSelectorAllBrands = [...new Set(selectableBrands.map((brand) => brandCanonicalDisplayName(brand)).filter((name) => name && name !== "미분류"))].sort((a, b) => a.localeCompare(b, "ko"));
   renderEntitySelectorAll("primary");
   renderEntitySelectorAll("compare");
   // Master Data가 이 fetch보다 늦게 도착했을 수 있으므로(초기 로드 경합), 이미 선택된
@@ -20272,11 +20286,7 @@ function bind() {
     //하지 않는다 — 없는 화면을 새로 만들거나 잘못된 브랜드로 이동시키지 않는다.
     const brandLink = event.target.closest("[data-monthly-intel-brand-code]");
     if (brandLink) {
-      const name = resolveBrandCodeToSelectorName(brandLink.dataset.monthlyIntelBrandCode);
-      if (name) {
-        setActiveView("BrandDashboard", { routeHash: "brand-dashboard" });
-        selectBrandSelectorName(name);
-      }
+      openBrandIntelligenceByCode(brandLink.dataset.monthlyIntelBrandCode, reportsMonth || selectedMonth().month);
       return;
     }
     // MONTHLY-INTEL-NAV: 결제수단처럼 "다른 화면으로 이동 + 그 화면 안의 특정 위치로 스크롤"이
