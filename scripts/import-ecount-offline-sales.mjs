@@ -19,7 +19,7 @@ export const ECOUNT_WAREHOUSE_STORES = [
 export async function importEcountOfflineSalesSnapshot(filePath, options = {}) {
   if (!filePath) throw new Error("ECOUNT Excel file path is required");
   const loaded = loadEcountOfflineSalesExcel(filePath, options);
-  const month = monthFromLoadedSales(loaded);
+  const month = monthFromLoadedSales(loaded, options.expectedMonth);
   if (options.expectedMonth && month !== options.expectedMonth) {
     throw new Error(`파일명 월 ${options.expectedMonth}과 XLSX 데이터 월 ${month}이 일치하지 않습니다.`);
   }
@@ -95,11 +95,12 @@ export function buildEcountSalesSnapshot(loaded, month = monthFromLoadedSales(lo
   };
 }
 
-function monthFromLoadedSales(loaded) {
+function monthFromLoadedSales(loaded, expectedMonth = null) {
   const month = String(loaded.periodStart || "").slice(0, 7);
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("Unable to determine ECOUNT sales month");
   if (loaded.periodEnd && String(loaded.periodEnd).slice(0, 7) !== month) {
-    throw new Error(`ECOUNT sales snapshot must not span multiple months: ${loaded.periodStart} ~ ${loaded.periodEnd}`);
+    const filenameNote = expectedMonth ? ` (파일명 월: ${expectedMonth})` : "";
+    throw new Error(`ECOUNT sales snapshot must not span multiple months: ${loaded.periodStart} ~ ${loaded.periodEnd}${filenameNote}`);
   }
   return month;
 }
