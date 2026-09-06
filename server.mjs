@@ -3199,7 +3199,8 @@ async function fetchCafe24ProductCatalogRow(item) {
 async function buildCafe24ProductCatalog(options = {}) {
   const list = await fetchCafe24ProductList(options);
   // 상품별 detail+variants 조회를 동시성 3으로 병렬화한다. Cafe24 rate limit(초당 리필 2,
-  // 버킷 40)을 넘지 않는 보수적 수준이고, 429가 나면 cafe24FetchJson이 1회 재시도한다.
+  // 버킷 40)을 넘지 않는 보수적 수준이고, 429가 나면 cafe24FetchJson이 지수 백오프로 최대
+  // 3회까지 재시도한다(PHASE 5B: 넓은 기간 on-demand 보강 시 1회 재시도로는 부족함을 실측).
   const products = await mapWithConcurrency(list, CAFE24_PRODUCT_FETCH_CONCURRENCY, (item) => fetchCafe24ProductCatalogRow(item));
   // 전체 리빌드가 온디맨드로 병합된 옛 상품/negative cache를 지우지 않도록 이전 캐시와 병합한다.
   // 온디맨드 상품은 TTL 안쪽 것만 유지 — TTL이 지나면 다음 Dashboard 빌드에서 재조회돼 재고가 갱신된다.
@@ -5752,6 +5753,14 @@ async function logCafe24OrdersDebug(stage, data = {}) {
   }
 }
 
+// PHASE 5B: pure retry-decision helper, extracted so it can be tested without mocking
+// the Cafe24 token store/HTTP call. Returns the backoff delay(ms) for the given retry
+// count, or null once CAFE24_RATE_LIMIT_MAX_RETRIES is reached (give up, as before).
+const CAFE24_RATE_LIMIT_MAX_RETRIES = 3;
+export function cafe24RateLimitBackoffMs(retryCount) {
+  return retryCount < CAFE24_RATE_LIMIT_MAX_RETRIES ? 1200 * (retryCount + 1) : null;
+}
+
 async function cafe24FetchJson(url, options = {}) {
   await ensureCafe24AccessToken();
   await logCafe24OrdersDebug("request", cafe24OrdersDebugContext(url));
@@ -5780,11 +5789,21 @@ async function cafe24FetchJson(url, options = {}) {
       statusCode: response.status,
       responseBody: compactCafe24Body(body)
     });
-    // Cafe24 rate limit(429)이면 1.2초 대기 후 정확히 1회만 재시도한다. 읽기 전용 GET이라
-    // 재시도해도 부작용이 없다. (2026-07-10 동시성 3 도입에 따른 안전장치)
-    if (!options.retriedAfterRateLimit && response.status === 429) {
-      await new Promise((resolveWait) => setTimeout(resolveWait, 1200));
-      return await cafe24FetchJson(url, { ...options, retriedAfterRateLimit: true });
+    // Cafe24 rate limit(429)이면 대기 후 재시도한다. 읽기 전용 GET이라 재시도해도 부작용이
+    // 없다. (2026-07-10 동시성 3 도입에 따른 안전장치)
+    // PHASE 5B: 정확히 1회(1.2초)만 재시도하던 이전 로직은, /api/intelligence/store처럼
+    // 넓은 기간 조회로 on-demand 상품 보강(ensureCatalogCoversOrderProducts)이 한 번에
+    // 수십~백여 개 발생하는 상황에서 40건/window 제한을 계속 다시 걸어 1회 재시도조차
+    // 같은 429를 맞고 영구 실패로 떨어지는 것을 Production 로그로 실측 확인했다(2026-09-06,
+    // /api/diagnostics/logs 상 cafe24_product_on_demand 실패 199건 전부 status 429).
+    // 최대 3회까지 지수 백오프(1.2s/2.4s/3.6s)로 재시도해 같은 rate limit window를 벗어날
+    // 여유를 준다 — 요청/응답 스키마나 인증 흐름은 그대로다.
+    if (response.status === 429) {
+      const delayMs = cafe24RateLimitBackoffMs(options.rateLimitRetryCount || 0);
+      if (delayMs !== null) {
+        await new Promise((resolveWait) => setTimeout(resolveWait, delayMs));
+        return await cafe24FetchJson(url, { ...options, rateLimitRetryCount: (options.rateLimitRetryCount || 0) + 1 });
+      }
     }
     // invalid_token(401)이면 refresh 후 원 요청을 정확히 1회만 재시도한다.
     // retriedAfterRefresh 플래그로 재귀를 1단계로 제한 — 무한 재시도 금지.
