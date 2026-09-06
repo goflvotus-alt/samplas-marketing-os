@@ -116,14 +116,45 @@ test("REJECT: an unrecognized warehouse name in a routed month is rejected befor
   assert.deepEqual(await listSnapshotFiles(workDir), []);
 })));
 
-test("OBSERVED (not a fix in this phase): a routed-month file with zero rows for one warehouse still writes a zero-value snapshot for it, not a rejection", () => withWorkDir((workDir) => withWorkbook([
-  { dateNo: "2026/09/03 -1", warehouseName: "매장", amount: 10000 }
+// PHASE 5B / Blocker 2: the Phase 5A "OBSERVED" gap (a routed-month file with zero rows
+// for one warehouse silently wrote a zero-value snapshot for it) is now fail-closed.
+// The XLSX contract has no way to represent "this warehouse had zero sales, confirmed"
+// (verified by full review of load-ecount-offline-sales.mjs's row parser) — no such
+// format is invented here; absence is rejected rather than guessed at.
+
+test("PASS: both warehouses present imports unchanged (regression guard for the fail-closed check above)", () => withWorkDir((workDir) => withWorkbook([
+  { dateNo: "2026/09/03 -1", warehouseName: "매장", amount: 10000 },
+  { dateNo: "2026/09/04 -2", warehouseName: "SAMPLAS Veil", amount: 20000 }
 ], async (file) => {
   const result = await importEcountOfflineSalesSnapshot(file, { workDir, expectedMonth: "2026-09" });
-  const vail = result.snapshots.find((s) => s.storeCode === "VAIL");
-  assert.equal(vail.totalOfflineSales, 0);
-  assert.equal(vail.totalLineCount, 0);
-  // This is existing, unauthorized-to-change behavior for this phase (Section D scope
-  // is filename/content-month only) — recorded here so it is a proven fact, not a guess,
-  // for the Section E "empty required warehouse" line in the final report.
+  assert.equal(result.snapshots.find((s) => s.storeCode === "APGUJEONG").totalOfflineSales, 10000);
+  assert.equal(result.snapshots.find((s) => s.storeCode === "VAIL").totalOfflineSales, 20000);
+})));
+
+test("REJECT: APGUJEONG present, VAIL absent — fails closed before any write, error names VAIL", () => withWorkDir((workDir) => withWorkbook([
+  { dateNo: "2026/09/03 -1", warehouseName: "매장", amount: 10000 }
+], async (file) => {
+  await assert.rejects(
+    () => importEcountOfflineSalesSnapshot(file, { workDir, expectedMonth: "2026-09" }),
+    /VAIL 매장 거래 행이 없습니다/
+  );
+  assert.deepEqual(await listSnapshotFiles(workDir), []);
+})));
+
+test("REJECT: VAIL present, APGUJEONG absent — fails closed before any write, error names APGUJEONG", () => withWorkDir((workDir) => withWorkbook([
+  { dateNo: "2026/09/04 -2", warehouseName: "SAMPLAS Veil", amount: 20000 }
+], async (file) => {
+  await assert.rejects(
+    () => importEcountOfflineSalesSnapshot(file, { workDir, expectedMonth: "2026-09" }),
+    /APGUJEONG 매장 거래 행이 없습니다/
+  );
+  assert.deepEqual(await listSnapshotFiles(workDir), []);
+})));
+
+test("REJECT: no writes to either store file survive a missing-warehouse rejection even when one store's write would have succeeded", () => withWorkDir((workDir) => withWorkbook([
+  { dateNo: "2026/09/03 -1", warehouseName: "매장", amount: 10000 },
+  { dateNo: "2026/09/04 -2", warehouseName: "매장", amount: 15000 }
+], async (file) => {
+  await assert.rejects(() => importEcountOfflineSalesSnapshot(file, { workDir, expectedMonth: "2026-09" }));
+  assert.deepEqual(await listSnapshotFiles(workDir), [], "APGUJEONG must not be written alone — atomic two-store contract");
 })));

@@ -55,6 +55,15 @@ export function buildWarehouseRoutedSnapshots(loaded, month = monthFromLoadedSal
     }
     byStore.get(store.storeCode).push(line);
   }
+  // PHASE 5B: 창고 라우팅 대상 월은 두 매장(APGUJEONG/VAIL) 모두 실제 거래 행이 있어야
+  // 한다. 현재 XLSX 계약에는 "이 매장은 이번 기간 매출 0건 확정"을 표시할 방법이 전혀
+  // 없다(load-ecount-offline-sales.mjs 전체 검토로 확인) — 한쪽 매장 행이 아예 없으면
+  // 진짜 0매출인지 업로드 실수(한 매장만 export)인지 구분할 수 없으므로, 조용히 0
+  // 스냅샷을 쓰지 않고 fail closed한다(캐노니컬 값에 영향 없음, 아무것도 쓰지 않음).
+  const emptyStores = ECOUNT_WAREHOUSE_STORES.filter((store) => byStore.get(store.storeCode).length === 0);
+  if (emptyStores.length) {
+    throw new Error(`이 업로드에 ${emptyStores.map((store) => store.storeCode).join(", ")} 매장 거래 행이 없습니다. 두 매장 모두 포함된 XLSX만 가져올 수 있습니다(0건 확정을 표시할 방법이 없어 안전을 위해 거부합니다).`);
+  }
   return ECOUNT_WAREHOUSE_STORES.map((store) => {
     const routed = buildOfflineSalesResult({ filePath, sheetName: loaded.sheetName, salesLines: byStore.get(store.storeCode) });
     return buildEcountSalesSnapshot(routed, month, {
