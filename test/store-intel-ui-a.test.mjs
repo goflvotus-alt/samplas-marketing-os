@@ -144,8 +144,12 @@ test("data policy: both renderers use the shared live endpoint and no MOCK sourc
 
 // 18-20. existing screens' markup untouched
 test("18. existing Today (Overview) view markup preserved", () => {
+  // PHASE 5B: classified as a stale test expectation, not a code defect. The
+  // 2026-08-19 Today UI redesign (docs/reports/TODAY-UI-REDESIGN-20260819.md) renamed
+  // the section heading from "오늘 운영 홈" to plain "Today" — confirmed live in a real
+  // browser this phase, section renders correctly. This assertion was never updated.
   assert.match(html, /<section id="Overview" class="view active">/);
-  assert.match(html, /오늘 운영 홈/);
+  assert.match(html, /<h3>Today<\/h3>/);
 });
 
 test("19. existing Monthly (Reports) view markup preserved", () => {

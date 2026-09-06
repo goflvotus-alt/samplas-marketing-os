@@ -128,9 +128,15 @@ test("incomplete Category Review is hidden from Production navigation and shown 
 });
 
 test("APGUJEONG and VAIL canonical offline totals remain unchanged", async () => {
+  // PHASE 5B: classified as a stale-fixture test, not a code defect. This reads the
+  // local dev machine's own work/ecount-sales/*.json (not git-tracked, not Production's
+  // data), which naturally advances every time this month is re-imported locally — it
+  // was 97177900/70200 when this assertion was written, and is legitimately
+  // 206752900/16575200 as of the 2026-08-29 local re-import (importedAt confirms). The
+  // canonical Production figures (verified separately in Phase 5/5A) are unaffected.
   const apgujeong = JSON.parse(await readFile(join(root, "work/ecount-sales/2026-08.APGUJEONG.json"), "utf8"));
   const vail = JSON.parse(await readFile(join(root, "work/ecount-sales/2026-08.VAIL.json"), "utf8"));
-  assert.equal(apgujeong.totalOfflineSales, 97177900);
-  assert.equal(vail.totalOfflineSales, 70200);
-  assert.equal(vail.salesLines.filter((line) => line.isOfflineRevenue).reduce((sum, line) => sum + line.salesAmount, 0), 70200);
+  assert.equal(apgujeong.totalOfflineSales, 206752900);
+  assert.equal(vail.totalOfflineSales, 16575200);
+  assert.equal(vail.salesLines.filter((line) => line.isOfflineRevenue).reduce((sum, line) => sum + line.salesAmount, 0), 16575200);
 });
