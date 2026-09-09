@@ -3,6 +3,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getJson,
+  runCheck,
+  checkStatus,
+  checkStoreMaster,
   checkMonthlyCurrent,
   checkAnnual,
   checkClients,
@@ -294,7 +298,7 @@ test("Clients missing ECOUNT requires explicit unavailable coverage", async (t) 
 
 test("Annual completed history survives unavailable current month", async (t) => {
   t.mock.method(globalThis, "fetch", async (url) => {
-    if (url.includes(`month=${currentMonth}`)) return { status: 400, text: async () => JSON.stringify({ error: "optional source unavailable" }) };
+    if (url.includes(`month=${currentMonth}`)) return jsonResponse({ sales: { totalSales: { amount: null }, coverage: { complete: false, offline: false } } });
     return jsonResponse({ sales: { totalSales: { amount: 100 } } });
   });
   assert.equal((await checkAnnual("http://local", "http://render")).status, "WARN");
@@ -464,3 +468,108 @@ test("checkInventory: a real (non-recentSalesQty) field difference still fails",
 });
 
 console.log("verify-render-snapshot-sync core logic tests passed");
+
+const refused = () => new TypeError("fetch failed", { cause: Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED", errno: -61 }) });
+
+for (const [name, side, failure, expected] of [
+  ["Local connection refusal", "local", refused, "WARN"],
+  ["Production connection refusal", "render", refused, "FAIL"],
+  ["Local timeout", "local", () => new DOMException("slow", "TimeoutError"), "WARN"],
+  ["Production timeout", "render", () => new DOMException("slow", "TimeoutError"), "FAIL"]
+]) {
+  test(`${name}: side, cause, check and exit status are retained`, async (t) => {
+    const requests = [];
+    t.mock.method(globalThis, "fetch", async (url) => {
+      requests.push(url);
+      if (url.startsWith(`http://${side}`)) throw failure();
+      return jsonResponse({ healthy: true });
+    });
+    const result = await runCheck("STATUS", () => checkStatus("http://local", "http://render"));
+    assert.equal(result.status, expected);
+    assert.equal(result.diagnostics.side, side === "local" ? "LOCAL" : "PRODUCTION");
+    assert.equal(result.diagnostics.check, "STATUS");
+    assert.match(result.diagnostics.url, /\/api\/status$/);
+    assert.equal(result.diagnostics.timeout, name.includes("timeout"));
+    if (name.includes("refusal")) {
+      assert.equal(result.diagnostics.code, "ECONNREFUSED");
+      assert.equal(result.diagnostics.errno, -61);
+    }
+    assert.equal(verificationExitCode([result]), expected === "FAIL" ? 1 : 0);
+    assert.ok(requests.some((url) => url.startsWith("http://render")));
+  });
+}
+
+test("Production HTTP failure and malformed JSON fail even with Local absent", async (t) => {
+  for (const response of [
+    { status: 500, text: async () => "server failed" },
+    { status: 200, text: async () => "{broken" },
+    { status: 200, text: async () => "null" }
+  ]) {
+    t.mock.method(globalThis, "fetch", async (url) => {
+      if (url.startsWith("http://local")) throw refused();
+      return response;
+    });
+    const result = await runCheck("STATUS", () => checkStatus("http://local", "http://render"));
+    assert.equal(result.status, "FAIL");
+    assert.equal(result.classification, "PRODUCTION_FAIL");
+    assert.equal(result.diagnostics.status, response.status);
+    assert.equal(result.diagnostics.side, "PRODUCTION");
+  }
+});
+
+test("request deadline bounds both transport and body reading without waiting 90 seconds in tests", async (t) => {
+  for (const side of ["LOCAL", "PRODUCTION"]) {
+    t.mock.method(globalThis, "fetch", async (_url, { signal }) => ({ status: 200, text: () => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true })) }));
+    const result = await runCheck("slow body", async () => {
+      const response = await getJson("http://slow", "/api/status", { side, timeoutMs: 10 });
+      return response.failure || { status: "PASS" };
+    });
+    assert.equal(result.status, side === "LOCAL" ? "WARN" : "FAIL");
+    assert.equal(result.diagnostics.timeout, true);
+  }
+});
+
+test("store-master verifies BOTH Production stores despite slow Local; Production failure wins", async (t) => {
+  for (const failProduction of [false, true]) {
+    const stores = [];
+    t.mock.method(globalThis, "fetch", async (url) => {
+      if (url.startsWith("http://local")) throw new DOMException("slow Local", "TimeoutError");
+      const store = new URL(url).searchParams.get("store");
+      stores.push(store);
+      if (failProduction && store === "VAIL") return { status: 500, text: async () => "error" };
+      return jsonResponse({ store: { displayName: store } });
+    });
+    const result = await runCheck("STORE MASTER", () => checkStoreMaster("http://local", "http://render"));
+    assert.equal(result.status, failProduction ? "FAIL" : "WARN");
+    assert.equal(result.classification, failProduction ? "PRODUCTION_FAIL" : "LOCAL_SLOW_OR_TIMEOUT");
+    assert.deepEqual(stores, ["APGUJEONG", "VAIL"]);
+  }
+});
+
+test("store-master equal identities PASS; comparable identity mismatch FAIL", async (t) => {
+  for (const mismatch of [false, true]) {
+    t.mock.method(globalThis, "fetch", async (url) => jsonResponse({ store: { displayName: mismatch && url.startsWith("http://local") ? "wrong" : new URL(url).searchParams.get("store") } }));
+    const result = await runCheck("STORE MASTER", () => checkStoreMaster("http://local", "http://render"));
+    assert.equal(result.status, mismatch ? "FAIL" : "PASS");
+    assert.equal(result.classification, mismatch ? "PARITY_FAIL" : "PASS");
+  }
+});
+
+test("Local absence cannot hide invalid Production schema or later historical month", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url.startsWith("http://local")) throw refused();
+    if (url.includes("month=2026-02")) return jsonResponse({});
+    return jsonResponse({ sales: { totalSales: { amount: 100 } } });
+  });
+  assert.equal((await checkHistoricalMonthly("http://local", "http://render")).status, "FAIL");
+  assert.equal((await checkProductRegistry("http://local", "http://render")).status, "FAIL");
+});
+
+test("Annual current HTTP errors are Production failures, not expected unavailable", async (t) => {
+  t.mock.method(globalThis, "fetch", async (url) => url.includes(`month=${currentMonth}`)
+    ? { status: 400, text: async () => JSON.stringify({ error: "optional source unavailable" }) }
+    : jsonResponse({ sales: { totalSales: { amount: 100 } } }));
+  const result = await runCheck("ANNUAL", () => checkAnnual("http://local", "http://render"));
+  assert.equal(result.status, "FAIL");
+  assert.equal(result.classification, "PRODUCTION_FAIL");
+});

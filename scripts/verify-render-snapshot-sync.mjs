@@ -28,25 +28,52 @@ function parseArgs(argv) {
   return args;
 }
 
-async function getJson(baseUrl, path) {
-  // Render 무료 티어는 동시 요청이 겹치면 가끔 connection-level 오류를 낸다(HTTP 오류가
-  // 아니라 fetch 자체 실패) — 실제 데이터 불일치가 아니라 네트워크 잡음이므로 1회만
-  // 재시도한다.
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const response = await fetch(`${baseUrl}${path}`);
-      const text = await response.text();
-      let body = null;
+// Observed store comparison: Production ~14s, Local ~59s. The 90s budget
+// includes the existing single transport retry and response-body consumption.
+export const REQUEST_TIMEOUT_MS = 90_000;
+
+export async function getJson(baseUrl, path, { side = "PRODUCTION", timeoutMs = REQUEST_TIMEOUT_MS, textOnly = false } = {}) {
+  const url = `${baseUrl}${path}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException("Request deadline exceeded", "TimeoutError")), timeoutMs);
+  let status = null;
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        body = JSON.parse(text);
-      } catch {
-        body = null;
+        const response = await fetch(url, { signal: controller.signal });
+        status = response.status;
+        const text = await response.text();
+        const expectedMissing = !textOnly && status === 404 && path.startsWith("/api/ecount-sales/monthly?");
+        if (status !== 200 && !expectedMissing) throw new Error(`HTTP ${status}`);
+        const body = textOnly ? text : JSON.parse(text);
+        if (!textOnly && (!body || typeof body !== "object" || Array.isArray(body))) throw new TypeError("Expected JSON object");
+        return { status, body, side, url };
+      } catch (error) {
+        if (attempt === 1 || status !== null || controller.signal.aborted || error?.name === "TimeoutError") throw error;
       }
-      return { status: response.status, body };
-    } catch (error) {
-      if (attempt === 1) throw error;
     }
+  } catch (error) {
+    const timeout = controller.signal.aborted || error?.name === "TimeoutError" || /TIMEOUT/.test(error?.cause?.code || "");
+    const diagnostics = { side, url, name: error?.name, message: error?.message, code: error?.cause?.code ?? error?.code ?? null, errno: error?.cause?.errno ?? error?.errno ?? null, cause: error?.cause?.message ?? null, timeout, status };
+    const failure = { status: side === "LOCAL" ? "WARN" : "FAIL", classification: side === "LOCAL" ? (timeout ? "LOCAL_SLOW_OR_TIMEOUT" : "LOCAL_UNAVAILABLE") : "PRODUCTION_FAIL", diagnostics, detail: `${side === "LOCAL" ? "NOT COMPARABLE — " : ""}${JSON.stringify(diagnostics)}` };
+    if (side === "LOCAL") return { side, url, status: null, body: null, failure };
+    throw Object.assign(new Error(failure.detail, { cause: error }), { failure });
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+function getLocalJson(baseUrl, path) {
+  return getJson(baseUrl, path, { side: "LOCAL" });
+}
+
+function productionInvalid(response, valid, detail) {
+  if (valid) return null;
+  return { status: "FAIL", classification: "PRODUCTION_FAIL", detail: `PRODUCTION ${response.url}: ${detail}` };
+}
+
+function localUnavailable(response) {
+  return response.failure || null;
 }
 
 function todayKeySeoul() {
@@ -255,18 +282,20 @@ export function verificationExitCode(results) {
   return results.some((result) => result.status === "FAIL") ? 1 : 0;
 }
 
-async function runCheck(name, fn) {
+export async function runCheck(name, fn) {
   try {
-    return { name, ...(await fn()) };
+    const result = await fn();
+    return { name, ...result, classification: result.classification || (result.status === "FAIL" ? "PARITY_FAIL" : result.status === "WARN" ? "NOT_COMPARABLE" : "PASS"), ...(result.diagnostics ? { diagnostics: { check: name, ...result.diagnostics } } : {}) };
   } catch (error) {
-    return { name, status: "FAIL", detail: `error: ${error?.message || error}` };
+    return { name, status: "FAIL", classification: "PRODUCTION_FAIL", ...(error.failure || {}), diagnostics: { check: name, ...(error.failure?.diagnostics || { name: error?.name, message: error?.message }) }, detail: `${name}: ${error?.message || error}` };
   }
 }
 
 // ---- STRICT checks (정적/과거 확정 데이터 — 완전 일치 기대) ----
 
 export async function checkStatus(local, render) {
-  const [l, r] = await Promise.all([getJson(local, "/api/status"), getJson(render, "/api/status")]);
+  const [l, r] = await Promise.all([getLocalJson(local, "/api/status"), getJson(render, "/api/status")]);
+  if (localUnavailable(l)) return localUnavailable(l);
   const ok = l.status === 200 && r.status === 200;
   return { status: ok ? "PASS" : "FAIL", detail: `local=${l.status} render=${r.status}` };
 }
@@ -277,11 +306,17 @@ export async function checkHistoricalMonthly(local, render) {
   const notComparable = [];
   for (const month of months) {
     const [l, r] = await Promise.all([
-      getJson(local, `/api/reports/monthly?month=${month}`),
+      getLocalJson(local, `/api/reports/monthly?month=${month}`),
       getJson(render, `/api/reports/monthly?month=${month}`)
     ]);
     const lt = l.body?.sales?.totalSales?.amount;
     const rt = r.body?.sales?.totalSales?.amount;
+    const invalid = productionInvalid(r, Number.isFinite(rt), `historical month ${month} total is invalid`);
+    if (invalid) return invalid;
+    if (localUnavailable(l)) {
+      notComparable.push(l.failure.detail);
+      continue;
+    }
     if (lt === rt) continue;
     const localProvenance = historicalArchiveProvenance(l.body);
     const renderProvenance = historicalArchiveProvenance(r.body);
@@ -305,7 +340,7 @@ export async function checkAnnual(local, render) {
   for (const month of completedMonths) {
     const response = await getJson(render, `/api/reports/monthly?month=${month}`);
     const amount = response.body?.sales?.totalSales?.amount;
-    if (response.status !== 200 || !Number.isFinite(amount)) return { status: "FAIL", detail: `completed month ${month} is invalid` };
+    if (response.status !== 200 || !Number.isFinite(amount)) return { status: "FAIL", classification: "PRODUCTION_FAIL", detail: `completed month ${month} is invalid` };
     productionMonths[month] = amount;
   }
   const currentMonth = currentMonthSeoul();
@@ -313,8 +348,10 @@ export async function checkAnnual(local, render) {
   const currentAmount = current.body?.sales?.totalSales?.amount;
   const annualTotal = Object.values(productionMonths).reduce((total, value) => total + Number(value || 0), 0);
   const validation = validateProductionAnnual(productionMonths, annualTotal);
-  if (!validation.ok) return { status: "FAIL", detail: `completed sum(${completedMonths[0]}~${completedMonths.at(-1)})=${annualTotal}` };
-  if (current.status !== 200 || !Number.isFinite(currentAmount)) {
+  if (!validation.ok) return { status: "FAIL", classification: "PRODUCTION_FAIL", detail: `completed sum(${completedMonths[0]}~${completedMonths.at(-1)})=${annualTotal}` };
+  if (!Number.isFinite(currentAmount)) {
+    const coverage = current.body?.sales?.coverage;
+    if (currentAmount !== null || coverage?.complete !== false || coverage?.offline !== false) return { status: "FAIL", classification: "PRODUCTION_FAIL", detail: `current ${currentMonth} malformed availability` };
     return { status: "WARN", detail: `completed sum(${completedMonths[0]}~${completedMonths.at(-1)})=${annualTotal}; current ${currentMonth}=EXPECTED UNAVAILABLE` };
   }
   return {
@@ -324,16 +361,22 @@ export async function checkAnnual(local, render) {
 }
 
 export async function checkBrandRegistry(local, render) {
-  const [l, r] = await Promise.all([getJson(local, "/api/intelligence/brands"), getJson(render, "/api/intelligence/brands")]);
+  const [l, r] = await Promise.all([getLocalJson(local, "/api/intelligence/brands"), getJson(render, "/api/intelligence/brands")]);
+  const invalid = productionInvalid(r, Number.isFinite(r.body?.count) && Number.isFinite(r.body?.aliasCount), "missing brand counts");
+  if (invalid) return invalid;
+  if (localUnavailable(l)) return localUnavailable(l);
   const ok = l.body?.count === r.body?.count && l.body?.aliasCount === r.body?.aliasCount;
   return { status: ok ? "PASS" : "FAIL", detail: `local(${l.body?.count}/${l.body?.aliasCount}) render(${r.body?.count}/${r.body?.aliasCount})` };
 }
 
 export async function checkProductRegistry(local, render) {
   const [l, r] = await Promise.all([
-    getJson(local, "/api/intelligence/product-registry"),
+    getLocalJson(local, "/api/intelligence/product-registry"),
     getJson(render, "/api/intelligence/product-registry")
   ]);
+  const invalid = productionInvalid(r, Array.isArray(r.body?.registry?.entries), "missing registry entries");
+  if (invalid) return invalid;
+  if (localUnavailable(l)) return localUnavailable(l);
   const same = deepEqual(l.body?.registry, r.body?.registry);
   if (same) return { status: "PASS", detail: `entries=${l.body?.registry?.entries?.length ?? "?"} exact match` };
   const lEntries = l.body?.registry?.entries || [];
@@ -348,9 +391,12 @@ export async function checkProductRegistry(local, render) {
 }
 
 export async function checkPriceAudit(local, render) {
-  const [l, r] = await Promise.all([getJson(local, "/api/intelligence/price-audit"), getJson(render, "/api/intelligence/price-audit")]);
+  const [l, r] = await Promise.all([getLocalJson(local, "/api/intelligence/price-audit"), getJson(render, "/api/intelligence/price-audit")]);
   const la = l.body?.audit;
   const ra = r.body?.audit;
+  const invalid = productionInvalid(r, typeof ra?.generatedAt === "string" && ra?.summary && typeof ra.summary === "object", "missing audit timestamp/summary");
+  if (invalid) return invalid;
+  if (localUnavailable(l)) return localUnavailable(l);
   const ok = la?.generatedAt === ra?.generatedAt && deepEqual(la?.summary, ra?.summary);
   return {
     status: ok ? "PASS" : "FAIL",
@@ -363,22 +409,34 @@ export async function checkPriceAudit(local, render) {
 export async function checkStoreMaster(local, render) {
   const stores = ["APGUJEONG", "VAIL"];
   const mismatches = [];
+  const unavailable = [];
   for (const store of stores) {
     const since = "2026-01-01";
     const until = todayKeySeoul();
     const [l, r] = await Promise.all([
-      getJson(local, `/api/intelligence/store?store=${store}&since=${since}&until=${until}`),
+      getLocalJson(local, `/api/intelligence/store?store=${store}&since=${since}&until=${until}`),
       getJson(render, `/api/intelligence/store?store=${store}&since=${since}&until=${until}`)
     ]);
+    const invalid = productionInvalid(r, typeof r.body?.store?.displayName === "string" && r.body.store.displayName.length > 0, `${store} missing store identity`);
+    if (invalid) return invalid;
+    if (localUnavailable(l)) {
+      unavailable.push(l.failure);
+      continue;
+    }
     if (l.body?.store?.displayName !== r.body?.store?.displayName) {
       mismatches.push(`${store}: local=${l.body?.store?.displayName} render=${r.body?.store?.displayName}`);
     }
   }
-  return mismatches.length ? { status: "FAIL", detail: mismatches.join("; ") } : { status: "PASS", detail: `${stores.join(", ")} resolve identically` };
+  if (mismatches.length) return { status: "FAIL", classification: "PARITY_FAIL", detail: mismatches.join("; ") };
+  if (unavailable.length) return { ...unavailable[0], detail: `${stores.join(", ")} Production identities verified; ${unavailable.map((item) => item.detail).join("; ")}` };
+  return { status: "PASS", detail: `${stores.join(", ")} resolve identically` };
 }
 
 export async function checkInventory(local, render) {
-  const [l, r] = await Promise.all([getJson(local, "/api/inventory/overview"), getJson(render, "/api/inventory/overview")]);
+  const [l, r] = await Promise.all([getLocalJson(local, "/api/inventory/overview"), getJson(render, "/api/inventory/overview")]);
+  const invalid = productionInvalid(r, r.body?.summary && r.body?.coverage && Array.isArray(r.body?.brandRollup), "missing inventory summary/coverage/rollup");
+  if (invalid) return invalid;
+  if (localUnavailable(l)) return localUnavailable(l);
   // recentSalesQty(및 그것으로부터 파생되는 slowWatchCount)는 요청 시점 rolling metric으로
   // 알려진 live 필드라 비교에서 제외한다(docs/reports/local-to-render-batch3-5-brand-registry-sync-2026-08-25.md
   // §11, docs/reports/inventory-operations-foundation-mvp-2026-08-26.md).
@@ -396,8 +454,7 @@ export async function checkInventory(local, render) {
 }
 
 export async function checkFrontendBundle(local, render) {
-  const response = await fetch(`${render}/outputs/samplas-marketing-os.js`);
-  const renderText = await response.text();
+  const { body: renderText } = await getJson(render, "/outputs/samplas-marketing-os.js", { textOnly: true });
   const renderHash = createHash("sha256").update(renderText).digest("hex");
   let headHash = null;
   try {
@@ -420,9 +477,18 @@ export async function checkTodayLive(local, render) {
   const since = todayKeySeoul();
   const path = `/api/sales/total?since=${since}&until=${since}`;
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const [l, r] = await Promise.all([getJson(local, path), getJson(render, path)]);
+    const [l, r] = await Promise.all([getLocalJson(local, path), getJson(render, path)]);
     const lt = l.body?.totalSales?.amount;
     const rt = r.body?.totalSales?.amount;
+    const online = r.body?.onlineSales?.paidAmount;
+    const offline = r.body?.offlineSales?.offlineSalesAmount;
+    const coverage = r.body?.coverage;
+    const validTotal = Number.isFinite(rt)
+      ? Number.isFinite(online) && Number.isFinite(offline) && online + offline === rt
+      : rt === null && offline === null && Number.isFinite(online) && coverage?.offline === false && coverage?.complete === false;
+    const invalid = productionInvalid(r, r.body?.periodStart === since && r.body?.periodEnd === since && validTotal, "Today period/accounting/availability invalid");
+    if (invalid) return invalid;
+    if (localUnavailable(l)) return localUnavailable(l);
     if (lt === rt && deepEqual(l.body?.offlineSales?.byStore, r.body?.offlineSales?.byStore)) {
       return { status: "PASS", detail: `total=${lt} byStore=${JSON.stringify(l.body?.offlineSales?.byStore)}` };
     }
@@ -437,7 +503,7 @@ export async function checkMonthlyCurrent(local, render) {
   const since = `${month}-01`;
   const until = todayKeySeoul();
   const [l, r, online, ecount] = await Promise.all([
-    getJson(local, path),
+    getLocalJson(local, path),
     getJson(render, path),
     getJson(render, `/api/diagnostics/brand-sales?since=${since}&until=${until}`),
     getJson(render, `/api/ecount-sales/monthly?month=${month}`)
@@ -455,29 +521,34 @@ export async function checkMonthlyCurrent(local, render) {
       && Number.isFinite(r.body?.sales?.onlineSales?.paidAmount);
     return {
       status: honestUnavailable ? "WARN" : "FAIL",
+      classification: honestUnavailable ? "NOT_COMPARABLE" : "PRODUCTION_FAIL",
       detail: honestUnavailable ? `month=${month} EXPECTED UNAVAILABLE — ECOUNT snapshot not uploaded` : `month=${month} missing ECOUNT is not represented honestly`
     };
   }
   if (ecount.status !== 200) {
-    return { status: "FAIL", detail: `month=${month} wrong or malformed ECOUNT snapshot` };
+    return { status: "FAIL", classification: "PRODUCTION_FAIL", detail: `month=${month} wrong or malformed ECOUNT snapshot` };
   }
   const sourceState = classifyRequestedCoverage(`${month}-01`, monthEndKey(month), ecount.body?.periodStart, ecount.body?.periodEnd);
   if (sourceState === "INVALID") {
-    return { status: "FAIL", detail: `month=${month} malformed ECOUNT source period` };
+    return { status: "FAIL", classification: "PRODUCTION_FAIL", detail: `month=${month} malformed ECOUNT source period` };
   }
   if (sourceState === "PARTIAL") {
     const validation = validateProductionMonthlyPartial(month, r.body, online.body, ecount.body);
     return {
       status: validation.ok ? "WARN" : "FAIL",
-      detail: validation.ok ? `CURRENT SOURCE PARTIAL — ${validation.detail}` : `dishonest partial — ${validation.detail}`
+      classification: validation.ok ? (l.failure?.classification || "NOT_COMPARABLE") : "PRODUCTION_FAIL",
+      ...(l.failure ? { diagnostics: l.failure.diagnostics } : {}),
+      detail: (validation.ok ? `CURRENT SOURCE PARTIAL — ${validation.detail}` : `dishonest partial — ${validation.detail}`) + (l.failure ? `; ${l.failure.detail}` : "")
     };
   }
+  const validation = validateProductionMonthly(month, r.body, online.body, ecount.body);
+  if (!validation.ok) return { status: "FAIL", classification: "PRODUCTION_FAIL", detail: validation.detail };
+  if (localUnavailable(l)) return localUnavailable(l);
   const localBoundary = liveSourceBoundary(l.body);
   const renderBoundary = liveSourceBoundary(r.body);
   if (localBoundary && renderBoundary && localBoundary === renderBoundary && lt !== rt) {
     return { status: "FAIL", detail: `matching sourceThrough=${localBoundary} but local=${lt} render=${rt}` };
   }
-  const validation = validateProductionMonthly(month, r.body, online.body, ecount.body);
   return {
     status: validation.ok ? "PASS" : "FAIL",
     detail: `${validation.detail}; ${lt === rt ? "live parity exact" : `LIVE SOURCE DIFFERENCE — NOT COMPARABLE local=${lt} render=${rt}`}`
@@ -490,7 +561,7 @@ export async function checkClients(local, render) {
   const until = todayKeySeoul();
   const path = `/api/intelligence/clients?since=${since}&until=${until}`;
   const [l, r, canonical, ecount] = await Promise.all([
-    getJson(local, path),
+    getLocalJson(local, path),
     getJson(render, path),
     getJson(render, `/api/sales/total?since=${since}&until=${until}`),
     getJson(render, `/api/ecount-sales/monthly?month=${month}`)
@@ -505,20 +576,25 @@ export async function checkClients(local, render) {
       && r.body?.summary?.totalSalesAmount === null;
     return {
       status: honestUnavailable ? "WARN" : "FAIL",
+      classification: honestUnavailable ? "NOT_COMPARABLE" : "PRODUCTION_FAIL",
       detail: honestUnavailable ? `month=${month} EXPECTED UNAVAILABLE — Clients offline coverage incomplete` : `month=${month} Clients masks unavailable offline as zero`
     };
   }
-  if (ecount.status !== 200) return { status: "FAIL", detail: `month=${month} wrong or malformed ECOUNT snapshot` };
+  if (ecount.status !== 200) return { status: "FAIL", classification: "PRODUCTION_FAIL", detail: `month=${month} wrong or malformed ECOUNT snapshot` };
   const sourceState = classifyRequestedCoverage(since, until, ecount.body?.periodStart, ecount.body?.periodEnd);
-  if (sourceState === "INVALID") return { status: "FAIL", detail: `month=${month} invalid Clients source coverage` };
+  if (sourceState === "INVALID") return { status: "FAIL", classification: "PRODUCTION_FAIL", detail: `month=${month} invalid Clients source coverage` };
   if (sourceState === "PARTIAL") {
     const validation = validateProductionClientsPartial(r.body, canonical.body, ecount.body, since, until);
     return {
       status: validation.ok ? "WARN" : "FAIL",
-      detail: validation.ok ? `CURRENT SOURCE PARTIAL — ${validation.detail}` : `dishonest Clients partial — ${validation.detail}`
+      classification: validation.ok ? (l.failure?.classification || "NOT_COMPARABLE") : "PRODUCTION_FAIL",
+      ...(l.failure ? { diagnostics: l.failure.diagnostics } : {}),
+      detail: (validation.ok ? `CURRENT SOURCE PARTIAL — ${validation.detail}` : `dishonest Clients partial — ${validation.detail}`) + (l.failure ? `; ${l.failure.detail}` : "")
     };
   }
   const validation = validateProductionClients(r.body, canonical.body?.totalSales?.amount, approvedExclusions, { since, until, canonical: canonical.body });
+  if (!validation.ok) return { status: "FAIL", classification: "PRODUCTION_FAIL", detail: validation.detail };
+  if (localUnavailable(l)) return localUnavailable(l);
   const localBoundary = liveSourceBoundary(l.body);
   const renderBoundary = liveSourceBoundary(r.body);
   if (localBoundary && renderBoundary && localBoundary === renderBoundary && !deepEqual(l.body?.summary, r.body?.summary)) {
@@ -533,7 +609,11 @@ export async function checkClients(local, render) {
 export async function checkEcountCurrentMonth(local, render) {
   const month = currentMonthSeoul();
   const path = `/api/ecount-sales/monthly?month=${month}`;
-  const [l, r] = await Promise.all([getJson(local, path), getJson(render, path)]);
+  const [l, r] = await Promise.all([getLocalJson(local, path), getJson(render, path)]);
+  if (r.status === 404) return { status: "WARN", classification: "NOT_COMPARABLE", detail: `month=${month} EXPECTED UNAVAILABLE — Production ECOUNT not uploaded` };
+  const invalid = productionInvalid(r, Array.isArray(r.body?.sources), "missing ECOUNT sources");
+  if (invalid) return invalid;
+  if (localUnavailable(l)) return localUnavailable(l);
   // Production UI import and Local validation are separate runs, so importedAt is
   // expected to differ even when the canonical business snapshot is identical.
   const stableSources = (sources) => (sources || []).map(({ importedAt, ...source }) => source);
@@ -579,7 +659,7 @@ async function main() {
   const verdict = results.some((r) => r.status === "FAIL")
     ? "PRODUCTION BASELINE MISMATCH — SEE FAIL ROWS ABOVE"
     : results.some((r) => r.status === "WARN")
-      ? "PRODUCTION BASELINE HEALTHY (WARN — LIVE-TIMING FIELDS ONLY)"
+      ? "PRODUCTION BASELINE HEALTHY (WARN — SEE COVERAGE / COMPARABILITY DETAILS)"
       : "PRODUCTION BASELINE HEALTHY";
 
   if (args.json) {
@@ -596,7 +676,7 @@ async function main() {
   console.log(`\nVERDICT: ${verdict}\n`);
   console.log("--- detail ---");
   for (const r of results) {
-    console.log(`[${r.status}] ${r.label}: ${r.detail || r.name}`);
+    console.log(`[${r.status}] ${r.label} (${r.classification}): ${r.detail || r.name}`);
   }
   process.exitCode = verificationExitCode(results);
 }
