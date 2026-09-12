@@ -1,0 +1,192 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
+import { createServer, request } from "node:http";
+import { once } from "node:events";
+import { detectPendingBrands, refreshPendingBrands, readPendingBrands } from "../scripts/pending-brand-queue.mjs";
+import { buildBrandRegistry } from "../scripts/brand-engine.mjs";
+import { mergeOfflineBrandSales } from "../scripts/monthly-brand-sales.mjs";
+
+const canonical = { brands: [{ brand_code: "B1", brand_name: "Known", name_aliases: ["Known alias"], active: true, nameSource: "suggested" }] };
+const detect = input => detectPendingBrands({ canonical, ...input });
+const newBrand = { brand_code: "B2", brand_name: "New Brand" };
+
+test("new Cafe24 code is PENDING, not a canonical write; grandfathered entries untouched", () => {
+  assert.throws(() => detect({ cafe24Brands: {} }), /Invalid pending/);
+  const before = JSON.stringify(canonical);
+  const result = detect({ cafe24Brands: [newBrand] });
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].status, "PENDING");
+  assert.equal(result.candidates[0].sourceBrandCode, "B2");
+  assert.equal(JSON.stringify(canonical), before);
+});
+
+test("existing code, exact name, aliases and case/whitespace variants do not create false candidates", () => {
+  const result = detect({ cafe24Brands: [{ brand_code: " b1 ", brand_name: "renamed source" }], ecountLines: [
+    { BRAND: " KNOWN  alias " }, { productName: "[known] item" }, { productName: "Compat / item" }
+  ], compatibility: [{ id: "C1", name: "Compatibility" }], aliases: [{ alias: "Compat", brandId: "C1" }] });
+  assert.equal(result.candidates.length, 0);
+});
+
+test("unknown Cafe24 code sharing an accepted name still requires review, never gets approved", () => {
+  const result = detect({ cafe24Brands: [{ brand_code: "B2", brand_name: "Known" }] });
+  assert.deepEqual(result.candidates[0].possibleExistingCanonical, ["B1"]);
+  assert.equal(result.candidates[0].status, "PENDING");
+});
+
+test("repeated scan is stable; distinct source codes never merge by display name", () => {
+  const input = { cafe24Brands: [newBrand], products: [{ ...newBrand, product_no: 1, product_name: "item" }], ecountLines: [{ BRAND: "new brand" }] };
+  const first = detect(input);
+  const second = detect({ ...input, previous: first });
+  assert.equal(second.candidates.length, 1);
+  assert.equal(second.candidates[0].id, first.candidates[0].id);
+  assert.equal(second.candidates[0].relatedProductCount, first.candidates[0].relatedProductCount);
+  assert.equal(second.candidates[0].source, "BOTH");
+  const ecountOnly = detect({ previous: second, ecountLines: [{ BRAND: "NEW BRAND" }] });
+  assert.equal(ecountOnly.candidates.length, 1);
+  assert.equal(ecountOnly.candidates[0].id, first.candidates[0].id);
+  assert.equal(detect({ cafe24Brands: [newBrand, { ...newBrand, brand_code: "B3" }] }).candidates.length, 2);
+});
+
+test("ECOUNT-first candidate retains identity when unique Cafe24 code is later observed", () => {
+  const first = detect({ ecountLines: [{ BRAND: "New Brand" }] });
+  const second = detect({ previous: first, cafe24Brands: [newBrand], ecountLines: [{ BRAND: "new brand" }] });
+  assert.equal(second.candidates.length, 1);
+  assert.equal(second.candidates[0].id, first.candidates[0].id);
+  assert.equal(second.candidates[0].source, "BOTH");
+});
+
+test("conflicting aliases stay review candidates, including compatibility aliases", () => {
+  const result = detect({ compatibility: [{ id: "C1", name: "First" }, { id: "C2", name: "Second" }], aliases: [{ alias: "conflict", brandId: "C1" }, { alias: "conflict", brandId: "C2" }], ecountLines: [{ BRAND: "conflict" }] });
+  assert.equal(result.candidates[0].reviewReason, "ALIAS_CONFLICT");
+  assert.deepEqual(result.candidates[0].possibleExistingCanonical, []);
+});
+
+test("bracket, raw and slash collaboration candidates never become canonical brands", () => {
+  const before = JSON.stringify(canonical);
+  for (const productName of ["[A x B] item", "A X B / item"]) {
+    const c = detect({ ecountLines: [{ productName }] }).candidates[0];
+    assert.equal(c.reviewReason, "COLLABORATION");
+    assert.deepEqual(c.collabCandidates, ["A", "B"]);
+    assert.equal(c.status, "PENDING");
+  }
+  assert.equal(detect({ ecountLines: [{ BRAND: "A X B" }] }).candidates[0].reviewReason, "COLLABORATION");
+  assert.equal(detect({ ecountLines: [{ BRAND: "[A x B]" }] }).candidates[0].reviewReason, "COLLABORATION");
+  assert.equal(detect({ ecountLines: [{ candidates: ["A", "B"] }] }).candidates[0].reviewReason, "COLLABORATION");
+  assert.equal(detect({ canonical: { brands: [{ brand_code: "COL", brand_name: "A X B" }] }, ecountLines: [{ BRAND: "A X B" }] }).candidates.length, 0);
+  assert.equal(JSON.stringify(canonical), before);
+});
+
+test("QQQ and existing personal-payment policy excluded; gift/TAXFREE customer types do not erase brands", () => {
+  const r = detect({ ecountLines: [{ productName: "QQQ / item" }, { BRAND: "Other", customerName: "개인결제창(이름)" },
+    { BRAND: "GiftBrand", customerName: "기프트" }, { BRAND: "TaxBrand", customerName: "TAXFREE" }] });
+  assert.equal(r.scan.excluded, 2);
+  assert.equal(r.candidates.length, 2);
+});
+
+test("pending does not alter identity or drop unresolved net revenue", () => {
+  const lines = [{ productName: "Unknown / shirt", date: "2026-09-01", salesAmount: 12000, isOfflineRevenue: true },
+    { productName: "Unknown / return", date: "2026-09-01", salesAmount: -2000, isOfflineRevenue: true }];
+  const context = { brandMaster: canonical, brandRegistry: buildBrandRegistry(canonical), productRegistry: { entries: [] }, reviewQueue: null };
+  const before = mergeOfflineBrandSales({ offlineLines: lines, identityContext: context });
+  const queue = detect({ ecountLines: lines });
+  assert.equal(queue.candidates.length, 1);
+  const after = mergeOfflineBrandSales({ offlineLines: lines, identityContext: context });
+  assert.deepEqual(after, before);
+  assert.equal(after.find(b => b.brand_code === "UNASSIGNED").salesAmount, 10000);
+});
+
+test("queue persistence, concurrent refresh, dry-run and failure preserve canonical bytes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pending-brand-test-"));
+  try {
+    const bytes = JSON.stringify(canonical);
+    await writeFile(join(dir, "brand-master.json"), bytes);
+    assert.equal((await readPendingBrands(dir)).candidates.length, 0);
+    assert.deepEqual(await readdir(dir), ["brand-master.json"]);
+    const load = async () => ({ canonical, cafe24Brands: [newBrand] });
+    await refreshPendingBrands(dir, load, { dryRun: true });
+    assert.deepEqual(await readdir(dir), ["brand-master.json"]);
+    await Promise.all([refreshPendingBrands(dir, load), refreshPendingBrands(dir, load)]);
+    assert.equal((await readPendingBrands(dir)).candidates.length, 1);
+    const saved = await readFile(join(dir, "pending-brand-queue.json"), "utf8");
+    await assert.rejects(refreshPendingBrands(dir, async () => { throw new Error("source unavailable"); }));
+    assert.equal(await readFile(join(dir, "pending-brand-queue.json"), "utf8"), saved);
+    assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), bytes);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+function http(port, path, { method = "GET", token } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: "127.0.0.1", port, path, method, headers: { host: "production.example", ...(token ? { "x-samplas-internal-token": token } : {}) } }, res => {
+      let body = "";
+      res.on("data", chunk => body += chunk);
+      res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(body) }));
+    });
+    req.on("error", reject); req.end();
+  });
+}
+
+test("real HTTP read/refresh contract: auth, pure GET, missing canonical and grandfathered flags", { timeout: 30000 }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pending-brand-http-"));
+  const proxy = createServer((req, res) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ brands: [newBrand], products: [], orders: [], manufacturers: [], totals: {} })); });
+  proxy.listen(0, "127.0.0.1"); await once(proxy, "listening");
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const portProbe = createServer(); portProbe.listen(0, "127.0.0.1"); await once(portProbe, "listening");
+  const port = portProbe.address().port; await new Promise(resolve => portProbe.close(resolve));
+  let child;
+  try {
+    for (const name of ["product-registry.json", "product-registry-review-queue.json", "brand-commercial-policy.json", "brand-sourcing-master.json"]) await writeFile(join(dir, name), JSON.stringify({ entries: [], brands: [] }));
+    await writeFile(join(dir, "brand-master.json"), JSON.stringify(canonical));
+    await writeFile(join(dir, "cafe24-product-catalog.json"), JSON.stringify({ products: [{ ...newBrand, product_no: 1, product_name: "[New Brand] item" }] }));
+    child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: dir, env: { ...process.env, WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, CAFE24_PROXY_SECRET: "test-only", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" }, stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    child.stderr.on("data", c => stderr += c);
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("server start timeout")), 15000);
+      child.stdout.on("data", c => { if (String(c).includes("running at")) { clearTimeout(timer); resolve(); } });
+      child.once("exit", code => { clearTimeout(timer); reject(new Error(`server exit ${code}: ${stderr}`)); });
+    });
+    const before = await readFile(join(dir, "brand-master.json"), "utf8");
+    const read = await http(port, "/api/brand-master");
+    assert.equal(read.status, 200);
+    assert.equal(read.body.brands.length, 1);
+    assert.equal(read.body.brands[0].active, true);
+    assert.equal((await http(port, "/api/pending-brands")).body.candidates.length, 0);
+    assert.equal((await http(port, "/api/pending-brands/refresh", { method: "POST" })).status, 401);
+    assert.equal((await http(port, "/api/pending-brands/refresh")).status, 405);
+    const dry = await http(port, "/api/pending-brands/refresh?dryRun=1", { method: "POST", token: "test-only" });
+    assert.equal(dry.status, 200); assert.equal(dry.body.candidates.length, 1);
+    assert.equal((await http(port, "/api/pending-brands")).body.candidates.length, 0);
+    const refresh = await http(port, "/api/pending-brands/refresh", { method: "POST", token: "test-only" });
+    assert.equal(refresh.status, 200); assert.equal(refresh.body.candidates.length, 1);
+    assert.equal((await http(port, "/api/pending-brands")).body.candidates.length, 1);
+    for (const path of ["/api/diagnostics/brand-sales?since=2026-09-01&until=2026-09-02", "/api/promotion/1/summary?since=2026-09-01&until=2026-09-02"]) {
+      const response = await http(port, path);
+      assert.equal(response.status, 200, JSON.stringify(response.body));
+      assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), before);
+    }
+    assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), before);
+    await rm(join(dir, "brand-master.json"));
+    assert.equal((await http(port, "/api/brand-master")).body.brands.length, 0);
+    await assert.rejects(readFile(join(dir, "brand-master.json")), { code: "ENOENT" });
+  } finally {
+    if (child && child.exitCode === null) { child.kill(); await once(child, "exit"); }
+    await new Promise(resolve => proxy.close(resolve));
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("all existing read consumers use the pure reader; no seed write or active mutation remains", async () => {
+  const source = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+  const reader = source.split("async function readBrandMasterWithSeed() {")[1].split("async function saveBrandMasterUpdates")[0];
+  assert.doesNotMatch(reader, /writeBrandMasterFile|writeJsonAtomic|fetchCafe24BrandList|active\s*[:=]\s*false/);
+  for (const [start, end] of [["async function buildBrandSalesDiagnostics", "async function buildPromotionSummary"], ["async function buildPromotionSummary", "export async function buildCanonicalTotalSales"]]) {
+    const body = source.split(start)[1].split(end)[0];
+    assert.match(body, /readBrandMasterWithSeed\(\)/);
+    assert.doesNotMatch(body, /writeBrandMasterFile\(/);
+  }
+});

@@ -1,0 +1,156 @@
+import { readFile, mkdir, writeFile, rename, unlink } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
+import { buildBrandRegistry, resolveBrand, normalizeBrandKey, normalizeBrandName, extractBracketBrandCandidate, extractSlashBrandCandidate } from "./brand-engine.mjs";
+import { detectPersonalPayment } from "./load-ecount-offline-sales.mjs";
+import { readEcountOfflineSalesSnapshot } from "./read-ecount-offline-sales-snapshot.mjs";
+
+async function readJson(file, fallback) {
+  try { return JSON.parse(await readFile(file, "utf8")); }
+  catch (error) { if (error.code === "ENOENT") return fallback; throw error; }
+}
+
+export async function readPendingBrands(workDir) {
+  const queue = await readJson(join(workDir, "pending-brand-queue.json"), { version: 1, candidates: [] });
+  if (queue.version !== 1 || !Array.isArray(queue.candidates) || queue.candidates.some(c => !c.id || c.status !== "PENDING")) throw new Error("Invalid pending brand queue");
+  return queue;
+}
+
+function candidateFrom(row, source) {
+  const productName = row.product_name || row.productName || row.name || "";
+  const explicit = row.rawBrandName || row.brand_name || row.brandName || row.BRAND || "";
+  const parsed = extractBracketBrandCandidate(explicit || productName) || extractSlashBrandCandidate(explicit || productName);
+  const structured = Array.isArray(row.candidates) && row.candidates.length > 1 ? row.candidates.map(normalizeBrandName).join(" X ") : "";
+  const raw = normalizeBrandName(structured || (parsed?.type === "collab" ? parsed.candidates.join(" X ") : parsed?.candidate) || explicit || "");
+  const collaboration = extractBracketBrandCandidate(`[${raw}]`);
+  return { source, rawBrandName: raw, sourceBrandCode: source === "CAFE24" ? String(row.brand_code || row.brandCode || row.code || "").trim() : null,
+    productName, productId: String(row.product_no || row.productNo || row.productCode || row.ecountProdCd || productName),
+    collabCandidates: collaboration?.type === "collab" ? collaboration.candidates : [] };
+}
+
+// Detection is deliberately separate from attribution: no resolver consumes this queue.
+export function detectPendingBrands({ canonical, compatibility = [], aliases = [], cafe24Brands = [], products = [], ecountLines = [], previous = { candidates: [] }, now = new Date().toISOString() }) {
+  if (!(Array.isArray(canonical) || Array.isArray(canonical?.brands)) ||
+      [compatibility, aliases, cafe24Brands, products, ecountLines, previous.candidates].some(value => !Array.isArray(value))) throw new Error("Invalid pending brand detection source");
+  const registry = buildBrandRegistry(canonical);
+  const compat = buildBrandRegistry({ brands: compatibility.map(b => ({ brand_code: b.id, brand_name: b.name, active: b.active, name_aliases: aliases.filter(a => a.brandId === b.id).map(a => a.alias) })) });
+  const conflicts = new Set();
+  const owners = new Map();
+  for (const r of [registry, compat]) for (const b of r.brands) for (const name of [b.name, ...b.aliases]) {
+    const key = normalizeBrandKey(name);
+    if (!key) continue;
+    if (owners.has(key) && owners.get(key) !== b.id) conflicts.add(key);
+    else owners.set(key, b.id);
+  }
+  const knownCodes = new Set(registry.brands.map(b => normalizeBrandKey(b.id)));
+  const observations = [];
+  const excluded = [];
+  for (const [source, rows] of [["CAFE24", cafe24Brands.map(b => ({ ...b, brand_name: b.brand_name || b.brandName || b.name }))], ["CAFE24", products], ["ECOUNT", ecountLines]]) {
+    for (const row of rows) {
+      const c = candidateFrom(row, source);
+      const qqq = /^QQQ/i.test(String(row.productCode || row.ecountProdCd || "")) || /^QQQ(?:\s|$|\/)/i.test(c.rawBrandName || c.productName);
+      if (qqq || (source === "ECOUNT" && (row.isPersonalPayment === true || detectPersonalPayment(row.customerName).isPersonalPayment))) {
+        excluded.push({ source, reason: qqq ? "QQQ" : "PERSONAL_PAYMENT" }); continue;
+      }
+      if (source === "CAFE24" && (!c.sourceBrandCode || c.sourceBrandCode === "B0000000" || knownCodes.has(normalizeBrandKey(c.sourceBrandCode)))) continue;
+      if (source === "ECOUNT" && !c.rawBrandName) continue;
+      const key = normalizeBrandKey(c.rawBrandName);
+      const hit = conflicts.has(key) ? null : resolveBrand(c.rawBrandName, registry) || resolveBrand(c.rawBrandName, compat);
+      // A grandfathered exact whole collaboration name is already accepted;
+      // never resolve its individual participants to a single brand.
+      if (source === "ECOUNT" && hit) continue;
+      observations.push({ ...c, reviewReason: c.collabCandidates.length ? "COLLABORATION" : conflicts.has(key) ? "ALIAS_CONFLICT" : "UNRESOLVED", possibleExistingCanonical: hit && knownCodes.has(normalizeBrandKey(hit.brandId)) ? [hit.brandId] : [] });
+    }
+  }
+  // A Cafe24 code is the stable key. Join ECOUNT spelling only when there is exactly
+  // one such code; equal display names must not merge competing Cafe24 identities.
+  const codesByName = new Map();
+  const cafe24Names = observations.filter(c => c.source === "CAFE24");
+  for (const c of previous.candidates) if (c.sourceBrandCode) {
+    for (const rawBrandName of [c.rawBrandName, ...c.cafe24Variants, ...c.ecountVariants]) cafe24Names.push({ sourceBrandCode: c.sourceBrandCode, rawBrandName });
+  }
+  for (const c of cafe24Names) {
+    const key = normalizeBrandKey(c.rawBrandName);
+    if (!key) continue;
+    if (!codesByName.has(key)) codesByName.set(key, new Set());
+    codesByName.get(key).add(normalizeBrandKey(c.sourceBrandCode));
+  }
+  const candidates = new Map(previous.candidates.map(c => [c.id, structuredClone(c)]));
+  const seenProducts = new Map();
+  const observedIds = new Set();
+  for (const c of observations) {
+    const codes = codesByName.get(normalizeBrandKey(c.rawBrandName));
+    const code = c.sourceBrandCode || (codes?.size === 1 ? [...codes][0] : null);
+    const identity = code ? `cafe24:${normalizeBrandKey(code)}` : `ecount:${normalizeBrandKey(c.rawBrandName)}`;
+    const prior = [...candidates.values()].filter(p => code ?
+      normalizeBrandKey(p.sourceBrandCode) === normalizeBrandKey(code) || (!p.sourceBrandCode && codes?.size === 1 && normalizeBrandKey(p.rawBrandName) === normalizeBrandKey(c.rawBrandName)) :
+      !p.sourceBrandCode && normalizeBrandKey(p.rawBrandName) === normalizeBrandKey(c.rawBrandName));
+    const id = prior.length === 1 ? prior[0].id : createHash("sha256").update(identity).digest("hex").slice(0, 24);
+    observedIds.add(id);
+    const candidate = candidates.get(id) || { id, detectedAt: now, source: c.source, rawBrandName: c.rawBrandName, sourceBrandCode: c.sourceBrandCode,
+      cafe24Variants: [], ecountVariants: [], relatedProductCount: 0, relatedProductExamples: [], possibleExistingCanonical: [], status: "PENDING" };
+    candidate.lastSeenAt = now;
+    if (candidate.source !== c.source) candidate.source = "BOTH";
+    candidate.sourceBrandCode ||= c.sourceBrandCode;
+    candidate.rawBrandName ||= c.rawBrandName;
+    const variants = c.source === "CAFE24" ? candidate.cafe24Variants : candidate.ecountVariants;
+    if (c.rawBrandName && !variants.includes(c.rawBrandName)) variants.push(c.rawBrandName);
+    if (!candidate.reviewReason || c.reviewReason !== "UNRESOLVED") candidate.reviewReason = c.reviewReason;
+    candidate.collabCandidates = [...new Set([...(candidate.collabCandidates || []), ...c.collabCandidates])];
+    candidate.possibleExistingCanonical = [...new Set([...candidate.possibleExistingCanonical, ...c.possibleExistingCanonical])];
+    if (!seenProducts.has(id)) seenProducts.set(id, new Set());
+    if (c.productName) {
+      seenProducts.get(id).add(`${c.source}:${c.productId}`);
+      if (candidate.relatedProductExamples.length < 5 && !candidate.relatedProductExamples.includes(c.productName)) candidate.relatedProductExamples.push(c.productName);
+    }
+    candidate.relatedProductCount = Math.max(candidate.relatedProductCount, seenProducts.get(id).size);
+    candidates.set(id, candidate);
+  }
+  const all = [...candidates.values()].sort((a, b) => a.id.localeCompare(b.id));
+  const observed = all.filter(c => observedIds.has(c.id));
+  return { version: 1, updatedAt: now, candidates: all, scan: { observed: observed.length,
+    cafe24: observed.filter(c => c.source === "CAFE24").length, ecount: observed.filter(c => c.source === "ECOUNT").length,
+    both: observed.filter(c => c.source === "BOTH").length, review: observed.filter(c => c.reviewReason !== "UNRESOLVED").length,
+    excluded: excluded.length, exclusions: excluded } };
+}
+
+export async function loadPendingBrandSources(workDir, month) {
+  const canonical = await readJson(join(workDir, "brand-master.json"), { brands: [] });
+  const compatibility = await readJson(join(workDir, "intelligence/brand-master-list.json"), []);
+  const aliases = await readJson(join(workDir, "intelligence/brand-aliases.json"), []);
+  const catalog = await readJson(join(workDir, "cafe24-product-catalog.json"), {});
+  const products = Array.isArray(catalog) ? catalog : Array.isArray(catalog.products) ? catalog.products : Object.values(catalog.products || {});
+  const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+  return { canonical, compatibility, aliases, products, ecountLines: snapshot?.salesLines || [], provenance: { month, productCount: products.length, ecountLineCount: snapshot?.salesLines?.length || 0, ecountAvailable: Boolean(snapshot), catalogGeneratedAt: catalog.generatedAt || catalog.updatedAt || null, ecountSources: snapshot?.sources || [], ecountImportedAt: snapshot?.importedAt || null } };
+}
+
+// Serialize local refreshes and atomically replace only the queue. Failed scans
+// leave its previous contents intact. ponytail: single-process writer; use a
+// cross-process lock if multiple server processes ever share this work directory.
+let refreshTail = Promise.resolve();
+export function refreshPendingBrands(workDir, loadSources, { dryRun = false } = {}) {
+  const task = refreshTail.catch(() => {}).then(async () => {
+    const sources = await loadSources();
+    const result = detectPendingBrands({ ...sources, previous: await readPendingBrands(workDir) });
+    result.provenance = sources.provenance || null;
+    if (!dryRun) {
+      await mkdir(workDir, { recursive: true });
+      const file = join(workDir, "pending-brand-queue.json");
+      const temp = `${file}.${randomUUID()}.tmp`;
+      try { await writeFile(temp, `${JSON.stringify(result, null, 2)}\n`, { flag: "wx" }); await rename(temp, file); }
+      finally { await unlink(temp).catch(error => { if (error.code !== "ENOENT") throw error; }); }
+    }
+    return { ...result, dryRun };
+  });
+  refreshTail = task;
+  return task;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  // CLI is intentionally dry-run only; persistence requires the authenticated API.
+  const workDir = resolve(process.argv[2] || "work");
+  const month = process.argv[3] || new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 7);
+  const result = await refreshPendingBrands(workDir, () => loadPendingBrandSources(workDir, month), { dryRun: true });
+  console.log(JSON.stringify(result, null, 2));
+}

@@ -48,6 +48,7 @@ import {
   trustedCafe24OrderDate
 } from "./scripts/cafe24-order-amount.mjs";
 import { normalizeBrandCode, normalizeBrandName, parseBrandAliases } from "./scripts/brand-engine.mjs";
+import { readPendingBrands, refreshPendingBrands, loadPendingBrandSources } from "./scripts/pending-brand-queue.mjs";
 import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
 // STEP63-4: Brand Dashboard가 이미 갖고 있는 Cafe24 brand_code 직접 매칭(productBrandCode/
 // productBrandMapCode)은 절대 재해석하지 않는다 — 그 두 경로가 모두 실패해 "UNASSIGNED"로
@@ -305,6 +306,21 @@ const server = isMainModule ? createServer(async (req, res) => {
         orderLimit: url.searchParams.get("orderLimit") ? Number(url.searchParams.get("orderLimit")) : undefined
       });
       return json(res, data);
+    }
+    if (url.pathname === "/api/pending-brands") {
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      return json(res, { ok: true, ...(await readPendingBrands(workDir)) });
+    }
+    if (url.pathname === "/api/pending-brands/refresh") {
+      if (req.method !== "POST") return json(res, { error: "Method Not Allowed" }, 405);
+      if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      const data = await refreshPendingBrands(workDir, async () => {
+        const sources = await loadPendingBrandSources(workDir, currentMonth());
+        const seed = await readBrandSeedProducts();
+        return { ...sources, products: seed.products.map(product => ({ ...product, brand_code: productBrandCode(product) })), cafe24Brands: await fetchCafe24BrandList(),
+          provenance: { ...sources.provenance, productSource: seed.source, productCount: seed.products.length, cafe24BrandsFetchedAt: new Date().toISOString() } };
+      }, { dryRun: url.searchParams.get("dryRun") === "1" });
+      return json(res, { ok: true, ...data });
     }
     if (url.pathname === "/api/brand-master") {
       if (req.method === "POST") {
@@ -2833,79 +2849,27 @@ function buildSuggestedBrandMaster(products = []) {
 }
 
 async function readBrandMasterWithSeed() {
+  // Compatibility response only: source detection belongs to explicit pending refresh.
+  // Existing suggested entries and active flags are grandfathered, never rewritten here.
   const existing = await readBrandMasterFile();
-  const existingMap = brandMasterEntriesToMap(existing.brands);
   const seed = await readBrandSeedProducts();
-  const suggested = buildSuggestedBrandMaster(seed.products);
-  let changed = !existsSync(brandMasterFile());
-
-  try {
-    const cafe24Brands = await fetchCafe24BrandList();
-    for (const brand of cafe24Brands) {
-      const brand_code = normalizeBrandCode(brand.brand_code || brand.brandCode || brand.code);
-      if (!brand_code || brand_code === "B0000000" || existingMap.has(brand_code)) continue;
-      const entry = normalizeBrandMasterEntry({
-        brand_code,
-        brand_name: brand.brand_name || brand.brandName || brand.name || "",
-        name_aliases: [],
-        instagram_tag: "",
-        active: true,
-        nameSource: "suggested"
-      });
-      if (entry) {
-        existingMap.set(brand_code, entry);
-        changed = true;
-      }
-    }
-
-    // (2026-07-10 Cafe24 비활성 동기화) 기존 brand_code 중 현재 Cafe24 제조사 목록에
-    // 더 이상 없는 항목은 삭제하지 않고 active=false만 반영한다. brand_name/
-    // name_aliases/instagram_tag/nameSource는 그대로 둔다. 현재 목록에 여전히 있는
-    // brand_code나 이미 active=false인 항목, 그리고 항상 별도 취급되는 미분류 코드
-    // B0000000은 건드리지 않는다 — 사용자가 수동으로 false로 바꾼 것을 다시 true로
-    // 되돌리는 로직이 아니며, 애초에 여기서는 active를 true로 되돌리지 않는다.
-    const liveBrandCodes = new Set(
-      cafe24Brands
-        .map((brand) => normalizeBrandCode(brand.brand_code || brand.brandCode || brand.code))
-        .filter(Boolean)
-    );
-    for (const [brand_code, entry] of existingMap) {
-      if (brand_code === "B0000000") continue;
-      if (liveBrandCodes.has(brand_code)) continue;
-      if (entry.active === false) continue;
-      existingMap.set(brand_code, { ...entry, active: false });
-      changed = true;
-    }
-  } catch (error) {
-    await logApiError("cafe24_brand_master_seed", error, { stage: "brands_api_seed" });
-  }
-
-  for (const entry of suggested) {
-    if (!existingMap.has(entry.brand_code)) {
-      existingMap.set(entry.brand_code, entry);
-      changed = true;
-    }
-  }
-
-  const brands = Array.from(existingMap.values()).sort((left, right) => left.brand_code.localeCompare(right.brand_code));
-  const savedBrands = changed ? await writeBrandMasterFile(brands) : brands;
+  const brands = existing.brands;
   const withBrandCode = seed.products.filter((product) => productBrandCode(product)).length;
-  const confirmedCount = savedBrands.filter((brand) => brand.nameSource === "confirmed").length;
-
+  const confirmedCount = brands.filter((brand) => brand.nameSource === "confirmed").length;
   return {
     ok: true,
-    updatedAt: changed ? new Date().toISOString() : existing.updatedAt,
+    updatedAt: existing.updatedAt,
     source: "brand-master",
     seedSource: seed.source,
-    brandCount: savedBrands.length,
-    suggestedCount: savedBrands.length - confirmedCount,
+    brandCount: brands.length,
+    suggestedCount: brands.length - confirmedCount,
     confirmedCount,
     brandCodeCoverage: {
       productCount: seed.products.length,
       withBrandCode,
       missingBrandCode: seed.products.length - withBrandCode
     },
-    brands: savedBrands
+    brands
   };
 }
 
