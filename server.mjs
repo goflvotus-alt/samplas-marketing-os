@@ -13,7 +13,8 @@ import {
   handleIntelligenceRequest,
   classifyClientType,
   classifyClientEntity,
-  isGiftSalesLine
+  isGiftSalesLine,
+  buildIntelligenceBrandRegistry
 } from "./intelligence-service.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
@@ -48,7 +49,7 @@ import {
   trustedCafe24OrderDate
 } from "./scripts/cafe24-order-amount.mjs";
 import { normalizeBrandCode, normalizeBrandName, parseBrandAliases } from "./scripts/brand-engine.mjs";
-import { readPendingBrands, refreshPendingBrands, loadPendingBrandSources } from "./scripts/pending-brand-queue.mjs";
+import { readPendingBrands, refreshPendingBrands, loadPendingBrandSources, reviewPendingBrand, withPendingBrandWrite, approvedCafe24BrandCode } from "./scripts/pending-brand-queue.mjs";
 import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
 // STEP63-4: Brand Dashboard가 이미 갖고 있는 Cafe24 brand_code 직접 매칭(productBrandCode/
 // productBrandMapCode)은 절대 재해석하지 않는다 — 그 두 경로가 모두 실패해 "UNASSIGNED"로
@@ -306,6 +307,11 @@ const server = isMainModule ? createServer(async (req, res) => {
         orderLimit: url.searchParams.get("orderLimit") ? Number(url.searchParams.get("orderLimit")) : undefined
       });
       return json(res, data);
+    }
+    if (url.pathname === "/api/pending-brands/review") {
+      if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
+      if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      return json(res, await reviewPendingBrand(workDir, await readJsonBody(req), buildIntelligenceBrandRegistry));
     }
     if (url.pathname === "/api/pending-brands") {
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
@@ -2717,7 +2723,8 @@ function normalizeBrandMasterEntry(entry = {}, fallbackCode = "") {
     name_aliases: parseBrandAliases(entry.name_aliases),
     instagram_tag: normalizeBrandName(entry.instagram_tag),
     active: entry.active === undefined ? true : Boolean(entry.active),
-    nameSource: entry.nameSource === "confirmed" ? "confirmed" : "suggested"
+    nameSource: entry.nameSource === "confirmed" ? "confirmed" : "suggested",
+    ...(Array.isArray(entry.sourceCafe24Codes) ? { sourceCafe24Codes: entry.sourceCafe24Codes.map(normalizeBrandCode).filter(Boolean) } : {})
   };
 }
 
@@ -2874,6 +2881,7 @@ async function readBrandMasterWithSeed() {
 }
 
 async function saveBrandMasterUpdates(updates = []) {
+  return withPendingBrandWrite(async () => {
   const current = await readBrandMasterWithSeed();
   const map = brandMasterEntriesToMap(current.brands);
 
@@ -2903,6 +2911,7 @@ async function saveBrandMasterUpdates(updates = []) {
     confirmedCount,
     brands
   };
+  });
 }
 
 async function readProductBrandMap() {
@@ -3429,7 +3438,7 @@ function matchCafe24OrdersToProducts(orders = [], catalog = [], context = {}) {
 // 여기서도 매출 합산 로직 자체는 건드리지 않고 brand_code만 채운다).
 function resolveOnlineProductBrandCode(product, productNo, productBrandMap, identityResolverContext) {
   const directCode = productBrandCode(product) || productBrandMapCode(productBrandMap, productNo);
-  if (directCode) return directCode;
+  if (directCode) return approvedCafe24BrandCode(directCode, identityResolverContext?.brandMaster);
   if (!identityResolverContext) return "UNASSIGNED";
   const identity = resolveIdentity(
     { productName: productDisplayName(product), cafe24ProductNo: productNo },
@@ -3616,7 +3625,7 @@ function allocateCanonicalPaidSalesForOrder(order = {}) {
   return { activeItems, orderPaidAmount, shippingAmount, allocatedProductPaidAmount, difference, matched: difference === 0 };
 }
 
-function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
+function buildBrandSalesInputsFromOrders(orders = [], catalog = [], identityResolverContext = null) {
   const catalogForBrandSales = [...catalog];
   const byProductNo = new Map();
   for (const product of catalogForBrandSales) {
@@ -3660,7 +3669,7 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = []) {
       if (orderId) entry.orderIds.add(String(orderId));
       salesByProduct.set(productKey, entry);
 
-      const brand_code = product ? productBrandCode(product) || "UNASSIGNED" : "UNASSIGNED";
+      const brand_code = product ? approvedCafe24BrandCode(productBrandCode(product), identityResolverContext?.brandMaster) || "UNASSIGNED" : "UNASSIGNED";
       const orderKey = String(orderId || "");
       if (orderKey) {
         const brandOrders = brandOrderHistory.get(brand_code) || new Map();
@@ -3750,7 +3759,7 @@ async function buildBrandSalesDiagnostics(since, until) {
       ordersSource = cachedOrders?.source || ordersSource;
     }
     const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
-    const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
+    const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog, identityResolverContext);
     const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode, identityResolverContext)
       .map((brand) => ({ ...brand, orderHistory: brandSalesInput.brandOrderHistory?.[brand.brand_code] || [] }));
     const brandNameByCode = new Map(brands.map((brand) => [brand.brand_code, brand.brand_name]));
@@ -3841,7 +3850,7 @@ async function buildBrandSalesDiagnostics(since, until) {
   }
   const catalog = catalogResult.products || [];
   const { productBrandMap, diagnostics: productBrandBackfill } = await backfillProductBrandMap(orders, catalog);
-  const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog);
+  const brandSalesInput = buildBrandSalesInputsFromOrders(orders, catalog, identityResolverContext);
   const brands = aggregateCafe24BrandSalesByBrandCode(brandSalesInput.catalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, manufacturerNameByCode, identityResolverContext)
     .map((brand) => ({ ...brand, orderHistory: brandSalesInput.brandOrderHistory?.[brand.brand_code] || [] }));
   const brandNameByCode = new Map(brands.map((brand) => [brand.brand_code, brand.brand_name]));
@@ -3945,7 +3954,7 @@ async function buildPromotionSummary(categoryNo, since, until) {
   }
 
   const { productBrandMap } = await backfillProductBrandMap(orders, catalog);
-  const brandSalesInput = buildBrandSalesInputsFromOrders(orders, promotionCatalog);
+  const brandSalesInput = buildBrandSalesInputsFromOrders(orders, promotionCatalog, identityResolverContext);
 
   const brands = aggregateCafe24BrandSalesByBrandCode(promotionCatalog, brandSalesInput.salesByProduct, brandMaster, productBrandMap, new Map(), identityResolverContext);
   const brandNameByCode = new Map(brands.map((brand) => [brand.brand_code, brand.brand_name]));

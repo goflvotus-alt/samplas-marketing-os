@@ -2,7 +2,7 @@ import { readFile, mkdir, writeFile, rename, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { buildBrandRegistry, resolveBrand, normalizeBrandKey, normalizeBrandName, extractBracketBrandCandidate, extractSlashBrandCandidate } from "./brand-engine.mjs";
+import { buildBrandRegistry, resolveBrand, normalizeBrandKey, normalizeBrandName, parseBrandAliases, extractBracketBrandCandidate, extractSlashBrandCandidate } from "./brand-engine.mjs";
 import { detectPersonalPayment } from "./load-ecount-offline-sales.mjs";
 import { readEcountOfflineSalesSnapshot } from "./read-ecount-offline-sales-snapshot.mjs";
 
@@ -13,7 +13,7 @@ async function readJson(file, fallback) {
 
 export async function readPendingBrands(workDir) {
   const queue = await readJson(join(workDir, "pending-brand-queue.json"), { version: 1, candidates: [] });
-  if (queue.version !== 1 || !Array.isArray(queue.candidates) || queue.candidates.some(c => !c.id || c.status !== "PENDING")) throw new Error("Invalid pending brand queue");
+  if (queue.version !== 1 || !Array.isArray(queue.candidates) || queue.candidates.some(c => !c.id || !["PENDING", "APPROVED", "LINKED", "IGNORED"].includes(c.status))) throw new Error("Invalid pending brand queue");
   return queue;
 }
 
@@ -53,13 +53,16 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
       if (qqq || (source === "ECOUNT" && (row.isPersonalPayment === true || detectPersonalPayment(row.customerName).isPersonalPayment))) {
         excluded.push({ source, reason: qqq ? "QQQ" : "PERSONAL_PAYMENT" }); continue;
       }
-      if (source === "CAFE24" && (!c.sourceBrandCode || c.sourceBrandCode === "B0000000" || knownCodes.has(normalizeBrandKey(c.sourceBrandCode)))) continue;
+      const reviewedObservation = previous.candidates.some(p => source === "CAFE24"
+        ? normalizeBrandKey(p.sourceBrandCode) === normalizeBrandKey(c.sourceBrandCode)
+        : [p.rawBrandName, ...(p.ecountVariants || [])].some(name => normalizeBrandKey(name) === normalizeBrandKey(c.rawBrandName)));
+      if (source === "CAFE24" && (!c.sourceBrandCode || c.sourceBrandCode === "B0000000" || (knownCodes.has(normalizeBrandKey(c.sourceBrandCode)) && !reviewedObservation))) continue;
       if (source === "ECOUNT" && !c.rawBrandName) continue;
       const key = normalizeBrandKey(c.rawBrandName);
       const hit = conflicts.has(key) ? null : resolveBrand(c.rawBrandName, registry) || resolveBrand(c.rawBrandName, compat);
       // A grandfathered exact whole collaboration name is already accepted;
       // never resolve its individual participants to a single brand.
-      if (source === "ECOUNT" && hit) continue;
+      if (source === "ECOUNT" && hit && !reviewedObservation) continue;
       observations.push({ ...c, reviewReason: c.collabCandidates.length ? "COLLABORATION" : conflicts.has(key) ? "ALIAS_CONFLICT" : "UNRESOLVED", possibleExistingCanonical: hit && knownCodes.has(normalizeBrandKey(hit.brandId)) ? [hit.brandId] : [] });
     }
   }
@@ -129,8 +132,13 @@ export async function loadPendingBrandSources(workDir, month) {
 // leave its previous contents intact. ponytail: single-process writer; use a
 // cross-process lock if multiple server processes ever share this work directory.
 let refreshTail = Promise.resolve();
+export function withPendingBrandWrite(task) {
+  const result = refreshTail.catch(() => {}).then(task);
+  refreshTail = result;
+  return result;
+}
 export function refreshPendingBrands(workDir, loadSources, { dryRun = false } = {}) {
-  const task = refreshTail.catch(() => {}).then(async () => {
+  return withPendingBrandWrite(async () => {
     const sources = await loadSources();
     const result = detectPendingBrands({ ...sources, previous: await readPendingBrands(workDir) });
     result.provenance = sources.provenance || null;
@@ -143,8 +151,119 @@ export function refreshPendingBrands(workDir, loadSources, { dryRun = false } = 
     }
     return { ...result, dryRun };
   });
-  refreshTail = task;
-  return task;
+}
+
+function invalidDecision(message) { throw Object.assign(new Error(message), { status: 400 }); }
+
+export function approvedCafe24BrandCode(code, canonical) {
+  const brands = Array.isArray(canonical) ? canonical : canonical?.brands || [];
+  // Existing primary keys always win. Only explicit approval metadata can map a
+  // new source code; ordinary name aliases never reinterpret Cafe24 keys.
+  if (brands.some(b => b.brand_code === code)) return code;
+  const matches = brands.filter(b => b.sourceCafe24Codes?.includes(code));
+  return matches.length === 1 ? matches[0].brand_code : code;
+}
+
+// Pure prevalidation: no source file is touched until every alias/target is valid.
+export function planPendingBrandDecision(canonical, queue, input, now = new Date().toISOString()) {
+  if (!input || !["NEW", "LINK", "IGNORE"].includes(input.action) || typeof input.id !== "string") invalidDecision("Invalid pending brand decision");
+  if (input.note !== undefined && (typeof input.note !== "string" || input.note.length > 1000)) invalidDecision("Invalid review note");
+  const nextQueue = structuredClone(queue);
+  const candidate = nextQueue.candidates.find(c => c.id === input.id);
+  if (!candidate) invalidDecision("Pending brand candidate not found");
+  if (candidate.status !== "PENDING") invalidDecision("Candidate already reviewed");
+  const nextCanonical = structuredClone(canonical);
+  const brands = Array.isArray(nextCanonical) ? nextCanonical : nextCanonical.brands;
+  if (!Array.isArray(brands)) invalidDecision("Invalid canonical Brand Master");
+  let target;
+  if (input.action !== "IGNORE") {
+    const name = typeof input.brandName === "string" ? normalizeBrandName(input.brandName) : "";
+    if (input.action === "NEW" && (!name || name.length > 200)) invalidDecision("Canonical brand name required (max 200 characters)");
+    if (input.action === "LINK") {
+      target = brands.find(b => b.brand_code === input.canonicalBrandCode);
+      if (!target) invalidDecision("Canonical target not found");
+    } else {
+      const code = candidate.sourceBrandCode || `MANUAL_${candidate.id}`;
+      if (brands.some(b => normalizeBrandKey(b.brand_code) === normalizeBrandKey(code))) invalidDecision("Canonical code already exists");
+      target = { brand_code: code, brand_name: name, name_aliases: [], instagram_tag: "", active: true, nameSource: "confirmed" };
+    }
+    const aliases = [...new Set([candidate.rawBrandName, ...(candidate.cafe24Variants || []), ...(candidate.ecountVariants || []), candidate.sourceBrandCode].filter(Boolean))];
+    // Compare all claims, including inactive/grandfathered entries. Never pick a
+    // preferred owner or let a registry's ambiguity fallback approve a conflict.
+    for (const value of [target.brand_name, ...aliases]) {
+      const key = normalizeBrandKey(value);
+      for (const brand of brands) {
+        if (brand.brand_code === target.brand_code) continue;
+        const claims = [brand.brand_code, brand.brand_name, ...parseBrandAliases(brand.name_aliases), ...(brand.sourceCafe24Codes || [])];
+        if (claims.some(claim => normalizeBrandKey(claim) === key)) invalidDecision(`Alias conflict: ${value}`);
+      }
+    }
+    target.name_aliases = [...new Set([...parseBrandAliases(target.name_aliases), ...aliases])];
+    if (candidate.sourceBrandCode && candidate.sourceBrandCode !== target.brand_code) {
+      target.sourceCafe24Codes = [...new Set([...(target.sourceCafe24Codes || []), candidate.sourceBrandCode])];
+    }
+    if (input.action === "NEW") brands.push(target);
+    if (!Array.isArray(nextCanonical)) nextCanonical.updatedAt = now;
+  }
+  Object.assign(candidate, { status: { NEW: "APPROVED", LINK: "LINKED", IGNORE: "IGNORED" }[input.action], approvalAction: input.action,
+    approvedAt: now, canonicalBrandCode: target?.brand_code || null, note: input.note || "" });
+  nextQueue.updatedAt = now;
+  return { canonical: nextCanonical, queue: nextQueue, candidate };
+}
+
+export function reviewPendingBrand(workDir, input, buildCompatibility, { replace = rename } = {}) {
+  return withPendingBrandWrite(async () => {
+    const canonicalFile = join(workDir, "brand-master.json");
+    const canonical = await readJson(canonicalFile, null);
+    const result = planPendingBrandDecision(canonical, await readPendingBrands(workDir), input);
+    const files = [];
+    if (input.action !== "IGNORE") {
+      const existingAliases = await readJson(join(workDir, "intelligence/brand-aliases.json"), []);
+      const target = (Array.isArray(result.canonical) ? result.canonical : result.canonical.brands).find(b => b.brand_code === result.candidate.canonicalBrandCode);
+      const claims = new Set([target.brand_name, ...parseBrandAliases(target.name_aliases)].map(normalizeBrandKey));
+      for (const alias of existingAliases) {
+        if (claims.has(normalizeBrandKey(alias.alias)) && alias.brandId !== target.brand_code) invalidDecision(`Compatibility alias conflict: ${alias.alias}`);
+      }
+      // Reuse the existing canonical -> compatibility builder; do not introduce
+      // another approval authority or a derived alias that disappears on restart.
+      const derived = buildCompatibility(Array.isArray(result.canonical) ? result.canonical : result.canonical.brands);
+      files.push([join(workDir, "intelligence/brand-master-list.json"), derived.brands],
+        [join(workDir, "intelligence/brand-aliases.json"), derived.aliases], [canonicalFile, result.canonical]);
+    }
+    files.push([join(workDir, "pending-brand-queue.json"), result.queue]);
+    const prepared = [];
+    const replaced = [];
+    let rollbackFailed = false;
+    try {
+      for (const [file, data] of files) {
+        const before = await readFile(file).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+        const temp = `${file}.${randomUUID()}.tmp`;
+        const backup = `${file}.${randomUUID()}.rollback`;
+        const entry = { file, temp, backup, before };
+        prepared.push(entry);
+        await mkdir(resolve(file, ".."), { recursive: true });
+        if (before !== null) await writeFile(backup, before, { flag: "wx" });
+        await writeFile(temp, `${JSON.stringify(data, null, 2)}\n`, { flag: "wx" });
+      }
+      for (const entry of prepared) { await replace(entry.temp, entry.file); replaced.push(entry); }
+    } catch (error) {
+      const rollbackErrors = [];
+      for (const entry of replaced.reverse()) {
+        try {
+          if (entry.before === null) await unlink(entry.file);
+          else await rename(entry.backup, entry.file);
+        } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+      }
+      rollbackFailed = rollbackErrors.length > 0;
+      if (rollbackFailed) throw new AggregateError([error, ...rollbackErrors], "Brand review rollback failed; preserved recovery files require operator recovery");
+      throw error;
+    } finally {
+      for (const entry of prepared) for (const file of rollbackFailed ? [entry.temp] : [entry.temp, entry.backup]) {
+        await unlink(file).catch(error => { if (error.code !== "ENOENT") throw error; });
+      }
+    }
+    return { ok: true, candidate: result.candidate };
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

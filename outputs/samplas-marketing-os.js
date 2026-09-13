@@ -10267,6 +10267,57 @@ function brandMasterRowHtml(brand, isSuspect, isInCatalog) {
   </tr>`;
 }
 
+async function renderPendingBrandReview(brands) {
+  const target = $("#pendingBrandReview");
+  if (!target) return;
+  const result = await getJson("/api/pending-brands", 12000);
+  if (!target.isConnected) return;
+  if (result.error) { target.textContent = `신규 브랜드 검토 오류: ${result.error}`; return; }
+  const candidates = result.candidates || [];
+  target.innerHTML = `<h3>신규 브랜드 검토 ${candidates.filter(c => c.status === "PENDING").length}</h3>
+    <label>필터 <select data-pending-filter><option value="PENDING">Pending</option><option value="CAFE24">Cafe24</option><option value="ECOUNT">ECOUNT</option><option value="BOTH">Both</option><option value="REVIEW">Collaboration/review</option><option value="REVIEWED">Reviewed</option></select></label>
+    <button type="button" class="button secondary" data-pending-refresh>신규 브랜드 다시 감지</button>
+    <div data-pending-rows></div>`;
+  const draw = () => {
+    const filter = target.querySelector("[data-pending-filter]").value;
+    const visible = candidates.filter(c => filter === "REVIEWED" ? c.status !== "PENDING" : c.status === "PENDING" && (filter === "PENDING" || (filter === "REVIEW" ? c.reviewReason !== "UNRESOLVED" : c.source === filter)));
+    target.querySelector("[data-pending-rows]").innerHTML = visible.map(c => `<article class="action-item" data-pending-id="${esc(c.id)}">
+      <strong>${esc(c.rawBrandName)} · ${esc(c.source)} · ${esc(c.status)}</strong>
+      <p>${esc(c.sourceBrandCode || "Cafe24 코드 없음")} · 최초 ${esc(c.detectedAt)} · 최근 ${esc(c.lastSeenAt)}</p>
+      <p>상품 ${apiNum(c.relatedProductCount)}개 · ${esc((c.relatedProductExamples || []).join(" / "))}</p>
+      <p>표기: ${esc([...(c.cafe24Variants || []), ...(c.ecountVariants || [])].join(" / "))}</p>
+      <p>기존 후보: ${esc((c.possibleExistingCanonical || []).map(code => `${brands.find(b => b.brand_code === code)?.brand_name || code} (${code})`).join(" / ") || "없음")}</p>
+      <p>${c.collabCandidates?.length ? "협업/복수 브랜드 검토 · " : ""}${esc(c.reviewReason || "")}</p>
+      ${c.status === "PENDING" ? `<label>등록 이름 <input data-pending-name maxlength="200" value="${esc(c.rawBrandName)}"></label>
+        <button type="button" class="button secondary" data-pending-action="NEW">신규 브랜드 등록</button>
+        <label>기존 브랜드 <select data-pending-target><option value="">선택하세요</option>${brands.map(b => `<option value="${esc(b.brand_code)}">${esc(b.brand_name)} (${esc(b.brand_code)})</option>`).join("")}</select></label>
+        <button type="button" class="button secondary" data-pending-action="LINK">기존 브랜드에 연결</button>
+        <label>검토 메모 <input data-pending-note maxlength="1000"></label>
+        <button type="button" class="button secondary" data-pending-action="IGNORE">무시</button>` : `<p>${esc(c.approvalAction)} · ${esc(c.approvedAt)} · ${esc(c.canonicalBrandCode || "")} · ${esc(c.note || "")}</p>`}
+    </article>`).join("") || "<p>해당 검토 항목이 없습니다.</p>";
+  };
+  target.querySelector("[data-pending-filter]").onchange = draw;
+  draw();
+  let busy = false;
+  target.onclick = async event => {
+    const button = event.target.closest("[data-pending-action], [data-pending-refresh]");
+    if (!button || busy) return;
+    const action = button.dataset.pendingAction;
+    const row = button.closest("[data-pending-id]");
+    const payload = action ? { id: row.dataset.pendingId, action, brandName: row.querySelector("[data-pending-name]").value,
+      canonicalBrandCode: row.querySelector("[data-pending-target]").value, note: row.querySelector("[data-pending-note]").value } : {};
+    if (action === "LINK" && !payload.canonicalBrandCode) { toast("기존 canonical 브랜드를 선택하세요."); return; }
+    if (!confirm(action ? `${action}: ${action === "NEW" ? payload.brandName : action === "LINK" ? payload.canonicalBrandCode : "무시"} — 검토 결정을 저장할까요?` : "신규 브랜드를 다시 감지할까요? 자동 승인은 하지 않습니다.")) return;
+    busy = true;
+    button.disabled = true;
+    const saved = await postJson(action ? "/api/pending-brands/review" : "/api/pending-brands/refresh", payload, 60000);
+    busy = false;
+    button.disabled = false;
+    if (saved.error) { toast(`검토 실패: ${saved.error}`); return; }
+    await renderBrandMasterSettings();
+  };
+}
+
 async function renderBrandMasterSettings() {
   const summaryTarget = $("#brandMasterSummary");
   const tableTarget = $("#brandMasterTable");
@@ -10304,7 +10355,7 @@ async function renderBrandMasterSettings() {
       의심 항목만 보기 (${suspectSet.size})
     </label>
   </div>`;
-  tableTarget.innerHTML = `<div class="brand-master-table-wrap">
+  tableTarget.innerHTML = `<section id="pendingBrandReview" aria-label="신규 브랜드 검토"></section><div class="brand-master-table-wrap">
     <table class="brand-master-table">
       <thead>
         <tr>
@@ -10320,6 +10371,7 @@ async function renderBrandMasterSettings() {
     </table>
   </div>`;
   applyBrandMasterSuspectFilter();
+  void renderPendingBrandReview(brands);
 
   // SUGGESTED 일괄 확정: nameSource가 "suggested"인 행 전체를 changed 여부와 무관하게
   // 현재 화면(DOM)에 표시 중인 값 그대로 POST한다. 기존 "저장 / 확정" 버튼의 changed

@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { withPendingBrandWrite } from "./scripts/pending-brand-queue.mjs";
 import { pathToFileURL } from "node:url";
 import { createHash, createHmac } from "node:crypto";
 import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
@@ -2772,7 +2773,7 @@ async function writeDecisionAndTimelineStores(decisionStore, timelineStore) {
 // 자동으로 재생성한다 — 과거의 bootstrap-once(`if (!existsSync(...))`) 설계를 대체.
 async function ensureBrandRegistryFresh() {
   if (brandRegistryRefreshPromise) return brandRegistryRefreshPromise;
-  brandRegistryRefreshPromise = ensureBrandRegistryFreshInner().finally(() => {
+  brandRegistryRefreshPromise = withPendingBrandWrite(ensureBrandRegistryFreshInner).finally(() => {
     brandRegistryRefreshPromise = null;
   });
   return brandRegistryRefreshPromise;
@@ -2922,6 +2923,7 @@ function selectBrandOwner(key, candidates) {
 
 export async function readBrandRegistry() {
   await ensureBrandRegistryFresh();
+  return withPendingBrandWrite(async () => {
   const brands = JSON.parse(await readFile(brandMasterListFile, "utf8"));
   const aliases = JSON.parse(await readFile(brandAliasesFile, "utf8"));
   validateBrandRegistry(brands, aliases);
@@ -2929,6 +2931,7 @@ export async function readBrandRegistry() {
     brands: [...brands].sort((left, right) => left.name.localeCompare(right.name, "ko")),
     aliases
   };
+  });
 }
 
 export function validateBrandRegistry(brands, aliases) {
