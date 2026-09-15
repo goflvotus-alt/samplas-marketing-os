@@ -30,7 +30,7 @@ function candidateFrom(row, source) {
 }
 
 // Detection is deliberately separate from attribution: no resolver consumes this queue.
-export function detectPendingBrands({ canonical, compatibility = [], aliases = [], cafe24Brands = [], products = [], ecountLines = [], previous = { candidates: [] }, now = new Date().toISOString() }) {
+export function detectPendingBrands({ canonical, compatibility = [], aliases = [], cafe24Brands = [], products = [], ecountLines = [], previous = { candidates: [] }, recentReview = null, now = new Date().toISOString() }) {
   if (!(Array.isArray(canonical) || Array.isArray(canonical?.brands)) ||
       [compatibility, aliases, cafe24Brands, products, ecountLines, previous.candidates].some(value => !Array.isArray(value))) throw new Error("Invalid pending brand detection source");
   const registry = buildBrandRegistry(canonical);
@@ -44,11 +44,41 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
     else owners.set(key, b.id);
   }
   const knownCodes = new Set(registry.brands.map(b => normalizeBrandKey(b.id)));
+  const canonicalRows = Array.isArray(canonical) ? canonical : canonical.brands;
+  const liveByCode = new Map(cafe24Brands.map(b => [normalizeBrandKey(b.brand_code || b.brandCode || b.code), b]));
+  // Explicit, bounded audit input, not a permanent list or suggested-only rule.
+  const validReviewDate = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  if (recentReview !== null && (!recentReview || !Array.isArray(recentReview.codes) || recentReview.codes.length > canonicalRows.length ||
+      recentReview.codes.some(c => typeof c !== "string" || !knownCodes.has(normalizeBrandKey(c))) ||
+      !validReviewDate(recentReview.since) || !validReviewDate(recentReview.through) || recentReview.since > recentReview.through ||
+      typeof recentReview.evidence !== "string" || !recentReview.evidence.trim() || recentReview.evidence.length > 1000)) invalidDecision("Invalid recent review evidence");
+  const codeEvidence = new Map();
+  for (const [code, live] of liveByCode) {
+    const b = canonicalRows.find(b => normalizeBrandKey(b.brand_code) === code);
+    if (!b || code === normalizeBrandKey("B0000000")) continue;
+    const currentName = normalizeBrandName(live.brand_name || live.brandName || live.name || "");
+    if (!currentName) continue;
+    const key = normalizeBrandKey(currentName);
+    const sameName = [b.brand_name, ...parseBrandAliases(b.name_aliases)].some(n => normalizeBrandKey(n) === key);
+    const safe = sameName && !conflicts.has(key);
+    const created = typeof live.created_date === "string" && Number.isFinite(Date.parse(live.created_date)) ? live.created_date : null;
+    const reviewed = previous.candidates.some(c => c.status !== "PENDING" && normalizeBrandKey(c.sourceBrandCode) === code &&
+      [c.rawBrandName, ...(c.cafe24Variants || [])].some(n => normalizeBrandKey(n) === key));
+    const recent = !reviewed && b.nameSource === "suggested" && recentReview?.codes.some(c => normalizeBrandKey(c) === code) &&
+      created && created.slice(0, 10) >= recentReview.since && created.slice(0, 10) <= recentReview.through;
+    if (!safe || recent) codeEvidence.set(code, { reviewReason: !sameName ? "CODE_NAME_CONFLICT" : !safe ? "ALIAS_CONFLICT" : "RECENT_AUTO_SEEDED_REVIEW",
+      canonicalName: b.brand_name, canonicalAliases: parseBrandAliases(b.name_aliases), cafe24Name: currentName,
+      cafe24ProductCount: Number.isInteger(live.product_count) && live.product_count >= 0 ? live.product_count : null,
+      sourceCreatedAt: created, ...(recent ? { recentReviewEvidence: { ...recentReview, codes: [b.brand_code] } } : {}) });
+  }
   const observations = [];
   const excluded = [];
   for (const [source, rows] of [["CAFE24", cafe24Brands.map(b => ({ ...b, brand_name: b.brand_name || b.brandName || b.name }))], ["CAFE24", products], ["ECOUNT", ecountLines]]) {
     for (const row of rows) {
       const c = candidateFrom(row, source);
+      const evidence = source === "CAFE24" ? codeEvidence.get(normalizeBrandKey(c.sourceBrandCode)) : null;
+      if (evidence) c.rawBrandName = evidence.cafe24Name;
       const qqq = /^QQQ/i.test(String(row.productCode || row.ecountProdCd || "")) || /^QQQ(?:\s|$|\/)/i.test(c.rawBrandName || c.productName);
       if (qqq || (source === "ECOUNT" && (row.isPersonalPayment === true || detectPersonalPayment(row.customerName).isPersonalPayment))) {
         excluded.push({ source, reason: qqq ? "QQQ" : "PERSONAL_PAYMENT" }); continue;
@@ -56,14 +86,14 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
       const reviewedObservation = previous.candidates.some(p => source === "CAFE24"
         ? normalizeBrandKey(p.sourceBrandCode) === normalizeBrandKey(c.sourceBrandCode)
         : [p.rawBrandName, ...(p.ecountVariants || [])].some(name => normalizeBrandKey(name) === normalizeBrandKey(c.rawBrandName)));
-      if (source === "CAFE24" && (!c.sourceBrandCode || c.sourceBrandCode === "B0000000" || (knownCodes.has(normalizeBrandKey(c.sourceBrandCode)) && !reviewedObservation))) continue;
+      if (source === "CAFE24" && (!c.sourceBrandCode || c.sourceBrandCode === "B0000000" || (knownCodes.has(normalizeBrandKey(c.sourceBrandCode)) && !reviewedObservation && !evidence))) continue;
       if (source === "ECOUNT" && !c.rawBrandName) continue;
       const key = normalizeBrandKey(c.rawBrandName);
       const hit = conflicts.has(key) ? null : resolveBrand(c.rawBrandName, registry) || resolveBrand(c.rawBrandName, compat);
       // A grandfathered exact whole collaboration name is already accepted;
       // never resolve its individual participants to a single brand.
       if (source === "ECOUNT" && hit && !reviewedObservation) continue;
-      observations.push({ ...c, reviewReason: c.collabCandidates.length ? "COLLABORATION" : conflicts.has(key) ? "ALIAS_CONFLICT" : "UNRESOLVED", possibleExistingCanonical: hit && knownCodes.has(normalizeBrandKey(hit.brandId)) ? [hit.brandId] : [] });
+      observations.push({ ...c, reviewReason: c.collabCandidates.length ? "COLLABORATION" : conflicts.has(key) ? "ALIAS_CONFLICT" : "UNRESOLVED", possibleExistingCanonical: hit && knownCodes.has(normalizeBrandKey(hit.brandId)) ? [hit.brandId] : [], ...(evidence || {}) });
     }
   }
   // A Cafe24 code is the stable key. Join ECOUNT spelling only when there is exactly
@@ -86,10 +116,14 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
     const codes = codesByName.get(normalizeBrandKey(c.rawBrandName));
     const code = c.sourceBrandCode || (codes?.size === 1 ? [...codes][0] : null);
     const identity = code ? `cafe24:${normalizeBrandKey(code)}` : `ecount:${normalizeBrandKey(c.rawBrandName)}`;
-    const prior = [...candidates.values()].filter(p => code ?
+    const prior = [...candidates.values()].filter(p => (p.status === "PENDING" ||
+      [p.rawBrandName, ...(p.cafe24Variants || []), ...(p.ecountVariants || [])].some(n => normalizeBrandKey(n) === normalizeBrandKey(c.rawBrandName))) && (code ?
       normalizeBrandKey(p.sourceBrandCode) === normalizeBrandKey(code) || (!p.sourceBrandCode && codes?.size === 1 && normalizeBrandKey(p.rawBrandName) === normalizeBrandKey(c.rawBrandName)) :
-      !p.sourceBrandCode && normalizeBrandKey(p.rawBrandName) === normalizeBrandKey(c.rawBrandName));
-    const id = prior.length === 1 ? prior[0].id : createHash("sha256").update(identity).digest("hex").slice(0, 24);
+      !p.sourceBrandCode && normalizeBrandKey(p.rawBrandName) === normalizeBrandKey(c.rawBrandName)));
+    const priorCode = code && prior.find(p => normalizeBrandKey(p.sourceBrandCode) === normalizeBrandKey(code));
+    const baseId = createHash("sha256").update(identity).digest("hex").slice(0, 24);
+    const id = prior.length === 1 ? prior[0].id : priorCode?.id || (candidates.has(baseId) && candidates.get(baseId).status !== "PENDING"
+      ? createHash("sha256").update(`${identity}:${normalizeBrandKey(c.rawBrandName)}`).digest("hex").slice(0, 24) : baseId);
     observedIds.add(id);
     const candidate = candidates.get(id) || { id, detectedAt: now, source: c.source, rawBrandName: c.rawBrandName, sourceBrandCode: c.sourceBrandCode,
       cafe24Variants: [], ecountVariants: [], relatedProductCount: 0, relatedProductExamples: [], possibleExistingCanonical: [], status: "PENDING" };
@@ -99,7 +133,14 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
     candidate.rawBrandName ||= c.rawBrandName;
     const variants = c.source === "CAFE24" ? candidate.cafe24Variants : candidate.ecountVariants;
     if (c.rawBrandName && !variants.includes(c.rawBrandName)) variants.push(c.rawBrandName);
-    if (!candidate.reviewReason || c.reviewReason !== "UNRESOLVED") candidate.reviewReason = c.reviewReason;
+    if (candidate.status === "PENDING") {
+      if (c.canonicalName !== undefined) {
+        for (const field of ["canonicalName", "canonicalAliases", "cafe24Name", "cafe24ProductCount", "sourceCreatedAt", "recentReviewEvidence"]) {
+          if (c[field] !== undefined) candidate[field] = structuredClone(c[field]);
+        }
+        candidate.reviewReason = c.reviewReason;
+      } else if (!["CODE_NAME_CONFLICT", "RECENT_AUTO_SEEDED_REVIEW"].includes(candidate.reviewReason) && (!candidate.reviewReason || c.reviewReason !== "UNRESOLVED")) candidate.reviewReason = c.reviewReason;
+    }
     candidate.collabCandidates = [...new Set([...(candidate.collabCandidates || []), ...c.collabCandidates])];
     candidate.possibleExistingCanonical = [...new Set([...candidate.possibleExistingCanonical, ...c.possibleExistingCanonical])];
     if (!seenProducts.has(id)) seenProducts.set(id, new Set());
@@ -111,6 +152,13 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
     candidates.set(id, candidate);
   }
   const all = [...candidates.values()].sort((a, b) => a.id.localeCompare(b.id));
+  // Do not merge ambiguous source-code ownership; expose exact-name relations.
+  for (const candidate of all.filter(c => c.status === "PENDING")) {
+    const names = new Set([candidate.rawBrandName, ...(candidate.cafe24Variants || []), ...(candidate.ecountVariants || [])].map(normalizeBrandKey));
+    candidate.relatedCandidateIds = all.filter(c => c.id !== candidate.id &&
+      ((candidate.sourceBrandCode && normalizeBrandKey(c.sourceBrandCode) === normalizeBrandKey(candidate.sourceBrandCode)) ||
+      [c.rawBrandName, ...(c.cafe24Variants || []), ...(c.ecountVariants || [])].some(n => names.has(normalizeBrandKey(n))))).map(c => c.id);
+  }
   const observed = all.filter(c => observedIds.has(c.id));
   return { version: 1, updatedAt: now, candidates: all, scan: { observed: observed.length,
     cafe24: observed.filter(c => c.source === "CAFE24").length, ecount: observed.filter(c => c.source === "ECOUNT").length,
@@ -166,7 +214,7 @@ export function approvedCafe24BrandCode(code, canonical) {
 
 // Pure prevalidation: no source file is touched until every alias/target is valid.
 export function planPendingBrandDecision(canonical, queue, input, now = new Date().toISOString()) {
-  if (!input || !["NEW", "LINK", "IGNORE"].includes(input.action) || typeof input.id !== "string") invalidDecision("Invalid pending brand decision");
+  if (!input || !["NEW", "LINK", "IGNORE", "HOLD"].includes(input.action) || typeof input.id !== "string") invalidDecision("Invalid pending brand decision");
   if (input.note !== undefined && (typeof input.note !== "string" || input.note.length > 1000)) invalidDecision("Invalid review note");
   const nextQueue = structuredClone(queue);
   const candidate = nextQueue.candidates.find(c => c.id === input.id);
@@ -175,6 +223,13 @@ export function planPendingBrandDecision(canonical, queue, input, now = new Date
   const nextCanonical = structuredClone(canonical);
   const brands = Array.isArray(nextCanonical) ? nextCanonical : nextCanonical.brands;
   if (!Array.isArray(brands)) invalidDecision("Invalid canonical Brand Master");
+  const codeConflict = candidate.reviewReason === "CODE_NAME_CONFLICT";
+  if (codeConflict && input.action === "NEW") invalidDecision("Code reassignment requires a separate historical identity review");
+  if (input.action === "HOLD") {
+    Object.assign(candidate, { heldAt: now, note: input.note || "" });
+    nextQueue.updatedAt = now;
+    return { canonical: nextCanonical, queue: nextQueue, candidate };
+  }
   let target;
   if (input.action !== "IGNORE") {
     const name = typeof input.brandName === "string" ? normalizeBrandName(input.brandName) : "";
@@ -182,12 +237,17 @@ export function planPendingBrandDecision(canonical, queue, input, now = new Date
     if (input.action === "LINK") {
       target = brands.find(b => b.brand_code === input.canonicalBrandCode);
       if (!target) invalidDecision("Canonical target not found");
+      if (codeConflict && normalizeBrandKey(target.brand_code) === normalizeBrandKey(candidate.sourceBrandCode)) invalidDecision("Cannot alias a changed identity onto its conflicting code owner");
     } else {
       const code = candidate.sourceBrandCode || `MANUAL_${candidate.id}`;
       if (brands.some(b => normalizeBrandKey(b.brand_code) === normalizeBrandKey(code))) invalidDecision("Canonical code already exists");
       target = { brand_code: code, brand_name: name, name_aliases: [], instagram_tag: "", active: true, nameSource: "confirmed" };
     }
-    const aliases = [...new Set([candidate.rawBrandName, ...(candidate.cafe24Variants || []), ...(candidate.ecountVariants || []), candidate.sourceBrandCode].filter(Boolean))];
+    const aliases = [...new Set([candidate.rawBrandName, ...(candidate.cafe24Variants || []), ...(candidate.ecountVariants || []), codeConflict ? null : candidate.sourceBrandCode].filter(Boolean))];
+    if (codeConflict) {
+      const accepted = new Set([target.brand_name, ...parseBrandAliases(target.name_aliases)].map(normalizeBrandKey));
+      if (aliases.some(name => !accepted.has(normalizeBrandKey(name)))) invalidDecision("New aliases for code conflicts require a separate historical identity review");
+    }
     // Compare all claims, including inactive/grandfathered entries. Never pick a
     // preferred owner or let a registry's ambiguity fallback approve a conflict.
     for (const value of [target.brand_name, ...aliases]) {
@@ -198,12 +258,12 @@ export function planPendingBrandDecision(canonical, queue, input, now = new Date
         if (claims.some(claim => normalizeBrandKey(claim) === key)) invalidDecision(`Alias conflict: ${value}`);
       }
     }
-    target.name_aliases = [...new Set([...parseBrandAliases(target.name_aliases), ...aliases])];
-    if (candidate.sourceBrandCode && candidate.sourceBrandCode !== target.brand_code) {
+    if (!codeConflict) target.name_aliases = [...new Set([...parseBrandAliases(target.name_aliases), ...aliases])];
+    if (!codeConflict && candidate.sourceBrandCode && candidate.sourceBrandCode !== target.brand_code) {
       target.sourceCafe24Codes = [...new Set([...(target.sourceCafe24Codes || []), candidate.sourceBrandCode])];
     }
     if (input.action === "NEW") brands.push(target);
-    if (!Array.isArray(nextCanonical)) nextCanonical.updatedAt = now;
+    if (!codeConflict && !Array.isArray(nextCanonical)) nextCanonical.updatedAt = now;
   }
   Object.assign(candidate, { status: { NEW: "APPROVED", LINK: "LINKED", IGNORE: "IGNORED" }[input.action], approvalAction: input.action,
     approvedAt: now, canonicalBrandCode: target?.brand_code || null, note: input.note || "" });
@@ -217,7 +277,7 @@ export function reviewPendingBrand(workDir, input, buildCompatibility, { replace
     const canonical = await readJson(canonicalFile, null);
     const result = planPendingBrandDecision(canonical, await readPendingBrands(workDir), input);
     const files = [];
-    if (input.action !== "IGNORE") {
+    if (!["IGNORE", "HOLD"].includes(input.action) && result.candidate.reviewReason !== "CODE_NAME_CONFLICT") {
       const existingAliases = await readJson(join(workDir, "intelligence/brand-aliases.json"), []);
       const target = (Array.isArray(result.canonical) ? result.canonical : result.canonical.brands).find(b => b.brand_code === result.candidate.canonicalBrandCode);
       const claims = new Set([target.brand_name, ...parseBrandAliases(target.name_aliases)].map(normalizeBrandKey));

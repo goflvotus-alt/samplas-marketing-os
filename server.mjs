@@ -320,10 +320,11 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (url.pathname === "/api/pending-brands/refresh") {
       if (req.method !== "POST") return json(res, { error: "Method Not Allowed" }, 405);
       if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      const payload = await readJsonBody(req);
       const data = await refreshPendingBrands(workDir, async () => {
         const sources = await loadPendingBrandSources(workDir, currentMonth());
         const seed = await readBrandSeedProducts();
-        return { ...sources, products: seed.products.map(product => ({ ...product, brand_code: productBrandCode(product) })), cafe24Brands: await fetchCafe24BrandList(),
+        return { ...sources, recentReview: payload.recentReview ?? null, products: seed.products.map(product => ({ ...product, brand_code: productBrandCode(product) })), cafe24Brands: await fetchCafe24BrandList(),
           provenance: { ...sources.provenance, productSource: seed.source, productCount: seed.products.length, cafe24BrandsFetchedAt: new Date().toISOString() } };
       }, { dryRun: url.searchParams.get("dryRun") === "1" });
       return json(res, { ok: true, ...data });

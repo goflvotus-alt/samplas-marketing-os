@@ -27,10 +27,143 @@ test("new Cafe24 code is PENDING, not a canonical write; grandfathered entries u
 });
 
 test("existing code, exact name, aliases and case/whitespace variants do not create false candidates", () => {
-  const result = detect({ cafe24Brands: [{ brand_code: " b1 ", brand_name: "renamed source" }], ecountLines: [
+  const result = detect({ cafe24Brands: [{ brand_code: " b1 ", brand_name: " KNOWN  alias " }], ecountLines: [
     { BRAND: " KNOWN  alias " }, { productName: "[known] item" }, { productName: "Compat / item" }
   ], compatibility: [{ id: "C1", name: "Compatibility" }], aliases: [{ alias: "Compat", brandId: "C1" }] });
   assert.equal(result.candidates.length, 0);
+});
+
+test("known code requires exact canonical name or unambiguous known alias, never fuzzy", () => {
+  for (const name of ["Known", " known ", "KNOWN ALIAS", "Known   alias"]) {
+    assert.equal(detect({ cafe24Brands: [{ brand_code: "B1", brand_name: name }] }).candidates.length, 0);
+  }
+  assert.equal(detect({ cafe24Brands: [{ brand_code: "B1", brand_name: "Knowns" }] }).candidates[0].reviewReason, "CODE_NAME_CONFLICT");
+  const ambiguous = { brands: [...canonical.brands, { brand_code: "OTHER", brand_name: "Known alias" }] };
+  assert.equal(detect({ canonical: ambiguous, cafe24Brands: [{ brand_code: "B1", brand_name: "Known alias" }] }).candidates[0].reviewReason, "ALIAS_CONFLICT");
+});
+
+const driftCases = [["B0000BDG", "BORC", "PERSONSOUL"], ["B0000BDJ", "GKL", "UNDER THE SIGN"], ["B0000BDM", "LAMASKARADE", "PRAYING"]];
+test("three real code conflicts enrich existing ECOUNT IDs and preserve all 12 pending rows", () => {
+  const brands = driftCases.map(([brand_code, brand_name]) => ({ brand_code, brand_name, name_aliases: [], nameSource: "suggested" }));
+  const ecountLines = [...driftCases.map(([, , BRAND]) => ({ BRAND })), ...Array.from({ length: 9 }, (_, i) => ({ BRAND: `Unresolved ${i}` }))];
+  const input = { canonical: { brands }, ecountLines };
+  const first = detectPendingBrands(input);
+  const before = JSON.stringify(input.canonical);
+  const cafe24Brands = driftCases.map(([brand_code, , brand_name]) => ({ brand_code, brand_name, product_count: 23 }));
+  const second = detectPendingBrands({ ...input, previous: first, cafe24Brands });
+  assert.equal(second.candidates.length, 12);
+  assert.deepEqual(second.candidates.map(c => c.id), first.candidates.map(c => c.id));
+  for (const [code, oldName, name] of driftCases) {
+    const c = second.candidates.find(c => c.rawBrandName === name);
+    assert.equal(c.reviewReason, "CODE_NAME_CONFLICT");
+    assert.equal(c.source, "BOTH");
+    assert.equal(c.sourceBrandCode, code);
+    assert.equal(c.canonicalName, oldName);
+    assert.equal(c.cafe24Name, name);
+    assert.equal(c.cafe24ProductCount, 23);
+    assert.equal(c.status, "PENDING");
+    assert.ok(c.ecountVariants.includes(name));
+  }
+  const repeated = detectPendingBrands({ ...input, previous: second, cafe24Brands });
+  assert.equal(repeated.candidates.length, 12);
+  assert.deepEqual(repeated.candidates.map(c => c.id), first.candidates.map(c => c.id));
+  assert.equal(JSON.stringify(input.canonical), before);
+});
+
+test("recent review is explicit, source-dated, bounded and never requeues 296 suggested by default", () => {
+  const brands = Array.from({ length: 297 }, (_, i) => ({ brand_code: `C${i}`, brand_name: `Brand ${i}`, nameSource: i === 296 ? "confirmed" : "suggested" }));
+  const cafe24Brands = brands.map(b => ({ ...b, created_date: "2026-09-04T17:12:49+09:00" }));
+  const input = { canonical: { brands }, cafe24Brands };
+  assert.equal(detectPendingBrands(input).candidates.length, 0);
+  const recentReview = { codes: ["C1", "C296"], since: "2026-07-01", through: "2026-09-13", evidence: "Audited Cafe24 registration; onboarding unknown" };
+  const queue = detectPendingBrands({ ...input, recentReview });
+  assert.equal(queue.candidates.length, 1);
+  assert.equal(queue.candidates[0].reviewReason, "RECENT_AUTO_SEEDED_REVIEW");
+  assert.equal(queue.candidates[0].sourceBrandCode, "C1");
+  assert.deepEqual(queue.candidates[0].recentReviewEvidence.codes, ["C1"]);
+  cafe24Brands[1].created_date = undefined;
+  assert.equal(detectPendingBrands({ ...input, recentReview }).candidates.length, 0);
+  cafe24Brands[1].created_date = "2025-01-01T00:00:00+09:00";
+  assert.equal(detectPendingBrands({ ...input, recentReview }).candidates.length, 0);
+  assert.throws(() => detectPendingBrands({ ...input, recentReview: { codes: ["C1"] } }), /Invalid recent review/);
+  assert.throws(() => detectPendingBrands({ ...input, recentReview: { ...recentReview, since: "2026-02-30" } }), /Invalid recent review/);
+});
+
+test("ambiguous ECOUNT names retain IDs and cross-reference separate Cafe24 code reviews", () => {
+  const brands = [{ brand_code: "A", brand_name: "Shared" }, { brand_code: "B", brand_name: "Shared" }];
+  const first = detectPendingBrands({ canonical: { brands }, ecountLines: [{ BRAND: "Shared" }] });
+  const input = { canonical: { brands }, cafe24Brands: brands, ecountLines: [{ BRAND: "Shared" }] };
+  const q = detectPendingBrands({ ...input, previous: first });
+  assert.equal(q.candidates.length, 3);
+  assert.equal(q.candidates.find(c => c.id === first.candidates[0].id).sourceBrandCode, null);
+  for (const c of q.candidates) assert.equal(c.relatedCandidateIds.length, 2);
+  const repeated = detectPendingBrands({ ...input, previous: q });
+  assert.deepEqual(repeated.candidates.map(c => c.id), q.candidates.map(c => c.id));
+});
+
+test("explicit reviewed state remains reviewed on refresh, including recent audit input", () => {
+  const input = { canonical, cafe24Brands: [{ brand_code: "B1", brand_name: "Known", created_date: "2026-09-04T00:00:00+09:00" }],
+    recentReview: { codes: ["B1"], since: "2026-07-01", through: "2026-09-13", evidence: "Audited source registration" } };
+  const first = detectPendingBrands(input);
+  const reviewed = planPendingBrandDecision(canonical, first, { id: first.candidates[0].id, action: "IGNORE", note: "human decision" });
+  const q = detectPendingBrands({ ...input, previous: reviewed.queue });
+  assert.equal(q.candidates.length, 1);
+  assert.equal(q.candidates[0].status, "IGNORED");
+  assert.equal(q.candidates[0].approvedAt, reviewed.candidate.approvedAt);
+  assert.equal(q.candidates[0].note, "human decision");
+});
+
+test("a later different source identity creates a linked review without overwriting a reviewed decision", () => {
+  const first = detect({ cafe24Brands: [{ brand_code: "B1", brand_name: "First change" }] });
+  const reviewed = planPendingBrandDecision(canonical, first, { id: first.candidates[0].id, action: "IGNORE", note: "old decision" });
+  const input = { cafe24Brands: [{ brand_code: "B1", brand_name: "Second change" }] };
+  const next = detect({ ...input, previous: reviewed.queue });
+  assert.equal(next.candidates.length, 2);
+  assert.deepEqual(next.candidates.find(c => c.id === first.candidates[0].id), reviewed.candidate);
+  const pending = next.candidates.find(c => c.status === "PENDING");
+  assert.equal(pending.rawBrandName, "Second change");
+  assert.ok(pending.relatedCandidateIds.includes(reviewed.candidate.id));
+  assert.equal(detect({ ...input, previous: next }).candidates.length, 2);
+});
+
+test("conflict review rejects reassignment/old-owner alias; explicit name-only LINK preserves code ownership", () => {
+  const master = { brands: [...canonical.brands, { brand_code: "B2", brand_name: "New identity", name_aliases: [] }] };
+  const queue = detect({ canonical: master, cafe24Brands: [{ brand_code: "B1", brand_name: "New identity" }] });
+  const id = queue.candidates[0].id;
+  for (const action of ["NEW", "REASSIGN"]) assert.throws(() => planPendingBrandDecision(master, queue, { id, action, brandName: "New identity" }));
+  assert.throws(() => planPendingBrandDecision(master, queue, { id, action: "LINK", canonicalBrandCode: "B1" }), /conflicting code owner/);
+  const linked = planPendingBrandDecision(master, queue, { id, action: "LINK", canonicalBrandCode: "B2" });
+  assert.deepEqual(linked.canonical, master, "conflict LINK confirms an existing exact claim without global alias writes");
+  const unmatchedTarget = { brands: [...master.brands, { brand_code: "B3", brand_name: "Other identity", name_aliases: [] }] };
+  assert.throws(() => planPendingBrandDecision(unmatchedTarget, queue, { id, action: "LINK", canonicalBrandCode: "B3" }), /historical identity review/);
+  assert.deepEqual(linked.canonical.brands[0], master.brands[0]);
+  assert.equal(linked.canonical.brands[1].sourceCafe24Codes, undefined);
+  assert.equal(approvedCafe24BrandCode("B1", linked.canonical), "B1");
+  assert.equal(linked.candidate.canonicalName, "Known", "old association remains in review history");
+  for (const action of ["IGNORE", "HOLD"]) {
+    const result = planPendingBrandDecision(master, queue, { id, action, note: "No identity decision" });
+    assert.deepEqual(result.canonical, master);
+    assert.equal(result.candidate.status, action === "HOLD" ? "PENDING" : "IGNORED");
+  }
+});
+
+test("drift refresh writes only queue; net unresolved accounting and immutable fixtures untouched", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pending-drift-test-"));
+  try {
+    const files = ["brand-master.json", "product-registry.json", "july-archive.json", "august-archive.json", "sales-snapshot.json"];
+    const bytes = JSON.stringify(canonical);
+    for (const file of files) await writeFile(join(dir, file), bytes);
+    const lines = [{ productName: "Different / item", date: "2026-09-01", salesAmount: 12000, isOfflineRevenue: true }, { productName: "Different / return", date: "2026-09-01", salesAmount: -2000, isOfflineRevenue: true }];
+    const context = { brandMaster: canonical, brandRegistry: buildBrandRegistry(canonical), productRegistry: { entries: [] }, reviewQueue: null };
+    const before = mergeOfflineBrandSales({ offlineLines: lines, identityContext: context });
+    const queue = await refreshPendingBrands(dir, async () => ({ canonical, cafe24Brands: [{ brand_code: "B1", brand_name: "Different" }], ecountLines: lines }));
+    assert.equal(queue.candidates[0].reviewReason, "CODE_NAME_CONFLICT");
+    assert.deepEqual(mergeOfflineBrandSales({ offlineLines: lines, identityContext: context }), before);
+    assert.equal(before.find(b => b.brand_code === "UNASSIGNED").salesAmount, 10000);
+    for (const file of files) assert.equal(await readFile(join(dir, file), "utf8"), bytes);
+    await reviewPendingBrand(dir, { id: queue.candidates[0].id, action: "HOLD", note: "await migration" }, () => { throw new Error("must not build compatibility"); });
+    for (const file of files) assert.equal(await readFile(join(dir, file), "utf8"), bytes);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test("unknown Cafe24 code sharing an accepted name still requires review, never gets approved", () => {
@@ -201,6 +334,13 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     const finalMaster = (await http(port, "/api/brand-master")).body.brands;
     assert.equal(finalMaster.length, 2);
     assert.deepEqual(finalMaster.find(b => b.brand_code === "B1").sourceCafe24Codes, ["B3"]);
+    const badRecent = await http(port, "/api/pending-brands/refresh", { method: "POST", token: "test-only", payload: { recentReview: { codes: ["B1"] } } });
+    assert.equal(badRecent.status, 400);
+    const recent = await http(port, "/api/pending-brands/refresh?dryRun=1", { method: "POST", token: "test-only", payload: { recentReview: {
+      codes: ["B1"], since: "2026-07-01", through: "2026-09-13", evidence: "fixture audit"
+    } } });
+    assert.equal(recent.status, 200);
+    assert.equal(recent.body.dryRun, true);
     await rm(join(dir, "brand-master.json"));
     assert.equal((await http(port, "/api/brand-master")).body.brands.length, 0);
     await assert.rejects(readFile(join(dir, "brand-master.json")), { code: "ENOENT" });
@@ -318,6 +458,28 @@ test("review UI defaults Pending, exposes history, and writes only after explici
   await target.onclick({ target: { closest: () => button } });
   assert.equal(writes[1][0], "/api/pending-brands/refresh");
   assert.equal(reloads, 2);
+});
+
+test("drift UI shows both identities, evidence and hold without read-time writes", async () => {
+  const js = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
+  const fn = js.slice(js.indexOf("async function renderPendingBrandReview("), js.indexOf("async function renderBrandMasterSettings("));
+  const c = detect({ cafe24Brands: [{ brand_code: "B1", brand_name: "PERSONSOUL", product_count: 23 }] }).candidates[0];
+  const rows = { innerHTML: "" }, filter = { value: "PENDING" };
+  const target = { isConnected: true, innerHTML: "", querySelector: s => s === "[data-pending-filter]" ? filter : rows };
+  const writes = [];
+  const render = runInNewContext(`${fn}; renderPendingBrandReview`, {
+    $: () => target, getJson: async () => ({ candidates: [c] }), esc: String, apiNum: Number,
+    confirm: () => true, toast: () => {}, postJson: async (...args) => { writes.push(args); return { ok: true }; }, renderBrandMasterSettings: async () => {}
+  });
+  await render(canonical.brands);
+  for (const text of ["브랜드 코드 이름 충돌", "기존: Known", "현재 Cafe24: PERSONSOUL", "B1", "23개", "별도 검토 필요"]) assert.ok(rows.innerHTML.includes(text), text);
+  assert.match(rows.innerHTML, /data-pending-action="NEW" disabled/);
+  assert.match(rows.innerHTML, /data-pending-action="HOLD"/);
+  assert.equal(writes.length, 0);
+  const row = { dataset: { pendingId: c.id }, querySelector: () => ({ value: "await review" }) };
+  const button = { dataset: { pendingAction: "HOLD" }, closest: () => row };
+  await target.onclick({ target: { closest: () => button } });
+  assert.equal(writes[0][1].action, "HOLD");
 });
 
 test("all existing read consumers use the pure reader; no seed write or active mutation remains", async () => {
