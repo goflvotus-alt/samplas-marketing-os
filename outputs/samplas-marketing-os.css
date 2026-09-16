@@ -4143,6 +4143,101 @@ td {
   height: 18px;
 }
 
+.action-item.pending-review-card {
+  display: flex;
+  grid-template-columns: none;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pending-review-header,
+.pending-review-meta,
+.pending-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+}
+
+.pending-review-header {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.pending-review-meta {
+  gap: 8px 16px;
+  color: var(--muted);
+}
+
+.pending-review-evidence {
+  min-width: 0;
+  width: 100%;
+}
+
+.pending-review-card p {
+  margin: 4px 0;
+  line-height: 1.45;
+}
+
+.pending-review-card {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.pending-review-actions {
+  align-items: center;
+  gap: 10px;
+}
+
+.pending-review-actions label {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pending-review-card input:not([type="checkbox"]),
+.pending-review-card select,
+.pending-review-card textarea {
+  width: auto;
+  min-width: 160px;
+  max-width: 100%;
+  height: auto;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.pending-review-card .button {
+  max-width: 100%;
+  white-space: normal;
+}
+
+@media (max-width: 720px) {
+  .pending-review-header,
+  .pending-review-actions,
+  .pending-review-actions label {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pending-review-actions label,
+  .pending-review-card input:not([type="checkbox"]),
+  .pending-review-card select,
+  .pending-review-card textarea {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 .action-item.sales-kpi-card,
 .action-item.sales-list-card,
 .action-item.sales-compare-card,

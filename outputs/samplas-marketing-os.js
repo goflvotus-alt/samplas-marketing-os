@@ -10282,18 +10282,28 @@ async function renderPendingBrandReview(brands) {
   const draw = () => {
     const filter = target.querySelector("[data-pending-filter]").value;
     const visible = candidates.filter(c => filter === "REVIEWED" ? c.status !== "PENDING" : c.status === "PENDING" && (filter === "PENDING" || (filter === "REVIEW" ? c.reviewReason !== "UNRESOLVED" : c.source === filter)));
-    target.querySelector("[data-pending-rows]").innerHTML = visible.map(c => `<article class="action-item" data-pending-id="${esc(c.id)}">
-      <strong>${esc(c.rawBrandName)} · ${esc(c.source)} · ${esc(c.status)}</strong>
-      <p>${esc(c.sourceBrandCode || "Cafe24 코드 없음")} · 최초 ${esc(c.detectedAt)} · 최근 ${esc(c.lastSeenAt)}</p>
+    target.querySelector("[data-pending-rows]").innerHTML = visible.map(c => `<article class="action-item pending-review-card" data-pending-id="${esc(c.id)}">
+      <div class="pending-review-header">
+        <strong>${esc(c.rawBrandName)}</strong>
+        <span class="badge">${esc(reasonLabels[c.reviewReason] || c.reviewReason || "")}</span>
+      </div>
+      <div class="pending-review-meta">
+        <span>Source: ${esc(c.source)} · ${esc(c.status)}</span>
+        <span>Cafe24 코드: ${esc(c.sourceBrandCode || "없음")}</span>
+        ${c.canonicalName !== undefined ? `<span>기존: ${esc(c.canonicalName)}</span><span>Cafe24 상품: ${c.cafe24ProductCount == null ? "확인 불가" : apiNum(c.cafe24ProductCount)}개</span>` : ""}
+      </div>
+      <div class="pending-review-evidence">
+      <p>최초 ${esc(c.detectedAt)} · 최근 ${esc(c.lastSeenAt)}</p>
       <p>상품 ${apiNum(c.relatedProductCount)}개 · ${esc((c.relatedProductExamples || []).join(" / "))}</p>
       <p>표기: ${esc([...(c.cafe24Variants || []), ...(c.ecountVariants || [])].join(" / "))}</p>
       <p>기존 후보: ${esc((c.possibleExistingCanonical || []).map(code => `${brands.find(b => b.brand_code === code)?.brand_name || code} (${code})`).join(" / ") || "없음")}</p>
       ${c.relatedCandidateIds?.length ? `<p>연관 검토 (복수 identity — 자동 병합 안 함): ${esc(c.relatedCandidateIds.map(id => { const other = candidates.find(item => item.id === id); return other ? `${other.rawBrandName} (${other.sourceBrandCode || other.source})` : id; }).join(" / "))}</p>` : ""}
-      <p>${esc(reasonLabels[c.reviewReason] || c.reviewReason || "")}</p>
-      ${c.canonicalName !== undefined ? `<p><strong>Cafe24 코드: ${esc(c.sourceBrandCode)}</strong><br>기존: ${esc(c.canonicalName)}<br>현재 Cafe24: ${esc(c.cafe24Name)}<br>기존 별칭: ${esc((c.canonicalAliases || []).join(" / ") || "없음")}<br>Cafe24 상품: ${c.cafe24ProductCount == null ? "확인 불가" : apiNum(c.cafe24ProductCount)}개</p>` : ""}
+      ${c.canonicalName !== undefined ? `<p>현재 Cafe24: ${esc(c.cafe24Name)} · 기존 별칭: ${esc((c.canonicalAliases || []).join(" / ") || "없음")}</p>` : ""}
       ${c.recentReviewEvidence ? `<p>검토 근거: ${esc(c.recentReviewEvidence.evidence)} · Cafe24 등록 ${esc(c.sourceCreatedAt)} (입점일 아님)</p>` : ""}
       ${c.reviewReason === "CODE_NAME_CONFLICT" ? `<p>코드 재할당과 새 별칭 추가는 과거 identity 검토가 필요하여 여기서 실행할 수 없습니다. 기존 브랜드 연결은 해당 이름/별칭이 이미 정확히 등록된 대상을 선택한 검토 확정만 허용합니다. Cafe24 코드 소유권·별칭·과거 귀속은 변경하지 않습니다.</p><button type="button" class="button secondary" disabled>코드 재할당 · 별도 검토 필요</button>` : ""}
       ${c.heldAt ? `<p>보류 ${esc(c.heldAt)} · ${esc(c.note)}</p>` : ""}
+      </div>
+      <div class="pending-review-actions">
       ${c.status === "PENDING" ? `<label>등록 이름 <input data-pending-name maxlength="200" value="${esc(c.rawBrandName)}"></label>
         ${c.confirmExistingBrandCode ? `<button type="button" class="button secondary" data-pending-action="CONFIRM_EXISTING" data-confirm-brand-code="${esc(c.confirmExistingBrandCode)}">기존 등록 확인</button>` : ""}
         <button type="button" class="button secondary" data-pending-action="NEW" ${c.canonicalName !== undefined ? "disabled" : ""}>신규 브랜드 등록</button>
@@ -10302,6 +10312,7 @@ async function renderPendingBrandReview(brands) {
         <label>검토 메모 <input data-pending-note maxlength="1000"></label>
         <button type="button" class="button secondary" data-pending-action="HOLD">보류</button>
         <button type="button" class="button secondary" data-pending-action="IGNORE">무시</button>` : `<p>${esc(c.approvalAction)} · ${esc(c.approvedAt)} · ${esc(c.canonicalBrandCode || "")} · ${esc(c.note || "")}</p>`}
+      </div>
     </article>`).join("") || "<p>해당 검토 항목이 없습니다.</p>";
   };
   target.querySelector("[data-pending-filter]").onchange = draw;

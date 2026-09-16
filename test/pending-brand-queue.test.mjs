@@ -541,6 +541,10 @@ test("review UI defaults Pending, exposes history, and writes only after explici
   await render(canonical.brands);
   assert.match(target.innerHTML, /신규 브랜드 검토 1/);
   assert.match(rows.innerHTML, /New Brand/);
+  for (const name of ["card", "header", "meta", "evidence", "actions"]) {
+    assert.match(rows.innerHTML, new RegExp(`class="[^"]*pending-review-${name}`));
+  }
+  for (const action of ["NEW", "LINK", "HOLD", "IGNORE"]) assert.match(rows.innerHTML, new RegExp(`data-pending-action="${action}"`));
   assert.doesNotMatch(rows.innerHTML, /Reviewed name/);
   assert.equal(writes.length, 0, "GET/render must not refresh or approve");
   filter.value = "REVIEWED"; filter.onchange();
