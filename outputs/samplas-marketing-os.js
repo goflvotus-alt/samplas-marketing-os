@@ -10295,6 +10295,7 @@ async function renderPendingBrandReview(brands) {
       ${c.reviewReason === "CODE_NAME_CONFLICT" ? `<p>코드 재할당과 새 별칭 추가는 과거 identity 검토가 필요하여 여기서 실행할 수 없습니다. 기존 브랜드 연결은 해당 이름/별칭이 이미 정확히 등록된 대상을 선택한 검토 확정만 허용합니다. Cafe24 코드 소유권·별칭·과거 귀속은 변경하지 않습니다.</p><button type="button" class="button secondary" disabled>코드 재할당 · 별도 검토 필요</button>` : ""}
       ${c.heldAt ? `<p>보류 ${esc(c.heldAt)} · ${esc(c.note)}</p>` : ""}
       ${c.status === "PENDING" ? `<label>등록 이름 <input data-pending-name maxlength="200" value="${esc(c.rawBrandName)}"></label>
+        ${c.confirmExistingBrandCode ? `<button type="button" class="button secondary" data-pending-action="CONFIRM_EXISTING" data-confirm-brand-code="${esc(c.confirmExistingBrandCode)}">기존 등록 확인</button>` : ""}
         <button type="button" class="button secondary" data-pending-action="NEW" ${c.canonicalName !== undefined ? "disabled" : ""}>신규 브랜드 등록</button>
         <label>기존 브랜드 <select data-pending-target><option value="">선택하세요</option>${brands.map(b => `<option value="${esc(b.brand_code)}">${esc(b.brand_name)} (${esc(b.brand_code)})</option>`).join("")}</select></label>
         <button type="button" class="button secondary" data-pending-action="LINK">기존 브랜드에 연결</button>
@@ -10312,9 +10313,9 @@ async function renderPendingBrandReview(brands) {
     const action = button.dataset.pendingAction;
     const row = button.closest("[data-pending-id]");
     const payload = action ? { id: row.dataset.pendingId, action, brandName: row.querySelector("[data-pending-name]").value,
-      canonicalBrandCode: row.querySelector("[data-pending-target]").value, note: row.querySelector("[data-pending-note]").value } : {};
+      canonicalBrandCode: action === "CONFIRM_EXISTING" ? button.dataset.confirmBrandCode : row.querySelector("[data-pending-target]").value, note: row.querySelector("[data-pending-note]").value } : {};
     if (action === "LINK" && !payload.canonicalBrandCode) { toast("기존 canonical 브랜드를 선택하세요."); return; }
-    if (!confirm(action ? `${action}: ${action === "NEW" ? payload.brandName : action === "LINK" ? payload.canonicalBrandCode : action === "HOLD" ? "보류" : "무시"} — 검토 결정을 저장할까요?` : "신규 브랜드를 다시 감지할까요? 자동 승인은 하지 않습니다.")) return;
+    if (!confirm(action ? `${action}: ${action === "NEW" ? payload.brandName : ["LINK", "CONFIRM_EXISTING"].includes(action) ? payload.canonicalBrandCode : action === "HOLD" ? "보류" : "무시"} — 검토 결정을 저장할까요?` : "신규 브랜드를 다시 감지할까요? 자동 승인은 하지 않습니다.")) return;
     busy = true;
     button.disabled = true;
     const saved = await postJson(action ? "/api/pending-brands/review" : "/api/pending-brands/refresh", payload, 60000);

@@ -16,6 +16,93 @@ const canonical = { brands: [{ brand_code: "B1", brand_name: "Known", name_alias
 const detect = input => detectPendingBrands({ canonical, ...input });
 const newBrand = { brand_code: "B2", brand_name: "New Brand" };
 
+const safeConfirmBrands = [
+  ["B0000BDS", "SOCIETY DE NOBODIES"], ["B0000BCU", "OURSELVES REMAKE"], ["B0000BDD", "TAE GLOBAL"],
+  ["B0000BCQ", "KAMIGIN", "카미긴"], ["B0000BDA", "O. FILES"], ["B0000BDP", "PROFESSOR.E"], ["B0000BCN", "SOMAR", "소마"]
+];
+function confirmFixture() {
+  const master = { updatedAt: "unchanged", brands: safeConfirmBrands.map(([brand_code, name, canonicalName]) => ({
+    brand_code, brand_name: canonicalName || name, name_aliases: canonicalName ? [name] : [], active: true, nameSource: "suggested", instagram_tag: "keep"
+  })) };
+  const cafe24Brands = safeConfirmBrands.map(([brand_code, brand_name]) => ({ brand_code, brand_name, created_date: "2026-09-01T00:00:00Z", product_count: 3 }));
+  const recentReview = { codes: master.brands.map(b => b.brand_code), since: "2026-09-01", through: "2026-09-13", evidence: "isolated audit fixture" };
+  return { master, cafe24Brands, recentReview, queue: detectPendingBrands({ canonical: master, cafe24Brands, recentReview }) };
+}
+
+for (const [code, name] of safeConfirmBrands) test(`CONFIRM_EXISTING queue-only: ${name}`, async () => {
+  const { master, queue, cafe24Brands, recentReview } = confirmFixture();
+  const candidate = queue.candidates.find(c => c.sourceBrandCode === code);
+  const input = { id: candidate.id, action: "CONFIRM_EXISTING", canonicalBrandCode: code, note: "human confirmation" };
+  const dir = await mkdtemp(join(tmpdir(), "confirm-brand-"));
+  try {
+    await mkdir(join(dir, "intelligence"));
+    const entries = [["brand-master.json", master], ["intelligence/brand-master-list.json", [{ id: code }]],
+      ["intelligence/brand-aliases.json", []], ["product-registry.json", { entries: [{ id: "keep" }] }],
+      ["monthly-archive.json", { total: 287916120 }], ["pending-brand-queue.json", queue]];
+    for (const [file, value] of entries) await writeFile(join(dir, file), JSON.stringify(value));
+    const view = await readPendingBrands(dir, { reviewEligibility: true });
+    assert.equal(view.candidates.find(c => c.id === candidate.id).confirmExistingBrandCode, code);
+    for (const [file, value] of entries) assert.equal(await readFile(join(dir, file), "utf8"), JSON.stringify(value), "GET must not mutate");
+    const replaced = [];
+    const result = await reviewPendingBrand(dir, input, () => assert.fail("must not build compatibility"), {
+      replace: async (from, to) => { replaced.push(to); await rename(from, to); }
+    });
+    assert.deepEqual(replaced, [join(dir, "pending-brand-queue.json")]);
+    assert.equal(result.candidate.status, "APPROVED");
+    assert.equal(result.candidate.approvalAction, "CONFIRM_EXISTING");
+    assert.equal(result.candidate.canonicalBrandCode, code);
+    assert.equal(result.candidate.note, input.note);
+    assert.ok(Number.isFinite(Date.parse(result.candidate.approvedAt)));
+    for (const [file, value] of entries.slice(0, -1)) assert.equal(await readFile(join(dir, file), "utf8"), JSON.stringify(value));
+    const after = await readFile(join(dir, "pending-brand-queue.json"), "utf8");
+    await assert.rejects(reviewPendingBrand(dir, input), /already reviewed/);
+    assert.equal(await readFile(join(dir, "pending-brand-queue.json"), "utf8"), after);
+    const refreshed = detectPendingBrands({ canonical: master, cafe24Brands, recentReview, previous: JSON.parse(after) });
+    const confirmed = refreshed.candidates.find(c => c.id === candidate.id);
+    for (const field of ["status", "approvalAction", "approvedAt", "canonicalBrandCode", "note"]) assert.equal(confirmed[field], result.candidate[field]);
+    assert.equal(refreshed.candidates.length, 7);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("CONFIRM_EXISTING rejects unsafe types, duplicate/collab evidence, mismatches and ambiguous aliases", () => {
+  const { master, queue } = confirmFixture();
+  const candidate = queue.candidates[0];
+  const input = { id: candidate.id, action: "CONFIRM_EXISTING", canonicalBrandCode: candidate.sourceBrandCode };
+  for (const patch of [
+    ...["CODE_NAME_CONFLICT", "DUPLICATE_IDENTITY_CONFLICT", "COLLAB_REVIEW", "COLLABORATION", "UNRESOLVED", "ALIAS_CONFLICT"].map(reviewReason => ({ reviewReason })),
+    { relatedCandidateIds: ["duplicate"] }, { collabCandidates: ["A", "B"] }, { sourceBrandCode: null },
+    { rawBrandName: "Unrecognized" }, { cafe24Name: "Different name" }, { ecountVariants: ["Unknown alias"] }
+  ]) {
+    const changed = { ...queue, candidates: [{ ...candidate, ...patch }] };
+    assert.throws(() => planPendingBrandDecision(master, changed, input), /not eligible/);
+  }
+  assert.throws(() => planPendingBrandDecision(master, queue, { ...input, id: "missing" }), /not found/);
+  for (const canonicalBrandCode of [undefined, "OTHER", master.brands[1].brand_code]) {
+    assert.throws(() => planPendingBrandDecision(master, queue, { ...input, canonicalBrandCode }), /mismatched/);
+  }
+  const ambiguous = { brands: [...master.brands, { brand_code: "OTHER", brand_name: "Other", active: false, name_aliases: [candidate.rawBrandName] }] };
+  assert.throws(() => planPendingBrandDecision(ambiguous, queue, input), /not eligible/);
+  assert.throws(() => planPendingBrandDecision(master, queue, input, undefined, [{ alias: candidate.rawBrandName, brandId: "OTHER" }]), /not eligible/);
+  const normalized = { ...queue, candidates: [{ ...candidate, rawBrandName: "  society   de NOBODIES  " }] };
+  assert.equal(planPendingBrandDecision(master, normalized, input).candidate.status, "APPROVED");
+  assert.deepEqual(planPendingBrandDecision(master, normalized, input).canonical, master);
+});
+
+test("CONFIRM_EXISTING eligibility and persistence reject new compatibility ambiguity without writes", async () => {
+  const { master, queue } = confirmFixture();
+  const dir = await mkdtemp(join(tmpdir(), "confirm-conflict-"));
+  try {
+    await mkdir(join(dir, "intelligence"));
+    const candidate = queue.candidates[0];
+    const entries = [["brand-master.json", master], ["pending-brand-queue.json", queue],
+      ["intelligence/brand-aliases.json", [{ alias: candidate.rawBrandName, brandId: "OTHER" }]]];
+    for (const [file, value] of entries) await writeFile(join(dir, file), JSON.stringify(value));
+    assert.equal((await readPendingBrands(dir, { reviewEligibility: true })).candidates[0].confirmExistingBrandCode, null);
+    await assert.rejects(reviewPendingBrand(dir, { id: candidate.id, action: "CONFIRM_EXISTING", canonicalBrandCode: candidate.sourceBrandCode }), /not eligible/);
+    for (const [file, value] of entries) assert.equal(await readFile(join(dir, file), "utf8"), JSON.stringify(value));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("new Cafe24 code is PENDING, not a canonical write; grandfathered entries untouched", () => {
   assert.throws(() => detect({ cafe24Brands: {} }), /Invalid pending/);
   const before = JSON.stringify(canonical);
@@ -305,7 +392,7 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     }
     assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), before);
     const id = refresh.body.candidates[0].id;
-    for (const action of ["NEW", "LINK", "IGNORE"]) {
+    for (const action of ["NEW", "LINK", "IGNORE", "CONFIRM_EXISTING"]) {
       assert.equal((await http(port, "/api/pending-brands/review", { method: "POST", payload: { id, action } })).status, 401);
     }
     const approved = await http(port, "/api/pending-brands/review", { method: "POST", token: "test-only", payload: { id, action: "NEW", brandName: "Human Approved" } });
@@ -341,6 +428,19 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     } } });
     assert.equal(recent.status, 200);
     assert.equal(recent.body.dryRun, true);
+    const fixture = confirmFixture();
+    await writeFile(join(dir, "brand-master.json"), JSON.stringify(fixture.master));
+    await writeFile(join(dir, "pending-brand-queue.json"), JSON.stringify(fixture.queue));
+    const confirmCandidate = fixture.queue.candidates[0];
+    const confirmInput = { id: confirmCandidate.id, action: "CONFIRM_EXISTING", canonicalBrandCode: confirmCandidate.sourceBrandCode };
+    assert.equal((await http(port, "/api/pending-brands")).body.candidates[0].confirmExistingBrandCode, confirmInput.canonicalBrandCode);
+    const confirmed = await http(port, "/api/pending-brands/review", { method: "POST", token: "test-only", payload: confirmInput });
+    assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+    assert.equal(confirmed.body.candidate.approvalAction, "CONFIRM_EXISTING");
+    assert.equal(confirmed.body.candidate.status, "APPROVED");
+    assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), JSON.stringify(fixture.master));
+    assert.equal((await http(port, "/api/pending-brands/review", { method: "POST", token: "test-only", payload: confirmInput })).status, 400);
+    assert.equal((await http(port, "/api/pending-brands/review", { method: "POST", token: "test-only", payload: { ...confirmInput, id: "missing" } })).status, 400);
     await rm(join(dir, "brand-master.json"));
     assert.equal((await http(port, "/api/brand-master")).body.brands.length, 0);
     await assert.rejects(readFile(join(dir, "brand-master.json")), { code: "ENOENT" });
@@ -458,6 +558,50 @@ test("review UI defaults Pending, exposes history, and writes only after explici
   await target.onclick({ target: { closest: () => button } });
   assert.equal(writes[1][0], "/api/pending-brands/refresh");
   assert.equal(reloads, 2);
+});
+
+test("confirm UI uses validated target, removes Pending row and shows reviewed action without other writes", async () => {
+  const js = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
+  const fn = js.slice(js.indexOf("async function renderPendingBrandReview("), js.indexOf("async function renderBrandMasterSettings("));
+  const { master, queue } = confirmFixture();
+  let current = queue;
+  const candidate = queue.candidates[0];
+  const filter = { value: "PENDING" }, rows = { innerHTML: "" };
+  const target = { isConnected: true, innerHTML: "", querySelector: s => s === "[data-pending-filter]" ? filter : rows };
+  const writes = [];
+  const render = runInNewContext(`${fn}; renderPendingBrandReview`, {
+    $: () => target, getJson: async () => ({ candidates: [
+      ...current.candidates.map(c => ({ ...c, confirmExistingBrandCode: c.status === "PENDING" ? c.sourceBrandCode : null })),
+      ...["CODE_NAME_CONFLICT", "DUPLICATE_IDENTITY_CONFLICT", "COLLABORATION", "UNRESOLVED"].map(reviewReason => ({
+        ...candidate, id: reviewReason, reviewReason, rawBrandName: reviewReason, confirmExistingBrandCode: null
+      }))
+    ] }), esc: String, apiNum: Number, confirm: () => true, toast: message => assert.fail(message),
+    postJson: async (path, payload) => {
+      writes.push({ path, payload });
+      const result = planPendingBrandDecision(master, current, payload);
+      current = result.queue;
+      return { ok: true };
+    }, renderBrandMasterSettings: async () => { filter.value = "PENDING"; await render(master.brands); }
+  });
+  await render(master.brands);
+  assert.equal(writes.length, 0);
+  assert.equal((rows.innerHTML.match(/data-pending-action="CONFIRM_EXISTING"/g) || []).length, 7);
+  assert.match(rows.innerHTML, /기존 등록 확인/);
+  for (const type of ["CODE_NAME_CONFLICT", "DUPLICATE_IDENTITY_CONFLICT", "COLLABORATION", "UNRESOLVED"]) {
+    const article = rows.innerHTML.split(`data-pending-id="${type}"`)[1].split("</article>")[0];
+    assert.doesNotMatch(article, /CONFIRM_EXISTING/);
+  }
+  const row = { dataset: { pendingId: candidate.id }, querySelector: () => ({ value: "NOT THE TARGET" }) };
+  const button = { dataset: { pendingAction: "CONFIRM_EXISTING", confirmBrandCode: candidate.sourceBrandCode }, closest: () => row };
+  await target.onclick({ target: { closest: () => button } });
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].path, "/api/pending-brands/review");
+  assert.equal(writes[0].payload.canonicalBrandCode, candidate.sourceBrandCode);
+  assert.doesNotMatch(rows.innerHTML, new RegExp(`data-pending-id="${candidate.id}"`));
+  filter.value = "REVIEWED"; filter.onchange();
+  assert.match(rows.innerHTML, /CONFIRM_EXISTING/);
+  assert.ok(rows.innerHTML.includes(candidate.sourceBrandCode));
+  assert.doesNotMatch(rows.innerHTML, /data-pending-action/);
 });
 
 test("drift UI shows both identities, evidence and hold without read-time writes", async () => {

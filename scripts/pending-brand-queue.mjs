@@ -11,9 +11,15 @@ async function readJson(file, fallback) {
   catch (error) { if (error.code === "ENOENT") return fallback; throw error; }
 }
 
-export async function readPendingBrands(workDir) {
+export async function readPendingBrands(workDir, { reviewEligibility = false } = {}) {
   const queue = await readJson(join(workDir, "pending-brand-queue.json"), { version: 1, candidates: [] });
   if (queue.version !== 1 || !Array.isArray(queue.candidates) || queue.candidates.some(c => !c.id || !["PENDING", "APPROVED", "LINKED", "IGNORED"].includes(c.status))) throw new Error("Invalid pending brand queue");
+  if (reviewEligibility) {
+    const canonical = await readJson(join(workDir, "brand-master.json"), null);
+    const aliases = await readJson(join(workDir, "intelligence/brand-aliases.json"), []);
+    return { ...queue, candidates: queue.candidates.map(candidate => ({ ...candidate,
+      confirmExistingBrandCode: confirmExistingTarget(canonical, candidate, aliases)?.brand_code || null })) };
+  }
   return queue;
 }
 
@@ -212,9 +218,29 @@ export function approvedCafe24BrandCode(code, canonical) {
   return matches.length === 1 ? matches[0].brand_code : code;
 }
 
+// Shared by read-only UI eligibility and write-time validation. No new aliases.
+function confirmExistingTarget(canonical, candidate, aliases) {
+  const brands = Array.isArray(canonical) ? canonical : canonical?.brands || [];
+  if (candidate.status !== "PENDING" || candidate.reviewReason !== "RECENT_AUTO_SEEDED_REVIEW" ||
+      !candidate.sourceBrandCode || candidate.relatedCandidateIds?.length || candidate.collabCandidates?.length) return null;
+  const targets = brands.filter(b => normalizeBrandKey(b.brand_code) === normalizeBrandKey(candidate.sourceBrandCode));
+  if (targets.length !== 1) return null;
+  const target = targets[0];
+  const accepted = new Set([target.brand_name, ...parseBrandAliases(target.name_aliases)].map(normalizeBrandKey).filter(Boolean));
+  const names = [candidate.rawBrandName, candidate.cafe24Name, ...(candidate.cafe24Variants || []), ...(candidate.ecountVariants || [])];
+  if (!candidate.rawBrandName || !candidate.cafe24Name || names.some(name => !accepted.has(normalizeBrandKey(name)) ||
+      extractBracketBrandCandidate(`[${name}]`)?.type === "collab")) return null;
+  for (const name of names) {
+    const key = normalizeBrandKey(name);
+    if (brands.some(b => b !== target && [b.brand_code, b.brand_name, ...parseBrandAliases(b.name_aliases), ...(b.sourceCafe24Codes || [])].some(n => normalizeBrandKey(n) === key)) ||
+        aliases.some(a => normalizeBrandKey(a.alias) === key && a.brandId !== target.brand_code)) return null;
+  }
+  return target;
+}
+
 // Pure prevalidation: no source file is touched until every alias/target is valid.
-export function planPendingBrandDecision(canonical, queue, input, now = new Date().toISOString()) {
-  if (!input || !["NEW", "LINK", "IGNORE", "HOLD"].includes(input.action) || typeof input.id !== "string") invalidDecision("Invalid pending brand decision");
+export function planPendingBrandDecision(canonical, queue, input, now = new Date().toISOString(), aliases = []) {
+  if (!input || !["NEW", "LINK", "IGNORE", "HOLD", "CONFIRM_EXISTING"].includes(input.action) || typeof input.id !== "string") invalidDecision("Invalid pending brand decision");
   if (input.note !== undefined && (typeof input.note !== "string" || input.note.length > 1000)) invalidDecision("Invalid review note");
   const nextQueue = structuredClone(queue);
   const candidate = nextQueue.candidates.find(c => c.id === input.id);
@@ -231,7 +257,10 @@ export function planPendingBrandDecision(canonical, queue, input, now = new Date
     return { canonical: nextCanonical, queue: nextQueue, candidate };
   }
   let target;
-  if (input.action !== "IGNORE") {
+  if (input.action === "CONFIRM_EXISTING") {
+    target = confirmExistingTarget(canonical, candidate, aliases);
+    if (!target || input.canonicalBrandCode !== target.brand_code) invalidDecision("Candidate is not eligible for CONFIRM_EXISTING or canonical target mismatched");
+  } else if (input.action !== "IGNORE") {
     const name = typeof input.brandName === "string" ? normalizeBrandName(input.brandName) : "";
     if (input.action === "NEW" && (!name || name.length > 200)) invalidDecision("Canonical brand name required (max 200 characters)");
     if (input.action === "LINK") {
@@ -265,7 +294,7 @@ export function planPendingBrandDecision(canonical, queue, input, now = new Date
     if (input.action === "NEW") brands.push(target);
     if (!codeConflict && !Array.isArray(nextCanonical)) nextCanonical.updatedAt = now;
   }
-  Object.assign(candidate, { status: { NEW: "APPROVED", LINK: "LINKED", IGNORE: "IGNORED" }[input.action], approvalAction: input.action,
+  Object.assign(candidate, { status: { NEW: "APPROVED", LINK: "LINKED", IGNORE: "IGNORED", CONFIRM_EXISTING: "APPROVED" }[input.action], approvalAction: input.action,
     approvedAt: now, canonicalBrandCode: target?.brand_code || null, note: input.note || "" });
   nextQueue.updatedAt = now;
   return { canonical: nextCanonical, queue: nextQueue, candidate };
@@ -275,9 +304,10 @@ export function reviewPendingBrand(workDir, input, buildCompatibility, { replace
   return withPendingBrandWrite(async () => {
     const canonicalFile = join(workDir, "brand-master.json");
     const canonical = await readJson(canonicalFile, null);
-    const result = planPendingBrandDecision(canonical, await readPendingBrands(workDir), input);
+    const aliases = input?.action === "CONFIRM_EXISTING" ? await readJson(join(workDir, "intelligence/brand-aliases.json"), []) : [];
+    const result = planPendingBrandDecision(canonical, await readPendingBrands(workDir), input, new Date().toISOString(), aliases);
     const files = [];
-    if (!["IGNORE", "HOLD"].includes(input.action) && result.candidate.reviewReason !== "CODE_NAME_CONFLICT") {
+    if (!["IGNORE", "HOLD", "CONFIRM_EXISTING"].includes(input.action) && result.candidate.reviewReason !== "CODE_NAME_CONFLICT") {
       const existingAliases = await readJson(join(workDir, "intelligence/brand-aliases.json"), []);
       const target = (Array.isArray(result.canonical) ? result.canonical : result.canonical.brands).find(b => b.brand_code === result.candidate.canonicalBrandCode);
       const claims = new Set([target.brand_name, ...parseBrandAliases(target.name_aliases)].map(normalizeBrandKey));

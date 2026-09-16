@@ -315,7 +315,7 @@ const server = isMainModule ? createServer(async (req, res) => {
     }
     if (url.pathname === "/api/pending-brands") {
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
-      return json(res, { ok: true, ...(await readPendingBrands(workDir)) });
+      return json(res, { ok: true, ...(await readPendingBrands(workDir, { reviewEligibility: true })) });
     }
     if (url.pathname === "/api/pending-brands/refresh") {
       if (req.method !== "POST") return json(res, { error: "Method Not Allowed" }, 405);
