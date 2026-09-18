@@ -10274,14 +10274,28 @@ async function renderPendingBrandReview(brands) {
   if (!target.isConnected) return;
   if (result.error) { target.textContent = `신규 브랜드 검토 오류: ${result.error}`; return; }
   const candidates = result.candidates || [];
+  const searchKey = value => String(value || "").toLowerCase().trim().replace(/\s+/g, " ");
+  const matchingBrands = query => brands.filter(b => searchKey([b.brand_name, b.brand_code, ...(Array.isArray(b.name_aliases) ? b.name_aliases : [b.name_aliases])].join(" ")).includes(searchKey(query)));
+  const displayAction = c => {
+    if (c.status !== "PENDING" || c.heldAt || c.relatedCandidateIds?.length || c.collabCandidates?.length) return null;
+    if (c.reviewReason === "RECENT_AUTO_SEEDED_REVIEW") return c.confirmExistingBrandCode ? "CONFIRM_EXISTING" : null;
+    if (c.reviewReason !== "UNRESOLVED" || c.canonicalName !== undefined) return null;
+    const hint = c.uiReview;
+    if (hint?.operationalClass === "TRUE_NEW_BRAND" && hint.recommendedUiAction === "NEW") return "NEW";
+    if (hint?.operationalClass === "ECOUNT_ALIAS_GAP" && hint.recommendedUiAction === "LINK" &&
+        brands.filter(b => b.brand_code === hint.reviewCanonicalTarget).length === 1) return "LINK";
+    return null;
+  };
   const reasonLabels = { UNRESOLVED: "신규 / 미해결", ALIAS_CONFLICT: "별칭 충돌", COLLABORATION: "협업 검토", CODE_NAME_CONFLICT: "브랜드 코드 이름 충돌", RECENT_AUTO_SEEDED_REVIEW: "최근 자동 등록 가능성 검토" };
   target.innerHTML = `<h3>신규 브랜드 검토 ${candidates.filter(c => c.status === "PENDING").length}</h3>
     <label>필터 <select data-pending-filter><option value="PENDING">Pending</option><option value="CAFE24">Cafe24</option><option value="ECOUNT">ECOUNT</option><option value="BOTH">Both</option><option value="REVIEW">Collaboration/review</option><option value="REVIEWED">Reviewed</option></select></label>
+    <input type="search" data-pending-search placeholder="후보 브랜드 검색" aria-label="후보 브랜드 검색">
     <button type="button" class="button secondary" data-pending-refresh>신규 브랜드 다시 감지</button>
     <div data-pending-rows></div>`;
   const draw = () => {
     const filter = target.querySelector("[data-pending-filter]").value;
-    const visible = candidates.filter(c => filter === "REVIEWED" ? c.status !== "PENDING" : c.status === "PENDING" && (filter === "PENDING" || (filter === "REVIEW" ? c.reviewReason !== "UNRESOLVED" : c.source === filter)));
+    const query = searchKey(target.querySelector("[data-pending-search]").value);
+    const visible = candidates.filter(c => (filter === "REVIEWED" ? c.status !== "PENDING" : c.status === "PENDING" && (filter === "PENDING" || (filter === "REVIEW" ? c.reviewReason !== "UNRESOLVED" : c.source === filter))) && searchKey([c.rawBrandName, c.cafe24Name, c.canonicalName, c.sourceBrandCode].join(" ")).includes(query));
     target.querySelector("[data-pending-rows]").innerHTML = visible.map(c => `<article class="action-item pending-review-card" data-pending-id="${esc(c.id)}">
       <div class="pending-review-header">
         <strong>${esc(c.rawBrandName)}</strong>
@@ -10290,9 +10304,12 @@ async function renderPendingBrandReview(brands) {
       <div class="pending-review-meta">
         <span>Source: ${esc(c.source)} · ${esc(c.status)}</span>
         <span>Cafe24 코드: ${esc(c.sourceBrandCode || "없음")}</span>
+        <span>관련 상품: ${apiNum(c.relatedProductCount)}개</span>
+        ${c.uiReview ? `<span>운영 검토: ${esc(c.uiReview.operationalClass)}</span>` : ""}
         ${c.canonicalName !== undefined ? `<span>기존: ${esc(c.canonicalName)}</span><span>Cafe24 상품: ${c.cafe24ProductCount == null ? "확인 불가" : apiNum(c.cafe24ProductCount)}개</span>` : ""}
       </div>
-      <div class="pending-review-evidence">
+      <details class="pending-review-evidence"><summary>상세 보기</summary>
+      ${c.uiReview?.reviewEvidence ? `<p>읽기 전용 검토 근거: Cafe24 상품 ${esc(c.uiReview.reviewEvidence.cafe24ProductNo)} · ${esc(c.uiReview.reviewEvidence.exactProductTitle)} · 대상 ${esc(c.uiReview.reviewCanonicalTarget)}. 자동 선택/연결 아님.</p>` : ""}
       <p>최초 ${esc(c.detectedAt)} · 최근 ${esc(c.lastSeenAt)}</p>
       <p>상품 ${apiNum(c.relatedProductCount)}개 · ${esc((c.relatedProductExamples || []).join(" / "))}</p>
       <p>표기: ${esc([...(c.cafe24Variants || []), ...(c.ecountVariants || [])].join(" / "))}</p>
@@ -10302,29 +10319,51 @@ async function renderPendingBrandReview(brands) {
       ${c.recentReviewEvidence ? `<p>검토 근거: ${esc(c.recentReviewEvidence.evidence)} · Cafe24 등록 ${esc(c.sourceCreatedAt)} (입점일 아님)</p>` : ""}
       ${c.reviewReason === "CODE_NAME_CONFLICT" ? `<p>코드 재할당과 새 별칭 추가는 과거 identity 검토가 필요하여 여기서 실행할 수 없습니다. 기존 브랜드 연결은 해당 이름/별칭이 이미 정확히 등록된 대상을 선택한 검토 확정만 허용합니다. Cafe24 코드 소유권·별칭·과거 귀속은 변경하지 않습니다.</p><button type="button" class="button secondary" disabled>코드 재할당 · 별도 검토 필요</button>` : ""}
       ${c.heldAt ? `<p>보류 ${esc(c.heldAt)} · ${esc(c.note)}</p>` : ""}
-      </div>
+      </details>
       <div class="pending-review-actions">
-      ${c.status === "PENDING" ? `<label>등록 이름 <input data-pending-name maxlength="200" value="${esc(c.rawBrandName)}"></label>
-        ${c.confirmExistingBrandCode ? `<button type="button" class="button secondary" data-pending-action="CONFIRM_EXISTING" data-confirm-brand-code="${esc(c.confirmExistingBrandCode)}">기존 등록 확인</button>` : ""}
-        <button type="button" class="button secondary" data-pending-action="NEW" ${c.canonicalName !== undefined ? "disabled" : ""}>신규 브랜드 등록</button>
-        <label>기존 브랜드 <select data-pending-target><option value="">선택하세요</option>${brands.map(b => `<option value="${esc(b.brand_code)}">${esc(b.brand_name)} (${esc(b.brand_code)})</option>`).join("")}</select></label>
-        <button type="button" class="button secondary" data-pending-action="LINK">기존 브랜드에 연결</button>
-        <label>검토 메모 <input data-pending-note maxlength="1000"></label>
+      ${c.status === "PENDING" ? `
+        ${displayAction(c) === "CONFIRM_EXISTING" ? `<button type="button" class="button secondary" data-pending-action="CONFIRM_EXISTING" data-confirm-brand-code="${esc(c.confirmExistingBrandCode)}">기존 등록 확인</button>` : ""}
+        ${displayAction(c) === "NEW" ? `<details name="pending-${esc(c.id)}" class="pending-review-flow"><summary>신규 브랜드 등록</summary><label>등록 이름 <input data-pending-name maxlength="200" value="${esc(c.rawBrandName)}"></label><button type="button" class="button secondary" data-pending-action="NEW">신규 브랜드 등록 확정</button></details>` : ""}
+        ${displayAction(c) === "LINK" ? `<details name="pending-${esc(c.id)}" class="pending-review-flow"><summary>기존 브랜드 연결</summary>
+        <label>기존 브랜드 검색 <input type="search" data-brand-search placeholder="기존 브랜드 검색" autocomplete="off"></label>
+        <div data-brand-results class="pending-brand-results" aria-label="브랜드 검색 결과"></div>
+        <input type="hidden" data-pending-target value=""><p data-brand-selected>선택: 없음</p>
+        <button type="button" class="button secondary" data-pending-action="LINK">연결 확정</button></details>` : ""}
+        <details name="pending-${esc(c.id)}" class="pending-review-flow"><summary>검토 메모 / 보류</summary><label>검토 메모 <input data-pending-note maxlength="1000"></label>
         <button type="button" class="button secondary" data-pending-action="HOLD">보류</button>
+        </details>
         <button type="button" class="button secondary" data-pending-action="IGNORE">무시</button>` : `<p>${esc(c.approvalAction)} · ${esc(c.approvedAt)} · ${esc(c.canonicalBrandCode || "")} · ${esc(c.note || "")}</p>`}
       </div>
     </article>`).join("") || "<p>해당 검토 항목이 없습니다.</p>";
   };
   target.querySelector("[data-pending-filter]").onchange = draw;
+  target.querySelector("[data-pending-search]").oninput = draw;
   draw();
   let busy = false;
+  target.oninput = event => {
+    if (!event.target.matches("[data-brand-search]")) return;
+    const row = event.target.closest("[data-pending-id]");
+    row.querySelector("[data-pending-target]").value = "";
+    row.querySelector("[data-brand-selected]").textContent = "선택: 없음";
+    row.querySelector("[data-brand-results]").innerHTML = searchKey(event.target.value) ? matchingBrands(event.target.value).map(b => `<button type="button" class="button secondary" data-brand-choice="${esc(b.brand_code)}"><strong>${esc(b.brand_name)}</strong><small>${esc(b.brand_code)} · ${esc((Array.isArray(b.name_aliases) ? b.name_aliases : [b.name_aliases]).filter(Boolean).join(" / "))}</small></button>`).join("") || "검색 결과 없음" : "";
+  };
   target.onclick = async event => {
+    const choice = event.target.closest("[data-brand-choice]");
+    if (choice?.dataset.brandChoice && !busy) {
+      const row = choice.closest("[data-pending-id]");
+      const brand = brands.find(b => b.brand_code === choice.dataset.brandChoice);
+      if (!brand) return;
+      row.querySelector("[data-pending-target]").value = brand.brand_code;
+      row.querySelector("[data-brand-selected]").textContent = `선택: ${brand.brand_name} (${brand.brand_code})`;
+      row.querySelector("[data-brand-results]").innerHTML = "";
+      return;
+    }
     const button = event.target.closest("[data-pending-action], [data-pending-refresh]");
     if (!button || button.disabled || busy) return;
     const action = button.dataset.pendingAction;
     const row = button.closest("[data-pending-id]");
-    const payload = action ? { id: row.dataset.pendingId, action, brandName: row.querySelector("[data-pending-name]").value,
-      canonicalBrandCode: action === "CONFIRM_EXISTING" ? button.dataset.confirmBrandCode : row.querySelector("[data-pending-target]").value, note: row.querySelector("[data-pending-note]").value } : {};
+    const payload = action ? { id: row.dataset.pendingId, action, brandName: row.querySelector("[data-pending-name]")?.value || "",
+      canonicalBrandCode: action === "CONFIRM_EXISTING" ? button.dataset.confirmBrandCode : row.querySelector("[data-pending-target]")?.value || "", note: row.querySelector("[data-pending-note]")?.value || "" } : {};
     if (action === "LINK" && !payload.canonicalBrandCode) { toast("기존 canonical 브랜드를 선택하세요."); return; }
     if (!confirm(action ? `${action}: ${action === "NEW" ? payload.brandName : ["LINK", "CONFIRM_EXISTING"].includes(action) ? payload.canonicalBrandCode : action === "HOLD" ? "보류" : "무시"} — 검토 결정을 저장할까요?` : "신규 브랜드를 다시 감지할까요? 자동 승인은 하지 않습니다.")) return;
     busy = true;

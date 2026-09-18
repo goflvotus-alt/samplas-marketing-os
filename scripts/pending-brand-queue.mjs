@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { buildBrandRegistry, resolveBrand, normalizeBrandKey, normalizeBrandName, parseBrandAliases, extractBracketBrandCandidate, extractSlashBrandCandidate } from "./brand-engine.mjs";
 import { detectPersonalPayment } from "./load-ecount-offline-sales.mjs";
 import { readEcountOfflineSalesSnapshot } from "./read-ecount-offline-sales-snapshot.mjs";
+import { pendingBrandUiMetadata } from "./pending-brand-ui-metadata.mjs";
 
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, "utf8")); }
@@ -17,8 +18,10 @@ export async function readPendingBrands(workDir, { reviewEligibility = false } =
   if (reviewEligibility) {
     const canonical = await readJson(join(workDir, "brand-master.json"), null);
     const aliases = await readJson(join(workDir, "intelligence/brand-aliases.json"), []);
-    return { ...queue, candidates: queue.candidates.map(candidate => ({ ...candidate,
-      confirmExistingBrandCode: confirmExistingTarget(canonical, candidate, aliases)?.brand_code || null })) };
+    return { ...queue, candidates: queue.candidates.map(candidate => {
+      const response = { ...candidate, confirmExistingBrandCode: confirmExistingTarget(canonical, candidate, aliases)?.brand_code || null };
+      return { ...response, uiReview: pendingBrandUiMetadata(response, canonical, aliases) };
+    }) };
   }
   return queue;
 }

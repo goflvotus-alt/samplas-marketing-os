@@ -11,6 +11,7 @@ import { runInNewContext } from "node:vm";
 import { detectPendingBrands, refreshPendingBrands, readPendingBrands, planPendingBrandDecision, reviewPendingBrand, approvedCafe24BrandCode } from "../scripts/pending-brand-queue.mjs";
 import { buildBrandRegistry, resolveBrand } from "../scripts/brand-engine.mjs";
 import { mergeOfflineBrandSales } from "../scripts/monthly-brand-sales.mjs";
+import { pendingBrandUiMetadata, reviewedProductEvidence } from "../scripts/pending-brand-ui-metadata.mjs";
 
 const canonical = { brands: [{ brand_code: "B1", brand_name: "Known", name_aliases: ["Known alias"], active: true, nameSource: "suggested" }] };
 const detect = input => detectPendingBrands({ canonical, ...input });
@@ -526,6 +527,7 @@ test("review UI defaults Pending, exposes history, and writes only after explici
   const js = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
   const fn = js.slice(js.indexOf("async function renderPendingBrandReview("), js.indexOf("async function renderBrandMasterSettings("));
   const pending = detect({ cafe24Brands: [newBrand] }).candidates[0];
+  pending.uiReview = pendingBrandUiMetadata(pending, canonical);
   const reviewed = { ...pending, id: "reviewed", rawBrandName: "Reviewed name", status: "IGNORED", note: "Keep accounting", approvalAction: "IGNORE" };
   const filter = { value: "PENDING" };
   const rows = { innerHTML: "" };
@@ -544,7 +546,8 @@ test("review UI defaults Pending, exposes history, and writes only after explici
   for (const name of ["card", "header", "meta", "evidence", "actions"]) {
     assert.match(rows.innerHTML, new RegExp(`class="[^"]*pending-review-${name}`));
   }
-  for (const action of ["NEW", "LINK", "HOLD", "IGNORE"]) assert.match(rows.innerHTML, new RegExp(`data-pending-action="${action}"`));
+  for (const action of ["NEW", "HOLD", "IGNORE"]) assert.match(rows.innerHTML, new RegExp(`data-pending-action="${action}"`));
+  assert.doesNotMatch(rows.innerHTML, /data-pending-action="LINK"/);
   assert.doesNotMatch(rows.innerHTML, /Reviewed name/);
   assert.equal(writes.length, 0, "GET/render must not refresh or approve");
   filter.value = "REVIEWED"; filter.onchange();
@@ -621,7 +624,7 @@ test("drift UI shows both identities, evidence and hold without read-time writes
   });
   await render(canonical.brands);
   for (const text of ["브랜드 코드 이름 충돌", "기존: Known", "현재 Cafe24: PERSONSOUL", "B1", "23개", "별도 검토 필요"]) assert.ok(rows.innerHTML.includes(text), text);
-  assert.match(rows.innerHTML, /data-pending-action="NEW" disabled/);
+  assert.doesNotMatch(rows.innerHTML, /data-pending-action="(?:NEW|LINK)"/);
   assert.match(rows.innerHTML, /data-pending-action="HOLD"/);
   assert.equal(writes.length, 0);
   const row = { dataset: { pendingId: c.id }, querySelector: () => ({ value: "await review" }) };
@@ -638,5 +641,207 @@ test("all existing read consumers use the pure reader; no seed write or active m
     const body = source.split(start)[1].split(end)[0];
     assert.match(body, /readBrandMasterWithSeed\(\)/);
     assert.doesNotMatch(body, /writeBrandMasterFile\(/);
+  }
+});
+
+test("search picker filters name/alias/code without selection; only explicit choice plus confirmation writes LINK", async () => {
+  const js = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
+  const fn = js.slice(js.indexOf("async function renderPendingBrandReview("), js.indexOf("async function renderBrandMasterSettings("));
+  const candidate = { id: "candidate", rawBrandName: "LYM", status: "PENDING", source: "ECOUNT", reviewReason: "UNRESOLVED", uiReview: { operationalClass: "ECOUNT_ALIAS_GAP", recommendedUiAction: "LINK", reviewCanonicalTarget: "B00000LI" } };
+  const brands = [
+    { brand_code: "B00000LI", brand_name: "LIBERAL YOUTH MINISTRY", name_aliases: ["LYM"] },
+    { brand_code: "B00000ZT", brand_name: "PACOSPLY", name_aliases: ["Paco Alias"] }
+  ];
+  const filter = { value: "PENDING" }, search = { value: "" }, rows = { innerHTML: "" };
+  const target = { isConnected: true, querySelector: s => s === "[data-pending-filter]" ? filter : s === "[data-pending-search]" ? search : rows };
+  const fields = Object.fromEntries(["target", "name", "note"].map(k => [`[data-pending-${k}]`, { value: "" }]));
+  fields["[data-brand-results]"] = { innerHTML: "" };
+  fields["[data-brand-selected]"] = { textContent: "" };
+  const row = { dataset: { pendingId: candidate.id }, querySelector: s => fields[s] };
+  const writes = [], notices = [];
+  let allow = false, confirmations = 0;
+  const render = runInNewContext(`${fn}; renderPendingBrandReview`, {
+    $: () => target, getJson: async () => ({ candidates: [candidate] }), esc: String, apiNum: Number,
+    confirm: () => { confirmations++; return allow; }, toast: text => notices.push(text),
+    postJson: async (...args) => { writes.push(args); return { ok: true }; }, renderBrandMasterSettings: async () => {}
+  });
+  await render(brands);
+  assert.match(rows.innerHTML, /placeholder="기존 브랜드 검색"/);
+  assert.doesNotMatch(rows.innerHTML, /<select data-pending-target/);
+  const type = value => target.oninput({ target: { value, matches: () => true, closest: () => row } });
+  for (const query of ["liberal", "  LiBeRaL   YoUtH  ", "lym", "b00000li"]) {
+    type(query);
+    assert.match(fields["[data-brand-results]"].innerHTML, /LIBERAL YOUTH MINISTRY/);
+    assert.doesNotMatch(fields["[data-brand-results]"].innerHTML, /PACOSPLY/);
+    assert.equal(fields["[data-pending-target]"].value, "", "search never selects a target");
+  }
+  type("paco alias");
+  assert.match(fields["[data-brand-results]"].innerHTML, /PACOSPLY/);
+  type("no matching brand");
+  assert.equal(fields["[data-brand-results]"].innerHTML, "검색 결과 없음");
+  type("");
+  assert.equal(fields["[data-brand-results]"].innerHTML, "");
+  const link = { dataset: { pendingAction: "LINK" }, closest: () => row };
+  const clickLink = () => target.onclick({ target: { closest: s => s === "[data-brand-choice]" ? null : link } });
+  await clickLink();
+  assert.equal(writes.length, 0);
+  assert.equal(confirmations, 0, "missing selection is rejected before confirmation");
+  assert.equal(notices.length, 1);
+  type("lym");
+  const choice = { dataset: { brandChoice: "B00000LI" }, closest: () => row };
+  await target.onclick({ target: { closest: () => choice } });
+  assert.equal(fields["[data-pending-target]"].value, "B00000LI");
+  assert.equal(fields["[data-brand-selected]"].textContent, "선택: LIBERAL YOUTH MINISTRY (B00000LI)");
+  assert.equal(writes.length, 0, "result click is not a review write");
+  await clickLink();
+  assert.equal(confirmations, 1);
+  assert.equal(writes.length, 0, "cancelled final confirmation cannot write");
+  allow = true;
+  await clickLink();
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0][0], "/api/pending-brands/review");
+  assert.equal(writes[0][1].action, "LINK");
+  assert.equal(writes[0][1].canonicalBrandCode, "B00000LI");
+  type("paco");
+  assert.equal(fields["[data-pending-target]"].value, "", "editing search invalidates stale selection");
+});
+
+test("queue search combines filters; compact native disclosures preserve evidence and isolate NEW/LINK fields", async () => {
+  const js = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
+  const fn = js.slice(js.indexOf("async function renderPendingBrandReview("), js.indexOf("async function renderBrandMasterSettings("));
+  const filter = { value: "PENDING" }, search = { value: "" }, rows = { innerHTML: "" };
+  const target = { isConnected: true, querySelector: s => s === "[data-pending-filter]" ? filter : s === "[data-pending-search]" ? search : rows };
+  const candidates = [
+    { id: "new", rawBrandName: "New Brand", source: "CAFE24", status: "PENDING", reviewReason: "UNRESOLVED", sourceBrandCode: "BNEW", relatedProductCount: 3, relatedProductExamples: ["Evidence product"], uiReview: { operationalClass: "TRUE_NEW_BRAND", recommendedUiAction: "NEW" } },
+    { id: "conflict", rawBrandName: "PERSONSOUL", cafe24Name: "Personsoul current", canonicalName: "BORC", sourceBrandCode: "BCONFLICT", source: "BOTH", status: "PENDING", reviewReason: "CODE_NAME_CONFLICT" },
+    { id: "confirmed", rawBrandName: "Existing", source: "CAFE24", status: "PENDING", reviewReason: "RECENT_AUTO_SEEDED_REVIEW", confirmExistingBrandCode: "BEXIST" },
+    { id: "reviewed", rawBrandName: "Reviewed", status: "IGNORED", approvalAction: "IGNORE" }
+  ];
+  const render = runInNewContext(`${fn}; renderPendingBrandReview`, { $: () => target, getJson: async () => ({ candidates }), esc: String, apiNum: Number });
+  await render([]);
+  assert.match(target.innerHTML, /후보 브랜드 검색/);
+  assert.equal((rows.innerHTML.match(/<article /g) || []).length, 3);
+  assert.doesNotMatch(rows.innerHTML, /<details[^>]*\sopen(?:[\s=>])/);
+  const first = rows.innerHTML.split('data-pending-id="new"')[1].split("</article>")[0];
+  assert.match(first, /관련 상품: 3개/);
+  assert.match(first, /<details class="pending-review-evidence"><summary>상세 보기<\/summary>[\s\S]*Evidence product[\s\S]*<\/details>/);
+  const flows = [...first.matchAll(/<details name="pending-new"[^>]*>([\s\S]*?)<\/details>/g)].map(m => m[1]);
+  assert.equal(flows.length, 2, "NEW and memo are native mutually exclusive disclosures");
+  assert.match(flows[0], /data-pending-name/);
+  assert.doesNotMatch(flows[0], /data-brand-search/);
+  assert.doesNotMatch(first, /data-brand-search/, "TRUE_NEW does not expose LINK");
+  assert.doesNotMatch(flows[1], /data-pending-name/);
+  assert.match(flows[1], /data-pending-action="HOLD"/);
+  const conflict = rows.innerHTML.split('data-pending-id="conflict"')[1].split("</article>")[0];
+  assert.doesNotMatch(conflict, /data-pending-action="(?:NEW|LINK|CONFIRM_EXISTING)"/);
+  const existing = rows.innerHTML.split('data-pending-id="confirmed"')[1].split("</article>")[0];
+  assert.match(existing, /data-confirm-brand-code="BEXIST"/);
+  assert.doesNotMatch(existing, /data-pending-action="(?:NEW|LINK)"/);
+  for (const query of ["personSOUL", "  Personsoul   current ", "borc", "bconflict"]) {
+    search.value = query; search.oninput();
+    assert.equal((rows.innerHTML.match(/<article /g) || []).length, 1);
+    assert.match(rows.innerHTML, /PERSONSOUL/);
+  }
+  filter.value = "CAFE24"; filter.onchange();
+  assert.doesNotMatch(rows.innerHTML, /<article /);
+  search.value = ""; search.oninput();
+  assert.equal((rows.innerHTML.match(/<article /g) || []).length, 2);
+  filter.value = "REVIEWED"; filter.onchange();
+  assert.match(rows.innerHTML, /Reviewed/);
+  assert.doesNotMatch(rows.innerHTML, /data-pending-action=/);
+});
+
+test("read-only operational metadata requires exact reviewed evidence and fails closed on identity drift", () => {
+  for (const proof of reviewedProductEvidence) {
+    const rawBrandName = proof.ecountProductName.split(" / ")[0];
+    const c = { id: proof.candidateId, rawBrandName, status: "PENDING", source: "ECOUNT", reviewReason: "UNRESOLVED", relatedProductExamples: [proof.ecountProductName], ecountVariants: [rawBrandName] };
+    const master = { brands: [{ brand_code: proof.canonicalBrandCode, brand_name: proof.canonicalNames[0], name_aliases: [] }] };
+    const before = JSON.stringify({ c, master });
+    const metadata = pendingBrandUiMetadata(c, master);
+    assert.equal(metadata.operationalClass, "ECOUNT_ALIAS_GAP");
+    assert.equal(metadata.recommendedUiAction, "LINK");
+    assert.equal(metadata.reviewCanonicalTarget, proof.canonicalBrandCode);
+    assert.equal(metadata.reviewEvidence.cafe24ProductNo, proof.cafe24ProductNo);
+    assert.equal(JSON.stringify({ c, master }), before);
+    for (const changed of [
+      { id: "different identity" }, { relatedProductExamples: [] }, { rawBrandName: "Different brand" },
+      { ecountVariants: ["different identity"] }, { possibleExistingCanonical: ["OTHER"] },
+      { heldAt: "2026-09-18" }, { canonicalName: "Other" }, { relatedCandidateIds: ["duplicate"] },
+      ...["CODE_NAME_CONFLICT", "ALIAS_CONFLICT", "DUPLICATE_IDENTITY_CONFLICT", "COLLAB_REVIEW", "COLLABORATION", "UNKNOWN", "HOLD"].map(reviewReason => ({ reviewReason }))
+    ]) assert.equal(pendingBrandUiMetadata({ ...c, ...changed }, master).recommendedUiAction, null, JSON.stringify(changed));
+    assert.equal(pendingBrandUiMetadata(c, { brands: [] }).recommendedUiAction, null);
+    assert.equal(pendingBrandUiMetadata(c, { brands: [{ ...master.brands[0], brand_name: "Changed owner" }] }).recommendedUiAction, null);
+    assert.equal(pendingBrandUiMetadata(c, master, [], []).recommendedUiAction, null);
+    assert.equal(pendingBrandUiMetadata(c, master, [], [proof, proof]).recommendedUiAction, null);
+    assert.equal(pendingBrandUiMetadata(c, master, [{ alias: rawBrandName, brandId: "OTHER" }]).recommendedUiAction, null);
+  }
+  const c = detect({ cafe24Brands: [newBrand] }).candidates[0];
+  assert.equal(pendingBrandUiMetadata(c, canonical).operationalClass, "TRUE_NEW_BRAND");
+  assert.equal(pendingBrandUiMetadata(c, null).recommendedUiAction, null);
+  assert.equal(pendingBrandUiMetadata({ ...c, source: "ECOUNT", sourceBrandCode: null }, canonical).recommendedUiAction, null);
+  assert.equal(pendingBrandUiMetadata(c, { brands: [...canonical.brands, { brand_code: "OTHER", brand_name: c.rawBrandName }] }).recommendedUiAction, null);
+  assert.equal(pendingBrandUiMetadata(c, canonical, [{ alias: c.rawBrandName, brandId: "OTHER" }]).recommendedUiAction, null);
+});
+
+test("GET metadata never persists, and forged UI hints cannot bypass write validation or change accounting", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pending-ui-metadata-"));
+  try {
+    const queue = detect({ cafe24Brands: [newBrand] });
+    await writeFile(join(dir, "brand-master.json"), JSON.stringify(canonical));
+    await writeFile(join(dir, "pending-brand-queue.json"), JSON.stringify(queue));
+    const before = await readFile(join(dir, "pending-brand-queue.json"), "utf8");
+    const response = await readPendingBrands(dir, { reviewEligibility: true });
+    assert.equal(response.candidates[0].uiReview.recommendedUiAction, "NEW");
+    assert.equal(await readFile(join(dir, "pending-brand-queue.json"), "utf8"), before);
+    assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), JSON.stringify(canonical));
+    assert.equal((await readPendingBrands(dir)).candidates[0].uiReview, undefined);
+    const c = queue.candidates[0];
+    const forged = { operationalClass: "TRUE_NEW_BRAND", recommendedUiAction: "NEW", reviewCanonicalTarget: "B1" };
+    for (const uiReview of [undefined, forged]) {
+      assert.throws(() => planPendingBrandDecision(canonical, queue, { id: c.id, action: "LINK", canonicalBrandCode: "MISSING", uiReview }), /target not found/);
+      assert.throws(() => planPendingBrandDecision(canonical, queue, { id: c.id, action: "CONFIRM_EXISTING", canonicalBrandCode: "B1", uiReview }), /not eligible/);
+      const conflict = { ...queue, candidates: [{ ...c, reviewReason: "CODE_NAME_CONFLICT", uiReview }] };
+      assert.throws(() => planPendingBrandDecision(canonical, conflict, { id: c.id, action: "NEW", brandName: "Known", uiReview }), /Code reassignment/);
+    }
+    const input = { id: c.id, action: "NEW", brandName: "New Brand" };
+    assert.deepEqual(planPendingBrandDecision(canonical, queue, input, "fixed"), planPendingBrandDecision(canonical, queue, { ...input, uiReview: forged }, "fixed"));
+    const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+    assert.doesNotMatch(server, /pendingBrandUiMetadata|reviewedProductEvidence|\.uiReview/);
+    for (const path of ["scripts/brand-engine.mjs", "scripts/monthly-brand-sales.mjs", "intelligence-service.mjs"]) {
+      const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+      assert.doesNotMatch(source, /pending-brand-ui-metadata|uiReview|reviewedProductEvidence/);
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("UI hides unsafe actions even with contradictory hints and exposes only NEW, verified LINK or existing confirmation", async () => {
+  const js = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
+  const fn = js.slice(js.indexOf("async function renderPendingBrandReview("), js.indexOf("async function renderBrandMasterSettings("));
+  const rows = { innerHTML: "" }, filter = { value: "PENDING" }, search = { value: "" };
+  const target = { isConnected: true, querySelector: s => s === "[data-pending-filter]" ? filter : s === "[data-pending-search]" ? search : rows };
+  const newHint = { operationalClass: "TRUE_NEW_BRAND", recommendedUiAction: "NEW" };
+  const linkHint = { operationalClass: "ECOUNT_ALIAS_GAP", recommendedUiAction: "LINK", reviewCanonicalTarget: "B1" };
+  const base = { status: "PENDING", reviewReason: "UNRESOLVED", rawBrandName: "Example" };
+  const candidates = [
+    { ...base, id: "new", uiReview: newHint }, { ...base, id: "link", uiReview: linkHint },
+    { ...base, id: "missing-target", uiReview: { ...linkHint, reviewCanonicalTarget: "MISSING" } },
+    { ...base, id: "no-proof" }, { ...base, id: "held", heldAt: "today", uiReview: newHint },
+    { ...base, id: "existing", canonicalName: "Known", uiReview: newHint },
+    ...["CODE_NAME_CONFLICT", "DUPLICATE_IDENTITY_CONFLICT", "ALIAS_CONFLICT", "COLLAB_REVIEW", "COLLABORATION", "UNKNOWN", "HOLD"].map(reviewReason => ({ ...base, id: reviewReason, reviewReason, uiReview: newHint })),
+    { ...base, id: "confirm", reviewReason: "RECENT_AUTO_SEEDED_REVIEW", confirmExistingBrandCode: "B1", uiReview: newHint }
+  ];
+  const render = runInNewContext(`${fn}; renderPendingBrandReview`, { $: () => target, getJson: async () => ({ candidates }), esc: String, apiNum: Number });
+  await render(canonical.brands);
+  const article = id => rows.innerHTML.split(`data-pending-id="${id}"`)[1].split("</article>")[0];
+  assert.match(article("new"), /data-pending-action="NEW"/);
+  assert.doesNotMatch(article("new"), /data-pending-action="LINK"/);
+  assert.match(article("link"), /data-pending-action="LINK"/);
+  assert.doesNotMatch(article("link"), /data-pending-action="NEW"/);
+  assert.match(article("confirm"), /data-pending-action="CONFIRM_EXISTING"/);
+  assert.doesNotMatch(article("confirm"), /data-pending-action="(?:NEW|LINK)"/);
+  for (const c of candidates.filter(c => !["new", "link", "confirm"].includes(c.id))) {
+    assert.doesNotMatch(article(c.id), /data-pending-action="(?:NEW|LINK|CONFIRM_EXISTING)"/, c.id);
+    assert.match(article(c.id), /data-pending-action="HOLD"/);
+    assert.match(article(c.id), /data-pending-action="IGNORE"/);
   }
 });

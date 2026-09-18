@@ -4191,6 +4191,53 @@ td {
   gap: 10px;
 }
 
+#pendingBrandReview > input[type="search"] {
+  padding: 8px;
+  max-width: 100%;
+}
+
+.pending-review-card summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.pending-review-flow {
+  max-width: 100%;
+}
+
+.pending-review-flow[open] {
+  flex-basis: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.pending-review-flow[open] > * + * {
+  margin-top: 8px;
+}
+
+.pending-brand-results {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.pending-brand-results button {
+  text-align: left;
+}
+
+.pending-brand-results strong,
+.pending-brand-results small {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.pending-review-card input[type="hidden"] {
+  display: none;
+}
+
 .pending-review-actions label {
   display: inline-flex;
   align-items: center;
@@ -4222,6 +4269,11 @@ td {
 }
 
 @media (max-width: 720px) {
+  #pendingBrandReview > input[type="search"] {
+    width: 100%;
+    margin: 8px 0;
+  }
+
   .pending-review-header,
   .pending-review-actions,
   .pending-review-actions label {
