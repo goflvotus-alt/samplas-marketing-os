@@ -10287,6 +10287,18 @@ async function renderPendingBrandReview(brands) {
     return null;
   };
   const reasonLabels = { UNRESOLVED: "신규 / 미해결", ALIAS_CONFLICT: "별칭 충돌", COLLABORATION: "협업 검토", CODE_NAME_CONFLICT: "브랜드 코드 이름 충돌", RECENT_AUTO_SEEDED_REVIEW: "최근 자동 등록 가능성 검토" };
+  const identityText = matches => (matches || []).map(b => `${b.canonicalName} · ${b.brandCode}`).join(" / ") || "없음";
+  const comparisonLabel = c => {
+    const m = c.uiReview?.masterComparison;
+    if (m?.productEvidenceTarget?.length) return `기존 브랜드 있음 · ${identityText(m.productEvidenceTarget)} · 상품 identity exact`;
+    const label = ({ EXACT_EXISTING: "기존 canonical 존재", ALIAS_EXISTING: "기존 alias 있음", CODE_NAME_CONFLICT: "브랜드 코드 이름 충돌", DUPLICATE_IDENTITY: "중복 등록 검토", NO_EXISTING_IDENTITY: "기존 Brand Master 등록 없음", UNKNOWN: "확인 필요" })[m?.result] || "확인 필요";
+    const matches = m?.codeMatches?.length ? m.codeMatches : m?.exactNameMatches?.length ? m.exactNameMatches : m?.exactAliasMatches;
+    return matches?.length ? `${label} · ${identityText(matches)}` : label;
+  };
+  const comparisonDetails = c => {
+    const m = c.uiReview?.masterComparison;
+    return `<h4>기존 Brand Master 비교</h4><p>현재: ${esc(c.cafe24Name || c.rawBrandName)} · ${esc(c.sourceBrandCode || "코드 없음")}</p>${m ? `<p>CODE: ${esc(identityText(m.codeMatches))}</p><p>EXACT NAME: ${esc(identityText(m.exactNameMatches))}</p><p>EXACT ALIAS: ${esc(identityText(m.exactAliasMatches))}</p>${m.productEvidenceTarget?.length ? `<p>PRODUCT EVIDENCE: ${esc(identityText(m.productEvidenceTarget))}</p>` : ""}` : "<p>비교 데이터 확인 필요</p>"}`;
+  };
   target.innerHTML = `<h3>신규 브랜드 검토 ${candidates.filter(c => c.status === "PENDING").length}</h3>
     <label>필터 <select data-pending-filter><option value="PENDING">Pending</option><option value="CAFE24">Cafe24</option><option value="ECOUNT">ECOUNT</option><option value="BOTH">Both</option><option value="REVIEW">Collaboration/review</option><option value="REVIEWED">Reviewed</option></select></label>
     <input type="search" data-pending-search placeholder="후보 브랜드 검색" aria-label="후보 브랜드 검색">
@@ -10308,7 +10320,10 @@ async function renderPendingBrandReview(brands) {
         ${c.uiReview ? `<span>운영 검토: ${esc(c.uiReview.operationalClass)}</span>` : ""}
         ${c.canonicalName !== undefined ? `<span>기존: ${esc(c.canonicalName)}</span><span>Cafe24 상품: ${c.cafe24ProductCount == null ? "확인 불가" : apiNum(c.cafe24ProductCount)}개</span>` : ""}
       </div>
+      <p class="pending-master-comparison">기존 비교: <strong>${esc(comparisonLabel(c))}</strong></p>
+      ${c.uiReview?.masterComparison?.result === "CODE_NAME_CONFLICT" ? `<p>현재 Cafe24 코드 ${esc(c.sourceBrandCode)}는 Brand Master에서 ${esc(c.uiReview.masterComparison.codeMatchCanonicalName)}로 등록되어 있습니다. 자동 변경할 수 없어 별도 검토가 필요합니다.</p>` : ""}
       <details class="pending-review-evidence"><summary>상세 보기</summary>
+      ${comparisonDetails(c)}
       ${c.uiReview?.reviewEvidence ? `<p>읽기 전용 검토 근거: Cafe24 상품 ${esc(c.uiReview.reviewEvidence.cafe24ProductNo)} · ${esc(c.uiReview.reviewEvidence.exactProductTitle)} · 대상 ${esc(c.uiReview.reviewCanonicalTarget)}. 자동 선택/연결 아님.</p>` : ""}
       <p>최초 ${esc(c.detectedAt)} · 최근 ${esc(c.lastSeenAt)}</p>
       <p>상품 ${apiNum(c.relatedProductCount)}개 · ${esc((c.relatedProductExamples || []).join(" / "))}</p>
@@ -10324,15 +10339,15 @@ async function renderPendingBrandReview(brands) {
       ${c.status === "PENDING" ? `
         ${displayAction(c) === "CONFIRM_EXISTING" ? `<button type="button" class="button secondary" data-pending-action="CONFIRM_EXISTING" data-confirm-brand-code="${esc(c.confirmExistingBrandCode)}">기존 등록 확인</button>` : ""}
         ${displayAction(c) === "NEW" ? `<details name="pending-${esc(c.id)}" class="pending-review-flow"><summary>신규 브랜드 등록</summary><label>등록 이름 <input data-pending-name maxlength="200" value="${esc(c.rawBrandName)}"></label><button type="button" class="button secondary" data-pending-action="NEW">신규 브랜드 등록 확정</button></details>` : ""}
-        ${displayAction(c) === "LINK" ? `<details name="pending-${esc(c.id)}" class="pending-review-flow"><summary>기존 브랜드 연결</summary>
+        <details name="pending-${esc(c.id)}" class="pending-review-flow"><summary>${displayAction(c) === "LINK" ? "기존 브랜드 연결" : "기존 Brand Master에서 검색"}</summary>
         <label>기존 브랜드 검색 <input type="search" data-brand-search placeholder="기존 브랜드 검색" autocomplete="off"></label>
         <div data-brand-results class="pending-brand-results" aria-label="브랜드 검색 결과"></div>
-        <input type="hidden" data-pending-target value=""><p data-brand-selected>선택: 없음</p>
-        <button type="button" class="button secondary" data-pending-action="LINK">연결 확정</button></details>` : ""}
-        <details name="pending-${esc(c.id)}" class="pending-review-flow"><summary>검토 메모 / 보류</summary><label>검토 메모 <input data-pending-note maxlength="1000"></label>
-        <button type="button" class="button secondary" data-pending-action="HOLD">보류</button>
+        ${displayAction(c) === "LINK" ? '<input type="hidden" data-pending-target value="">' : '<p>읽기 전용 검색 · 대상 확인은 연결 권한을 변경하지 않습니다.</p>'}<p data-brand-selected>선택: 없음</p>
+        ${displayAction(c) === "LINK" ? '<button type="button" class="button secondary" data-pending-action="LINK">연결 확정</button>' : ""}</details>
+        <details name="pending-${esc(c.id)}" class="pending-review-flow"><summary>검토 보류</summary><label>검토 메모 <input data-pending-note maxlength="1000"></label>
+        <button type="button" class="button secondary" data-pending-action="HOLD">검토 보류 저장</button>
         </details>
-        <button type="button" class="button secondary" data-pending-action="IGNORE">무시</button>` : `<p>${esc(c.approvalAction)} · ${esc(c.approvedAt)} · ${esc(c.canonicalBrandCode || "")} · ${esc(c.note || "")}</p>`}
+        <details name="pending-${esc(c.id)}" class="pending-review-flow"><summary>기타 작업</summary><p>이 후보를 향후 신규 브랜드 검토 대상에서 제외합니다. 충돌 해결이나 기존 브랜드 확인을 의미하지 않습니다.</p><button type="button" class="button secondary" data-pending-action="IGNORE">무시</button></details>` : `<p>${esc(c.approvalAction)} · ${esc(c.approvedAt)} · ${esc(c.canonicalBrandCode || "")} · ${esc(c.note || "")}</p>`}
       </div>
     </article>`).join("") || "<p>해당 검토 항목이 없습니다.</p>";
   };
@@ -10343,7 +10358,8 @@ async function renderPendingBrandReview(brands) {
   target.oninput = event => {
     if (!event.target.matches("[data-brand-search]")) return;
     const row = event.target.closest("[data-pending-id]");
-    row.querySelector("[data-pending-target]").value = "";
+    const selection = row.querySelector("[data-pending-target]");
+    if (selection) selection.value = "";
     row.querySelector("[data-brand-selected]").textContent = "선택: 없음";
     row.querySelector("[data-brand-results]").innerHTML = searchKey(event.target.value) ? matchingBrands(event.target.value).map(b => `<button type="button" class="button secondary" data-brand-choice="${esc(b.brand_code)}"><strong>${esc(b.brand_name)}</strong><small>${esc(b.brand_code)} · ${esc((Array.isArray(b.name_aliases) ? b.name_aliases : [b.name_aliases]).filter(Boolean).join(" / "))}</small></button>`).join("") || "검색 결과 없음" : "";
   };
@@ -10353,7 +10369,8 @@ async function renderPendingBrandReview(brands) {
       const row = choice.closest("[data-pending-id]");
       const brand = brands.find(b => b.brand_code === choice.dataset.brandChoice);
       if (!brand) return;
-      row.querySelector("[data-pending-target]").value = brand.brand_code;
+      const selection = row.querySelector("[data-pending-target]");
+      if (selection) selection.value = brand.brand_code;
       row.querySelector("[data-brand-selected]").textContent = `선택: ${brand.brand_name} (${brand.brand_code})`;
       row.querySelector("[data-brand-results]").innerHTML = "";
       return;
@@ -10365,7 +10382,7 @@ async function renderPendingBrandReview(brands) {
     const payload = action ? { id: row.dataset.pendingId, action, brandName: row.querySelector("[data-pending-name]")?.value || "",
       canonicalBrandCode: action === "CONFIRM_EXISTING" ? button.dataset.confirmBrandCode : row.querySelector("[data-pending-target]")?.value || "", note: row.querySelector("[data-pending-note]")?.value || "" } : {};
     if (action === "LINK" && !payload.canonicalBrandCode) { toast("기존 canonical 브랜드를 선택하세요."); return; }
-    if (!confirm(action ? `${action}: ${action === "NEW" ? payload.brandName : ["LINK", "CONFIRM_EXISTING"].includes(action) ? payload.canonicalBrandCode : action === "HOLD" ? "보류" : "무시"} — 검토 결정을 저장할까요?` : "신규 브랜드를 다시 감지할까요? 자동 승인은 하지 않습니다.")) return;
+    if (!confirm(action ? `${action === "IGNORE" ? "이 후보를 향후 신규 브랜드 검토 대상에서 제외합니다. " : ""}${action}: ${action === "NEW" ? payload.brandName : ["LINK", "CONFIRM_EXISTING"].includes(action) ? payload.canonicalBrandCode : action === "HOLD" ? "보류" : "무시"} — 검토 결정을 저장할까요?` : "신규 브랜드를 다시 감지할까요? 자동 승인은 하지 않습니다.")) return;
     busy = true;
     button.disabled = true;
     const saved = await postJson(action ? "/api/pending-brands/review" : "/api/pending-brands/refresh", payload, 60000);

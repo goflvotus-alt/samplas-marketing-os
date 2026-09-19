@@ -644,6 +644,54 @@ test("all existing read consumers use the pure reader; no seed write or active m
   }
 });
 
+test("Master comparison is exact, read-only, and independent of action eligibility", () => {
+  const master = { brands: [{ brand_code: "B1", brand_name: "BORC", name_aliases: ["Old Alias"] }, { brand_code: "B2", brand_name: "Known", name_aliases: ["Known Alias"] }] };
+  const base = { rawBrandName: "PERSONSOUL", sourceBrandCode: "B1", status: "PENDING", reviewReason: "CODE_NAME_CONFLICT" };
+  const before = JSON.stringify(master);
+  const comparison = c => pendingBrandUiMetadata(c, master).masterComparison;
+  assert.equal(comparison(base).result, "CODE_NAME_CONFLICT");
+  assert.equal(comparison(base).codeMatchCanonicalName, "BORC");
+  assert.equal(comparison(base).exactNameMatches.length, 0);
+  assert.equal(comparison(base).exactAliasMatches.length, 0);
+  assert.equal(comparison({ ...base, sourceBrandCode: null, rawBrandName: " known " }).result, "EXACT_EXISTING");
+  assert.equal(comparison({ ...base, sourceBrandCode: null, rawBrandName: "known alias" }).result, "ALIAS_EXISTING");
+  const duplicate = comparison({ ...base, rawBrandName: "Known" });
+  assert.equal(duplicate.result, "DUPLICATE_IDENTITY");
+  assert.equal(duplicate.duplicateIdentityCount, 2);
+  assert.equal(comparison({ ...base, sourceBrandCode: null, rawBrandName: "Kno" }).result, "NO_EXISTING_IDENTITY", "no fuzzy match");
+  assert.equal(pendingBrandUiMetadata(base, null).masterComparison.result, "UNKNOWN");
+  assert.equal(pendingBrandUiMetadata(base, master).recommendedUiAction, null);
+  assert.equal(JSON.stringify(master), before);
+});
+
+test("conflict Master search selection is read-only and IGNORE stays inside secondary disclosure", async () => {
+  const js = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
+  const fn = js.slice(js.indexOf("async function renderPendingBrandReview("), js.indexOf("async function renderBrandMasterSettings("));
+  const brands = [{ brand_code: "B1", brand_name: "BORC", name_aliases: [] }];
+  const candidate = { id: "conflict", rawBrandName: "PERSONSOUL", sourceBrandCode: "B1", source: "CAFE24", status: "PENDING", reviewReason: "CODE_NAME_CONFLICT" };
+  candidate.uiReview = pendingBrandUiMetadata(candidate, brands);
+  const rows = { innerHTML: "" }, fields = { "[data-brand-results]": { innerHTML: "" }, "[data-brand-selected]": { textContent: "" } };
+  const target = { isConnected: true, querySelector: s => s === "[data-pending-filter]" ? { value: "PENDING" } : s === "[data-pending-search]" ? { value: "" } : rows };
+  const row = { dataset: { pendingId: candidate.id }, querySelector: s => fields[s] || null };
+  let writes = 0;
+  const render = runInNewContext(`${fn}; renderPendingBrandReview`, { $: () => target, getJson: async () => ({ candidates: [candidate] }), esc: String, apiNum: Number, postJson: async () => { writes++; } });
+  await render(brands);
+  assert.match(rows.innerHTML, /브랜드 코드 이름 충돌/);
+  assert.match(rows.innerHTML, /Brand Master에서 BORC로 등록/);
+  assert.match(rows.innerHTML, /CODE: BORC · B1/);
+  assert.match(rows.innerHTML, /EXACT NAME: 없음/);
+  assert.match(rows.innerHTML, /기존 Brand Master에서 검색/);
+  assert.match(rows.innerHTML, /<summary>검토 보류<\/summary>/);
+  assert.match(rows.innerHTML, /<summary>기타 작업<\/summary>[\s\S]*data-pending-action="IGNORE"/);
+  assert.doesNotMatch(rows.innerHTML, /data-pending-action="(?:NEW|LINK)"|data-pending-target/);
+  target.oninput({ target: { value: "borc", matches: () => true, closest: () => row } });
+  assert.match(fields["[data-brand-results]"].innerHTML, /BORC/);
+  await target.onclick({ target: { closest: () => ({ dataset: { brandChoice: "B1" }, closest: () => row }) } });
+  assert.equal(fields["[data-brand-selected]"].textContent, "선택: BORC (B1)");
+  assert.equal(writes, 0);
+  assert.doesNotMatch(rows.innerHTML, /data-pending-action="LINK"|data-pending-target/);
+});
+
 test("search picker filters name/alias/code without selection; only explicit choice plus confirmation writes LINK", async () => {
   const js = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
   const fn = js.slice(js.indexOf("async function renderPendingBrandReview("), js.indexOf("async function renderBrandMasterSettings("));
@@ -726,12 +774,14 @@ test("queue search combines filters; compact native disclosures preserve evidenc
   assert.match(first, /관련 상품: 3개/);
   assert.match(first, /<details class="pending-review-evidence"><summary>상세 보기<\/summary>[\s\S]*Evidence product[\s\S]*<\/details>/);
   const flows = [...first.matchAll(/<details name="pending-new"[^>]*>([\s\S]*?)<\/details>/g)].map(m => m[1]);
-  assert.equal(flows.length, 2, "NEW and memo are native mutually exclusive disclosures");
+  assert.equal(flows.length, 4, "NEW, read-only search, HOLD and other actions are mutually exclusive disclosures");
   assert.match(flows[0], /data-pending-name/);
   assert.doesNotMatch(flows[0], /data-brand-search/);
-  assert.doesNotMatch(first, /data-brand-search/, "TRUE_NEW does not expose LINK");
+  assert.match(first, /data-brand-search/, "TRUE_NEW permits read-only Master search");
+  assert.doesNotMatch(first, /data-pending-action="LINK"|data-pending-target/, "read-only search does not expose LINK");
   assert.doesNotMatch(flows[1], /data-pending-name/);
-  assert.match(flows[1], /data-pending-action="HOLD"/);
+  assert.match(flows[2], /data-pending-action="HOLD"/);
+  assert.match(flows[3], /data-pending-action="IGNORE"/);
   const conflict = rows.innerHTML.split('data-pending-id="conflict"')[1].split("</article>")[0];
   assert.doesNotMatch(conflict, /data-pending-action="(?:NEW|LINK|CONFIRM_EXISTING)"/);
   const existing = rows.innerHTML.split('data-pending-id="confirmed"')[1].split("</article>")[0];

@@ -26,6 +26,30 @@ export const reviewedProductEvidence = [
 // Display hints only. Fail closed on changed identity, ambiguous evidence or
 // unknown classifications. POST validation remains the sole write authority.
 export function pendingBrandUiMetadata(candidate, canonical, aliases = [], evidence = reviewedProductEvidence) {
+  const hint = operationalMetadata(candidate, canonical, aliases, evidence);
+  const brands = Array.isArray(canonical) ? canonical : canonical?.brands;
+  const names = [candidate.rawBrandName, candidate.cafe24Name, ...(candidate.cafe24Variants || []), ...(candidate.ecountVariants || [])].filter(Boolean).map(normalizeBrandKey);
+  const identity = b => ({ brandCode: b.brand_code, canonicalName: b.brand_name });
+  const codeMatches = (brands || []).filter(b => candidate.sourceBrandCode && [b.brand_code, ...(b.sourceCafe24Codes || [])].includes(candidate.sourceBrandCode));
+  const exactNameMatches = (brands || []).filter(b => b.brand_name && names.includes(normalizeBrandKey(b.brand_name)));
+  const exactAliasMatches = (brands || []).filter(b => parseBrandAliases(b.name_aliases).some(a => names.includes(normalizeBrandKey(a))));
+  const identities = new Set([...codeMatches, ...exactNameMatches, ...exactAliasMatches].map(b => b.brand_code));
+  const conflict = codeMatches.some(b => !names.includes(normalizeBrandKey(b.brand_name)) && !exactAliasMatches.includes(b));
+  const result = !Array.isArray(brands) ? "UNKNOWN" : identities.size > 1 || codeMatches.length > 1 ? "DUPLICATE_IDENTITY" : conflict ? "CODE_NAME_CONFLICT" : exactNameMatches.length ? "EXACT_EXISTING" : exactAliasMatches.length ? "ALIAS_EXISTING" : codeMatches.length ? "EXACT_EXISTING" : "NO_EXISTING_IDENTITY";
+  return { ...hint, masterComparison: {
+    sourceBrandCode: candidate.sourceBrandCode || null,
+    codeMatch: codeMatches.length > 0,
+    codeMatchCanonicalName: codeMatches.length === 1 ? codeMatches[0].brand_name : null,
+    codeMatches: codeMatches.map(identity),
+    exactNameMatches: exactNameMatches.map(identity),
+    exactAliasMatches: exactAliasMatches.map(identity),
+    duplicateIdentityCount: identities.size,
+    productEvidenceTarget: hint.reviewEvidence ? (brands || []).filter(b => b.brand_code === hint.reviewCanonicalTarget).map(identity) : [],
+    result
+  } };
+}
+
+function operationalMetadata(candidate, canonical, aliases = [], evidence = reviewedProductEvidence) {
   const brands = Array.isArray(canonical) ? canonical : canonical?.brands || [];
   const none = operationalClass => ({ operationalClass, recommendedUiAction: null, reviewCanonicalTarget: null });
   if (!Array.isArray(canonical) && !Array.isArray(canonical?.brands)) return none("UNKNOWN");
