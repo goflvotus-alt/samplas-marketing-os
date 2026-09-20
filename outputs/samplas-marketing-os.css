@@ -4151,6 +4151,28 @@ td {
   min-width: 0;
 }
 
+.pending-review-card [aria-label="Brand Identity Workbench"] fieldset {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.pending-review-card [aria-label="Brand Identity Workbench"] label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.pending-review-card [aria-label="Brand Identity Workbench"] input[data-workbench-proposal] {
+  flex: 0 0 auto;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 2px 0 0;
+  padding: 0;
+}
+
 .pending-review-header,
 .pending-review-meta,
 .pending-review-actions {

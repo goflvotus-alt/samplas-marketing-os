@@ -10299,6 +10299,13 @@ async function renderPendingBrandReview(brands) {
     const m = c.uiReview?.masterComparison;
     return `<h4>기존 Brand Master 비교</h4><p>현재: ${esc(c.cafe24Name || c.rawBrandName)} · ${esc(c.sourceBrandCode || "코드 없음")}</p>${m ? `<p>CODE: ${esc(identityText(m.codeMatches))}</p><p>EXACT NAME: ${esc(identityText(m.exactNameMatches))}</p><p>EXACT ALIAS: ${esc(identityText(m.exactAliasMatches))}</p>${m.productEvidenceTarget?.length ? `<p>PRODUCT EVIDENCE: ${esc(identityText(m.productEvidenceTarget))}</p>` : ""}` : "<p>비교 데이터 확인 필요</p>"}`;
   };
+  const workbenchHtml = c => {
+    const w = c.uiReview?.workbench;
+    if (!w) return "";
+    const value = v => v == null ? "확인 불가" : esc(v);
+    const card = b => `<div class="pending-review-flow"><strong>${esc(b.canonicalName)} · ${esc(b.brandCode)}</strong><p>aliases: ${esc(b.aliases.join(" / ") || "없음")} · ${b.active ? "active" : "inactive"} · ${esc(b.confidence)}</p><p>저장 카탈로그 상품 ${value(b.productCount)} · selling ${value(b.sellingCount)} · Registry 의존 ${value(b.registryDependencies)}</p><p>ECOUNT raw: ${esc(b.ecountRawNames.join(" / ") || (b.ecountRowCount == null ? "확인 불가" : "관측 없음"))} · ${value(b.ecountRowCount)}행 · 현재기간 매출 행 ${b.salesPresence == null ? "확인 불가" : b.salesPresence ? "있음 (raw evidence; canonical 귀속 아님)" : "관측 없음"}</p><p>근거: ${esc(b.evidence.map(e => `${e.basis}: ${e.value}`).join(" / ") || "현재 코드 소유자")}</p></div>`;
+    return `<section aria-label="Brand Identity Workbench"><h4>Brand Identity Workbench · 읽기 전용</h4><p>현재 identity: ${esc(w.current.name)} / ${esc(w.current.brandCode)} · 감지 당시 상품 ${value(w.current.detectedProductCount)} · ${esc(w.current.detectedAt || "기준일 없음")}</p><h4>현재 code owner</h4>${w.owners.map(card).join("") || "코드 소유자 확인 필요"}<h4>관련 기존 Brand Master 후보</h4>${w.related.length ? `<p>기존 브랜드 identity가 다른 code에 존재할 가능성 — 사람의 확인 필요</p>${w.related.map(card).join("")}` : "<p>현재 근거에서 관련 후보 없음. 기존 Master 검색으로 직접 확인하세요.</p>"}<p>${esc(w.warning)}</p><p>출처: ${esc(w.provenance.catalog || "카탈로그 확인 불가")} · ${esc(w.provenance.catalogAt || "기준일 없음")} / ECOUNT ${esc(w.provenance.periodStart || "미확인")} ~ ${esc(w.provenance.periodEnd || "미확인")} · imported ${esc(w.provenance.ecountAt || "없음")} · 미업로드 매장 ${esc((w.provenance.storesMissing || []).join(", ") || "없음/미확인")}</p><fieldset><legend>처리안 검토 (저장 안 됨)</legend><label><input type="radio" name="proposal-${esc(c.id)}" data-workbench-proposal value="현재 Cafe24 identity로 재지정 검토"> 현재 Cafe24 identity로 재지정 검토</label>${w.related.map(b => `<label><input type="radio" name="proposal-${esc(c.id)}" data-workbench-proposal value="${esc(`기존 identity 보존 후보 ${b.canonicalName} / ${b.brandCode} 검토`)}"> 기존 identity 보존 후보 ${esc(b.canonicalName)} / ${esc(b.brandCode)} 검토</label>`).join("")}<label><input type="radio" name="proposal-${esc(c.id)}" data-workbench-proposal value="기존 브랜드 연결 가능성 검토"> 기존 브랜드 연결 가능성 검토</label><label><input type="radio" name="proposal-${esc(c.id)}" data-workbench-proposal value="검토 보류"> 검토 보류</label></fieldset><p data-workbench-preview>처리안 미선택 · 실제 변경 없음</p><p>변경 전: ${esc(identityText(w.owners.map(b => ({ canonicalName: b.canonicalName, brandCode: b.brandCode }))))} → 재지정 가정: ${esc(w.current.name)} / ${esc(w.current.brandCode)}</p><p>이번 preview는 historical saved months·current/future canonical·ECOUNT alias·Product Registry를 변경하지 않습니다. 실행하려면 historical 귀속 불변 보장을 먼저 구현해야 합니다.</p><button type="button" class="button secondary" disabled>실제 재지정 불가 · 추가 검증 필요</button><p>${esc(w.blocker)}</p></section>`;
+  };
   target.innerHTML = `<h3>신규 브랜드 검토 ${candidates.filter(c => c.status === "PENDING").length}</h3>
     <label>필터 <select data-pending-filter><option value="PENDING">Pending</option><option value="CAFE24">Cafe24</option><option value="ECOUNT">ECOUNT</option><option value="BOTH">Both</option><option value="REVIEW">Collaboration/review</option><option value="REVIEWED">Reviewed</option></select></label>
     <input type="search" data-pending-search placeholder="후보 브랜드 검색" aria-label="후보 브랜드 검색">
@@ -10335,6 +10342,7 @@ async function renderPendingBrandReview(brands) {
       ${c.reviewReason === "CODE_NAME_CONFLICT" ? `<p>코드 재할당과 새 별칭 추가는 과거 identity 검토가 필요하여 여기서 실행할 수 없습니다. 기존 브랜드 연결은 해당 이름/별칭이 이미 정확히 등록된 대상을 선택한 검토 확정만 허용합니다. Cafe24 코드 소유권·별칭·과거 귀속은 변경하지 않습니다.</p><button type="button" class="button secondary" disabled>코드 재할당 · 별도 검토 필요</button>` : ""}
       ${c.heldAt ? `<p>보류 ${esc(c.heldAt)} · ${esc(c.note)}</p>` : ""}
       </details>
+      ${workbenchHtml(c)}
       <div class="pending-review-actions">
       ${c.status === "PENDING" ? `
         ${displayAction(c) === "CONFIRM_EXISTING" ? `<button type="button" class="button secondary" data-pending-action="CONFIRM_EXISTING" data-confirm-brand-code="${esc(c.confirmExistingBrandCode)}">기존 등록 확인</button>` : ""}
@@ -10355,6 +10363,10 @@ async function renderPendingBrandReview(brands) {
   target.querySelector("[data-pending-search]").oninput = draw;
   draw();
   let busy = false;
+  target.onchange = event => {
+    if (!event.target.matches("[data-workbench-proposal]")) return;
+    event.target.closest("[data-pending-id]").querySelector("[data-workbench-preview]").textContent = `처리안 검토: ${event.target.value} · 화면에서만 선택됨, 저장/실행 없음`;
+  };
   target.oninput = event => {
     if (!event.target.matches("[data-brand-search]")) return;
     const row = event.target.closest("[data-pending-id]");
