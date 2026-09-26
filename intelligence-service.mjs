@@ -471,6 +471,11 @@ async function routeIntelligenceRequest(url, req, res) {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return handleInventoryOverviewGet(url, res);
     }
+    const naverAdsMatch = url.pathname.match(/^\/api\/intelligence\/naver\/ads\/(health|campaigns|performance)$/);
+    if (naverAdsMatch) {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleNaverAdsReadOnlyRoute(naverAdsMatch[1], url, res);
+    }
     if (url.pathname === "/api/intelligence/naver/search") {
       return handleNaverSearchRoute(url, res);
     }
@@ -2265,6 +2270,153 @@ async function handleNaverSnapshotsPost(req, url, res) {
     duplicate: false,
     snapshot
   });
+}
+
+// Read-only Search Ads: https://naver.github.io/searchad-apidoc/
+// Metric names and 92-day window: https://github.com/naver/searchad-apidoc/wiki/FAQ-stat
+function naverAdsPerformancePeriod(url) {
+  const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const since = url.searchParams.get("since") ?? `${today.slice(0, 7)}-01`;
+  const until = url.searchParams.get("until") ?? today;
+  for (const [key, value] of [["since", since], ["until", until]]) {
+    const date = new Date(`${value}T00:00:00Z`);
+    if (url.searchParams.getAll(key).length > 1 || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+        !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+      return { ok: false, error: "since and until must be valid YYYY-MM-DD dates" };
+    }
+  }
+  if (since > until) return { ok: false, error: "since must be before or equal to until" };
+  if ((Date.parse(until) - Date.parse(since)) / 86400000 >= 92) {
+    return { ok: false, error: "Date range must not exceed 92 days (inclusive)" };
+  }
+  return { ok: true, since, until };
+}
+
+async function fetchNaverAdsReadOnly(uri, params, credentials, signal) {
+  // No caller-controlled method/path or redirects: credentials only go to the
+  // configured Search Ads host, and this helper cannot mutate an ad account.
+  if (!["/ncc/campaigns", "/stats"].includes(uri)) throw new Error("Unsupported read-only endpoint");
+  const endpoint = new URL(uri, naverAdsBaseUrl);
+  endpoint.search = new URLSearchParams(params).toString();
+  const response = await fetch(endpoint, {
+    method: "GET",
+    headers: naverSearchAdsHeaders({ method: "GET", uri, timestamp: String(Date.now()), credentials }),
+    signal,
+    redirect: "error"
+  });
+  if (!response.ok) throw new Error("Naver Search Ads request failed");
+  // Parsing and transport exceptions are caught by the route; neither the raw
+  // body nor upstream error/exception text is returned or logged.
+  return JSON.parse(await response.text());
+}
+
+function normalizeNaverAdsCampaigns(payload) {
+  if (!Array.isArray(payload)) throw new Error("Invalid campaign response");
+  const ids = new Set();
+  return payload.map(row => {
+    if (typeof row?.nccCampaignId !== "string" || !row.nccCampaignId || ids.has(row.nccCampaignId) ||
+        typeof row.name !== "string") throw new Error("Invalid campaign response");
+    ids.add(row.nccCampaignId);
+    return {
+      id: row.nccCampaignId,
+      name: row.name,
+      campaignType: typeof row.campaignTp === "string" ? row.campaignTp : null,
+      status: typeof row.status === "string" ? row.status : null,
+      deliveryMethod: typeof row.deliveryMethod === "string" ? row.deliveryMethod : null
+    };
+  });
+}
+
+function naverAdsMetrics(row) {
+  const metrics = {};
+  for (const [name, field] of Object.entries({ impressions: "impCnt", clicks: "clkCnt", spend: "salesAmt", conversions: "ccnt", conversionValue: "convAmt" })) {
+    const value = row[field];
+    // An unavailable conversion metric is unknown, not a measured zero.
+    if (value == null || value === "") { metrics[name] = null; continue; }
+    if (!["number", "string"].includes(typeof value) || String(value).trim() === "" ||
+        !Number.isFinite(Number(value)) || Number(value) < 0) throw new Error("Invalid statistic");
+    metrics[name] = Number(value);
+  }
+  return naverAdsRatios(metrics);
+}
+
+function naverAdsRatios(metrics) {
+  const ratio = (numerator, denominator, scale = 1) => {
+    if (numerator === null || denominator === null || denominator === 0) return null;
+    const value = numerator / denominator * scale;
+    return Number.isFinite(value) ? value : null;
+  };
+  return {
+    ...metrics,
+    ctr: ratio(metrics.clicks, metrics.impressions, 100),
+    cpc: ratio(metrics.spend, metrics.clicks),
+    conversionRate: ratio(metrics.conversions, metrics.clicks, 100),
+    cpa: ratio(metrics.spend, metrics.conversions),
+    roas: ratio(metrics.conversionValue, metrics.spend)
+  };
+}
+
+async function handleNaverAdsReadOnlyRoute(kind, url, res) {
+  const period = kind === "performance" ? naverAdsPerformancePeriod(url) : null;
+  if (period && !period.ok) return json(res, { ok: false, error: period.error }, 400);
+  const credentials = naverAdsCredentials();
+  const health = kind === "health" ? { configured: credentials.ok, connected: false } : {};
+  if (!credentials.ok) {
+    return json(res, { ok: false, ...health, error: "Naver Search Ads credentials are not configured" }, 503);
+  }
+  // One deadline includes all requests AND body reads, so large accounts cannot
+  // accumulate per-campaign timeouts beyond the existing service timeout.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), naverAdsTimeoutMs);
+  try {
+    const campaigns = normalizeNaverAdsCampaigns(await fetchNaverAdsReadOnly("/ncc/campaigns", {}, credentials, controller.signal));
+    if (kind === "health") {
+      return json(res, { ok: true, configured: true, connected: true,
+        customerId: `******${String(credentials.customerId).length > 4 ? String(credentials.customerId).slice(-4) : ""}`,
+        campaignCount: campaigns.length });
+    }
+    if (kind === "campaigns") return json(res, { ok: true, count: campaigns.length, campaigns });
+    const { since, until } = period;
+    const stats = new Map();
+    // Batch identifiers to keep URLs bounded; the shared deadline bounds the
+    // entire read. No report-creation POST is necessary for Phase 1.
+    for (let offset = 0; offset < campaigns.length; offset += 100) {
+      const batch = campaigns.slice(offset, offset + 100);
+      const payload = await fetchNaverAdsReadOnly("/stats", {
+        ids: batch.map(campaign => campaign.id).join(","),
+        fields: JSON.stringify(["impCnt", "clkCnt", "salesAmt", "ccnt", "convAmt"]),
+        timeRange: JSON.stringify({ since, until }),
+        timeIncrement: "allDays"
+      }, credentials, controller.signal);
+      if (!Array.isArray(payload?.data)) throw new Error("Invalid statistics response");
+      const expected = new Set(batch.map(campaign => campaign.id));
+      for (const row of payload.data) {
+        if (!expected.has(row?.id) || stats.has(row.id)) throw new Error("Invalid statistics response");
+        stats.set(row.id, naverAdsMetrics(row));
+      }
+      if (batch.some(campaign => !stats.has(campaign.id))) throw new Error("Incomplete statistics response");
+    }
+    const rows = campaigns.map(campaign => ({ campaignId: campaign.id, campaignName: campaign.name, ...stats.get(campaign.id) }));
+    const totals = {};
+    for (const field of ["impressions", "clicks", "spend", "conversions", "conversionValue"]) {
+      totals[field] = rows.some(row => row[field] === null) ? null : rows.reduce((sum, row) => sum + row[field], 0);
+      if (totals[field] !== null && !Number.isFinite(totals[field])) throw new Error("Invalid statistics total");
+    }
+    return json(res, {
+      ok: true, since, until, summary: naverAdsRatios(totals), campaigns: rows,
+      metadata: {
+        source: "naver-searchad-stats", timezone: "Asia/Seoul", roasUnit: "ratio",
+        conversionAttribution: "Naver-reported ccnt/convAmt under the account's conversion tracking settings; no purchase-only filter or Cafe24 revenue reconciliation. Attribution window is not returned by /stats and is not inferred here.",
+        missingMetrics: "null means unavailable; incomplete campaign statistics fail instead of becoming zero"
+      }
+    });
+  } catch {
+    return json(res, { ok: false, ...health,
+      error: controller.signal.aborted ? "Naver Search Ads request timed out" : "Naver Search Ads request failed or returned an invalid response"
+    }, 502);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function naverAdsCredentials() {
