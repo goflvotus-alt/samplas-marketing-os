@@ -5988,7 +5988,7 @@ async function renderAdvertising(data, renderSeq) {
 async function renderAdvertisingChannelComparison(since, until, renderSeq) {
   const target = $("#adChannelCompare");
   if (!target) return;
-  const data = await getJson(`/api/advertising/overview?since=${since}&until=${until}`, 12000);
+  const data = await getJson(intelligenceUrl(`/api/advertising/overview?since=${since}&until=${until}`), 12000);
   if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
   if (data.error || data.ok === false || !Array.isArray(data.channels)) {
     target.innerHTML = `<article class="action-item ad-performance-card"><strong>채널 비교 확인 불가</strong><p>${esc(data.error || "잠시 후 다시 시도해주세요.")}</p></article>`;
