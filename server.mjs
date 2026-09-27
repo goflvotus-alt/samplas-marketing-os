@@ -781,7 +781,8 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (
       url.pathname.startsWith("/api/intelligence/") ||
       url.pathname.startsWith("/api/inventory/intelligence/") ||
-      url.pathname === "/api/inventory/overview"
+      url.pathname === "/api/inventory/overview" ||
+      url.pathname === "/api/advertising/overview"
     ) {
       // Human review PATCH는 로컬 요청(isLocalRequest)에 한해 내부 인증을 우회한다.
       // Category Review와 Revenue Priority Review만 허용하며,
