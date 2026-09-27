@@ -5881,6 +5881,10 @@ async function renderAdvertising(data, renderSeq) {
   const startDate = range.since;
   const endDate = range.until;
   renderAdLevelTabs();
+  // Phase 3: independent of the Meta-only fetches below (own target, own
+  // failure handling) so a slow/broken comparison call never blocks or breaks
+  // the existing Advertising screen.
+  renderAdvertisingChannelComparison(startDate, endDate, renderSeq);
   const [meta, fullReport, weightsResp, commerce] = await Promise.all([
     getSharedJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}&level=${activeAdLevel}`, 9000),
     getJson(`/api/meta-ads/full-report?since=${startDate}&until=${endDate}`, 12000),
@@ -5973,6 +5977,74 @@ async function renderAdvertising(data, renderSeq) {
   renderMetaAdsFullReportGroups(fullReport, scoreWeights, fullReportTargets);
   renderMarketingSummary({ meta, fullReport, commerce, adSpendShare, briefingTarget, reconTarget, briefingCount, reportingSpend, reportingPurchaseValue, periodLabel: `${startDate} ~ ${endDate}` });
   contentTarget.innerHTML = "";
+}
+
+// Phase 3: Meta vs Naver comparison via the canonical GET /api/advertising/overview
+// endpoint only — no direct Meta/Naver calls here and no re-implemented ad math.
+// Every number in each card comes straight from that endpoint's channels[] (which
+// is itself fromMetaAds()/fromNaverAds() canonical output). actualCommerce is
+// intentionally never rendered here — Cafe24 real revenue is not connected in
+// this Phase, and this section must never look like it is.
+async function renderAdvertisingChannelComparison(since, until, renderSeq) {
+  const target = $("#adChannelCompare");
+  if (!target) return;
+  const data = await getJson(`/api/advertising/overview?since=${since}&until=${until}`, 12000);
+  if (renderSeq !== undefined && renderSeq !== operationsRenderSeq) return;
+  if (data.error || data.ok === false || !Array.isArray(data.channels)) {
+    target.innerHTML = `<article class="action-item ad-performance-card"><strong>채널 비교 확인 불가</strong><p>${esc(data.error || "잠시 후 다시 시도해주세요.")}</p></article>`;
+    return;
+  }
+  const meta = data.channels.find((channel) => channel?.channel === "meta") || null;
+  const naver = data.channels.find((channel) => channel?.channel === "naver") || null;
+  target.innerHTML = [adChannelCompareCard("Meta", meta), adChannelCompareCard("Naver", naver)].join("");
+}
+
+// Dedicated formatters (null → "—") so this comparison never silently borrows the
+// rest of the screen's "-" convention for a different, explicitly requested rule.
+function adChannelCompareNum(value) {
+  if (value === null || value === undefined) return "—";
+  const n = Number(value);
+  return Number.isFinite(n) ? nf.format(n) : "—";
+}
+function adChannelCompareWon(value) {
+  if (value === null || value === undefined) return "—";
+  const n = Number(value);
+  return Number.isFinite(n) ? `${nf.format(Math.round(n))}원` : "—";
+}
+function adChannelComparePercent(ratio) {
+  if (ratio === null || ratio === undefined) return "—";
+  const n = Number(ratio);
+  return Number.isFinite(n) ? `${(n * 100).toFixed(1)}%` : "—";
+}
+function adChannelCompareMultiple(value) {
+  if (value === null || value === undefined) return "—";
+  const n = Number(value);
+  return Number.isFinite(n) ? `${n.toFixed(2)}x` : "—";
+}
+
+function adChannelCompareCard(label, channel) {
+  if (!channel || channel.status === "unavailable") {
+    return `<article class="action-item ad-performance-card">
+      <strong>${esc(label)}</strong>
+      <p>채널 데이터를 사용할 수 없습니다.</p>
+    </article>`;
+  }
+  return `<article class="action-item ad-performance-card">
+    <strong>${esc(label)}</strong>
+    <span>${adChannelCompareWon(channel.spend)}</span>
+    ${channel.status === "partial" ? `<p>일부 지표만 확인됨</p>` : ""}
+    <div class="ad-card-metrics">
+      ${metaAdsMiniMetric("Impressions", adChannelCompareNum(channel.impressions))}
+      ${metaAdsMiniMetric("Clicks", adChannelCompareNum(channel.clicks))}
+      ${metaAdsMiniMetric("CTR", adChannelComparePercent(channel.ctr))}
+      ${metaAdsMiniMetric("CPC", adChannelCompareWon(channel.cpc))}
+      ${metaAdsMiniMetric("Conversions", adChannelCompareNum(channel.platformConversions))}
+      ${metaAdsMiniMetric("Conversion Value", adChannelCompareWon(channel.platformConversionValue))}
+      ${metaAdsMiniMetric("CPA", adChannelCompareWon(channel.platformCpa))}
+      ${metaAdsMiniMetric("ROAS", adChannelCompareMultiple(channel.platformRoas))}
+    </div>
+    <p>${esc(channel.attribution?.note || "Platform attribution only; not Cafe24 actual orders or revenue.")}</p>
+  </article>`;
 }
 
 function campaignComparisonAddDays(dateKey, days) {
