@@ -10,5 +10,8 @@
     "render:check": "node scripts/check-render-deployment.mjs",
     "verify:production": "node scripts/verify-render-snapshot-sync.mjs",
     "render:upload-cafe24": "node scripts/upload-cafe24-csv-to-render.mjs"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
   }
 }

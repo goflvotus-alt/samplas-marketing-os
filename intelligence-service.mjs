@@ -2361,7 +2361,7 @@ function naverAdsRatios(metrics) {
   };
 }
 
-async function handleNaverAdsReadOnlyRoute(kind, url, res) {
+export async function handleNaverAdsReadOnlyRoute(kind, url, res) {
   const period = kind === "performance" ? naverAdsPerformancePeriod(url) : null;
   if (period && !period.ok) return json(res, { ok: false, error: period.error }, 400);
   const credentials = naverAdsCredentials();
@@ -2427,7 +2427,7 @@ async function handleNaverAdsReadOnlyRoute(kind, url, res) {
 // Minimal `res`-shaped recorder so handleNaverAdsReadOnlyRoute's own json(res, ...)
 // call can be reused as a plain data source (its Phase 1 response contract is not
 // touched) without a real HTTP round trip.
-function capturingResponse() {
+export function capturingResponse() {
   const capture = { headersSent: false, writableEnded: false, body: null };
   capture.writeHead = () => {};
   capture.end = (text) => {

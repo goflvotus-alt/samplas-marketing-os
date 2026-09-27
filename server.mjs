@@ -14,8 +14,15 @@ import {
   classifyClientType,
   classifyClientEntity,
   isGiftSalesLine,
-  buildIntelligenceBrandRegistry
+  buildIntelligenceBrandRegistry,
+  handleNaverAdsReadOnlyRoute,
+  capturingResponse
 } from "./intelligence-service.mjs";
+import {
+  generateWeeklyNaverAdsReport,
+  isWeeklyNaverReportDue,
+  seoulDateKey
+} from "./scripts/naver-ads-weekly-report.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
 import {
@@ -859,6 +866,12 @@ const server = isMainModule ? createServer(async (req, res) => {
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
   setInterval(runInstagramBackgroundSync, instagramSyncScheduler.intervalMs);
+  // Naver Search Ads Weekly Report: polls every 15 minutes (see naverWeeklyReportScheduler
+  // above); runNaverWeeklyReportCheck() itself is a no-op outside Tuesday 10:00-10:59 KST
+  // or once this week's report already ran, so this is safe to call immediately at boot
+  // too (covers the case where the server happens to restart during that window).
+  runNaverWeeklyReportCheck();
+  setInterval(runNaverWeeklyReportCheck, naverWeeklyReportScheduler.intervalMs);
 }) : null;
 
 server?.on("error", (error) => {
@@ -7296,6 +7309,64 @@ async function runInstagramBackgroundSync() {
     await logApiError("instagram_background_sync", error, { month });
   } finally {
     instagramSyncScheduler.running = false;
+  }
+}
+
+// Naver Search Ads Weekly Report: same in-process poll-and-check pattern as
+// instagramSyncScheduler above (no Render Cron / external scheduler exists in this
+// project — see render.yaml, only a single web service is defined). Polling every 15
+// minutes only ever costs a Date check; the actual Naver fetch only runs once
+// isWeeklyNaverReportDue() confirms it's Tuesday 10:00-10:59 KST AND this week's report
+// (keyed by its `since` date) hasn't already been generated.
+const naverWeeklyReportScheduler = {
+  intervalMs: 15 * 60 * 1000, // 15분
+  running: false,
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastRunSinceKey: null,
+  lastError: null
+};
+
+// Thin GET-only wrapper around the already-imported, already read-only Phase 1 route —
+// no new Naver client, no new auth, no write capability (fetchNaverAdsReadOnly() inside
+// intelligence-service.mjs only allows /ncc/campaigns and /stats).
+async function fetchNaverAdsPerformanceForWeeklyReport(since, until) {
+  const url = new URL(`http://internal/api/intelligence/naver/ads/performance?since=${since}&until=${until}`);
+  const capture = capturingResponse();
+  await handleNaverAdsReadOnlyRoute("performance", url, capture);
+  return capture.body;
+}
+
+async function runNaverWeeklyReportCheck() {
+  if (naverWeeklyReportScheduler.running) return;
+  if (!isWeeklyNaverReportDue(new Date(), naverWeeklyReportScheduler.lastRunSinceKey)) return;
+  naverWeeklyReportScheduler.running = true;
+  naverWeeklyReportScheduler.lastAttemptAt = new Date().toISOString();
+  try {
+    const result = await generateWeeklyNaverAdsReport({
+      referenceDateKey: seoulDateKey(),
+      fetchPerformance: fetchNaverAdsPerformanceForWeeklyReport,
+      // Pass this file's own already-loaded env (merges .env + process.env) so a
+      // .env-only NAVER_ADS_WEEKLY_REPORT_DIR is honored the same way manual CLI runs
+      // honor it — both paths must resolve the exact same output directory.
+      env
+    });
+    if (result.ok) {
+      naverWeeklyReportScheduler.lastRunSinceKey = result.since;
+      naverWeeklyReportScheduler.lastSuccessAt = new Date().toISOString();
+      naverWeeklyReportScheduler.lastError = null;
+      console.log(`[NAVER_ADS_WEEKLY_REPORT] saved ${result.filePath}`);
+    } else {
+      // Does not mark lastRunSinceKey — an unavailable-credentials/data week should be
+      // retried on the next poll within the same Tuesday 10:00-10:59 KST window rather
+      // than being silently skipped for the whole week.
+      naverWeeklyReportScheduler.lastError = result.error;
+    }
+  } catch (error) {
+    naverWeeklyReportScheduler.lastError = safeErrorMessage(error);
+    await logApiError("naver_weekly_report", error, {});
+  } finally {
+    naverWeeklyReportScheduler.running = false;
   }
 }
 

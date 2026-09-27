@@ -15,7 +15,11 @@ function section(start, end) {
 const executable = [
   section("export async function handleIntelligenceRequest", "const isDirectRun").replace("export ", ""),
   section("function json(", "async function readProductRegistryJson"),
-  section("async function handleNaverSearchRoute", "function brandIntelligencePeriod")
+  // handleNaverAdsReadOnlyRoute/capturingResponse are now also exported (reused by
+  // scripts/naver-ads-weekly-report.mjs) — same "export " strip already used above for
+  // handleIntelligenceRequest, since vm.runInNewContext executes this as a plain script,
+  // not an ES module, and can't parse the `export` keyword.
+  section("async function handleNaverSearchRoute", "function brandIntelligencePeriod").replaceAll("export ", "")
 ].join("\n");
 const credentials = {
   NAVER_ADS_API_KEY: "test-key-private",
