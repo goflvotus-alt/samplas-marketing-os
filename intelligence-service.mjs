@@ -15,6 +15,7 @@ import {
 import { bootstrapProductRegistryFiles } from "./scripts/bootstrap-product-registry.mjs";
 import { bootstrapCommercialPolicyFiles } from "./scripts/bootstrap-commercial-policy.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
+import { fromMetaAds, fromNaverAds } from "./scripts/advertising-canonical.mjs";
 import {
   normalizeBrandCode,
   normalizeBrandName,
@@ -475,6 +476,10 @@ async function routeIntelligenceRequest(url, req, res) {
     if (naverAdsMatch) {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return handleNaverAdsReadOnlyRoute(naverAdsMatch[1], url, res);
+    }
+    if (url.pathname === "/api/advertising/overview") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return handleAdvertisingOverviewRoute(url, res);
     }
     if (url.pathname === "/api/intelligence/naver/search") {
       return handleNaverSearchRoute(url, res);
@@ -2417,6 +2422,51 @@ async function handleNaverAdsReadOnlyRoute(kind, url, res) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// Minimal `res`-shaped recorder so handleNaverAdsReadOnlyRoute's own json(res, ...)
+// call can be reused as a plain data source (its Phase 1 response contract is not
+// touched) without a real HTTP round trip.
+function capturingResponse() {
+  const capture = { headersSent: false, writableEnded: false, body: null };
+  capture.writeHead = () => {};
+  capture.end = (text) => {
+    capture.writableEnded = true;
+    try { capture.body = text ? JSON.parse(text) : null; } catch { capture.body = null; }
+  };
+  return capture;
+}
+
+// Phase 3: combines the existing Meta full-report and Naver Phase 1 performance
+// responses through the Phase 2 canonical adapter (fromMetaAds/fromNaverAds).
+// No new ad-metric math here — every number in `channels` is produced by those
+// adapters. Cafe24 actual commerce is not connected in this Phase.
+async function handleAdvertisingOverviewRoute(url, res) {
+  const period = naverAdsPerformancePeriod(url); // channel-agnostic since/until validator
+  if (!period.ok) return json(res, { ok: false, error: period.error }, 400);
+  const { since, until } = period;
+  const options = { timezone: "Asia/Seoul" };
+
+  let metaChannel;
+  try {
+    const response = await fetchMarketingOsJson(`/api/meta-ads/full-report?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`);
+    metaChannel = fromMetaAds(response.ok ? response.data : { error: "meta_unavailable" }, options);
+  } catch {
+    // Never surface internal error/exception text; represent the failure the
+    // same way fromMetaAds represents any other unavailable input.
+    metaChannel = fromMetaAds({ error: "meta_unavailable" }, options);
+  }
+
+  let naverChannel;
+  try {
+    const capture = capturingResponse();
+    await handleNaverAdsReadOnlyRoute("performance", url, capture);
+    naverChannel = fromNaverAds(capture.body ?? { ok: false }, options);
+  } catch {
+    naverChannel = fromNaverAds({ ok: false }, options);
+  }
+
+  return json(res, { ok: true, since, until, channels: [metaChannel, naverChannel], actualCommerce: null, notes: [] });
 }
 
 function naverAdsCredentials() {
