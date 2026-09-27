@@ -23,6 +23,11 @@ import {
   isWeeklyNaverReportDue,
   seoulDateKey
 } from "./scripts/naver-ads-weekly-report.mjs";
+import {
+  resolveWeeklyReportDestination,
+  saveWeeklyReportToDropbox,
+  isDropboxConfigured
+} from "./scripts/dropbox-report-uploader.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
 import {
@@ -125,6 +130,17 @@ const server = isMainModule ? createServer(async (req, res) => {
           lastSuccessAt: instagramSyncScheduler.lastSuccessAt,
           lastError: instagramSyncScheduler.lastError,
           intervalMs: instagramSyncScheduler.intervalMs
+        },
+        // Additive only — never exposes the Dropbox path's credential (app secret /
+        // refresh token) or the resolved access token, only whether Dropbox is
+        // configured and the last run's outcome.
+        naverWeeklyReport: {
+          destination: resolveWeeklyReportDestination(env).mode,
+          dropboxConfigured: isDropboxConfigured(env),
+          lastAttemptAt: naverWeeklyReportScheduler.lastAttemptAt,
+          lastUploadAt: naverWeeklyReportScheduler.lastSuccessAt,
+          lastUploadedReport: naverWeeklyReportScheduler.lastUploadedReport,
+          lastError: naverWeeklyReportScheduler.lastError
         },
         environment: integrations,
         pageId: env.FACEBOOK_PAGE_ID || null,
@@ -7324,6 +7340,7 @@ const naverWeeklyReportScheduler = {
   lastAttemptAt: null,
   lastSuccessAt: null,
   lastRunSinceKey: null,
+  lastUploadedReport: null,
   lastError: null
 };
 
@@ -7343,17 +7360,37 @@ async function runNaverWeeklyReportCheck() {
   naverWeeklyReportScheduler.running = true;
   naverWeeklyReportScheduler.lastAttemptAt = new Date().toISOString();
   try {
+    // Production (Dropbox credentials configured) uploads to Dropbox; Local (no Dropbox
+    // credentials at all) keeps writing to NAVER_ADS_WEEKLY_REPORT_DIR exactly as before —
+    // same fetch/model/workbook pipeline either way, only the final "save" step differs.
+    // A PARTIALLY configured Dropbox (1-2 of the 3 vars set) must never silently fall
+    // back to local — that would mean writing the report to Render's own disk instead of
+    // Dropbox while still reporting success. Throwing here reuses the existing catch
+    // block below for all the "don't mark this week complete" bookkeeping, and happens
+    // before generateWeeklyNaverAdsReport is ever called, so neither a Dropbox upload nor
+    // a local write is attempted in this state.
+    const destination = resolveWeeklyReportDestination(env);
+    if (destination.mode === "misconfigured") {
+      throw new Error(`Dropbox is partially configured — missing: ${destination.missing.join(", ")}. Refusing to fall back to local storage.`);
+    }
     const result = await generateWeeklyNaverAdsReport({
       referenceDateKey: seoulDateKey(),
       fetchPerformance: fetchNaverAdsPerformanceForWeeklyReport,
       // Pass this file's own already-loaded env (merges .env + process.env) so a
       // .env-only NAVER_ADS_WEEKLY_REPORT_DIR is honored the same way manual CLI runs
       // honor it — both paths must resolve the exact same output directory.
-      env
+      env,
+      saveReport: destination.mode === "dropbox" ? saveWeeklyReportToDropbox : undefined
     });
     if (result.ok) {
+      // Only reached if saveReport actually resolved (a Dropbox auth/upload/network
+      // failure throws inside generateWeeklyNaverAdsReport and lands in the catch below
+      // instead) — so this week is marked complete only once the report is durably
+      // saved, whether that means "uploaded now" or "already existed in Dropbox from an
+      // earlier attempt" (uploaded:false, alreadyExists:true is still a success).
       naverWeeklyReportScheduler.lastRunSinceKey = result.since;
       naverWeeklyReportScheduler.lastSuccessAt = new Date().toISOString();
+      naverWeeklyReportScheduler.lastUploadedReport = result.filePath;
       naverWeeklyReportScheduler.lastError = null;
       console.log(`[NAVER_ADS_WEEKLY_REPORT] saved ${result.filePath}`);
     } else {

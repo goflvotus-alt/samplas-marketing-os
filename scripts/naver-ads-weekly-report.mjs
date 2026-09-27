@@ -379,7 +379,12 @@ export async function writeWeeklyReportFile(workbook, { since, until, outputDir 
 // already-imported handleNaverAdsReadOnlyRoute; the CLI/tests pass their own).
 // ---------------------------------------------------------------------------
 
-export async function generateWeeklyNaverAdsReport({ referenceDateKey, fetchPerformance, outputDir, env = process.env } = {}) {
+// `saveReport(workbook, { since, until, env })` is optional and pluggable so Production
+// (Dropbox upload — see scripts/dropbox-report-uploader.mjs) and Local (filesystem) can
+// share this exact same fetch/model/workbook pipeline instead of each having their own
+// copy of the report-building logic. Omitting it preserves the original local-filesystem
+// behavior unchanged (this is what the CLI and all existing tests still do).
+export async function generateWeeklyNaverAdsReport({ referenceDateKey, fetchPerformance, outputDir, env = process.env, saveReport } = {}) {
   if (typeof fetchPerformance !== "function") throw new Error("generateWeeklyNaverAdsReport requires fetchPerformance(since, until)");
   const { since, until } = previousTuesdayToMondayRange(referenceDateKey);
   const { since: previousSince, until: previousUntil } = previousWeekRange({ since, until });
@@ -395,6 +400,15 @@ export async function generateWeeklyNaverAdsReport({ referenceDateKey, fetchPerf
   }
 
   const workbook = await buildWeeklyReportWorkbook(model);
+
+  if (saveReport) {
+    // Any throw here (upload failure, auth failure, network failure) intentionally
+    // propagates uncaught — the caller (server.mjs's scheduler) must NOT treat this
+    // week as complete unless saveReport actually resolves successfully.
+    const saved = await saveReport(workbook, { since, until, env });
+    return { ok: true, since, until, ...saved };
+  }
+
   const resolvedOutputDir = outputDir || resolveWeeklyReportOutputDir(env);
   const filePath = await writeWeeklyReportFile(workbook, { since, until, outputDir: resolvedOutputDir });
   return { ok: true, since, until, filePath };
