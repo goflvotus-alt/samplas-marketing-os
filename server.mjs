@@ -69,6 +69,16 @@ const env = await loadEnv();
 const workDir = resolve(env.WORK_DIR || join(root, "work"));
 const cafe24TokenStoreDir = resolve(env.CAFE24_TOKEN_STORE_DIR || join(workDir, "secrets"));
 const cafe24TokenStoreFile = join(cafe24TokenStoreDir, "cafe24-token-store.json");
+// Meta OAuth reconnect: persistent store defaults to the same secrets directory Cafe24
+// already uses on the Render persistent disk (META_TOKEN_STORE_DIR is only needed to
+// point elsewhere). env.META_ACCESS_TOKEN stays a supported fallback — metaAccessTokenEnvFallback
+// captures its original value once, before graphGet()/hydration ever overwrite anything derived
+// from it, so the fallback keeps working even after a store-based token is read.
+const metaTokenStoreDir = resolve(env.META_TOKEN_STORE_DIR || cafe24TokenStoreDir);
+const metaTokenStoreFile = join(metaTokenStoreDir, "meta-token-store.json");
+const metaAccessTokenEnvFallback = env.META_ACCESS_TOKEN || "";
+let metaStoredAccessTokenCache = "";
+await readMetaTokenRecord().catch(() => {});
 const port = Number(env.PORT || 8787);
 const host = env.HOST || "127.0.0.1";
 const graphVersion = env.GRAPH_VERSION || "v25.0";
@@ -97,10 +107,12 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (url.pathname === "/api/status") {
       const integrations = integrationStatus();
       const cafe24Token = await cafe24TokenDiagnostics();
+      const metaConnection = await metaConnectionStatus();
       return json(res, {
         instagram: integrations.instagram.ok,
         metaAds: integrations.metaAds.ok,
         cafe24: integrations.cafe24.ok,
+        metaConnection,
         instagramSync: {
           lastAttemptAt: instagramSyncScheduler.lastAttemptAt,
           lastSuccessAt: instagramSyncScheduler.lastSuccessAt,
@@ -694,6 +706,36 @@ const server = isMainModule ? createServer(async (req, res) => {
         return redirect(res, `/?cafe24_oauth=error&reason=${encodeURIComponent(safeErrorMessage(error))}`);
       }
     }
+    if (url.pathname === "/api/meta/oauth/start") {
+      try {
+        return redirect(res, buildMetaAuthorizeUrl());
+      } catch (error) {
+        return json(res, { ok: false, error: safeErrorMessage(error) }, 400);
+      }
+    }
+    if (url.pathname === "/api/meta/oauth/callback") {
+      // Cafe24 재인증 흐름과 동일한 원칙: 성공/실패 모두 토큰/시크릿 원문을 화면에 노출하지
+      // 않는다. Master Data(#master-data) 화면으로 돌아가 쿼리스트링만 보고 토스트로
+      // 안내한다 — Cafe24와 달리 실패 사유(reason)는 아예 쿼리에 담지 않는다(요구사항:
+      // "raw Meta error/token/secret은 UI에 표시하지 말 것" — 일반 실패 메시지만).
+      try {
+        await handleMetaOAuthCallback(url);
+        return redirect(res, "/?meta_oauth=success#master-data");
+      } catch (error) {
+        await logApiError("meta_oauth_callback", error, {});
+        return redirect(res, "/?meta_oauth=error#master-data");
+      }
+    }
+    if (url.pathname === "/api/diagnostics/meta-token-store") {
+      // client_secret/access_token 원문은 절대 포함하지 않는다(safeMetaTokenRecord 참고).
+      return json(res, {
+        ok: true,
+        appId: env.META_APP_ID || null,
+        redirectUri: metaRedirectUri(),
+        connection: await metaConnectionStatus(),
+        token: await metaTokenDiagnostics()
+      });
+    }
     if (url.pathname === "/api/diagnostics/logs") {
       const data = await readApiErrorLog(Number(url.searchParams.get("limit") || 50));
       return json(res, data);
@@ -849,6 +891,8 @@ async function loadEnv() {
 function safeErrorMessage(error) {
   return String(error?.message || "Unknown error")
     .replaceAll(env.META_ACCESS_TOKEN || "__NO_META_TOKEN__", "[META_ACCESS_TOKEN]")
+    .replaceAll(metaStoredAccessTokenCache || "__NO_META_STORED_TOKEN__", "[META_ACCESS_TOKEN]")
+    .replaceAll(env.META_APP_SECRET || "__NO_META_APP_SECRET__", "[META_APP_SECRET]")
     .replaceAll(env.CAFE24_ACCESS_TOKEN || "__NO_CAFE24_ACCESS__", "[CAFE24_ACCESS_TOKEN]")
     .replaceAll(env.CAFE24_REFRESH_TOKEN || "__NO_CAFE24_REFRESH__", "[CAFE24_REFRESH_TOKEN]")
     .replaceAll(env.CAFE24_CLIENT_SECRET || "__NO_CAFE24_SECRET__", "[CAFE24_CLIENT_SECRET]")
@@ -6202,6 +6246,295 @@ function cafe24RedirectUri() {
   return env.CAFE24_REDIRECT_URI || `http://${host}:${port}/api/cafe24/oauth/callback`;
 }
 
+// ---------------------------------------------------------------------------
+// Meta OAuth reconnect (persistent token store). Mirrors the Cafe24 OAuth
+// pattern above (state -> authorize redirect -> callback -> validate -> save),
+// with two differences Meta actually needs: Cafe24 rotates via refresh_token,
+// Meta doesn't expose one for this flow, so there is no refresh() here — only
+// a fresh OAuth run replaces the stored token. And unlike Cafe24 (single
+// env.CAFE24_OAUTH_STATE), state here is a short-lived, single-use Map entry
+// so a stale or replayed callback can't be accepted.
+// ---------------------------------------------------------------------------
+
+const META_OAUTH_SCOPES = [
+  "pages_show_list",
+  "pages_read_engagement",
+  "ads_read",
+  "business_management",
+  "instagram_basic",
+  "instagram_manage_insights"
+];
+
+const metaOAuthStates = new Map();
+
+function createMetaOAuthState() {
+  const now = Date.now();
+  for (const [key, expiresAt] of metaOAuthStates) {
+    if (expiresAt <= now) metaOAuthStates.delete(key);
+  }
+  const state = randomUUID();
+  metaOAuthStates.set(state, now + 10 * 60 * 1000);
+  return state;
+}
+
+// Single-use: always deletes the state, whether or not it was valid, so a
+// callback can never be replayed with the same state twice.
+function consumeMetaOAuthState(state) {
+  const expiresAt = metaOAuthStates.get(state);
+  metaOAuthStates.delete(state);
+  if (!expiresAt) return false;
+  return expiresAt > Date.now();
+}
+
+function metaRedirectUri() {
+  return env.META_REDIRECT_URI || `http://${host}:${port}/api/meta/oauth/callback`;
+}
+
+function buildMetaAuthorizeUrl() {
+  if (!env.META_APP_ID) {
+    throw new Error("Meta OAuth 시작에 필요한 값이 없습니다: META_APP_ID");
+  }
+  const state = createMetaOAuthState();
+  const url = new URL(`https://www.facebook.com/${graphVersion}/dialog/oauth`);
+  url.searchParams.set("client_id", env.META_APP_ID);
+  url.searchParams.set("redirect_uri", metaRedirectUri());
+  url.searchParams.set("state", state);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", META_OAUTH_SCOPES.join(","));
+  return url.toString();
+}
+
+// GET /me, 그리고 이미 설정된 INSTAGRAM_BUSINESS_ACCOUNT_ID/META_AD_ACCOUNT_ID를 새
+// 토큰으로 조회해본다. 셋 다 성공해야만 호출자가 저장을 진행한다 — 하나라도 실패하면
+// 기존 저장 토큰/env fallback을 그대로 둔다(요구사항: "새 token 저장 금지").
+async function validateMetaAccessToken(accessToken) {
+  try {
+    const meUrl = new URL(`https://graph.facebook.com/${graphVersion}/me`);
+    meUrl.searchParams.set("fields", "id,name");
+    meUrl.searchParams.set("access_token", accessToken);
+    const meResponse = await fetch(meUrl);
+    const meBody = await meResponse.json();
+    if (!meResponse.ok || meBody.error || !meBody.id) {
+      return { ok: false, reason: `GET /me 실패: ${meBody.error?.message || meResponse.status}` };
+    }
+
+    if (!env.INSTAGRAM_BUSINESS_ACCOUNT_ID) {
+      return { ok: false, reason: "INSTAGRAM_BUSINESS_ACCOUNT_ID가 설정되어 있지 않습니다." };
+    }
+    const igUrl = new URL(`https://graph.facebook.com/${graphVersion}/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}`);
+    igUrl.searchParams.set("fields", "id,username");
+    igUrl.searchParams.set("access_token", accessToken);
+    const igResponse = await fetch(igUrl);
+    const igBody = await igResponse.json();
+    if (!igResponse.ok || igBody.error || !igBody.id) {
+      return { ok: false, reason: `Instagram 계정 검증 실패: ${igBody.error?.message || igResponse.status}` };
+    }
+
+    const adAccountId = cleanAdAccountId();
+    if (!adAccountId) {
+      return { ok: false, reason: "META_AD_ACCOUNT_ID가 설정되어 있지 않습니다." };
+    }
+    const adUrl = new URL(`https://graph.facebook.com/${graphVersion}/${adAccountId}`);
+    adUrl.searchParams.set("fields", "id,name,account_status");
+    adUrl.searchParams.set("access_token", accessToken);
+    const adResponse = await fetch(adUrl);
+    const adBody = await adResponse.json();
+    if (!adResponse.ok || adBody.error || !adBody.id) {
+      return { ok: false, reason: `광고 계정 검증 실패: ${adBody.error?.message || adResponse.status}` };
+    }
+
+    return { ok: true, metaUserId: meBody.id, instagramBusinessAccountId: igBody.id, adAccountId: adBody.id };
+  } catch (networkError) {
+    return { ok: false, reason: `검증 요청 실패: ${safeErrorMessage(networkError)}` };
+  }
+}
+
+async function handleMetaOAuthCallback(callbackUrl) {
+  const code = callbackUrl.searchParams.get("code");
+  const state = callbackUrl.searchParams.get("state");
+  const error = callbackUrl.searchParams.get("error");
+  if (error) throw new Error(`Meta OAuth error: ${error}`);
+  if (!code) throw new Error("Meta OAuth callback에 code가 없습니다.");
+  if (!consumeMetaOAuthState(state)) {
+    throw new Error("Meta OAuth state가 유효하지 않거나 만료되었습니다. 재인증을 다시 시작하세요.");
+  }
+  const required = ["META_APP_ID", "META_APP_SECRET"];
+  const missing = required.filter((key) => !env[key]);
+  if (missing.length) {
+    throw new Error(`Meta OAuth token 교환에 필요한 값이 없습니다: ${missing.join(", ")}`);
+  }
+
+  const tokenUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
+  tokenUrl.searchParams.set("client_id", env.META_APP_ID);
+  tokenUrl.searchParams.set("client_secret", env.META_APP_SECRET);
+  tokenUrl.searchParams.set("redirect_uri", metaRedirectUri());
+  tokenUrl.searchParams.set("code", code);
+  const tokenResponse = await fetch(tokenUrl);
+  const tokenBody = await tokenResponse.json();
+  if (!tokenResponse.ok || tokenBody.error) {
+    throw new Error(tokenBody.error?.message || `Meta OAuth token exchange failed ${tokenResponse.status}`);
+  }
+  if (!tokenBody.access_token) {
+    throw new Error("Meta OAuth 응답에 access_token이 없습니다.");
+  }
+
+  // 공식 long-lived token 교환(가능하면 60일짜리로 승격). 실패해도 short-lived
+  // 토큰으로 아래 검증을 계속 진행한다 — long-lived 교환은 "가능하면"이지 필수가 아니다.
+  let finalAccessToken = tokenBody.access_token;
+  let expiresAt = tokenBody.expires_in ? new Date(Date.now() + tokenBody.expires_in * 1000).toISOString() : null;
+  try {
+    const longLivedUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
+    longLivedUrl.searchParams.set("grant_type", "fb_exchange_token");
+    longLivedUrl.searchParams.set("client_id", env.META_APP_ID);
+    longLivedUrl.searchParams.set("client_secret", env.META_APP_SECRET);
+    longLivedUrl.searchParams.set("fb_exchange_token", tokenBody.access_token);
+    const longLivedResponse = await fetch(longLivedUrl);
+    const longLivedBody = await longLivedResponse.json();
+    if (longLivedResponse.ok && longLivedBody.access_token) {
+      finalAccessToken = longLivedBody.access_token;
+      expiresAt = longLivedBody.expires_in ? new Date(Date.now() + longLivedBody.expires_in * 1000).toISOString() : expiresAt;
+    }
+  } catch {
+    // 네트워크 오류 등으로 long-lived 교환이 실패해도 short-lived 토큰 검증/저장은 계속한다.
+  }
+
+  const validation = await validateMetaAccessToken(finalAccessToken);
+  if (!validation.ok) {
+    // 검증 실패: 기존 저장 토큰과 env fallback을 그대로 둔다 — 아무것도 쓰지 않는다.
+    throw new Error(`Meta 토큰 검증에 실패했습니다: ${validation.reason}`);
+  }
+
+  const now = new Date().toISOString();
+  const saved = await writeMetaTokenRecord({
+    schema: 1,
+    status: "active",
+    accessToken: finalAccessToken,
+    obtainedAt: now,
+    expiresAt,
+    metaUserId: validation.metaUserId,
+    instagramBusinessAccountId: validation.instagramBusinessAccountId,
+    adAccountId: validation.adAccountId,
+    validatedAt: now,
+    lastError: null
+  });
+
+  return { ok: true, token: safeMetaTokenRecord(saved) };
+}
+
+async function readMetaTokenRecord() {
+  try {
+    const text = await readFile(metaTokenStoreFile, "utf8");
+    const record = JSON.parse(text);
+    if (record?.accessToken) metaStoredAccessTokenCache = record.accessToken;
+    return record;
+  } catch (error) {
+    // No file, or a file that exists but isn't valid JSON (corruption/manual edit),
+    // both mean "no usable stored record" — either way resolveMetaAccessToken() must
+    // still fall back to env.META_ACCESS_TOKEN instead of breaking Instagram/Meta Ads
+    // and /api/status (Render's healthCheckPath). Any other I/O error (permissions,
+    // disk failure, etc.) still throws — only these two specific, known-safe cases fall back.
+    if (error.code === "ENOENT" || error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
+
+async function writeMetaTokenRecord(record) {
+  await mkdir(metaTokenStoreDir, { recursive: true });
+  const payload = {
+    schema: 1,
+    status: record.status || "active",
+    accessToken: record.accessToken || "",
+    obtainedAt: record.obtainedAt || new Date().toISOString(),
+    expiresAt: record.expiresAt || null,
+    metaUserId: record.metaUserId || null,
+    instagramBusinessAccountId: record.instagramBusinessAccountId || null,
+    adAccountId: record.adAccountId || null,
+    validatedAt: record.validatedAt || null,
+    updatedAt: new Date().toISOString(),
+    lastError: record.lastError || null
+  };
+  const tempFile = join(metaTokenStoreDir, `.meta-token-store.${process.pid}.${randomUUID()}.tmp`);
+  await writeFile(tempFile, JSON.stringify(payload, null, 2), { mode: 0o600 });
+  await rename(tempFile, metaTokenStoreFile);
+  metaStoredAccessTokenCache = payload.accessToken || "";
+  return payload;
+}
+
+// Instagram/Meta Ads가 공유하는 단 하나의 resolver: persistent store에 토큰이 있으면
+// 그것을 쓰고, 없으면 기존 env.META_ACCESS_TOKEN fallback을 쓴다(즉시 제거하지 않음).
+// graphGet() 하나만 이 resolver를 거치면 Instagram/Meta Ads 전체가 자동으로 같은
+// 유효 토큰을 쓰게 된다 — 둘 다 graphGet()/graphGetAllPages()를 통해서만 Graph API를 부른다.
+async function resolveMetaAccessToken() {
+  const record = await readMetaTokenRecord();
+  if (record?.accessToken) return record.accessToken;
+  return metaAccessTokenEnvFallback;
+}
+
+function metaTokenStoreKind() {
+  const configuredDir = env.META_TOKEN_STORE_DIR || "";
+  if (configuredDir.startsWith("/var/data")) return "render_persistent_disk";
+  if (configuredDir) return "configured_file_store";
+  if (env.CAFE24_TOKEN_STORE_DIR) return "shared_cafe24_secrets_dir";
+  return "work_dir_file_store";
+}
+
+function metaTokenNeedsReconnect(record, skewMs = 24 * 60 * 60 * 1000) {
+  if (!record?.accessToken) return true;
+  if (record.status === "reauth_required") return true;
+  if (!record.expiresAt) return false;
+  const expiresAt = new Date(record.expiresAt).getTime();
+  if (!Number.isFinite(expiresAt)) return false;
+  return expiresAt - Date.now() <= skewMs;
+}
+
+function safeMetaTokenRecord(record) {
+  const status = record?.status || (record ? "active" : "missing");
+  return {
+    source: metaTokenStoreKind(),
+    configured: Boolean(env.META_TOKEN_STORE_DIR),
+    status,
+    hasAccessToken: Boolean(record?.accessToken),
+    accessTokenLength: record?.accessToken ? String(record.accessToken).length : 0,
+    obtainedAt: record?.obtainedAt || null,
+    expiresAt: record?.expiresAt || null,
+    metaUserId: record?.metaUserId || null,
+    instagramBusinessAccountId: record?.instagramBusinessAccountId || null,
+    adAccountId: record?.adAccountId || null,
+    validatedAt: record?.validatedAt || null,
+    updatedAt: record?.updatedAt || null,
+    needsReconnect: metaTokenNeedsReconnect(record),
+    reauthRequired: status === "reauth_required",
+    lastError: record?.lastError || null,
+    envFallbackConfigured: Boolean(metaAccessTokenEnvFallback)
+  };
+}
+
+async function metaTokenDiagnostics() {
+  return safeMetaTokenRecord(await readMetaTokenRecord());
+}
+
+// Master Data 화면과 /api/status가 함께 쓰는 3단계 상태: 기존 API 계약(integrationStatus의
+// instagram.ok/metaAds.ok)은 건드리지 않고, 이 필드는 새로 추가만 한다.
+async function metaConnectionStatus() {
+  const record = await readMetaTokenRecord();
+  if (record?.accessToken) {
+    return {
+      status: metaTokenNeedsReconnect(record) ? "reconnect_required" : "connected",
+      source: "persistent_store",
+      hasStoredConnection: true,
+      metaUserId: record.metaUserId || null,
+      instagramBusinessAccountId: record.instagramBusinessAccountId || null,
+      adAccountId: record.adAccountId || null,
+      expiresAt: record.expiresAt || null,
+      validatedAt: record.validatedAt || null
+    };
+  }
+  if (metaAccessTokenEnvFallback) {
+    return { status: "connected", source: "env_fallback", hasStoredConnection: false, metaUserId: null, instagramBusinessAccountId: null, adAccountId: null, expiresAt: null, validatedAt: null };
+  }
+  return { status: "not_configured", source: "none", hasStoredConnection: false, metaUserId: null, instagramBusinessAccountId: null, adAccountId: null, expiresAt: null, validatedAt: null };
+}
+
 async function updateEnvFile(values) {
   const envPath = join(root, ".env");
   const current = existsSync(envPath) ? await readFile(envPath, "utf8") : "";
@@ -6233,7 +6566,11 @@ function cleanAdAccountId() {
 }
 
 function missingEnv(keys) {
-  return keys.filter((key) => !env[key] || (key === "META_AD_ACCOUNT_ID" && !cleanAdAccountId()));
+  return keys.filter((key) => {
+    if (key === "META_AD_ACCOUNT_ID") return !cleanAdAccountId();
+    if (key === "META_ACCESS_TOKEN") return !env.META_ACCESS_TOKEN && !metaStoredAccessTokenCache;
+    return !env[key];
+  });
 }
 
 function integrationStatus() {
@@ -6473,14 +6810,15 @@ function redirect(res, location) {
 }
 
 async function graphGet(path, params = {}) {
-  if (!env.META_ACCESS_TOKEN) {
+  const accessToken = await resolveMetaAccessToken();
+  if (!accessToken) {
     throw new Error(".env에 META_ACCESS_TOKEN이 없습니다.");
   }
   const url = new URL(`https://graph.facebook.com/${graphVersion}/${path.replace(/^\//, "")}`);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null) url.searchParams.set(key, value);
   }
-  url.searchParams.set("access_token", env.META_ACCESS_TOKEN);
+  url.searchParams.set("access_token", accessToken);
   const response = await fetch(url);
   const body = await response.json();
   if (!response.ok || body.error) {

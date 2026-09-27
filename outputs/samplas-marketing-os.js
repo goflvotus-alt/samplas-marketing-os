@@ -5438,6 +5438,9 @@ async function renderApiHealthCenter(data) {
     getJson(`/api/meta-ads/summary?since=${startDate}&until=${endDate}`, 7000),
     getCafe24Status(startDate, endDate)
   ]);
+  // Meta 연결/재연결 버튼은 실제 연결 상태(연결 없음/만료 임박/정상)를 알아야 라벨과
+  // 안내 문구를 정할 수 있으므로, /api/status 응답이 도착한 뒤 다시 한번 그린다.
+  $("#apiHealthActions").innerHTML = apiHealthActionCards(status.metaConnection);
   const instagramOk = !data.error && status.instagram !== false;
   // 진단용 로그 (2026-07-08). renderApiHealthCenter()는 renderOtherSections(data)에서
   // selectedMonth()가 반환한 data를 그대로 받는다 — 여기 찍히는 data가 실제
@@ -5843,13 +5846,23 @@ function apiHealthCard({ title, ok, status, source, updatedAt, rows, detail }) {
   </article>`;
 }
 
-function apiHealthActionCards() {
+function apiHealthActionCards(metaConnection = null) {
+  const metaHasStoredConnection = Boolean(metaConnection?.hasStoredConnection);
+  const metaNeedsReconnect = metaConnection?.status === "reconnect_required";
+  const metaButtonTitle = metaHasStoredConnection ? "Meta 재연결" : "Meta 연결";
+  const metaButtonNote = metaNeedsReconnect
+    ? "Meta 토큰이 만료되었습니다. 다시 연결해주세요."
+    : "Meta 계정을 연결하면 Instagram/Meta Ads가 저장된 토큰을 자동으로 사용합니다.";
   return [
     ["지금 동기화", "현재 화면의 데이터를 다시 불러옵니다.", "", "refresh", false],
     // Cafe24 재인증은 같은 탭에서 이동해야 Cafe24 로그인/동의 후 서버가 "/"로 리다이렉트할 때
     // 같은 탭으로 돌아온다 — 새 탭(target="_blank")이면 새 탭에만 결과가 남는다.
     // (2026-07-08 Cafe24 재인증 흐름 개선)
     ["재인증 안내", "Cafe24 토큰 만료 시 OAuth 재인증을 시작합니다.", "/api/cafe24/oauth/start", "", false],
+    // Meta도 Cafe24와 같은 이유로 같은 탭 이동(target="_blank" 금지) — OAuth 동의 후
+    // 서버가 "/?meta_oauth=...#master-data"로 리다이렉트할 때 같은 탭으로 돌아와야
+    // handleMetaOAuthRedirect()가 그 쿼리스트링을 읽을 수 있다.
+    [metaButtonTitle, metaButtonNote, "/api/meta/oauth/start", "", false],
     ["상세 보기", "최근 진단 로그를 확인합니다.", "/api/diagnostics/logs", "", true]
   ].map(([title, note, href, action, newTab]) => `<article class="api-health-action">
     <strong>${esc(title)}</strong>
@@ -21093,6 +21106,22 @@ function handleCafe24OAuthRedirect() {
   }
 }
 
+// server.mjs의 /api/meta/oauth/callback은 성공/실패 모두 "/?meta_oauth=...#master-data"로
+// 리다이렉트한다 — Cafe24와 달리 실패 사유(reason)는 쿼리에 아예 담지 않으므로(요구사항:
+// raw Meta error/token/secret을 UI에 표시하지 않음) 여기서도 일반 메시지만 보여준다.
+// 해시(#master-data)는 지우지 않고 유지해서 새로고침해도 Master Data 화면에 남는다.
+function handleMetaOAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get("meta_oauth");
+  if (!result) return;
+  window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+  if (result === "success") {
+    toast("Meta 연결 완료");
+  } else if (result === "error") {
+    toast("Meta 연결 실패");
+  }
+}
+
 function productRegistryDiagnosticTypes(item) {
   return Array.isArray(item?.diagnosticType) ? item.diagnosticType : Array.isArray(item?.entry?.matching?.diagnosticType) ? item.entry.matching.diagnosticType : [];
 }
@@ -22142,4 +22171,5 @@ async function renderInventoryOverviewView() {
 renderNav();
 bind();
 handleCafe24OAuthRedirect();
+handleMetaOAuthRedirect();
 loadMonths();

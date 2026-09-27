@@ -2213,7 +2213,12 @@ select,
 }
 
 .api-health-actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Meta 연결/재연결 버튼 추가로 카드가 3개->4개가 되면서 고정 3열 grid가 마지막 카드
+     하나를 다음 줄에 고립시켰다. auto-fit + minmax는 카드 개수에 관계없이(3개든 4개든)
+     화면 너비에 맞게 자동으로 줄바꿈하므로, 기존 3개 상태였을 때의 데스크톱 배치는
+     그대로 유지되면서 4개일 때만 자연스럽게 재배치된다. .api-health-grid(Connection
+     Status 3카드)는 건드리지 않음 — 이 규칙은 .api-health-actions 전용. */
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
 .api-health-card,
