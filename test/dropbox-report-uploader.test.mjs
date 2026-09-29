@@ -11,7 +11,9 @@ import {
   getDropboxAccessToken,
   dropboxFileExists,
   dropboxUploadFile,
-  saveWeeklyReportToDropbox
+  saveWeeklyReportToDropbox,
+  saveWeeklyReportToDropboxAtPath,
+  resolvePlatformDropboxDestination
 } from "../scripts/dropbox-report-uploader.mjs";
 
 const FAKE_ENV = {
@@ -227,4 +229,83 @@ test("dropboxFileExists correctly distinguishes a 409 not_found from a real erro
   const result = await dropboxFileExists("/x.xlsx", { accessToken: "t", fetchImpl: exists.fetchImpl });
   assert.equal(result.exists, true);
   assert.equal(result.size, 12345);
+});
+
+// --- resolvePlatformDropboxDestination: same fail-closed 3-state contract as
+// resolveWeeklyReportDestination, but generalized for any platform (Meta/Instagram) via an
+// injected env-key name and an optional default dir (Meta has one confirmed default;
+// Instagram deliberately has none — see scripts/instagram-weekly-report.mjs header).
+test("resolvePlatformDropboxDestination: zero vars -> local, all 3 + dir -> dropbox, partial -> misconfigured (never local)", () => {
+  assert.equal(resolvePlatformDropboxDestination({}, { dirEnvKey: "DROPBOX_META_WEEKLY_REPORT_DIR", defaultDir: "/default/dir" }).mode, "local");
+
+  const withDefault = resolvePlatformDropboxDestination(FAKE_ENV, { dirEnvKey: "DROPBOX_META_WEEKLY_REPORT_DIR", defaultDir: "/default/dir" });
+  assert.equal(withDefault.mode, "dropbox");
+  assert.equal(withDefault.dir, "/default/dir");
+
+  const overridden = resolvePlatformDropboxDestination(
+    { ...FAKE_ENV, DROPBOX_META_WEEKLY_REPORT_DIR: "/custom/meta/dir" },
+    { dirEnvKey: "DROPBOX_META_WEEKLY_REPORT_DIR", defaultDir: "/default/dir" }
+  );
+  assert.equal(overridden.dir, "/custom/meta/dir");
+
+  const partial = resolvePlatformDropboxDestination({ DROPBOX_APP_KEY: "x" }, { dirEnvKey: "DROPBOX_META_WEEKLY_REPORT_DIR", defaultDir: "/default/dir" });
+  assert.equal(partial.mode, "misconfigured");
+  assert.deepEqual(partial.missing.sort(), ["DROPBOX_APP_SECRET", "DROPBOX_REFRESH_TOKEN"]);
+});
+
+test("resolvePlatformDropboxDestination with no defaultDir (Instagram) stays local until its own env key is explicitly set", () => {
+  const noDefault = resolvePlatformDropboxDestination(FAKE_ENV, { dirEnvKey: "DROPBOX_INSTAGRAM_WEEKLY_REPORT_DIR" });
+  assert.equal(noDefault.mode, "local");
+
+  const explicit = resolvePlatformDropboxDestination(
+    { ...FAKE_ENV, DROPBOX_INSTAGRAM_WEEKLY_REPORT_DIR: "/SAMPLAS WORK/instagram" },
+    { dirEnvKey: "DROPBOX_INSTAGRAM_WEEKLY_REPORT_DIR" }
+  );
+  assert.equal(explicit.mode, "dropbox");
+  assert.equal(explicit.dir, "/SAMPLAS WORK/instagram");
+});
+
+// --- saveWeeklyReportToDropboxAtPath: same idempotency contract as saveWeeklyReportToDropbox
+// but for an arbitrary caller-computed path (Meta/Instagram build their own canonical path;
+// this function no longer hardcodes the Naver directory or filename).
+test("saveWeeklyReportToDropboxAtPath: upload succeeds at the exact given path", async () => {
+  const { fetchImpl, calls } = makeFetchMock({ existsResult: "not_found" });
+  const workbook = await makeTinyWorkbook();
+  const targetPath = "/SAMPLAS WORK/병구 작업/메타 광고/리포트/META_ADS_WEEKLY_2026-09-22_2026-09-28.xlsx";
+  const result = await saveWeeklyReportToDropboxAtPath(workbook, { targetPath, env: FAKE_ENV, fetchImpl });
+  assert.equal(result.uploaded, true);
+  assert.equal(result.filePath, targetPath);
+  const uploadCall = calls.find((c) => c.url.includes("files/upload"));
+  const arg = JSON.parse(uploadCall.options.headers["Dropbox-API-Arg"].replace(/\\u([0-9a-f]{4})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))));
+  assert.equal(arg.path, targetPath);
+});
+
+test("saveWeeklyReportToDropboxAtPath: a same-size existing file at the path is accepted without re-upload (duplicate prevention)", async () => {
+  const workbook = await makeTinyWorkbook();
+  const expectedSize = (await workbook.xlsx.writeBuffer()).length;
+  const { fetchImpl, calls } = makeFetchMock({ existsResult: "exists", existsSize: expectedSize });
+  const result = await saveWeeklyReportToDropboxAtPath(workbook, { targetPath: "/x/INSTAGRAM_WEEKLY_2026-09-22_2026-09-28.xlsx", env: FAKE_ENV, fetchImpl });
+  assert.equal(result.uploaded, false);
+  assert.equal(result.alreadyExists, true);
+  assert.equal(calls.some((c) => c.url.includes("files/upload")), false);
+});
+
+test("saveWeeklyReportToDropboxAtPath: a different-size existing file rejects instead of silently trusting it", async () => {
+  const workbook = await makeTinyWorkbook();
+  const realSize = (await workbook.xlsx.writeBuffer()).length;
+  const { fetchImpl, calls } = makeFetchMock({ existsResult: "exists", existsSize: realSize + 999 });
+  await assert.rejects(
+    () => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: "/x/META_ADS_WEEKLY_2026-09-22_2026-09-28.xlsx", env: FAKE_ENV, fetchImpl }),
+    /size mismatch/i
+  );
+  assert.equal(calls.some((c) => c.url.includes("files/upload")), false);
+});
+
+test("saveWeeklyReportToDropboxAtPath: an upload failure (e.g. insufficient space) rejects rather than reporting a false success", async () => {
+  const { fetchImpl } = makeFetchMock({ existsResult: "not_found", uploadOk: false });
+  const workbook = await makeTinyWorkbook();
+  await assert.rejects(
+    () => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: "/x/META_ADS_WEEKLY_2026-09-22_2026-09-28.xlsx", env: FAKE_ENV, fetchImpl }),
+    /insufficient_space/
+  );
 });

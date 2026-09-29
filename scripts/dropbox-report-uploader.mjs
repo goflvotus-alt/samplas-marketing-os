@@ -187,3 +187,43 @@ export async function saveWeeklyReportToDropbox(workbook, { since, until, env = 
   const uploaded = await dropboxUploadFile(targetPath, buffer, { accessToken, fetchImpl });
   return { filePath: targetPath, uploaded: true, alreadyExists: false, size: uploaded.size };
 }
+
+// ---------------------------------------------------------------------------
+// Generic, platform-agnostic upload (Meta/Instagram weekly reports reuse this — the
+// Naver-specific saveWeeklyReportToDropbox() above is untouched, kept exactly as-is, so
+// nothing about the already-working Naver→Dropbox path changes). Same idempotency,
+// size-mismatch-fails-loudly, and secret-safety guarantees as the Naver path, just with
+// an explicit targetPath instead of a hardcoded Naver filename/directory.
+// ---------------------------------------------------------------------------
+
+export async function saveWeeklyReportToDropboxAtPath(workbook, { targetPath, env = process.env, fetchImpl = fetch } = {}) {
+  const accessToken = await getDropboxAccessToken({ env, fetchImpl });
+  const buffer = await workbook.xlsx.writeBuffer();
+
+  const existing = await dropboxFileExists(targetPath, { accessToken, fetchImpl });
+  if (existing.exists) {
+    if (existing.size !== buffer.length) {
+      throw new Error(`Existing weekly Dropbox report size mismatch at ${targetPath}: expected ${buffer.length} bytes, found ${existing.size}.`);
+    }
+    return { filePath: targetPath, uploaded: false, alreadyExists: true, size: existing.size };
+  }
+
+  const uploaded = await dropboxUploadFile(targetPath, buffer, { accessToken, fetchImpl });
+  return { filePath: targetPath, uploaded: true, alreadyExists: false, size: uploaded.size };
+}
+
+// Same 3-state fail-closed logic as resolveWeeklyReportDestination() above, generalized
+// with a per-platform Dropbox directory env var. When defaultDir is omitted (Instagram,
+// pending an explicit destination decision — see the accompanying report), an unset
+// directory env var is NOT treated as "use some made-up default"; it's treated the same
+// as Dropbox being unconfigured for this platform, i.e. "local" — never silently invents
+// a Dropbox path.
+export function resolvePlatformDropboxDestination(env, { dirEnvKey, defaultDir = null } = {}) {
+  const credsMissing = DROPBOX_REQUIRED_ENV_KEYS.filter((key) => !env[key]);
+  if (credsMissing.length > 0 && credsMissing.length < DROPBOX_REQUIRED_ENV_KEYS.length) {
+    return { mode: "misconfigured", missing: credsMissing };
+  }
+  const dir = env[dirEnvKey] || defaultDir;
+  if (credsMissing.length === 0 && dir) return { mode: "dropbox", dir };
+  return { mode: "local" };
+}

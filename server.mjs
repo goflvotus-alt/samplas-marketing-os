@@ -26,8 +26,12 @@ import {
 import {
   resolveWeeklyReportDestination,
   saveWeeklyReportToDropbox,
-  isDropboxConfigured
+  isDropboxConfigured,
+  resolvePlatformDropboxDestination,
+  saveWeeklyReportToDropboxAtPath
 } from "./scripts/dropbox-report-uploader.mjs";
+import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
+import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
 import {
@@ -141,6 +145,20 @@ const server = isMainModule ? createServer(async (req, res) => {
           lastUploadAt: naverWeeklyReportScheduler.lastSuccessAt,
           lastUploadedReport: naverWeeklyReportScheduler.lastUploadedReport,
           lastError: naverWeeklyReportScheduler.lastError
+        },
+        metaWeeklyReport: {
+          destination: resolvePlatformDropboxDestination(env, { dirEnvKey: "DROPBOX_META_WEEKLY_REPORT_DIR", defaultDir: "/SAMPLAS WORK/병구 작업/메타 광고/리포트" }).mode,
+          lastAttemptAt: metaWeeklyReportScheduler.lastAttemptAt,
+          lastUploadAt: metaWeeklyReportScheduler.lastSuccessAt,
+          lastUploadedReport: metaWeeklyReportScheduler.lastUploadedReport,
+          lastError: metaWeeklyReportScheduler.lastError
+        },
+        instagramWeeklyReport: {
+          destination: resolvePlatformDropboxDestination(env, { dirEnvKey: "DROPBOX_INSTAGRAM_WEEKLY_REPORT_DIR", defaultDir: "/SAMPLAS WORK/병구 작업/인스타그램 리포트" }).mode,
+          lastAttemptAt: instagramWeeklyReportScheduler.lastAttemptAt,
+          lastUploadAt: instagramWeeklyReportScheduler.lastSuccessAt,
+          lastUploadedReport: instagramWeeklyReportScheduler.lastUploadedReport,
+          lastError: instagramWeeklyReportScheduler.lastError
         },
         environment: integrations,
         pageId: env.FACEBOOK_PAGE_ID || null,
@@ -888,6 +906,12 @@ const server = isMainModule ? createServer(async (req, res) => {
   // too (covers the case where the server happens to restart during that window).
   runNaverWeeklyReportCheck();
   setInterval(runNaverWeeklyReportCheck, naverWeeklyReportScheduler.intervalMs);
+  // Meta Ads / Instagram Weekly Report: same poll pattern, fully independent intervals
+  // so neither platform's schedule depends on or can be delayed by the others.
+  runMetaWeeklyReportCheck();
+  setInterval(runMetaWeeklyReportCheck, metaWeeklyReportScheduler.intervalMs);
+  runInstagramWeeklyReportCheck();
+  setInterval(runInstagramWeeklyReportCheck, instagramWeeklyReportScheduler.intervalMs);
 }) : null;
 
 server?.on("error", (error) => {
@@ -7457,6 +7481,142 @@ async function runNaverWeeklyReportCheck() {
     await logApiError("naver_weekly_report", error, {});
   } finally {
     naverWeeklyReportScheduler.running = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Meta Ads Weekly Report scheduler — same Tuesday 10:00-10:59 KST poll pattern as
+// naverWeeklyReportScheduler above (isWeeklyNaverReportDue's predicate is 100% generic
+// despite its name — date math only, no Naver-specific data — so it's reused directly
+// rather than duplicated). Fully isolated: its own state object, its own try/catch, its
+// own setInterval registration, so a Meta failure can never block Naver or Instagram and
+// vice versa. The Naver scheduler itself is untouched above this comment.
+// ---------------------------------------------------------------------------
+
+const metaWeeklyReportScheduler = {
+  intervalMs: 15 * 60 * 1000,
+  running: false,
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastRunSinceKey: null,
+  lastUploadedReport: null,
+  lastError: null
+};
+
+// Thin adapter: reuses the existing buildMetaAdsSummaryWithCache (backing the existing
+// /api/meta-ads/summary route) as-is, only reshaping exceptions into {ok:false, error}
+// so the weekly report model can treat a failed level fetch the same as Naver treats an
+// unavailable Naver fetch. No new ad-metric math.
+export async function buildMetaAdsSummaryForWeeklyReport(since, until, level) {
+  try {
+    const data = await buildMetaAdsSummaryWithCache(since, until, { level });
+    return { rows: data.rows || data.campaigns || data.adsets || data.ads || [], totals: data.totals || summarizeMetaAdsRows(data.rows || []) };
+  } catch (error) {
+    return { ok: false, error: safeErrorMessage(error) };
+  }
+}
+
+async function runMetaWeeklyReportCheck() {
+  if (metaWeeklyReportScheduler.running) return;
+  if (!isWeeklyNaverReportDue(new Date(), metaWeeklyReportScheduler.lastRunSinceKey)) return;
+  metaWeeklyReportScheduler.running = true;
+  metaWeeklyReportScheduler.lastAttemptAt = new Date().toISOString();
+  try {
+    const destination = resolvePlatformDropboxDestination(env, {
+      dirEnvKey: "DROPBOX_META_WEEKLY_REPORT_DIR",
+      defaultDir: "/SAMPLAS WORK/병구 작업/메타 광고/리포트"
+    });
+    if (destination.mode === "misconfigured") {
+      throw new Error(`Dropbox is partially configured — missing: ${destination.missing.join(", ")}. Refusing to fall back to local storage.`);
+    }
+    const result = await generateWeeklyMetaAdsReport({
+      referenceDateKey: seoulDateKey(),
+      fetchByLevel: buildMetaAdsSummaryForWeeklyReport,
+      env,
+      saveReport: destination.mode === "dropbox"
+        ? (workbook, { since, until }) => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: `${destination.dir.replace(/\/+$/, "")}/META_ADS_WEEKLY_${since}_${until}.xlsx`, env })
+        : undefined
+    });
+    if (result.ok) {
+      metaWeeklyReportScheduler.lastRunSinceKey = result.since;
+      metaWeeklyReportScheduler.lastSuccessAt = new Date().toISOString();
+      metaWeeklyReportScheduler.lastUploadedReport = result.filePath;
+      metaWeeklyReportScheduler.lastError = null;
+      console.log(`[META_ADS_WEEKLY_REPORT] saved ${result.filePath}`);
+    } else {
+      metaWeeklyReportScheduler.lastError = result.error;
+    }
+  } catch (error) {
+    metaWeeklyReportScheduler.lastError = safeErrorMessage(error);
+    await logApiError("meta_weekly_report", error, {});
+  } finally {
+    metaWeeklyReportScheduler.running = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Instagram Weekly Report scheduler — same pattern, fully isolated from Naver and Meta.
+// Dropbox destination default confirmed and approved: /SAMPLAS WORK/병구 작업/인스타그램 리포트
+// (a dedicated, empty folder — deliberately NOT the pre-existing 인스타 컨텐츠 folder, which
+// holds unrelated content/Asset Picker files and must never be touched by this automation).
+// Overridable via DROPBOX_INSTAGRAM_WEEKLY_REPORT_DIR, same as Meta/Naver.
+// ---------------------------------------------------------------------------
+
+const instagramWeeklyReportScheduler = {
+  intervalMs: 15 * 60 * 1000,
+  running: false,
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastRunSinceKey: null,
+  lastUploadedReport: null,
+  lastError: null
+};
+
+// Thin adapter over the existing buildInstagramRangeData (backing /api/instagram/range).
+export async function buildInstagramRangeDataForWeeklyReport(since, until) {
+  try {
+    const data = await buildInstagramRangeData(since, until);
+    return { ok: true, since: data.since, until: data.until, posts: data.posts || [], account: data.account || null };
+  } catch (error) {
+    return { ok: false, error: safeErrorMessage(error) };
+  }
+}
+
+async function runInstagramWeeklyReportCheck() {
+  if (instagramWeeklyReportScheduler.running) return;
+  if (!isWeeklyNaverReportDue(new Date(), instagramWeeklyReportScheduler.lastRunSinceKey)) return;
+  instagramWeeklyReportScheduler.running = true;
+  instagramWeeklyReportScheduler.lastAttemptAt = new Date().toISOString();
+  try {
+    const destination = resolvePlatformDropboxDestination(env, {
+      dirEnvKey: "DROPBOX_INSTAGRAM_WEEKLY_REPORT_DIR",
+      defaultDir: "/SAMPLAS WORK/병구 작업/인스타그램 리포트"
+    });
+    if (destination.mode === "misconfigured") {
+      throw new Error(`Dropbox is partially configured — missing: ${destination.missing.join(", ")}. Refusing to fall back to local storage.`);
+    }
+    const result = await generateWeeklyInstagramReport({
+      referenceDateKey: seoulDateKey(),
+      fetchRange: buildInstagramRangeDataForWeeklyReport,
+      env,
+      saveReport: destination.mode === "dropbox"
+        ? (workbook, { since, until }) => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: `${destination.dir.replace(/\/+$/, "")}/INSTAGRAM_WEEKLY_${since}_${until}.xlsx`, env })
+        : undefined
+    });
+    if (result.ok) {
+      instagramWeeklyReportScheduler.lastRunSinceKey = result.since;
+      instagramWeeklyReportScheduler.lastSuccessAt = new Date().toISOString();
+      instagramWeeklyReportScheduler.lastUploadedReport = result.filePath;
+      instagramWeeklyReportScheduler.lastError = null;
+      console.log(`[INSTAGRAM_WEEKLY_REPORT] saved ${result.filePath}`);
+    } else {
+      instagramWeeklyReportScheduler.lastError = result.error;
+    }
+  } catch (error) {
+    instagramWeeklyReportScheduler.lastError = safeErrorMessage(error);
+    await logApiError("instagram_weekly_report", error, {});
+  } finally {
+    instagramWeeklyReportScheduler.running = false;
   }
 }
 

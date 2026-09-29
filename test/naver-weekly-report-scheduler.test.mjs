@@ -20,8 +20,13 @@ function section(start, end) {
 // naverWeeklyReportScheduler is a lexically-scoped const inside the sliced script (not
 // exposed on the vm context object, same pitfall documented elsewhere in this test
 // suite) — appending a getter in the SAME executed script gives it access via closure.
+// End marker stops right after runNaverWeeklyReportCheck() — NOT at the old
+// "// TEMPORARY diagnostic" marker anymore, since the Meta/Instagram weekly report
+// schedulers were added directly after this Naver block and before that comment; slicing
+// through them too would pull in `export` keywords (SyntaxError in a vm script) and
+// unrelated identifiers this test never mocks. Naver's own scheduler code is unchanged.
 const schedulerSource = [
-  section("const naverWeeklyReportScheduler = {", "// TEMPORARY diagnostic"),
+  section("const naverWeeklyReportScheduler = {", "// Meta Ads Weekly Report scheduler"),
   "function __getSchedulerState() { return { ...naverWeeklyReportScheduler }; }"
 ].join("\n");
 
