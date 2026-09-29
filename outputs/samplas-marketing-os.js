@@ -4262,7 +4262,9 @@ function annualArchiveMetricBlock(metric, rows) {
           ? metric.key === "totalSales" && salesInfo?.valueType === "online-fallback"
             ? "오프라인 데이터 없음"
             : row.archive?.sales?.coverage?.offline === true
-              ? "오프라인 확보"
+              ? row.archive?.sales?.coverage?.currentMonthInProgress
+                ? `${String(row.archive.sales.coverage.asOfDate || "").slice(5).replace("-", ".")} 기준 · ${row.archive.sales.coverage.uncollectedThroughToday ? "이후 데이터 미수집" : "당월 집계 중"}`
+                : "오프라인 확보"
               : "오프라인 확인 필요"
           : "";
         const previousRow = rows[index - 1];

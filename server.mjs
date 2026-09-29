@@ -4305,6 +4305,11 @@ async function monthlyOptionalSource(load) {
   }
 }
 
+// Align current-month sales to the earliest available reporting boundary.
+export function currentMonthSalesCutoff(monthEnd, today, snapshotThrough) {
+  return [monthEnd, today, snapshotThrough].sort()[0];
+}
+
 export async function buildMonthlyArchive(month) {
   if (!isValidMonthKey(month)) {
     throw new Error("month는 YYYY-MM 형식이어야 합니다.");
@@ -4335,7 +4340,55 @@ export async function buildMonthlyArchive(month) {
     brandSalesSourceImportedAt,
     productSales: commerceSource.products || []
   };
-  const sales = await buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource);
+  let sales = await buildMonthlyArchiveSales(monthStart, monthEnd, commerceSource);
+
+  // Current month: align online/offline sales to the last available ECOUNT date.
+  // Historical monthly archives retain their existing coverage policy.
+  if (month === currentMonth()) {
+    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+    const today = todayKey();
+    const snapshotThrough = String(snapshot?.periodEnd || "");
+
+    if (
+      String(snapshot?.periodStart || "") <= monthStart &&
+      snapshotThrough >= monthStart
+    ) {
+      const asOfDate = currentMonthSalesCutoff(monthEnd, today, snapshotThrough);
+      const bounded = await buildCanonicalTotalSales({
+        since: monthStart,
+        until: asOfDate
+      });
+      const complete = bounded.coverage.complete;
+
+      sales = {
+        ...sales,
+        periodEnd: asOfDate,
+        onlineSales: bounded.onlineSales,
+        offlineSales: {
+          offlineSalesAmount: complete
+            ? bounded.offlineSales.offlineSalesAmount
+            : null
+        },
+        totalSales: {
+          amount: complete ? bounded.totalSales.amount : null
+        },
+        coverage: {
+          ...bounded.coverage,
+          asOfDate,
+          currentMonthInProgress: asOfDate < monthEnd,
+          uncollectedThroughToday: asOfDate < today
+        },
+        provenance: {
+          ...sales.provenance,
+          periodEnd: asOfDate,
+          cafe24: {
+            ...sales.provenance.cafe24,
+            through: asOfDate
+          }
+        }
+      };
+    }
+  }
 
   const metaTotals = metaSummary.totals || {};
   const metaAvailable = metaSummaryResult.available && metaFullReportResult.available;
