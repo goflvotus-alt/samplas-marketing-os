@@ -44,6 +44,7 @@ import {
   isAiAuditAuthorized,
   validateAiAuditRange
 } from "./scripts/ai-audit.mjs";
+import { getPopupProjectSummaries, getPopupProjectByName } from "./scripts/popup-dropbox-store.mjs";
 import {
   parseCafe24Money,
   firstCafe24Money,
@@ -515,6 +516,35 @@ const server = isMainModule ? createServer(async (req, res) => {
         shippingFee: cafe24ShippingFee,
         isCanceledItem: isCafe24CanceledItem
       }));
+    }
+    if (url.pathname === "/api/ai-audit/popup/projects") {
+      // READ ONLY (Phase 2-1). Reads PROJECTS/<project>/popup.json via Dropbox —
+      // never mutates, never creates a popup.json, never touches
+      // samplas_dashboard.py's local file path. See scripts/popup-dropbox-store.mjs.
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      try {
+        const projects = await getPopupProjectSummaries({ env });
+        return json(res, { ok: true, projects });
+      } catch (error) {
+        return json(res, { ok: false, error: safeErrorMessage(error) }, 502);
+      }
+    }
+    if (url.pathname === "/api/ai-audit/popup/project") {
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      const name = url.searchParams.get("name");
+      if (!name || !name.trim()) return json(res, { ok: false, error: "name is required" }, 400);
+      try {
+        const result = await getPopupProjectByName(name, { env });
+        if (!result.ok && result.reason === "project_not_found") {
+          return json(res, { ok: false, error: "project_not_found" }, 404);
+        }
+        if (!result.ok && result.reason === "no_data") {
+          return json(res, { ok: false, error: "no_data" }, 404);
+        }
+        return json(res, { ok: true, project: result.project });
+      } catch (error) {
+        return json(res, { ok: false, error: safeErrorMessage(error) }, 502);
+      }
     }
     if (url.pathname === "/api/sales/total") {
       if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
