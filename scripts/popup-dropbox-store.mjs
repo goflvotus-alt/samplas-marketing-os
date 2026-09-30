@@ -25,6 +25,7 @@ const POPUP_PROJECTS_DROPBOX_PATH = "/SAMPLAS WORK/병구 작업/팝업 관련 �
 
 const DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder";
 const DROPBOX_DOWNLOAD_URL = "https://content.dropboxapi.com/2/files/download";
+const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
 
 function dropboxErrorFromResponse(status, bodyText, context) {
   const trimmed = String(bodyText || "").slice(0, 500);
@@ -141,4 +142,118 @@ export async function getPopupProjectByName(name, { env = process.env, fetchImpl
   const project = await readPopupJsonFromDropbox(folder, { accessToken, fetchImpl });
   if (project === null) return { ok: false, reason: "no_data" };
   return { ok: true, project };
+}
+
+// ---------------------------------------------------------------------------
+// WRITE (Phase 2-2). Only entry point that calls files/upload. Never called by
+// the GET routes above. project folder must already exist in PROJECTS/ — a
+// missing folder is never created here.
+// ---------------------------------------------------------------------------
+
+export function validatePopupProjectPayload(payload) {
+  if (!payload || typeof payload !== "object") throw new Error("malformed_json");
+  const project = payload.project;
+  if (!project || typeof project !== "object") throw new Error("project is required");
+  if (typeof project.name !== "string" || !project.name.trim()) throw new Error("project.name is required");
+  for (const key of ["tasks", "assets", "notes"]) {
+    if (!Array.isArray(project[key])) throw new Error(`project.${key} must be an array`);
+  }
+  if (!("expectedVersion" in payload)) throw new Error("expectedVersion is required");
+  const expectedVersion = payload.expectedVersion;
+  if (expectedVersion !== null && typeof expectedVersion !== "number") {
+    throw new Error("expectedVersion must be a number or null");
+  }
+  return { project, expectedVersion };
+}
+
+// Same download as readPopupJsonFromDropbox, plus the Dropbox file `rev` (from
+// the Dropbox-API-Result response header) needed for the update-mode
+// compare-and-swap in saveProjectWithExpectedVersion. Never swallows a
+// corrupt-JSON error — a write must not blindly overwrite an unparseable
+// existing file.
+async function downloadPopupJsonWithRev(folder, { accessToken, fetchImpl = fetch }) {
+  const popupJsonPath = `${folder.pathDisplay}/popup.json`;
+  const response = await fetchImpl(DROPBOX_DOWNLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": asciiSafeJson({ path: popupJsonPath })
+    }
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    if (isDropboxPathNotFound(response.status, text)) return { project: null, rev: null };
+    throw dropboxErrorFromResponse(response.status, text, "popup.json download");
+  }
+  let project;
+  try {
+    project = JSON.parse(text);
+  } catch {
+    throw new Error(`popup.json for "${folder.name}" is not valid JSON.`);
+  }
+  let rev = null;
+  try {
+    rev = JSON.parse(response.headers.get("dropbox-api-result") || "null")?.rev ?? null;
+  } catch {
+    rev = null;
+  }
+  return { project, rev };
+}
+
+// Storage-level compare-and-swap: mode "update" + the rev just read means
+// Dropbox itself rejects the write if the file changed since — this is the
+// authoritative concurrency guard (no in-process lock needed, works across
+// any number of Render instances). "add" mode (no rev) is only used for the
+// one-time case where the folder exists but popup.json has never been
+// written yet (expectedVersion must be null for that to be accepted).
+async function uploadPopupJson(folder, projectObj, { accessToken, fetchImpl = fetch, rev }) {
+  const popupJsonPath = `${folder.pathDisplay}/popup.json`;
+  const mode = rev ? { ".tag": "update", update: rev } : { ".tag": "add" };
+  const response = await fetchImpl(DROPBOX_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": asciiSafeJson({ path: popupJsonPath, mode, autorename: false, mute: true }),
+      "Content-Type": "application/octet-stream"
+    },
+    body: JSON.stringify(projectObj, null, 2)
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    if (response.status === 409) return { conflict: true };
+    throw dropboxErrorFromResponse(response.status, text, "popup.json upload");
+  }
+  return { conflict: false };
+}
+
+// Result shape:
+//   { ok:true, project } — write succeeded, project has server-set version/updatedAt
+//   { ok:false, reason:"project_not_found" }
+//   { ok:false, reason:"version_conflict", currentVersion }
+export async function saveProjectWithExpectedVersion(name, incomingProject, expectedVersion, { env = process.env, fetchImpl = fetch } = {}) {
+  const { accessToken, folders } = await listPopupProjectFolders({ env, fetchImpl });
+  const folder = matchPopupProjectFolder(folders, name);
+  if (!folder) return { ok: false, reason: "project_not_found" };
+
+  const { project: current, rev } = await downloadPopupJsonWithRev(folder, { accessToken, fetchImpl });
+  const currentVersion = current?.version ?? null;
+  if (expectedVersion !== currentVersion) {
+    return { ok: false, reason: "version_conflict", currentVersion };
+  }
+
+  const newVersion = (currentVersion || 0) + 1;
+  const updatedProject = {
+    ...incomingProject,
+    updatedAt: new Date().toISOString(),
+    version: newVersion
+  };
+
+  const result = await uploadPopupJson(folder, updatedProject, { accessToken, fetchImpl, rev });
+  if (result.conflict) {
+    // Someone else's write landed between our read and our upload. Re-read to
+    // report the real current version rather than guessing.
+    const { project: latest } = await downloadPopupJsonWithRev(folder, { accessToken, fetchImpl });
+    return { ok: false, reason: "version_conflict", currentVersion: latest?.version ?? null };
+  }
+  return { ok: true, project: updatedProject };
 }

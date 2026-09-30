@@ -44,7 +44,12 @@ import {
   isAiAuditAuthorized,
   validateAiAuditRange
 } from "./scripts/ai-audit.mjs";
-import { getPopupProjectSummaries, getPopupProjectByName } from "./scripts/popup-dropbox-store.mjs";
+import {
+  getPopupProjectSummaries,
+  getPopupProjectByName,
+  validatePopupProjectPayload,
+  saveProjectWithExpectedVersion
+} from "./scripts/popup-dropbox-store.mjs";
 import {
   parseCafe24Money,
   firstCafe24Money,
@@ -529,8 +534,7 @@ const server = isMainModule ? createServer(async (req, res) => {
         return json(res, { ok: false, error: safeErrorMessage(error) }, 502);
       }
     }
-    if (url.pathname === "/api/ai-audit/popup/project") {
-      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+    if (url.pathname === "/api/ai-audit/popup/project" && req.method === "GET") {
       const name = url.searchParams.get("name");
       if (!name || !name.trim()) return json(res, { ok: false, error: "name is required" }, 400);
       try {
@@ -545,6 +549,42 @@ const server = isMainModule ? createServer(async (req, res) => {
       } catch (error) {
         return json(res, { ok: false, error: safeErrorMessage(error) }, 502);
       }
+    }
+    if (url.pathname === "/api/ai-audit/popup/project" && req.method === "PUT") {
+      // WRITE (Phase 2-2). Sole authoritative writer for popup.json — storage-
+      // level compare-and-swap against Dropbox's own file rev, see
+      // scripts/popup-dropbox-store.mjs. Never creates a PROJECTS folder.
+      let payload;
+      try {
+        payload = await readJsonBody(req);
+      } catch {
+        return json(res, { ok: false, error: "malformed_json" }, 400);
+      }
+      let project, expectedVersion;
+      try {
+        ({ project, expectedVersion } = validatePopupProjectPayload(payload));
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+      const queryName = url.searchParams.get("name");
+      if (queryName && queryName.normalize("NFC") !== project.name.normalize("NFC")) {
+        return json(res, { ok: false, error: "name query does not match project.name" }, 400);
+      }
+      try {
+        const result = await saveProjectWithExpectedVersion(project.name, project, expectedVersion, { env });
+        if (!result.ok && result.reason === "project_not_found") {
+          return json(res, { ok: false, error: "project_not_found" }, 404);
+        }
+        if (!result.ok && result.reason === "version_conflict") {
+          return json(res, { ok: false, error: "version_conflict", currentVersion: result.currentVersion }, 409);
+        }
+        return json(res, { ok: true, project: result.project });
+      } catch (error) {
+        return json(res, { ok: false, error: safeErrorMessage(error) }, 502);
+      }
+    }
+    if (url.pathname === "/api/ai-audit/popup/project") {
+      return json(res, { error: "Method Not Allowed" }, 405);
     }
     if (url.pathname === "/api/sales/total") {
       if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
