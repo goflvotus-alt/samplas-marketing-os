@@ -242,10 +242,11 @@ const server = isMainModule ? createServer(async (req, res) => {
       return json(res, data);
     }
     if (url.pathname === "/api/cafe24/orders") {
+      const inflowPath = url.searchParams.get("inflow_path") || undefined;
       const data = await fetchCafe24Orders(
         url.searchParams.get("start_date") || `${currentMonth()}-01`,
         url.searchParams.get("end_date") || todayKey(),
-        { limit: url.searchParams.get("limit") || undefined }
+        { limit: url.searchParams.get("limit") || undefined, inflowPath }
       );
       return json(res, {
         ...data,
@@ -2050,6 +2051,12 @@ function isAuthorizedEcountImport(req) {
 
 async function fetchCafe24Orders(startDate, endDate, options = {}) {
   const pastMonth = !isCurrentMonth(monthFromDate(endDate));
+  if (options.inflowPath && pastMonth) {
+    throw Object.assign(
+      new Error("inflow_path 필터는 현재월 조회에서만 지원합니다."),
+      { status: 400 }
+    );
+  }
   await logCafe24OrdersDebug("flow_start", {
     startDate,
     endDate,
@@ -2174,6 +2181,7 @@ async function fetchCafe24OrdersFromProxy(startDate, endDate, options = {}) {
   url.searchParams.set("start_date", startDate);
   url.searchParams.set("end_date", endDate);
   if (!url.searchParams.has("limit")) url.searchParams.set("limit", options.limit || env.CAFE24_PROXY_ORDER_LIMIT || "10");
+  if (options.inflowPath) url.searchParams.set("inflow_path", options.inflowPath);
   const headers = {};
   if (env.CAFE24_PROXY_SECRET) headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
   if (env.CAFE24_PROXY_BASIC_AUTH) {
@@ -5852,6 +5860,7 @@ async function cafe24GetOrders(startDate, endDate, options = {}) {
   url.searchParams.set("start_date", startDate);
   url.searchParams.set("end_date", endDate);
   url.searchParams.set("embed", "items");
+  if (options.inflowPath) url.searchParams.set("inflow_path", options.inflowPath);
   const requestedLimit = Math.min(Number(options.limit || 500) || 500, 1000);
   const pageSize = Math.min(100, requestedLimit);
   const orders = [];
