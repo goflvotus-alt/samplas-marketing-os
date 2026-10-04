@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 
 import { buildBrandRegistry, extractSlashBrandCandidate, resolveBrand } from "./brand-engine.mjs";
 import { KNOWN_STORE_CODES, readEcountOfflineSalesSnapshot } from "./read-ecount-offline-sales-snapshot.mjs";
+import { readEcountProductMaster } from "./ecount-product-master.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const WORK = join(ROOT, "work");
@@ -58,7 +59,7 @@ function resolveProductName(name, registry) {
   return extracted ? resolveBrand(extracted.candidate, registry) : null;
 }
 
-export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots }) {
+export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots, inventorySource = "ecount-inventory/raw-products.json" }) {
   const registry = buildBrandRegistry(brandMaster);
   const evidence = new Map(registry.brands.map((brand) => [brand.id, {
     resolved_products: 0,
@@ -121,7 +122,7 @@ export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots
     summary: entries.reduce((out, row) => ({ ...out, [row.sourcing_type]: (out[row.sourcing_type] || 0) + 1 }), {}),
     sources: {
       brand_master: "work/brand-master.json",
-      inventory: "work/ecount-inventory/raw-products.json",
+      inventory: `work/${inventorySource}`,
       sales_months: salesSnapshots.map((row) => row.month).sort(),
       exact_30_percent_signal: exact30Active ? "ACTIVE" : "NOT_ACTIVE"
     },
@@ -131,7 +132,8 @@ export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots
 
 async function loadInputs(workDir = WORK) {
   const brandMaster = JSON.parse(await readFile(join(workDir, "brand-master.json"), "utf8"));
-  const inventory = JSON.parse(await readFile(join(workDir, "ecount-inventory/raw-products.json"), "utf8"));
+  // product-master.json first, raw-products.json fallback (mapped to the raw field names).
+  const master = await readEcountProductMaster(workDir);
   // Sourcing은 현재 운영 데이터만 사용하며 과거 후보 파일은 읽지 않는다.
   const salesFiles = await readdir(join(workDir, "ecount-sales"));
   const salesMonths = [...new Set(salesFiles.flatMap((name) => {
@@ -143,11 +145,11 @@ async function loadInputs(workDir = WORK) {
   const salesSnapshots = (await Promise.all(
     salesMonths.map((month) => readEcountOfflineSalesSnapshot(month, { workDir }))
   )).filter(Boolean);
-  const products = inventory?.Data?.Result;
+  const products = master?.products.map((p) => ({ PROD_CD: p.productCode, PROD_DES: p.productName, IN_PRICE: p.inPrice, OUT_PRICE: p.outPrice }));
   if (!Array.isArray(brandMaster?.brands) || !Array.isArray(products)) {
     throw new Error("Brand sourcing input structure is invalid.");
   }
-  return { brandMaster, products, salesSnapshots };
+  return { brandMaster, products, salesSnapshots, inventorySource: master.source };
 }
 
 async function writeAtomic(file, data) {

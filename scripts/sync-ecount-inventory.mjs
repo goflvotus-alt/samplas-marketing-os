@@ -17,6 +17,7 @@
 import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildProductMaster, validateProductMaster } from "./ecount-product-master.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const outputDir = join(root, "work", "ecount-inventory");
@@ -155,6 +156,8 @@ async function main() {
 
   // 6) JSON 저장 — PROD_CD 기준으로 품목 + 재고를 합쳐 latest.json 생성
   const { latest, purchasePriceCount } = buildLatestRows(productList, inventoryList);
+  // Lightweight onboarding/sourcing master; written in the same atomic set as the rest.
+  const productMaster = buildProductMaster(productList, pagination);
 
   diagnostic.finishedAt = new Date().toISOString();
   diagnostic.counts = {
@@ -163,8 +166,8 @@ async function main() {
     latestCount: latest.length,
     purchasePriceCount
   };
-  validateOutputPayloads({ rawProducts, rawInventory, latest, diagnostic });
-  await writeInventoryOutputsAtomically(outDir, { rawProducts, rawInventory, latest, diagnostic });
+  validateOutputPayloads({ rawProducts, rawInventory, latest, diagnostic, productMaster });
+  await writeInventoryOutputsAtomically(outDir, { rawProducts, rawInventory, latest, diagnostic, productMaster });
 
   let historySnapshot = null;
   try {
@@ -302,8 +305,9 @@ function buildLatestRows(productList, inventoryList) {
   return { latest, purchasePriceCount };
 }
 
-function validateOutputPayloads({ rawProducts, rawInventory, latest, diagnostic }) {
+function validateOutputPayloads({ rawProducts, rawInventory, latest, diagnostic, productMaster }) {
   requireResultList(rawProducts, "products");
+  if (productMaster !== undefined) validateProductMaster(productMaster);
   requireResultList(rawInventory, "inventory");
   if (!Array.isArray(latest)) throw new Error("latest 결과가 배열이 아닙니다.");
   if (!diagnostic || typeof diagnostic !== "object" || !diagnostic.startedAt || !diagnostic.finishedAt) {
@@ -311,13 +315,14 @@ function validateOutputPayloads({ rawProducts, rawInventory, latest, diagnostic 
   }
 }
 
-function outputPayloadsToFiles({ rawProducts, rawInventory, latest, diagnostic }) {
-  validateOutputPayloads({ rawProducts, rawInventory, latest, diagnostic });
+function outputPayloadsToFiles({ rawProducts, rawInventory, latest, diagnostic, productMaster }) {
+  validateOutputPayloads({ rawProducts, rawInventory, latest, diagnostic, productMaster });
   return {
     "raw-products.json": rawProducts,
     "raw-inventory.json": rawInventory,
     "latest.json": latest,
-    "diagnostic.json": diagnostic
+    "diagnostic.json": diagnostic,
+    ...(productMaster !== undefined ? { "product-master.json": productMaster } : {})
   };
 }
 

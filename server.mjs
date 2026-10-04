@@ -6,6 +6,7 @@ import { URL, fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { KNOWN_STORE_CODES, readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 import { RENDER_SNAPSHOT_MONTHLY_PATTERN, isAllowedRenderSnapshotPath } from "./scripts/render-snapshot-manifest.mjs";
+import { PRODUCT_MASTER_FILE, productMasterProblem } from "./scripts/ecount-product-master.mjs";
 import { refreshMonthlySales } from "./scripts/refresh-monthly-sales.mjs";
 import { enrichMetaProductBreakdown, applyRuntimeAutoEnrichment } from "./scripts/meta-product-registry-link.mjs";
 import {
@@ -2861,6 +2862,8 @@ async function uploadWorkDataFiles(payload) {
       throw Object.assign(new Error(`ECOUNT inventory latest 형식 오류: ${relativePath}`), { status: 400 });
     } else if (relativePath.endsWith("/diagnostic.json") && (!parsed || typeof parsed !== "object" || Array.isArray(parsed))) {
       throw Object.assign(new Error(`ECOUNT inventory diagnostic 형식 오류: ${relativePath}`), { status: 400 });
+    } else if (relativePath === PRODUCT_MASTER_FILE && productMasterProblem(parsed)) {
+      throw Object.assign(new Error(`ECOUNT product master 형식 오류: ${productMasterProblem(parsed)}`), { status: 400 });
     }
     const target = resolve(workDir, ...relativePath.split("/"));
     if (!target.startsWith(`${workDir}${sep}`)) throw Object.assign(new Error(`work 경로 밖에는 저장할 수 없습니다: ${relativePath}`), { status: 400 });

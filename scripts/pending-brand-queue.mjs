@@ -8,6 +8,7 @@ import { readEcountOfflineSalesSnapshot } from "./read-ecount-offline-sales-snap
 import { pendingBrandUiMetadata } from "./pending-brand-ui-metadata.mjs";
 import { readWorkbenchSources, buildIdentityWorkbench } from "./brand-identity-workbench.mjs";
 import { refreshBrandSourcingMaster, stripConsignmentPrefix } from "./build-brand-sourcing-master.mjs";
+import { readEcountProductMaster } from "./ecount-product-master.mjs";
 
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, "utf8")); }
@@ -237,11 +238,10 @@ export async function loadPendingBrandSources(workDir, month) {
   const catalog = await readJson(join(workDir, "cafe24-product-catalog.json"), {});
   const products = Array.isArray(catalog) ? catalog : Array.isArray(catalog.products) ? catalog.products : Object.values(catalog.products || {});
   const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
-  const ecountMaster = await readJson(join(workDir, "ecount-inventory/raw-products.json"), null);
-  const ecountProducts = (Array.isArray(ecountMaster?.Data?.Result) ? ecountMaster.Data.Result : [])
-    .map(row => ({ productName: stripConsignmentPrefix(row.PROD_DES), productCode: row.PROD_CD }));
+  const ecountMaster = await readEcountProductMaster(workDir);
+  const ecountProducts = (ecountMaster?.products || []).map(p => ({ productName: stripConsignmentPrefix(p.productName), productCode: p.productCode }));
   return { canonical, compatibility, aliases, products, ecountLines: snapshot?.salesLines || [], ecountProducts, provenance: { month, productCount: products.length, ecountLineCount: snapshot?.salesLines?.length || 0,
-    ecountProductCount: ecountProducts.length, ecountProductsAt: ecountMaster?.Timestamp || null, ecountAvailable: Boolean(snapshot), catalogGeneratedAt: catalog.generatedAt || catalog.updatedAt || null, ecountSources: snapshot?.sources || [], ecountImportedAt: snapshot?.importedAt || null } };
+    ecountProductCount: ecountProducts.length, ecountProductsAt: ecountMaster?.fetchedAt || null, ecountProductSource: ecountMaster?.source || null, ecountAvailable: Boolean(snapshot), catalogGeneratedAt: catalog.generatedAt || catalog.updatedAt || null, ecountSources: snapshot?.sources || [], ecountImportedAt: snapshot?.importedAt || null } };
 }
 
 // Serialize refresh and review writes. Queue-only is the default; explicit

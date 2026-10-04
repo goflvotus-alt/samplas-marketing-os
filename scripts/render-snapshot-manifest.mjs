@@ -16,7 +16,9 @@ export const RENDER_SNAPSHOT_EXPLICIT_PATHS = [
   "intelligence/brand-master-list.json",
   "intelligence/brand-aliases.json",
   "ecount-inventory/latest.json",
-  "ecount-inventory/diagnostic.json"
+  "ecount-inventory/diagnostic.json",
+  // Lightweight onboarding/sourcing product master; raw-products.json (40MB) stays local-only.
+  "ecount-inventory/product-master.json"
 ];
 
 export const RENDER_SNAPSHOT_MONTHLY_PATTERN = /^(?:ecount-sales|monthly)\/(\d{4}-(?:0[1-9]|1[0-2]))(?:\.(?:APGUJEONG|VAIL))?\.json$/;
