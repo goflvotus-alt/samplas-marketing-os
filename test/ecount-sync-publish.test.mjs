@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, copyFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runEcountSyncAndPublish, formatSummary, PUBLISH_FILES } from "../scripts/run-ecount-product-sync-and-publish.mjs";
+import { runEcountSyncAndPublish, formatSummary, PUBLISH_FILES, PUBLISH_BATCHES } from "../scripts/run-ecount-product-sync-and-publish.mjs";
 import { syncEcountInventory } from "../scripts/sync-ecount-inventory.mjs";
 import * as queue from "../scripts/pending-brand-queue.mjs";
 
@@ -61,9 +61,9 @@ async function fakeProduction() {
   return { prodDir, calls, production };
 }
 
-const uploader = (localDir, prodDir, uploads, { fail = false } = {}) => async relativePaths => {
+const uploader = (localDir, prodDir, uploads, { fail = false, failOn = 0 } = {}) => async relativePaths => {
   uploads.push(relativePaths);
-  if (fail) throw new Error("upload 502");
+  if (fail || uploads.length === failOn) throw new Error("upload 502");
   for (const p of relativePaths) await copyFile(join(localDir, p), join(prodDir, p));
   return { ok: true, uploaded: relativePaths };
 };
@@ -77,7 +77,8 @@ test("success: local sync → upload of exactly 3 files → NEW-only onboarding;
     const run = () => runEcountSyncAndPublish({ workDir: local, sync: () => syncEcountInventory({ env, outDir: join(local, "ecount-inventory"), request: ecount([...filler(10_600), ...named]), delayMs: 0 }), upload: uploader(local, prodDir, uploads), production });
     const first = await run();
     assert.equal(first.ok, true, first.error);
-    assert.deepEqual(uploads, [[...PUBLISH_FILES]]);
+    assert.deepEqual(uploads, [["ecount-inventory/latest.json", "ecount-inventory/diagnostic.json"], ["ecount-inventory/product-master.json"]], "two proven-size requests, product-master last");
+    assert.deepEqual(PUBLISH_BATCHES.flat(), [...PUBLISH_FILES]);
     assert.deepEqual(PUBLISH_FILES, ["ecount-inventory/latest.json", "ecount-inventory/diagnostic.json", "ecount-inventory/product-master.json"]);
     assert.equal(first.productMaster.totalProducts, 10_602);
     assert.equal(first.newProducts, 102);
@@ -121,15 +122,19 @@ test("ECOUNT failure or invalid product-master: nothing uploaded, Production unt
   }
 });
 
-test("upload failure: onboarding is not attempted", async () => {
-  const local = await localWork();
-  const { prodDir, calls, production } = await fakeProduction();
-  try {
-    const result = await runEcountSyncAndPublish({ workDir: local, sync: () => syncEcountInventory({ env, outDir: join(local, "ecount-inventory"), request: ecount([...filler(10_600), ...named]), delayMs: 0 }), upload: uploader(local, prodDir, [], { fail: true }), production });
-    assert.equal(result.ok, false);
-    assert.equal(result.stage, "upload");
-    assert.deepEqual(calls, []);
-  } finally { for (const d of [local, prodDir]) await rm(d, { recursive: true, force: true }); }
+test("upload failure (first or second request): onboarding is not attempted, partial upload is reported", async () => {
+  for (const [failOn, uploaded, message] of [[1, [], /아무것도 반영하지 않았습니다/], [2, ["ecount-inventory/latest.json", "ecount-inventory/diagnostic.json"], /일부 파일만 반영됐습니다[\s\S]*onboarding 미실행/]]) {
+    const local = await localWork();
+    const { prodDir, calls, production } = await fakeProduction();
+    try {
+      const result = await runEcountSyncAndPublish({ workDir: local, sync: () => syncEcountInventory({ env, outDir: join(local, "ecount-inventory"), request: ecount([...filler(10_600), ...named]), delayMs: 0 }), upload: uploader(local, prodDir, [], { failOn }), production });
+      assert.equal(result.ok, false);
+      assert.equal(result.stage, "upload");
+      assert.deepEqual(result.upload.uploaded, uploaded);
+      assert.deepEqual(calls, []);
+      assert.match(formatSummary(result), message);
+    } finally { for (const d of [local, prodDir]) await rm(d, { recursive: true, force: true }); }
+  }
 });
 
 test("onboarding failure keeps the published inventory and is reported", async () => {
@@ -140,7 +145,7 @@ test("onboarding failure keeps the published inventory and is reported", async (
     const result = await runEcountSyncAndPublish({ workDir: local, sync: () => syncEcountInventory({ env, outDir: join(local, "ecount-inventory"), request: ecount([...filler(10_600), ...named]), delayMs: 0 }),
       upload: uploader(local, prodDir, uploads), production: async (method, path) => { if (method === "POST") throw new Error("refresh 500"); return {}; } });
     assert.equal(result.ok, false);
-    assert.equal(uploads.length, 1);
+    assert.equal(uploads.length, 2);
     assert.equal(result.onboarding.error, "refresh 500");
     assert.match(formatSummary(result), /ONBOARDING FAILED[\s\S]*상품 마스터 업로드는 반영된 상태/);
   } finally { for (const d of [local, prodDir]) await rm(d, { recursive: true, force: true }); }

@@ -14,6 +14,9 @@ import { loadEnv, uploadWorkSnapshots, renderBaseUrl, renderAuthHeaders } from "
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const PUBLISH_FILES = Object.freeze(["ecount-inventory/latest.json", "ecount-inventory/diagnostic.json", PRODUCT_MASTER_FILE]);
+// One ~6.5MB request restarted the Render free instance (2026-10-04); these sizes are proven.
+// product-master goes last so Production only switches its brand evidence after the inventory.
+export const PUBLISH_BATCHES = Object.freeze([["ecount-inventory/latest.json", "ecount-inventory/diagnostic.json"], [PRODUCT_MASTER_FILE]]);
 const REVIEW_REASON = "INACTIVE_CODE_REUSED";
 
 const readJson = async (file) => JSON.parse(await readFile(file, "utf8"));
@@ -84,7 +87,13 @@ export async function runEcountSyncAndPublish({ workDir, sync, upload, productio
 
     result.stage = "upload";
     log(`[3/5] Production 업로드: ${PUBLISH_FILES.join(", ")}${dryRun ? " (DRY RUN: 전송 생략)" : ""}`);
-    result.upload = dryRun ? { dryRun: true, files: [...PUBLISH_FILES] } : await upload([...PUBLISH_FILES]);
+    result.upload = { dryRun, uploaded: [] };
+    if (!dryRun) {
+      for (const batch of PUBLISH_BATCHES) {
+        await upload([...batch]);
+        result.upload.uploaded.push(...batch);
+      }
+    }
 
     result.stage = "onboarding";
     log("[4/5] Production pending refresh (NEW만 자동 승인)…");
@@ -130,8 +139,10 @@ export function formatSummary(r) {
   const n = (v) => (typeof v === "number" ? v.toLocaleString("en-US") : "-");
   const lines = [];
   if (r.error) {
-    lines.push(`ECOUNT SYNC FAILED (${r.stage})`, "", r.error, "", r.stage === "sync" || r.stage === "verify-product-master" || r.stage === "upload"
-      ? "Production에는 아무것도 반영하지 않았습니다." : "");
+    const partial = r.upload?.uploaded?.length;
+    lines.push(`ECOUNT SYNC FAILED (${r.stage})`, "", r.error, "", partial
+      ? `Production에 일부 파일만 반영됐습니다: ${r.upload.uploaded.join(", ")} (onboarding 미실행 — 다시 실행하세요)`
+      : ["sync", "verify-product-master", "upload"].includes(r.stage) ? "Production에는 아무것도 반영하지 않았습니다." : "");
     return lines.join("\n").trim();
   }
   lines.push(r.dryRun ? "ECOUNT SYNC DRY RUN COMPLETE (Production 변경 없음)" : r.ok ? "ECOUNT SYNC COMPLETE" : "ECOUNT SYNC COMPLETE — ONBOARDING FAILED", "");
