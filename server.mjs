@@ -359,6 +359,39 @@ const server = isMainModule ? createServer(async (req, res) => {
         return json(res, { error: safeErrorMessage(error) }, error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
       }
     }
+    if (url.pathname === "/api/diagnostics/cafe24-product-catalog") {
+      if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) {
+        return json(res, { error: "Unauthorized" }, 401);
+      }
+
+      const catalog = await readCafe24ProductCatalogCache();
+
+      if (!catalog) {
+        return json(res, {
+          ok: false,
+          error: "Cafe24 product catalog cache not found"
+        }, 404);
+      }
+
+      const products = (catalog.products || []).map((product) => ({
+        productNo: product.productNo,
+        productCode: product.productCode || "",
+        productName: product.productName || "",
+        brand: product.brand || "",
+        createdDate: product.createdDate || null,
+        display: product.display || "",
+        selling: product.selling || ""
+      }));
+
+      return json(res, {
+        ok: true,
+        source: catalog.source || "cafe24-product-catalog",
+        syncedAt: catalog.syncedAt || null,
+        productCount: products.length,
+        products
+      });
+    }
+
     if (url.pathname === "/api/products/dashboard") {
       const since = url.searchParams.get("since") || `${currentMonth()}-01`;
       const until = url.searchParams.get("until") || todayKey();
