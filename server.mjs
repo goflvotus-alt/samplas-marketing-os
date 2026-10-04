@@ -7675,7 +7675,7 @@ const ecountAutoSyncEnabled = env.ECOUNT_AUTO_SYNC === "on";
 const localEcountProductSync = createLocalEcountProductSyncRoute({
   enabled: !env.RENDER,
   allowedOrigins: [`http://127.0.0.1:${port}`, `http://localhost:${port}`, (env.RENDER_DASHBOARD_URL || "https://samplas-marketing-os.onrender.com").replace(/\/$/, "")],
-  run: async () => (await import("./scripts/run-ecount-product-sync-and-publish.mjs")).runEcountProductSyncFromEnv()
+  run: async (options) => (await import("./scripts/run-ecount-product-sync-and-publish.mjs")).runEcountProductSyncFromEnv(options)
 });
 
 // Read-only view: credential presence is reported as booleans only, never values.

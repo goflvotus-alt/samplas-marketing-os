@@ -81,57 +81,101 @@ test("server wiring: route is local-only, reuses the one-click runner, and is no
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   const block = server.slice(server.indexOf("const localEcountProductSync = createLocalEcountProductSyncRoute"), server.indexOf("});", server.indexOf("const localEcountProductSync = createLocalEcountProductSyncRoute")));
   assert.match(block, /enabled: !env\.RENDER/);
-  assert.match(block, /runEcountProductSyncFromEnv\(\)/);
+  assert.match(block, /runEcountProductSyncFromEnv\(options\)/);
   assert.match(server, /url\.pathname === "\/api\/ecount\/product-sync"\) \{\n\s+return localEcountProductSync\(req, res, \{ isLocal: isLocalRequest\(req\) \}\);/);
 });
 
 // ---- browser button (outputs/ecount-product-sync.js) in a fake DOM ----
+// Timers are shortened (4 s permission wait, 2 s polling) so the tests stay fast.
 async function loadButton({ hostname = "127.0.0.1", fetchImpl }) {
   const source = await readFile(new URL("../outputs/ecount-product-sync.js", import.meta.url), "utf8");
   const listeners = {};
   const button = { disabled: false, addEventListener: (type, fn) => { listeners[type] = fn; } };
   const status = { className: "", textContent: "", dataset: {} };
   const window = {};
-  runInNewContext(source, { window, location: { hostname }, fetch: fetchImpl, document: { readyState: "complete", getElementById: id => ({ ecountProductSyncBtn: button, ecountProductSyncStatus: status })[id] || null } });
-  await new Promise(r => setTimeout(r, 10));
+  runInNewContext(source, { window, location: { hostname }, fetch: fetchImpl, setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 30)), clearTimeout,
+    document: { readyState: "complete", getElementById: id => ({ ecountProductSyncBtn: button, ecountProductSyncStatus: status })[id] || null } });
+  await new Promise(r => setTimeout(r, 60));
   return { api: window.SamplasEcountSync, button, status, click: () => listeners.click() };
 }
 const reply = (status, body) => ({ status, ok: status >= 200 && status < 300, json: async () => body });
+const idleStatus = () => Promise.resolve(reply(200, { ok: true, available: true, running: false, last: null }));
 
-test("button: offline helper shows a clear message; Production page still targets loopback, never Render", async () => {
-  const fromProd = await loadButton({ hostname: "samplas-marketing-os.onrender.com", fetchImpl: async () => { throw new TypeError("Failed to fetch"); } });
-  assert.equal(fromProd.api.ENDPOINT, "http://127.0.0.1:8787/api/ecount/product-sync");
-  assert.equal(fromProd.status.dataset.state, "offline");
-  assert.match(fromProd.status.textContent, /로컬 ECOUNT 서비스가 실행 중이 아닙니다/);
-  const local = await loadButton({ fetchImpl: async () => reply(200, { ok: true, available: true, running: false, last: null }) });
+test("button: offline helper and pending local-network permission are told apart; Production page targets loopback only", async () => {
+  const offline = await loadButton({ hostname: "samplas-marketing-os.onrender.com", fetchImpl: async () => { throw new TypeError("Failed to fetch"); } });
+  assert.equal(offline.api.ENDPOINT, "http://127.0.0.1:8787/api/ecount/product-sync");
+  assert.equal(offline.status.dataset.state, "offline");
+  assert.match(offline.status.textContent, /로컬 ECOUNT 서비스가 실행 중이 아닙니다/);
+
+  const methods = [];
+  const pending = await loadButton({ hostname: "samplas-marketing-os.onrender.com", fetchImpl: (url, opts) => { methods.push(opts.method); return new Promise(() => {}); } });
+  assert.equal(pending.status.dataset.state, "permission");
+  assert.equal(pending.status.textContent, "Chrome에서 로컬 네트워크 접근 허용이 필요합니다. 주소창 또는 브라우저 권한 요청에서 허용한 뒤 다시 눌러주세요.");
+  await pending.click();
+  assert.equal(pending.status.dataset.state, "permission");
+  assert.ok(!methods.includes("POST"), "no sync starts while the permission is pending");
+
+  const local = await loadButton({ fetchImpl: idleStatus });
   assert.equal(local.api.ENDPOINT, "/api/ecount/product-sync");
   assert.equal(local.status.dataset.state, "idle");
 });
 
-test("button: click disables while running, ignores double clicks, then shows the summary or the failure", async () => {
+test("button: 상태 확인 → 최신화 중 → Production 반영 확인 중 (retry shown) → 완료; double clicks send one POST", async () => {
   const requests = [];
-  let release;
+  let release, progress = "[1/5] ECOUNT 전체 상품 sync…";
   const btn = await loadButton({ fetchImpl: (url, opts) => {
     requests.push(opts.method);
-    if (opts.method === "GET") return Promise.resolve(reply(200, { ok: true, available: true, running: false, last: null }));
+    if (opts.method === "GET") return Promise.resolve(reply(200, { ok: true, available: true, running: Boolean(release), progress, last: null }));
     assert.equal(opts.headers["x-samplas-local-action"], "ecount-product-sync");
     return new Promise(r => { release = r; });
   } });
   const running = btn.click();
-  assert.equal(btn.button.disabled, true);
+  await new Promise(r => setTimeout(r, 20));
   assert.equal(btn.status.dataset.state, "running");
+  assert.equal(btn.button.disabled, true);
   await btn.click();
-  assert.deepEqual(requests, ["GET", "POST"], "second click while running sends nothing");
-  release(reply(200, { ok: true, last: uiResult(okResult, "", "2026-10-04T08:44:30.000Z") }));
+  progress = "[5/5] Production 반영 확인 중 · 재시도 (시도 2/3, /api/brands/new, HTTP 502)";
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(btn.status.textContent, "Production 반영 확인 중 · 재시도 1/2");
+  release(reply(200, { ok: true, last: uiResult({ ...okResult, verification: { failures: [], retries: 1 } }, "", "2026-10-04T09:40:00.000Z") }));
   await running;
+  assert.equal(requests.filter(m => m === "POST").length, 1, "second click while running sends nothing");
   assert.equal(btn.button.disabled, false);
   assert.equal(btn.status.dataset.state, "done");
   assert.match(btn.status.textContent, /^14,746개 최신화 완료 · 신규 상품 \+0 · 신규 브랜드 0 · 검토 필요 3 · /);
+});
 
+test("button and helper never show an HTML error page", async () => {
+  const html = "GET /api/brand-master → 502 <!DOCTYPE html><html><head><title>502</title></head></html>";
+  const ui = uiResult({ ok: false, stage: "done", verification: { failures: [`/api/brand-master: ${html}`] } }, `ECOUNT SYNC — VERIFICATION FAILED\n${html}`);
+  assert.deepEqual(ui.verificationFailures, ["Production 응답 오류 (HTTP 502)"]);
+  assert.doesNotMatch(JSON.stringify(ui), /<!DOCTYPE|<html/i);
   const failing = await loadButton({ fetchImpl: async (url, opts) => opts.method === "GET"
     ? reply(200, { ok: true, running: false, last: null })
-    : reply(200, { ok: false, last: uiResult({ ok: false, stage: "sync", error: "[Login 실패] 허용되지 않은 IP입니다." }, "") }) });
+    : reply(200, { ok: false, last: { ok: false, stage: "verify-production", error: html, finishedAt: "2026-10-04T09:40:00.000Z" } }) });
   await failing.click();
   assert.equal(failing.status.dataset.state, "failed");
-  assert.match(failing.status.textContent, /^실패 \(sync\): \[Login 실패\] 허용되지 않은 IP/);
+  assert.match(failing.status.textContent, /^실패 \(verify-production\): Production 응답 오류 \(HTTP 502\) · /);
+  assert.doesNotMatch(failing.status.textContent, /</);
+  const sync = await loadButton({ fetchImpl: async (url, opts) => opts.method === "GET"
+    ? reply(200, { ok: true, running: false, last: null })
+    : reply(200, { ok: false, last: uiResult({ ok: false, stage: "sync", error: "[Login 실패] 허용되지 않은 IP입니다." }, "") }) });
+  await sync.click();
+  assert.match(sync.status.textContent, /^실패 \(sync\): \[Login 실패\] 허용되지 않은 IP/);
+});
+
+test("helper exposes the runner's progress line (HTML-free) while a run is in flight", async () => {
+  let release;
+  const route = createLocalEcountProductSyncRoute({ enabled: true, allowedOrigins: ORIGINS, run: ({ log }) => {
+    log("[5/5] Production 반영 확인 중 · 재시도 (시도 2/3, /api/brands/new, HTTP 502)");
+    return new Promise(r => { release = r; });
+  } });
+  const post = call(route);
+  await new Promise(r => setTimeout(r, 10));
+  const during = await call(route, { method: "GET" });
+  assert.equal(during.body.running, true);
+  assert.match(during.body.progress, /^\[5\/5\] Production 반영 확인 중 · 재시도/);
+  release({ result: okResult, summary: "" });
+  await post;
+  assert.equal((await call(route, { method: "GET" })).body.progress, null);
 });

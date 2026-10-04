@@ -207,3 +207,39 @@ test("verification fails when Production does not read exactly the uploaded prod
     } finally { for (const d of [local, prodDir]) await rm(d, { recursive: true, force: true }); }
   }
 });
+
+test("verification GETs retry transient 502/503/504 and network errors; auth errors fail at once; messages carry no HTML", async () => {
+  const html = "<!DOCTYPE html><html><head><title>502</title></head><body>bad gateway</body></html>";
+  const httpError = status => Object.assign(new Error(`GET → HTTP ${status}`), { status, body: html });
+  for (const [label, failures, expectOk, pattern, expectedCalls] of [
+    ["502 then success", [httpError(502)], true, null, 2],
+    ["network error then success", [new TypeError("fetch failed")], true, null, 2],
+    ["502 three times", [httpError(502), httpError(503), httpError(504)], false, /\/api\/brands\/new: Production 확인 실패 \(HTTP 504\)/, 3],
+    ["401 is not retried", [httpError(401)], false, /\/api\/brands\/new: Production 확인 실패 \(HTTP 401\)/, 1]
+  ]) {
+    const local = await localWork();
+    const { prodDir, production } = await fakeProduction();
+    try {
+      const queueOfFailures = [...failures];
+      let brandsNewCalls = 0;
+      const logs = [];
+      const flaky = async (method, path, body) => {
+        if (method === "GET" && path === "/api/brands/new") {
+          brandsNewCalls += 1;
+          if (queueOfFailures.length) throw queueOfFailures.shift();
+        }
+        return production(method, path, body);
+      };
+      const result = await runEcountSyncAndPublish({ workDir: local, retryDelayMs: 0, log: l => logs.push(l),
+        sync: () => syncEcountInventory({ env, outDir: join(local, "ecount-inventory"), request: ecount([...filler(10_600), ...named]), delayMs: 0 }), upload: uploader(local, prodDir, []), production: flaky });
+      assert.equal(result.ok, expectOk, label);
+      assert.equal(brandsNewCalls, expectedCalls, label);
+      const summary = formatSummary(result);
+      assert.doesNotMatch(summary, /<!DOCTYPE|<html|<body/i, `${label}: no HTML in the summary`);
+      if (expectOk) {
+        assert.match(summary, /^ECOUNT SYNC COMPLETE/, label);
+        assert.match(logs.join("\n"), /Production 반영 확인 중 · 재시도 \(시도 2\/3/, label);
+      } else assert.match(result.verification.failures.join("\n"), pattern, label);
+    } finally { for (const d of [local, prodDir]) await rm(d, { recursive: true, force: true }); }
+  }
+});

@@ -9,12 +9,21 @@
 export const LOCAL_ACTION_HEADER = "x-samplas-local-action";
 export const LOCAL_ACTION_VALUE = "ecount-product-sync";
 
+// UI text must never carry an HTML error page (e.g. Render's 502 body).
+export function cleanUiText(value) {
+  if (value == null) return null;
+  const text = String(value);
+  const status = text.match(/\b(5\d\d|4\d\d)\b/)?.[1];
+  if (/<!doctype|<html|<head|<body/i.test(text)) return status ? `Production 응답 오류 (HTTP ${status})` : "Production 응답 오류";
+  return text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
 export function uiResult(result, summary, finishedAt = new Date().toISOString()) {
   const o = result?.onboarding || {};
   return {
     ok: Boolean(result?.ok),
     stage: result?.stage ?? null,
-    error: result?.error || o.error || null,
+    error: cleanUiText(result?.error || o.error || null),
     dryRun: Boolean(result?.dryRun),
     products: result?.productMaster?.totalProducts ?? null,
     newProducts: result?.newProducts ?? null,
@@ -24,8 +33,9 @@ export function uiResult(result, summary, finishedAt = new Date().toISOString())
     needsReview: o.needsReview || [],
     blocked: o.blocked || {},
     uploaded: result?.upload?.uploaded || [],
-    verificationFailures: result?.verification?.failures || [],
-    summary,
+    verificationFailures: (result?.verification?.failures || []).map(cleanUiText),
+    verificationRetries: result?.verification?.retries || 0,
+    summary: summary == null ? null : String(summary).replace(/<!DOCTYPE[\s\S]*?(<\/html>|$)/gi, "[HTML 생략]"),
     finishedAt
   };
 }
@@ -34,6 +44,7 @@ export function createLocalEcountProductSyncRoute({ enabled, allowedOrigins, run
   const origins = new Set(allowedOrigins);
   let running = false;
   let last = null;
+  let progress = null; // last runner log line, shown by the button while a run is in flight
   const send = (res, status, body, headers = {}) => {
     res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...headers });
     res.end(JSON.stringify(body));
@@ -52,13 +63,14 @@ export function createLocalEcountProductSyncRoute({ enabled, allowedOrigins, run
     } : {};
     if (req.method === "OPTIONS") { res.writeHead(204, cors); return res.end(); }
     if (!isLocal) return send(res, 403, { ok: false, error: "localhost에서만 허용됩니다." }, cors);
-    if (req.method === "GET") return send(res, 200, { ok: true, available: true, running, last }, cors);
+    if (req.method === "GET") return send(res, 200, { ok: true, available: true, running, progress: running ? progress : null, last }, cors);
     if (req.method !== "POST") return send(res, 405, { ok: false, error: "Method Not Allowed" }, cors);
     if (req.headers[LOCAL_ACTION_HEADER] !== LOCAL_ACTION_VALUE) return send(res, 403, { ok: false, error: "로컬 실행 헤더가 없습니다." }, cors);
     if (running) return send(res, 409, { ok: false, running: true, error: "이미 최신화가 진행 중입니다." }, cors);
     running = true;
+    progress = null;
     try {
-      const { result, summary } = await run();
+      const { result, summary } = await run({ log: (line) => { progress = cleanUiText(line); } });
       last = uiResult(result, summary);
     } catch (error) {
       // e.g. the shared lock: the .command run is already in progress.

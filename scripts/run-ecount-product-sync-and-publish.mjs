@@ -46,6 +46,28 @@ async function acquireLock(workDir) {
   throw new Error("실행 잠금을 얻지 못했습니다.");
 }
 
+// Render answers 502/503/504 (or drops the connection) for a moment right after a heavy
+// refresh; those are retried. Auth errors and data mismatches are never retried.
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+export const isRetryableProductionError = (error) => (error?.status ? RETRYABLE_STATUS.has(error.status) : true);
+
+export async function withProductionRetry(task, { attempts = 3, delayMs = 5000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), onRetry = () => {} } = {}) {
+  for (let attempt = 1; ; attempt += 1) {
+    try { return await task(); }
+    catch (error) {
+      if (attempt >= attempts || !isRetryableProductionError(error)) throw error;
+      onRetry(attempt, error);
+      await sleep(delayMs);
+    }
+  }
+}
+
+// Short, HTML-free message for users; the raw body stays on error.body for debugging.
+export function productionErrorMessage(error) {
+  if (error?.status) return `Production 확인 실패 (HTTP ${error.status})`;
+  return `Production 연결 실패 (${String(error?.message || error).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120)})`;
+}
+
 export function summarizePending(refresh) {
   const pending = (refresh?.candidates || []).filter((c) => c.status === "PENDING");
   const approved = (refresh?.onboarding || []).filter((e) => e.ok).map((e) => ({ brandCode: e.candidate?.canonicalBrandCode, brandName: e.candidate?.rawBrandName, action: e.candidate?.approvalAction }));
@@ -61,7 +83,7 @@ export function summarizePending(refresh) {
 }
 
 // sync/upload/production are injected so tests run without ECOUNT or Render.
-export async function runEcountSyncAndPublish({ workDir, sync, upload, production, dryRun = false, log = () => {} }) {
+export async function runEcountSyncAndPublish({ workDir, sync, upload, production, dryRun = false, log = () => {}, verifyAttempts = 3, retryDelayMs = 5000, sleep }) {
   const result = { ok: false, dryRun, stage: "start" };
   const release = await acquireLock(workDir);
   try {
@@ -108,7 +130,7 @@ export async function runEcountSyncAndPublish({ workDir, sync, upload, productio
     }
 
     result.stage = "verify-production";
-    log("[5/5] Production 확인(읽기 전용)…");
+    log("[5/5] Production 반영 확인 중…");
     const provenance = result.onboarding.provenance;
     const failures = [];
     if (!result.onboarding.error) {
@@ -123,8 +145,18 @@ export async function runEcountSyncAndPublish({ workDir, sync, upload, productio
       ["newBrands", "/api/brands/new", (b) => ({ count: b.count, brands: (b.brands || []).map((x) => x.brandName) })],
       ["pending", "/api/pending-brands", (b) => { const p = summarizePending({ candidates: b.candidates }); return { needsReview: p.needsReview, blocked: p.blocked }; }]
     ]) {
-      try { result.verification[key] = pick(await production("GET", path)); }
-      catch (error) { result.verification[key] = { error: String(error?.message || error) }; failures.push(`${path}: ${result.verification[key].error}`); }
+      try {
+        result.verification[key] = pick(await withProductionRetry(() => production("GET", path), {
+          attempts: verifyAttempts, delayMs: retryDelayMs, ...(sleep ? { sleep } : {}),
+          onRetry: (attempt, error) => {
+            result.verification.retries = (result.verification.retries || 0) + 1;
+            log(`[5/5] Production 반영 확인 중 · 재시도 (시도 ${attempt + 1}/${verifyAttempts}, ${path}, ${error?.status ? `HTTP ${error.status}` : "연결 오류"})`);
+          }
+        }));
+      } catch (error) {
+        result.verification[key] = { error: productionErrorMessage(error) };
+        failures.push(`${path}: ${result.verification[key].error}`);
+      }
     }
     result.verification.failures = failures;
     result.ok = !result.onboarding.error && failures.length === 0;
@@ -189,7 +221,11 @@ export async function runEcountProductSyncFromEnv({ dryRun = false, log = () => 
     const text = await response.text();
     let parsed;
     try { parsed = JSON.parse(text); } catch { parsed = { raw: text.slice(0, 300) }; }
-    if (!response.ok || parsed.error) throw new Error(`${method} ${path} → ${response.status} ${parsed.error || parsed.raw || ""}`.trim());
+    if (!response.ok || parsed.error) {
+      // Never put an HTML error page into the message; keep it on .body for debugging only.
+      const detail = parsed.error ? ` ${String(parsed.error).slice(0, 200)}` : "";
+      throw Object.assign(new Error(`${method} ${path} → HTTP ${response.status}${detail}`), { status: response.status, body: text.slice(0, 2000) });
+    }
     return parsed;
   };
   const result = await runEcountSyncAndPublish({
