@@ -7,7 +7,7 @@ import { detectPersonalPayment } from "./load-ecount-offline-sales.mjs";
 import { readEcountOfflineSalesSnapshot } from "./read-ecount-offline-sales-snapshot.mjs";
 import { pendingBrandUiMetadata } from "./pending-brand-ui-metadata.mjs";
 import { readWorkbenchSources, buildIdentityWorkbench } from "./brand-identity-workbench.mjs";
-import { refreshBrandSourcingMaster } from "./build-brand-sourcing-master.mjs";
+import { refreshBrandSourcingMaster, stripConsignmentPrefix } from "./build-brand-sourcing-master.mjs";
 
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, "utf8")); }
@@ -59,7 +59,8 @@ export function isAutoSafePendingDecision(candidate, canonical, sources) {
   const products = (sources.products || []).map(row => candidateFrom(row, "CAFE24"));
   if (products.some(row => (normalizeBrandKey(row.sourceBrandCode) === code && normalizeBrandKey(row.rawBrandName) !== name) ||
       (normalizeBrandKey(row.rawBrandName) === name && normalizeBrandKey(row.sourceBrandCode) !== code))) return null;
-  const ecount = sources.ecountLines.filter(row => !row.isPersonalPayment && !detectPersonalPayment(row.customerName).isPersonalPayment &&
+  // Current ECOUNT product master counts as ECOUNT evidence; sales are optional.
+  const ecount = [...sources.ecountLines, ...(sources.ecountProducts || [])].filter(row => !row.isPersonalPayment && !detectPersonalPayment(row.customerName).isPersonalPayment &&
     !/^QQQ/i.test(String(row.productCode || row.ecountProdCd || ""))).map(row => candidateFrom(row, "ECOUNT"));
   if (!ecount.some(row => normalizeBrandKey(row.rawBrandName) === name && !row.collabCandidates.length) ||
       [...(candidate.cafe24Variants || []), ...(candidate.ecountVariants || [])].some(n => normalizeBrandKey(n) !== name)) return null;
@@ -79,9 +80,9 @@ export function isAutoSafePendingDecision(candidate, canonical, sources) {
 }
 
 // Detection is deliberately separate from attribution: no resolver consumes this queue.
-export function detectPendingBrands({ canonical, compatibility = [], aliases = [], cafe24Brands = [], products = [], ecountLines = [], previous = { candidates: [] }, recentReview = null, now = new Date().toISOString() }) {
+export function detectPendingBrands({ canonical, compatibility = [], aliases = [], cafe24Brands = [], products = [], ecountLines = [], ecountProducts = [], previous = { candidates: [] }, recentReview = null, now = new Date().toISOString() }) {
   if (!(Array.isArray(canonical) || Array.isArray(canonical?.brands)) ||
-      [compatibility, aliases, cafe24Brands, products, ecountLines, previous.candidates].some(value => !Array.isArray(value))) throw new Error("Invalid pending brand detection source");
+      [compatibility, aliases, cafe24Brands, products, ecountLines, ecountProducts, previous.candidates].some(value => !Array.isArray(value))) throw new Error("Invalid pending brand detection source");
   const registry = buildBrandRegistry(canonical);
   const compat = buildBrandRegistry({ brands: compatibility.map(b => ({ brand_code: b.id, brand_name: b.name, active: b.active, name_aliases: aliases.filter(a => a.brandId === b.id).map(a => a.alias) })) });
   const conflicts = new Set();
@@ -124,7 +125,9 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
   }
   const observations = [];
   const excluded = [];
-  for (const [source, rows] of [["CAFE24", cafe24Brands.map(b => ({ ...b, brand_name: b.brand_name || b.brandName || b.name }))], ["CAFE24", products], ["ECOUNT", ecountLines]]) {
+  // Product master rows only corroborate a Cafe24 brand (sales-free BOTH). They never
+  // open ECOUNT-only candidates: free-text PROD_DES would flood the queue with item names.
+  for (const [source, rows, corroborateOnly] of [["CAFE24", cafe24Brands.map(b => ({ ...b, brand_name: b.brand_name || b.brandName || b.name }))], ["CAFE24", products], ["ECOUNT", ecountLines], ["ECOUNT", ecountProducts, true]]) {
     for (const row of rows) {
       const c = candidateFrom(row, source);
       const evidence = source === "CAFE24" ? codeEvidence.get(normalizeBrandKey(c.sourceBrandCode)) : null;
@@ -143,8 +146,12 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
       // A grandfathered exact whole collaboration name is already accepted;
       // never resolve its individual participants to a single brand.
       if (source === "ECOUNT" && hit && !reviewedObservation) continue;
-      observations.push({ ...c, reviewReason: c.collabCandidates.length ? "COLLABORATION" : conflicts.has(key) ? "ALIAS_CONFLICT" : "UNRESOLVED", possibleExistingCanonical: hit && knownCodes.has(normalizeBrandKey(hit.brandId)) ? [hit.brandId] : [], ...(evidence || {}) });
+      observations.push({ ...c, ...(corroborateOnly ? { corroborateOnly } : {}), reviewReason: c.collabCandidates.length ? "COLLABORATION" : conflicts.has(key) ? "ALIAS_CONFLICT" : "UNRESOLVED", possibleExistingCanonical: hit && knownCodes.has(normalizeBrandKey(hit.brandId)) ? [hit.brandId] : [], ...(evidence || {}) });
     }
+  }
+  const cafe24Keys = new Set(observations.filter(c => c.source === "CAFE24").map(c => normalizeBrandKey(c.rawBrandName)));
+  for (let i = observations.length - 1; i >= 0; i--) {
+    if (observations[i].corroborateOnly && !cafe24Keys.has(normalizeBrandKey(observations[i].rawBrandName))) observations.splice(i, 1);
   }
   // A Cafe24 code is the stable key. Join ECOUNT spelling only when there is exactly
   // one such code; equal display names must not merge competing Cafe24 identities.
@@ -210,7 +217,7 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
       [c.rawBrandName, ...(c.cafe24Variants || []), ...(c.ecountVariants || [])].some(n => names.has(normalizeBrandKey(n))))).map(c => c.id);
   }
   for (const candidate of all.filter(c => observedIds.has(c.id))) {
-    const decision = isAutoSafePendingDecision(candidate, canonical, { cafe24Brands, products, ecountLines, aliases, compatibility });
+    const decision = isAutoSafePendingDecision(candidate, canonical, { cafe24Brands, products, ecountLines, ecountProducts, aliases, compatibility });
     if (decision?.action === "REASSIGN_INACTIVE_CODE") {
       candidate.reviewReason = "INACTIVE_CODE_REUSED";
       for (const field of ["canonicalName", "canonicalAliases", "recentReviewEvidence"]) delete candidate[field];
@@ -230,7 +237,11 @@ export async function loadPendingBrandSources(workDir, month) {
   const catalog = await readJson(join(workDir, "cafe24-product-catalog.json"), {});
   const products = Array.isArray(catalog) ? catalog : Array.isArray(catalog.products) ? catalog.products : Object.values(catalog.products || {});
   const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
-  return { canonical, compatibility, aliases, products, ecountLines: snapshot?.salesLines || [], provenance: { month, productCount: products.length, ecountLineCount: snapshot?.salesLines?.length || 0, ecountAvailable: Boolean(snapshot), catalogGeneratedAt: catalog.generatedAt || catalog.updatedAt || null, ecountSources: snapshot?.sources || [], ecountImportedAt: snapshot?.importedAt || null } };
+  const ecountMaster = await readJson(join(workDir, "ecount-inventory/raw-products.json"), null);
+  const ecountProducts = (Array.isArray(ecountMaster?.Data?.Result) ? ecountMaster.Data.Result : [])
+    .map(row => ({ productName: stripConsignmentPrefix(row.PROD_DES), productCode: row.PROD_CD }));
+  return { canonical, compatibility, aliases, products, ecountLines: snapshot?.salesLines || [], ecountProducts, provenance: { month, productCount: products.length, ecountLineCount: snapshot?.salesLines?.length || 0,
+    ecountProductCount: ecountProducts.length, ecountProductsAt: ecountMaster?.Timestamp || null, ecountAvailable: Boolean(snapshot), catalogGeneratedAt: catalog.generatedAt || catalog.updatedAt || null, ecountSources: snapshot?.sources || [], ecountImportedAt: snapshot?.importedAt || null } };
 }
 
 // Serialize refresh and review writes. Queue-only is the default; explicit
