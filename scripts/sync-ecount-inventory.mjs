@@ -30,10 +30,11 @@ const HOST_PREFIX_BY_MODE = {
 };
 
 function parseCliArgs(argv) {
-  const options = { test: false, productsOnly: false };
+  const options = { test: false, productsOnly: false, outDir: null };
   for (const arg of argv) {
     if (arg === "--test") options.test = true;
     else if (arg === "--products-only") options.productsOnly = true;
+    else if (arg.startsWith("--out-dir=")) options.outDir = resolve(arg.slice("--out-dir=".length));
   }
   return options;
 }
@@ -63,8 +64,10 @@ async function main() {
   const comCode = env.ECOUNT_COM_CODE;
   const userId = env.ECOUNT_USER_ID;
   const certKey = env.ECOUNT_API_CERT_KEY;
+  // --out-dir writes a scratch copy; the canonical work/ecount-inventory stays untouched.
+  const outDir = cli.outDir || outputDir;
 
-  await mkdir(outputDir, { recursive: true });
+  await mkdir(outDir, { recursive: true });
 
   // 1) Zone 자동 조회
   let zone;
@@ -122,9 +125,13 @@ async function main() {
   const productsBody = mode === "test"
     ? { SESSION_ID: sessionId, PROD_TYPE: "3" }
     : { SESSION_ID: sessionId };
-  const productsResponse = await runRequiredStep("products", diagnostic, () => ecountRequest(productsUrl, productsBody));
-  const rawProducts = productsResponse.body;
-  const productList = requireResultList(rawProducts, "products");
+  // ECOUNT caps one GetBasicProductsList call at 10,000 rows (TotalCnt is capped too).
+  // fetchAllProducts continues by PROD_CD range until a short page proves completion.
+  const { rawProducts, productList, pagination } = await fetchAllProducts(
+    (body, page) => runRequiredStep(`products_page_${page}`, diagnostic, () => ecountRequest(productsUrl, body), { fromProdCd: body.FROM_PROD_CD ?? null }),
+    productsBody
+  );
+  diagnostic.productPagination = pagination;
 
   // 5) 재고조회 API 호출 — 검증 목적의 --products-only 옵션이 켜져 있으면 건너뛴다.
   if (cli.productsOnly) {
@@ -143,6 +150,8 @@ async function main() {
   }), { baseDate });
   const rawInventory = inventoryResponse.body;
   const inventoryList = requireResultList(rawInventory, "inventory");
+  // Same API row cap: a full page cannot be told apart from a truncated one.
+  if (inventoryList.length >= ECOUNT_PAGE_LIMIT) throw new Error(`재고조회가 ${ECOUNT_PAGE_LIMIT}건 제한에 도달해 완전성을 보장할 수 없습니다.`);
 
   // 6) JSON 저장 — PROD_CD 기준으로 품목 + 재고를 합쳐 latest.json 생성
   const { latest, purchasePriceCount } = buildLatestRows(productList, inventoryList);
@@ -155,11 +164,11 @@ async function main() {
     purchasePriceCount
   };
   validateOutputPayloads({ rawProducts, rawInventory, latest, diagnostic });
-  await writeInventoryOutputsAtomically(outputDir, { rawProducts, rawInventory, latest, diagnostic });
+  await writeInventoryOutputsAtomically(outDir, { rawProducts, rawInventory, latest, diagnostic });
 
   let historySnapshot = null;
   try {
-    historySnapshot = await writeInventoryHistorySnapshot(outputDir, { latest, diagnostic });
+    historySnapshot = await writeInventoryHistorySnapshot(outDir, { latest, diagnostic });
   } catch (error) {
     // history는 부가 기능이다 — 실패해도 이미 완료된 latest.json/diagnostic.json 교체를
     // 절대 되돌리지 않고, 경고만 남긴 채 정상 종료한다.
@@ -169,20 +178,69 @@ async function main() {
   console.log(JSON.stringify({
     mode,
     productsOnly: cli.productsOnly,
-    createdFiles: [
-      "work/ecount-inventory/raw-products.json",
-      "work/ecount-inventory/raw-inventory.json",
-      "work/ecount-inventory/latest.json",
-      "work/ecount-inventory/diagnostic.json"
-    ],
+    outDir,
     productCount: productList.length,
+    productPagination: { pageCount: pagination.pageCount, duplicateCount: pagination.duplicateCount, firstProdCd: pagination.firstProdCd, lastProdCd: pagination.lastProdCd, complete: pagination.complete },
     inventoryCount: inventoryList.length,
     purchasePriceCount,
-    historySnapshot: historySnapshot ? `work/ecount-inventory/history/${historySnapshot.snapshotDate}.json` : null
+    historySnapshot: historySnapshot ? historySnapshot.file : null
   }, null, 2));
 }
 
 // ---- helpers ----
+
+export const ECOUNT_PAGE_LIMIT = 10000;
+// ponytail: assumes every PROD_CD sorts at or below this bound in ECOUNT's order (all known
+// codes are ASCII alphanumeric). Widen it if codes with other leading characters appear.
+// Known limitation (2026-10-04 real fetch): ECOUNT orders PROD_CD binary (lowercase last) but
+// filters FROM/TO case-insensitively, so a lowercase code that sorts case-insensitively before
+// a page cursor could be skipped. Only qqq013/qqq014 exist today and both are fetched; add a
+// dedicated lowercase range pass if more lowercase codes appear.
+export const PROD_CD_UPPER_BOUND = "ZZZZZZZZZZZZZZZZZZZZ";
+
+// Page 1 is the plain call (returns the first 10,000 rows in PROD_CD order). Each next page
+// asks FROM_PROD_CD=<last code> (inclusive) .. upper bound; FROM alone is ignored by ECOUNT.
+// Complete only when a page returns fewer than the cap. Any failure throws before any write.
+export async function fetchAllProducts(request, baseBody, { pageLimit = ECOUNT_PAGE_LIMIT, maxPages = 50, delayMs = 10_000, sleep = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
+  const byCode = new Map();
+  const pages = [];
+  let firstBody = null;
+  let seen = 0;
+  let cursor = null;
+  for (let page = 1; ; page += 1) {
+    if (page > maxPages) throw new Error(`품목조회 페이지 안전 한도(${maxPages})를 넘었습니다.`);
+    if (page > 1 && delayMs) await sleep(delayMs);
+    const body = cursor === null ? baseBody : { ...baseBody, FROM_PROD_CD: cursor, TO_PROD_CD: PROD_CD_UPPER_BOUND };
+    const response = await request(body, page);
+    const list = requireResultList(response.body, "products");
+    if (list.length > pageLimit) throw new Error(`품목조회 페이지가 한도(${pageLimit})보다 큽니다: ${list.length}`);
+    const codes = list.map(row => firstNonEmpty(row, ["PROD_CD", "PRODCD", "ProdCd"]));
+    if (codes.some(code => code === null)) throw new Error(`품목조회 ${page}페이지에 PROD_CD 없는 행이 있습니다.`);
+    // FROM is inclusive: the page must restart exactly at the cursor, or the range was ignored.
+    if (cursor !== null && list.length && String(codes[0]) !== cursor) {
+      throw new Error(`품목조회 range 연속성 실패: FROM_PROD_CD=${cursor}, first=${codes[0]}`);
+    }
+    firstBody ||= response.body;
+    const before = byCode.size;
+    list.forEach((row, i) => byCode.set(String(codes[i]), row));
+    seen += list.length;
+    pages.push({ page, fromProdCd: cursor, count: list.length, added: byCode.size - before, firstProdCd: codes[0] ?? null, lastProdCd: codes.at(-1) ?? null });
+    if (list.length < pageLimit) break;
+    const next = String(codes.at(-1));
+    if (byCode.size === before || next === cursor) throw new Error(`품목조회 pagination이 진행되지 않습니다: FROM_PROD_CD=${cursor}, last=${next}`);
+    cursor = next;
+  }
+  const sorted = [...byCode.keys()].sort();
+  const productList = sorted.map(code => byCode.get(code));
+  const pagination = {
+    fetchedAt: new Date().toISOString(), totalProducts: productList.length, pageCount: pages.length, pageLimit,
+    duplicateCount: seen - productList.length, firstProdCd: sorted[0] ?? null, lastProdCd: sorted.at(-1) ?? null,
+    upperBound: PROD_CD_UPPER_BOUND, complete: true, pages
+  };
+  const data = firstBody?.Data && typeof firstBody.Data === "object" ? firstBody.Data : {};
+  const rawProducts = { ...firstBody, Data: { ...data, Result: productList, TotalCnt: productList.length }, Pagination: pagination };
+  return { rawProducts, productList, pagination };
+}
 
 async function runRequiredStep(step, diagnostic, operation, extra = {}) {
   try {
