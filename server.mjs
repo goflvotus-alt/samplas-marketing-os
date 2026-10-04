@@ -33,6 +33,7 @@ import {
 } from "./scripts/dropbox-report-uploader.mjs";
 import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
+import { getVeilFoundStatus, runVeilFoundPublisher } from "./scripts/veil-found-publisher.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
 import {
@@ -120,6 +121,35 @@ const mimeTypes = {
   ".txt": "text/plain; charset=utf-8"
 };
 
+const veilFoundPublisherScheduler = {
+  intervalMs: 5 * 60 * 1000,
+  running: false,
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastResult: null,
+  lastError: null
+};
+
+async function runVeilFoundScheduledCheck() {
+  if (veilFoundPublisherScheduler.running) return;
+  veilFoundPublisherScheduler.running = true;
+  veilFoundPublisherScheduler.lastAttemptAt = new Date().toISOString();
+  try {
+    const result = await runVeilFoundPublisher({ env, workDir });
+    veilFoundPublisherScheduler.lastResult = result;
+    if (result?.ok && !result?.skipped) {
+      veilFoundPublisherScheduler.lastSuccessAt = new Date().toISOString();
+      veilFoundPublisherScheduler.lastError = null;
+      console.log(`[VEIL_FOUND_PUBLISHER] published #${result.firstNumber}-#${result.lastNumber} media=${result.mediaId}`);
+    }
+  } catch (error) {
+    veilFoundPublisherScheduler.lastError = safeErrorMessage(error);
+    await logApiError("veil_found_publisher", error, {});
+  } finally {
+    veilFoundPublisherScheduler.running = false;
+  }
+}
+
 const server = isMainModule ? createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -172,6 +202,11 @@ const server = isMainModule ? createServer(async (req, res) => {
           lastUploadedReport: instagramWeeklyReportScheduler.lastUploadedReport,
           lastError: instagramWeeklyReportScheduler.lastError
         },
+        veilFoundPublisher: await getVeilFoundStatus({ env, workDir }).catch((error) => ({
+          configured: false,
+          error: safeErrorMessage(error),
+          schedule: "Friday 20:00 KST"
+        })),
         environment: integrations,
         pageId: env.FACEBOOK_PAGE_ID || null,
         instagramBusinessAccountId: env.INSTAGRAM_BUSINESS_ACCOUNT_ID || null,
@@ -183,6 +218,23 @@ const server = isMainModule ? createServer(async (req, res) => {
         username: env.SAMPLAS_INSTAGRAM_USERNAME || "samplaskr",
         graphVersion
       });
+    }
+    if (url.pathname === "/api/veil-found/publisher/status") {
+      try {
+        return json(res, await getVeilFoundStatus({ env, workDir }));
+      } catch (error) {
+        return json(res, { ok: false, error: safeErrorMessage(error) }, 500);
+      }
+    }
+    if (url.pathname === "/api/veil-found/publisher/run") {
+      if (req.method !== "POST") return json(res, { error: "Method Not Allowed" }, 405);
+      if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      try {
+        return json(res, await runVeilFoundPublisher({ env, workDir, force: true }));
+      } catch (error) {
+        await logApiError("veil_found_publisher_manual", error, {});
+        return json(res, { ok: false, error: safeErrorMessage(error) }, 500);
+      }
     }
     if (url.pathname === "/api/instagram/monthly") {
       const month = url.searchParams.get("month") || currentMonth();
@@ -1040,6 +1092,10 @@ const server = isMainModule ? createServer(async (req, res) => {
   setInterval(runMetaWeeklyReportCheck, metaWeeklyReportScheduler.intervalMs);
   runInstagramWeeklyReportCheck();
   setInterval(runInstagramWeeklyReportCheck, instagramWeeklyReportScheduler.intervalMs);
+  // VEIL FOUND: one carousel every Friday at 20:00 KST.
+  // Poll every five minutes; durable slot state prevents duplicate publication.
+  runVeilFoundScheduledCheck();
+  setInterval(runVeilFoundScheduledCheck, veilFoundPublisherScheduler.intervalMs);
 }) : null;
 
 server?.on("error", (error) => {
@@ -1071,6 +1127,7 @@ async function loadEnv() {
 
 function safeErrorMessage(error) {
   return String(error?.message || "Unknown error")
+    .replaceAll(env.VEIL_FOUND_IG_TOKEN || "__NO_VEIL_FOUND_TOKEN__", "[VEIL_FOUND_IG_TOKEN]")
     .replaceAll(env.META_ACCESS_TOKEN || "__NO_META_TOKEN__", "[META_ACCESS_TOKEN]")
     .replaceAll(metaStoredAccessTokenCache || "__NO_META_STORED_TOKEN__", "[META_ACCESS_TOKEN]")
     .replaceAll(env.META_APP_SECRET || "__NO_META_APP_SECRET__", "[META_APP_SECRET]")
