@@ -78,6 +78,7 @@ import { refreshBrandSourcingMaster } from "./scripts/build-brand-sourcing-maste
 import { syncEcountInventory, REQUIRED_ENV_KEYS as ECOUNT_REQUIRED_ENV_KEYS } from "./scripts/sync-ecount-inventory.mjs";
 import { createEcountAutoSync } from "./scripts/ecount-auto-sync.mjs";
 import { buildNewBrands, onboardingDates } from "./scripts/new-brands.mjs";
+import { createLocalEcountProductSyncRoute } from "./scripts/local-ecount-helper.mjs";
 import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
 // STEP63-4: Brand Dashboard가 이미 갖고 있는 Cafe24 brand_code 직접 매칭(productBrandCode/
 // productBrandMapCode)은 절대 재해석하지 않는다 — 그 두 경로가 모두 실패해 "UNASSIGNED"로
@@ -480,6 +481,9 @@ const server = isMainModule ? createServer(async (req, res) => {
       const data = await refreshPendingBrands(workDir, () => loadCurrentPendingBrandSources(payload.recentReview ?? null, refreshMonth),
         { dryRun: url.searchParams.get("dryRun") === "1", autoApprove: payload.autoApprove === true, buildCompatibility: buildIntelligenceBrandRegistry });
       return json(res, { ok: true, ...data });
+    }
+    if (url.pathname === "/api/ecount/product-sync") {
+      return localEcountProductSync(req, res, { isLocal: isLocalRequest(req) });
     }
     if (url.pathname === "/api/ecount/inventory/sync") {
       if (req.method === "GET") return json(res, { ok: true, ...(await ecountAutoSyncStatus()) });
@@ -7665,6 +7669,14 @@ const ecountAutoSync = createEcountAutoSync({
 });
 
 const ecountAutoSyncEnabled = env.ECOUNT_AUTO_SYNC === "on";
+
+// Marketing OS "ECOUNT 상품 최신화" button → this route on the office Mac's local server.
+// Disabled on Render (no fallback that lets Render call ECOUNT); see scripts/local-ecount-helper.mjs.
+const localEcountProductSync = createLocalEcountProductSyncRoute({
+  enabled: !env.RENDER,
+  allowedOrigins: [`http://127.0.0.1:${port}`, `http://localhost:${port}`, (env.RENDER_DASHBOARD_URL || "https://samplas-marketing-os.onrender.com").replace(/\/$/, "")],
+  run: async () => (await import("./scripts/run-ecount-product-sync-and-publish.mjs")).runEcountProductSyncFromEnv()
+});
 
 // Read-only view: credential presence is reported as booleans only, never values.
 async function ecountAutoSyncStatus() {

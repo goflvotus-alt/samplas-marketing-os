@@ -175,7 +175,13 @@ export function formatSummary(r) {
 }
 
 async function main() {
-  const dryRun = process.argv.includes("--dry-run");
+  const { result, summary } = await runEcountProductSyncFromEnv({ dryRun: process.argv.includes("--dry-run"), log: (line) => console.log(line) });
+  console.log(`\n${summary}\n`);
+  if (!result.ok) process.exitCode = 1;
+}
+
+// Wiring shared by the CLI/.command and the local Marketing OS helper route.
+export async function runEcountProductSyncFromEnv({ dryRun = false, log = () => {} } = {}) {
   const env = await loadEnv();
   const workDir = join(root, "work");
   const production = async (method, path, body) => {
@@ -192,10 +198,9 @@ async function main() {
     sync: () => syncEcountInventory({ env, outDir: join(workDir, "ecount-inventory") }),
     upload: (relativePaths) => uploadWorkSnapshots({ relativePaths, overwrite: true, env, workDir }),
     production,
-    log: (line) => console.log(line)
+    log
   });
-  console.log(`\n${formatSummary(result)}\n`);
-  if (!result.ok) process.exitCode = 1;
+  return { result, summary: formatSummary(result) };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main().catch((error) => {

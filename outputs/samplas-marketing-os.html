@@ -1065,8 +1065,10 @@
               <label class="inventory-overview-threshold-label" for="inventoryOverviewThresholdInput">Low Stock 참고 기준(이하, 보조 필터용)</label>
               <input id="inventoryOverviewThresholdInput" type="number" min="0" step="1" value="3" class="inventory-overview-threshold-input">
               <button id="inventoryOverviewReloadBtn" type="button" class="today-jump-button">데이터 다시 불러오기</button>
+              <button id="ecountProductSyncBtn" type="button" class="today-jump-button">ECOUNT 상품 최신화</button>
             </div>
           </div>
+          <div id="ecountProductSyncStatus" class="ad-status-banner" data-state="idle">ECOUNT 상품 최신화 상태 확인 중…</div>
           <p class="hint-text">ECOUNT 재고(stockQuantity)만을 유일한 재고 기준으로 사용합니다. Cafe24 재고는 이 화면의 어떤 계산에도 사용되지 않으며, Cafe24 판매 데이터는 "최근 판매량" 참고 정보로만 표시됩니다. SAMPLAS는 시즌 상품 위주 매장이라 재고 0은 품절 오류가 아니라 재고 소진/완판 후보이며, 재고 1~3개는 자동 발주가 필요하다는 뜻이 아닙니다. QQQ 상품은 미등록 외부 판매/임시 상품 성격이라 음수 재고가 추정 판매수량 신호이며, 일반 상품과 절대 같은 KPI로 섞지 않습니다. 매장/3PL 위치별 재고는 현재 ECOUNT 응답에 데이터가 없어 항상 "확인 불가"로 표시됩니다. Inventory Intelligence(데이터 품질 진단)와는 역할이 다른 화면입니다.</p>
 
           <div class="section-block">
@@ -2413,5 +2415,6 @@
   <div id="productBrandOrderPopover" class="brand-order-popover" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="./samplas-marketing-os.js?v=20260828-store-intelligence-real-data"></script>
+  <script src="./ecount-product-sync.js?v=20261004"></script>
 </body>
 </html>
