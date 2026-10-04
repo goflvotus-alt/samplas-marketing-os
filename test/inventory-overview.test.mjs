@@ -13,6 +13,7 @@ import {
   normalizeBrandKey,
   resolveEcountBrand,
   resolveDisplayBrand,
+  createDisplayBrandResolver,
   isQqqProductCode,
   classifyGeneralStock,
   classifyQqqStock,
@@ -320,4 +321,30 @@ test("LOCATION_DISPLAY_NAMES: 내부 코드와 표시명이 분리되어 있음(
   assert.equal(LOCATION_DISPLAY_NAMES.STORE_1, "현 매장");
   assert.equal(LOCATION_DISPLAY_NAMES.OFFSITE, "3PL");
   assert.equal(LOCATION_DISPLAY_NAMES.UNKNOWN, "확인 불가");
+});
+
+test("createDisplayBrandResolver: same result as resolveDisplayBrand for every input, including edge cases", () => {
+  const registry = {
+    brands: [
+      { id: "B0001", name: "어나더유스" },
+      { id: "B0002", name: "Dup Name" },
+      { id: "B0003", name: "dup  name" },       // same normalized name: later entry wins, as before
+      { id: "B0004", name: "Fourth" },
+      { id: "B0004", name: "Fourth Clone" }      // duplicate id: first entry wins for aliases
+    ],
+    aliases: [
+      { alias: "anotheruse", brandId: "B0001" },
+      { alias: "AnotherUse", brandId: "B0002" }, // second alias with the same key never wins
+      { alias: "ghost", brandId: "B9999" },      // dangling alias stays unresolved
+      { alias: "four", brandId: "B0004" },
+      { alias: "b0002", brandId: "B0004" }       // an id match is checked before aliases
+    ]
+  };
+  const resolve = createDisplayBrandResolver(registry);
+  const inputs = ["어나더유스", " 어나더유스 ", "B0001", "b0001", "anotheruse", "ANOTHERUSE", "Dup Name", "dup name", "ghost", "four",
+    "b0002", "SOME ENGLISH BRAND", "", "   ", undefined, null, "undefined", "null", "Ｆｏｕｒｔｈ", "‘quoted’ brand"];
+  for (const input of [...inputs, ...inputs]) {
+    assert.deepEqual(resolve(input), resolveDisplayBrand(input, registry), JSON.stringify(input));
+  }
+  assert.deepEqual(createDisplayBrandResolver(undefined)("X"), resolveDisplayBrand("X", undefined));
 });

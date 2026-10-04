@@ -135,6 +135,40 @@ export function resolveDisplayBrand(brandRaw, brandRegistry) {
   return { key: `raw:${normalizeBrandKey(raw)}`, name: raw, canonical: false };
 }
 
+// Same results as resolveDisplayBrand, for many rows: the registry lookups are built once
+// per request and each distinct raw string is resolved once (resolveEcountBrand rebuilt two
+// Maps and re-normalized every alias for each of ~15k rows). Order is unchanged: name → id →
+// alias (first alias entry wins; a dangling alias still means "unresolved") → raw fallback.
+export function createDisplayBrandResolver(brandRegistry) {
+  const brands = brandRegistry?.brands || [];
+  const aliases = brandRegistry?.aliases || [];
+  const byName = new Map(brands.map((brand) => [normalizeBrandKey(brand.name), brand]));
+  const byId = new Map(brands.map((brand) => [normalizeBrandKey(brand.id), brand]));
+  const aliasByKey = new Map();
+  for (const entry of aliases) {
+    const key = normalizeBrandKey(entry.alias);
+    if (!aliasByKey.has(key)) aliasByKey.set(key, entry);
+  }
+  const brandById = new Map();
+  for (const brand of brands) if (!brandById.has(brand.id)) brandById.set(brand.id, brand);
+  const cache = new Map();
+  return (brandRaw) => {
+    if (cache.has(brandRaw)) return cache.get(brandRaw);
+    let result = null;
+    const key = normalizeBrandKey(brandRaw);
+    if (key) {
+      const match = byName.get(key) || byId.get(key) || brandById.get(aliasByKey.get(key)?.brandId);
+      if (match) result = { key: match.id, name: match.name, canonical: true };
+    }
+    if (!result) {
+      const raw = normalizeBrandName(brandRaw) || "미분류";
+      result = { key: `raw:${normalizeBrandKey(raw)}`, name: raw, canonical: false };
+    }
+    cache.set(brandRaw, result);
+    return result;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 재고 상태 분류 (Phase 3A-2)
 //
@@ -239,6 +273,7 @@ export function lookupOfflineSales(salesIndex, productName, specification) {
 // - "general": 그 외 정상 브랜드 상품
 export function buildInventoryOverview({ ecountRows, brandRegistry, salesIndex, registryProdCds, lowStockThreshold = DEFAULT_LOW_STOCK_THRESHOLD }) {
   const items = [];
+  const resolveBrand = createDisplayBrandResolver(brandRegistry);
 
   for (const row of ecountRows) {
     const prodCd = String(row.productCode || "").trim();
@@ -265,7 +300,7 @@ export function buildInventoryOverview({ ecountRows, brandRegistry, salesIndex, 
       parseConfidence = brandRaw ? "slash" : "raw";
     }
 
-    const brand = resolveDisplayBrand(brandRaw || nameRaw || row.productName, brandRegistry);
+    const brand = resolveBrand(brandRaw || nameRaw || row.productName);
     const status = isQqq ? classifyQqqStock(stockQuantity) : classifyGeneralStock(stockQuantity);
     const estimatedSoldQuantity = isQqq ? estimatedQqqSoldQuantity(stockQuantity) : null;
     const lowStockCandidate = !isQqq && isLowStockCandidate(status, stockQuantity, lowStockThreshold);
