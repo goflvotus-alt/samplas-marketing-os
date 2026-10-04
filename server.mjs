@@ -1027,9 +1027,9 @@ const server = isMainModule ? createServer(async (req, res) => {
   // too (covers the case where the server happens to restart during that window).
   runNaverWeeklyReportCheck();
   setInterval(runNaverWeeklyReportCheck, naverWeeklyReportScheduler.intervalMs);
-  // ECOUNT product master: daily 04:00 KST, plus one catch-up per day after a later start.
-  // On by default only on Render (RENDER is set there); elsewhere ECOUNT_AUTO_SYNC=on/off decides,
-  // so local runs and test servers never call ECOUNT on their own.
+  // ECOUNT product master scheduler (daily 04:00 KST + one catch-up). Off unless
+  // ECOUNT_AUTO_SYNC=on: ECOUNT only accepts registered IPs, so the canonical path is the
+  // local one-click run (scripts/run-ecount-product-sync-and-publish.mjs).
   if (ecountAutoSyncEnabled) {
     runEcountAutoSyncCheck();
     setInterval(runEcountAutoSyncCheck, 15 * 60 * 1000);
@@ -7607,7 +7607,7 @@ const ecountAutoSync = createEcountAutoSync({
   refreshSourcing: () => refreshBrandSourcingMaster(workDir)
 });
 
-const ecountAutoSyncEnabled = env.ECOUNT_AUTO_SYNC ? env.ECOUNT_AUTO_SYNC === "on" : Boolean(env.RENDER);
+const ecountAutoSyncEnabled = env.ECOUNT_AUTO_SYNC === "on";
 
 // Read-only view: credential presence is reported as booleans only, never values.
 async function ecountAutoSyncStatus() {

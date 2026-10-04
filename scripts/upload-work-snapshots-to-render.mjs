@@ -36,7 +36,7 @@ export async function discoverWorkSnapshotPaths(workDir = join(root, "work")) {
   return existing;
 }
 
-async function loadEnv() {
+export async function loadEnv() {
   const parsed = { ...process.env };
   try {
     const text = await readFile(join(root, ".env"), "utf8");
@@ -66,26 +66,35 @@ async function main() {
     return;
   }
 
-  const files = await Promise.all(relativePaths.map(async (relativePath) => ({
-    relativePath,
-    jsonText: await readFile(join(root, "work", ...relativePath.split("/")), "utf8")
-  })));
-  const env = await loadEnv();
-  const baseUrl = (env.RENDER_DASHBOARD_URL || "https://samplas-marketing-os.onrender.com").replace(/\/$/, "");
+  console.log(JSON.stringify(await uploadWorkSnapshots({ relativePaths, overwrite, env: await loadEnv() }), null, 2));
+}
+
+export const renderBaseUrl = (env) => (env.RENDER_DASHBOARD_URL || "https://samplas-marketing-os.onrender.com").replace(/\/$/, "");
+
+export function renderAuthHeaders(env) {
   const headers = { "content-type": "application/json" };
   if (env.CAFE24_PROXY_SECRET) headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
   if (env.CAFE24_PROXY_BASIC_AUTH) headers.authorization = `Basic ${Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64")}`;
+  return headers;
+}
 
-  const response = await fetch(`${baseUrl}/api/work-data/upload`, {
+// One POST of exactly the given allowlisted files; throws unless the server confirms success.
+export async function uploadWorkSnapshots({ relativePaths, overwrite = false, env, workDir = join(root, "work"), fetchImpl = fetch }) {
+  if (!relativePaths.length || relativePaths.some((relativePath) => !allowedPath(relativePath))) throw new Error("허용되지 않은 work 데이터 경로가 포함되어 있습니다.");
+  const files = await Promise.all(relativePaths.map(async (relativePath) => ({
+    relativePath,
+    jsonText: await readFile(join(workDir, ...relativePath.split("/")), "utf8")
+  })));
+  const response = await fetchImpl(`${renderBaseUrl(env)}/api/work-data/upload`, {
     method: "POST",
-    headers,
+    headers: renderAuthHeaders(env),
     body: JSON.stringify({ overwrite, files })
   });
   const text = await response.text();
   let body;
   try { body = JSON.parse(text); } catch { body = { raw: text.slice(0, 500) }; }
   if (!response.ok || body.error) throw new Error(JSON.stringify({ status: response.status, body }, null, 2));
-  console.log(JSON.stringify(body, null, 2));
+  return body;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main().catch((error) => {
