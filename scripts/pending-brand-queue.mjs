@@ -253,6 +253,14 @@ export function withPendingBrandWrite(task) {
   refreshTail = result;
   return result;
 }
+// Every bulk/automatic approval (refresh autoApprove, ECOUNT import hook, daily auto-sync)
+// approves NEW only. Inactive-code reassignment and every other action need an explicit
+// per-candidate POST /api/pending-brands/review. Enforced inside refreshPendingBrands.
+export const UNATTENDED_AUTO_APPROVE_ACTIONS = Object.freeze(["NEW"]);
+export function refreshPendingBrandsUnattended(workDir, loadSources, { buildCompatibility } = {}) {
+  return refreshPendingBrands(workDir, loadSources, { autoApprove: true, buildCompatibility });
+}
+
 export function refreshPendingBrands(workDir, loadSources, { dryRun = false, autoApprove = false, buildCompatibility } = {}) {
   return withPendingBrandWrite(async () => {
     const sources = await loadSources();
@@ -270,7 +278,7 @@ export function refreshPendingBrands(workDir, loadSources, { dryRun = false, aut
       for (const candidate of result.candidates) {
         const canonical = await readJson(join(workDir, "brand-master.json"), null);
         const decision = isAutoSafePendingDecision(candidate, canonical, sources);
-        if (!decision) continue;
+        if (!decision || !UNATTENDED_AUTO_APPROVE_ACTIONS.includes(decision.action)) continue;
         try {
           onboarding.push(await reviewPendingBrandUnlocked(workDir, { id: candidate.id, action: decision.action, brandName: candidate.rawBrandName }, buildCompatibility, { sources }));
         } catch (error) {

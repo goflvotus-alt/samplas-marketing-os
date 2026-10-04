@@ -22,7 +22,7 @@ import { buildProductMaster, validateProductMaster } from "./ecount-product-mast
 const root = resolve(import.meta.dirname, "..");
 const outputDir = join(root, "work", "ecount-inventory");
 
-const REQUIRED_ENV_KEYS = ["ECOUNT_COM_CODE", "ECOUNT_USER_ID", "ECOUNT_API_CERT_KEY"];
+export const REQUIRED_ENV_KEYS = ["ECOUNT_COM_CODE", "ECOUNT_USER_ID", "ECOUNT_API_CERT_KEY"];
 
 // 운영 호스트는 oapi, 테스트 인증키 검증 호스트는 sboapi를 사용한다.
 const HOST_PREFIX_BY_MODE = {
@@ -41,39 +41,37 @@ function parseCliArgs(argv) {
 }
 
 async function main() {
-  const env = await loadEnv();
   const cli = parseCliArgs(process.argv.slice(2));
-  const mode = cli.test ? "test" : "production";
+  // --out-dir writes a scratch copy; the canonical work/ecount-inventory stays untouched.
+  const result = await syncEcountInventory({ env: await loadEnv(), mode: cli.test ? "test" : "production", productsOnly: cli.productsOnly, outDir: cli.outDir || outputDir });
+  console.log(JSON.stringify(result, null, 2));
+}
+
+// Full sync used by the CLI and the server scheduler. Throws on any failure before the
+// atomic replace, so the canonical files stay untouched unless everything succeeded.
+export async function syncEcountInventory({ env, mode = "production", productsOnly = false, outDir = outputDir, request = ecountRequest, delayMs, minRetainRatio = 0.9 } = {}) {
   const hostPrefix = HOST_PREFIX_BY_MODE[mode];
   const diagnostic = {
     startedAt: new Date().toISOString(),
     mode,
-    productsOnly: cli.productsOnly,
+    productsOnly,
     steps: [],
     errors: []
   };
 
-  const missing = REQUIRED_ENV_KEYS.filter((key) => !env[key]);
-  if (missing.length) {
-    const message = `필수 환경변수 누락: ${missing.join(", ")}`;
-    diagnostic.errors.push({ step: "env", message });
-    console.error(message);
-    process.exitCode = 1;
-    return;
-  }
+  const missing = REQUIRED_ENV_KEYS.filter((key) => !env?.[key]);
+  if (missing.length) throw new Error(`필수 환경변수 누락: ${missing.join(", ")}`);
 
   const comCode = env.ECOUNT_COM_CODE;
   const userId = env.ECOUNT_USER_ID;
   const certKey = env.ECOUNT_API_CERT_KEY;
-  // --out-dir writes a scratch copy; the canonical work/ecount-inventory stays untouched.
-  const outDir = cli.outDir || outputDir;
 
   await mkdir(outDir, { recursive: true });
 
   // 1) Zone 자동 조회
   let zone;
   try {
-    const zoneResponse = await ecountRequest(`https://${hostPrefix}.ecount.com/OAPI/V2/Zone`, {
+    const zoneResponse = await request(`https://${hostPrefix}.ecount.com/OAPI/V2/Zone`, {
       COM_CODE: comCode
     });
     diagnostic.steps.push({ step: "zone", ok: true, httpStatus: zoneResponse.httpStatus });
@@ -84,9 +82,7 @@ async function main() {
   } catch (error) {
     diagnostic.errors.push({ step: "zone", message: error.message });
     diagnostic.steps.push({ step: "zone", ok: false });
-    console.error(`[Zone 조회 실패] ${error.message}`);
-    process.exitCode = 1;
-    return;
+    throw new Error(`[Zone 조회 실패] ${error.message}`);
   }
   diagnostic.zone = zone;
 
@@ -94,7 +90,7 @@ async function main() {
   let sessionId;
   try {
     const loginUrl = `https://${hostPrefix}${zone}.ecount.com/OAPI/V2/OAPILogin`;
-    const loginResponse = await ecountRequest(loginUrl, {
+    const loginResponse = await request(loginUrl, {
       COM_CODE: comCode,
       USER_ID: userId,
       API_CERT_KEY: certKey,
@@ -114,9 +110,7 @@ async function main() {
   } catch (error) {
     diagnostic.errors.push({ step: "login", message: error.message });
     diagnostic.steps.push({ step: "login", ok: false });
-    console.error(`[Login 실패] ${error.message}`);
-    process.exitCode = 1;
-    return;
+    throw new Error(`[Login 실패] ${error.message}`);
   }
   diagnostic.sessionIdMasked = maskSessionId(sessionId);
 
@@ -129,20 +123,21 @@ async function main() {
   // ECOUNT caps one GetBasicProductsList call at 10,000 rows (TotalCnt is capped too).
   // fetchAllProducts continues by PROD_CD range until a short page proves completion.
   const { rawProducts, productList, pagination } = await fetchAllProducts(
-    (body, page) => runRequiredStep(`products_page_${page}`, diagnostic, () => ecountRequest(productsUrl, body), { fromProdCd: body.FROM_PROD_CD ?? null }),
-    productsBody
+    (body, page) => runRequiredStep(`products_page_${page}`, diagnostic, () => request(productsUrl, body), { fromProdCd: body.FROM_PROD_CD ?? null }),
+    productsBody,
+    delayMs === undefined ? {} : { delayMs }
   );
   diagnostic.productPagination = pagination;
 
   // 5) 재고조회 API 호출 — 검증 목적의 --products-only 옵션이 켜져 있으면 건너뛴다.
-  if (cli.productsOnly) {
+  if (productsOnly) {
     diagnostic.steps.push({ step: "inventory", ok: true, skipped: true, reason: "--products-only" });
     throw new Error("--products-only는 API 검증 전용입니다. 운영 재고 파일은 저장하지 않습니다.");
   }
 
   const baseDate = todayYyyymmdd();
   const inventoryUrl = `https://${hostPrefix}${zone}.ecount.com/OAPI/V2/InventoryBalance/GetListInventoryBalanceStatus?SESSION_ID=${encodeURIComponent(sessionId)}`;
-  const inventoryResponse = await runRequiredStep("inventory", diagnostic, () => ecountRequest(inventoryUrl, {
+  const inventoryResponse = await runRequiredStep("inventory", diagnostic, () => request(inventoryUrl, {
     SESSION_ID: sessionId,
     BASE_DATE: baseDate,
     COM_CODE: comCode,
@@ -158,6 +153,11 @@ async function main() {
   const { latest, purchasePriceCount } = buildLatestRows(productList, inventoryList);
   // Lightweight onboarding/sourcing master; written in the same atomic set as the rest.
   const productMaster = buildProductMaster(productList, pagination);
+  // A sudden drop usually means a partial ECOUNT answer, not real deletions: keep canonical.
+  const previousCount = await readCanonicalProductCount(outDir);
+  if (previousCount && productList.length < previousCount * minRetainRatio) {
+    throw new Error(`상품 수 급감으로 교체를 중단합니다: ${previousCount} → ${productList.length}`);
+  }
 
   diagnostic.finishedAt = new Date().toISOString();
   diagnostic.counts = {
@@ -178,19 +178,27 @@ async function main() {
     console.error(`[sync-ecount-inventory] history snapshot 저장 실패(무시하고 계속): ${error?.message || error}`);
   }
 
-  console.log(JSON.stringify({
+  return {
     mode,
-    productsOnly: cli.productsOnly,
+    productsOnly,
     outDir,
     productCount: productList.length,
     productPagination: { pageCount: pagination.pageCount, duplicateCount: pagination.duplicateCount, firstProdCd: pagination.firstProdCd, lastProdCd: pagination.lastProdCd, complete: pagination.complete },
     inventoryCount: inventoryList.length,
     purchasePriceCount,
     historySnapshot: historySnapshot ? historySnapshot.file : null
-  }, null, 2));
+  };
 }
 
 // ---- helpers ----
+
+async function readCanonicalProductCount(dir) {
+  for (const [file, count] of [["product-master.json", d => d?.totalProducts], ["raw-products.json", d => normalizeResultList(d)?.length]]) {
+    try { return count(JSON.parse(await readFile(join(dir, file), "utf8"))) || null; }
+    catch (error) { if (error?.code !== "ENOENT") throw error; }
+  }
+  return null;
+}
 
 export const ECOUNT_PAGE_LIMIT = 10000;
 // ponytail: assumes every PROD_CD sorts at or below this bound in ECOUNT's order (all known

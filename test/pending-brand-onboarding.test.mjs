@@ -167,8 +167,13 @@ function http(port, path, method = "GET", authorized = false, payload = {}) {
   });
 }
 
-test("authenticated HTTP refresh onboards and immediately serves sourcing policy; GET/dry-run are pure", { timeout: 30000 }, async () => {
-  const sources = fixture(); const { dir, files } = await setup(sources);
+test("authenticated HTTP bulk refresh onboards NEW only; reassignment needs explicit review; GET/dry-run are pure", { timeout: 30000 }, async () => {
+  const sources = fixture();
+  // A genuinely new brand next to the inactive-code reuse candidate.
+  sources.cafe24Brands.push({ brand_code: "FRESH1", brand_name: "Fresh Label", product_count: 3 });
+  sources.products.push({ brand_code: "FRESH1", product_name: "[Fresh Label : 테스트] Coat", product_no: 18 });
+  sources.ecountLines.push({ productName: "Fresh Label / Coat" });
+  const { dir, files } = await setup(sources);
   const proxy = createServer((req, res) => {
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify({ brands: sources.cafe24Brands, products: sources.products, orders: [], manufacturers: [], totals: {} }));
@@ -201,16 +206,29 @@ test("authenticated HTTP refresh onboards and immediately serves sourcing policy
     assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), beforeMaster);
     assert.equal(await readFile(join(dir, "pending-brand-queue.json"), "utf8"), beforeQueue);
     const queueOnly = await http(port, "/api/pending-brands/refresh", "POST", true);
-    assert.equal(queueOnly.body.candidates[0].status, "PENDING");
+    assert.ok(queueOnly.body.candidates.every(c => c.status === "PENDING"));
     const refresh = await http(port, "/api/pending-brands/refresh", "POST", true, { autoApprove: true });
     assert.equal(refresh.status, 200);
-    assert.equal(refresh.body.candidates[0].status, "APPROVED", JSON.stringify(refresh.body.onboarding));
+    const fresh = refresh.body.candidates.find(c => c.sourceBrandCode === "FRESH1");
+    const reuse = refresh.body.candidates.find(c => c.sourceBrandCode === "STALE7");
+    assert.equal(fresh.status, "APPROVED", JSON.stringify(refresh.body.onboarding));
+    assert.equal(fresh.approvalAction, "NEW");
+    assert.deepEqual(refresh.body.onboarding.map(e => e.candidate?.canonicalBrandCode), ["FRESH1"], "bulk refresh approves NEW only");
     assert.equal(refresh.body.onboarding[0].sourcingRefresh.ok, true);
+    assert.equal(reuse.status, "PENDING", "eligible inactive-code reuse is never bulk-approved");
+    assert.equal(reuse.reviewReason, "INACTIVE_CODE_REUSED");
+    const afterBulk = (await http(port, "/api/brand-master")).body;
+    assert.equal(afterBulk.brands.length, 2);
+    assert.equal(afterBulk.brands.find(b => b.brand_code === "STALE7").supersededBy, undefined);
+    const manual = await http(port, "/api/pending-brands/review", "POST", true, { id: reuse.id, action: "REASSIGN_INACTIVE_CODE" });
+    assert.equal(manual.status, 200, JSON.stringify(manual.body));
+    assert.equal(manual.body.candidate.status, "APPROVED");
+    assert.equal(manual.body.candidate.approvalAction, "REASSIGN_INACTIVE_CODE");
     const master = (await http(port, "/api/brand-master")).body;
     assert.ok(master.brands.find(b => b.brand_code === "STALE7").supersededBy, "read normalization preserves provenance");
     const policy = await http(port, "/api/intelligence/commercial-policy?name=Next%20Season&product_name=Jacket");
     assert.equal(policy.status, 200);
-    assert.equal(policy.body.brand.brandId, refresh.body.candidates[0].canonicalBrandCode);
+    assert.equal(policy.body.brand.brandId, manual.body.candidate.canonicalBrandCode);
     assert.equal(policy.body.policy_status, "SOURCING_DEFAULT");
     assert.equal(policy.body.effective_policy.effective_discount_percent, 10);
     assert.equal(policy.body.online_price, null, "no fabricated price without Product Registry link");
@@ -219,7 +237,7 @@ test("authenticated HTTP refresh onboards and immediately serves sourcing policy
     assert.equal((await http(port, "/api/intelligence/commercial-policy?name=Unregistered")).body.policy_status, "UNRESOLVED");
     const repeated = await http(port, "/api/pending-brands/refresh", "POST", true, { autoApprove: true });
     assert.equal(repeated.body.onboarding.length, 0);
-    assert.equal((await http(port, "/api/brand-master")).body.brands.length, 2);
+    assert.equal((await http(port, "/api/brand-master")).body.brands.length, 3);
     assert.equal(await readFile(join(dir, "monthly-archive.json"), "utf8"), JSON.stringify(files["monthly-archive.json"]));
     assert.equal(await readFile(join(dir, "product-registry.json"), "utf8"), JSON.stringify(files["product-registry.json"]));
   } finally {
@@ -247,4 +265,47 @@ test("Extension standard parsing/request accepts generic new brands without resc
   assert.equal(new URL(urls[0]).searchParams.get("product_name"), "Jacket");
   assert.equal(context.splitItem("LYM / Jacket").brand, "LIBERAL YOUTH MINISTRY");
   assert.equal(context.splitItem("ADIDAS X AVAVAV / Jacket").brand, "AVAVAV");
+});
+
+const driftLikeReuse = [["B0000BDG", "BORC", "PERSONSOUL"], ["B0000BDJ", "GKL", "UNDER THE SIGN"], ["B0000BDM", "LAMASKARADE", "PRAYING"]];
+
+test("unattended onboarding approves NEW only; inactive-code reuse waits for an explicit review", async () => {
+  assert.deepEqual([...queue.UNATTENDED_AUTO_APPROVE_ACTIONS], ["NEW"]);
+  const fresh = { ...fixture("NEWB9", "Unused", "Brand Nine"), canonical: { brands: [] } };
+  const created = await setup(fresh);
+  const reused = fixture(); const reuseDir = await setup(reused);
+  try {
+    const a = await queue.refreshPendingBrandsUnattended(created.dir, async () => fresh, { buildCompatibility: build });
+    assert.equal(a.candidates[0].status, "APPROVED");
+    assert.equal(a.candidates[0].approvalAction, "NEW");
+
+    const masterBefore = await readFile(join(reuseDir.dir, "brand-master.json"), "utf8");
+    const b = await queue.refreshPendingBrandsUnattended(reuseDir.dir, async () => reused, { buildCompatibility: build });
+    assert.equal(queue.isAutoSafePendingDecision(b.candidates[0], reused.canonical, reused)?.action, "REASSIGN_INACTIVE_CODE", "eligible, but not unattended");
+    assert.equal(b.onboarding.length, 0);
+    assert.equal(b.candidates[0].status, "PENDING");
+    assert.equal(b.candidates[0].reviewReason, "INACTIVE_CODE_REUSED");
+    assert.equal(await readFile(join(reuseDir.dir, "brand-master.json"), "utf8"), masterBefore);
+
+    const manual = await queue.reviewPendingBrand(reuseDir.dir, { id: b.candidates[0].id, action: "REASSIGN_INACTIVE_CODE" }, build, { sources: reused });
+    assert.equal(manual.candidate.status, "APPROVED");
+    assert.equal(manual.candidate.approvalAction, "REASSIGN_INACTIVE_CODE");
+    assert.ok(JSON.parse(await readFile(join(reuseDir.dir, "brand-master.json"), "utf8")).brands.find(x => x.brand_code === "STALE7").supersededBy);
+  } finally { for (const d of [created.dir, reuseDir.dir]) await rm(d, { recursive: true, force: true }); }
+});
+
+test("PERSONSOUL / UNDER THE SIGN / PRAYING type reuse is never reassigned by bulk autoApprove", async () => {
+  for (const args of driftLikeReuse) {
+    const sources = fixture(...args); const { dir } = await setup(sources);
+    try {
+      const masterBefore = await readFile(join(dir, "brand-master.json"), "utf8");
+      const result = await queue.refreshPendingBrands(dir, async () => sources, { autoApprove: true, buildCompatibility: build });
+      const c = result.candidates[0];
+      assert.equal(queue.isAutoSafePendingDecision(c, sources.canonical, sources)?.action, "REASSIGN_INACTIVE_CODE", `${args[2]} is eligible`);
+      assert.equal(result.onboarding.length, 0, args[2]);
+      assert.equal(c.status, "PENDING");
+      assert.equal(c.reviewReason, "INACTIVE_CODE_REUSED");
+      assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), masterBefore, `${args[2]} Brand Master untouched`);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  }
 });

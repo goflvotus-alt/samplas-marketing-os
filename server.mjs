@@ -72,7 +72,11 @@ import {
   trustedCafe24OrderDate
 } from "./scripts/cafe24-order-amount.mjs";
 import { normalizeBrandCode, normalizeBrandName, parseBrandAliases } from "./scripts/brand-engine.mjs";
-import { readPendingBrands, refreshPendingBrands, loadPendingBrandSources, reviewPendingBrand, withPendingBrandWrite, approvedCafe24BrandCode } from "./scripts/pending-brand-queue.mjs";
+import { readPendingBrands, refreshPendingBrands, refreshPendingBrandsUnattended, loadPendingBrandSources, reviewPendingBrand, withPendingBrandWrite, approvedCafe24BrandCode } from "./scripts/pending-brand-queue.mjs";
+import { refreshBrandSourcingMaster } from "./scripts/build-brand-sourcing-master.mjs";
+import { syncEcountInventory, REQUIRED_ENV_KEYS as ECOUNT_REQUIRED_ENV_KEYS } from "./scripts/sync-ecount-inventory.mjs";
+import { createEcountAutoSync } from "./scripts/ecount-auto-sync.mjs";
+import { buildNewBrands, onboardingDates } from "./scripts/new-brands.mjs";
 import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
 // STEP63-4: Brand Dashboard가 이미 갖고 있는 Cafe24 brand_code 직접 매칭(productBrandCode/
 // productBrandMapCode)은 절대 재해석하지 않는다 — 그 두 경로가 모두 실패해 "UNASSIGNED"로
@@ -142,6 +146,7 @@ const server = isMainModule ? createServer(async (req, res) => {
           lastError: instagramSyncScheduler.lastError,
           intervalMs: instagramSyncScheduler.intervalMs
         },
+        ecountInventorySync: await ecountAutoSyncStatus(),
         // Additive only — never exposes the Dropbox path's credential (app secret /
         // refresh token) or the resolved access token, only whether Dropbox is
         // configured and the last run's outcome.
@@ -419,9 +424,20 @@ const server = isMainModule ? createServer(async (req, res) => {
       const payload = await readJsonBody(req);
       const refreshMonth = payload.month || currentMonth();
       if (!isValidMonthKey(refreshMonth)) return json(res, { error: "Invalid month" }, 400);
+      // autoApprove is NEW-only (enforced in refreshPendingBrands); reassignment goes through /review.
       const data = await refreshPendingBrands(workDir, () => loadCurrentPendingBrandSources(payload.recentReview ?? null, refreshMonth),
         { dryRun: url.searchParams.get("dryRun") === "1", autoApprove: payload.autoApprove === true, buildCompatibility: buildIntelligenceBrandRegistry });
       return json(res, { ok: true, ...data });
+    }
+    if (url.pathname === "/api/ecount/inventory/sync") {
+      if (req.method === "GET") return json(res, { ok: true, ...(await ecountAutoSyncStatus()) });
+      if (req.method !== "POST") return json(res, { error: "Method Not Allowed" }, 405);
+      if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      return json(res, await ecountAutoSync.run({ force: true }));
+    }
+    if (url.pathname === "/api/brands/new") {
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      return json(res, { ok: true, ...(await buildNewBrandsResponse()) });
     }
     if (url.pathname === "/api/brand-master") {
       if (req.method === "POST") {
@@ -1011,6 +1027,13 @@ const server = isMainModule ? createServer(async (req, res) => {
   // too (covers the case where the server happens to restart during that window).
   runNaverWeeklyReportCheck();
   setInterval(runNaverWeeklyReportCheck, naverWeeklyReportScheduler.intervalMs);
+  // ECOUNT product master: daily 04:00 KST, plus one catch-up per day after a later start.
+  // On by default only on Render (RENDER is set there); elsewhere ECOUNT_AUTO_SYNC=on/off decides,
+  // so local runs and test servers never call ECOUNT on their own.
+  if (ecountAutoSyncEnabled) {
+    runEcountAutoSyncCheck();
+    setInterval(runEcountAutoSyncCheck, 15 * 60 * 1000);
+  }
   // Meta Ads / Instagram Weekly Report: same poll pattern, fully independent intervals
   // so neither platform's schedule depends on or can be delayed by the others.
   runMetaWeeklyReportCheck();
@@ -1909,14 +1932,14 @@ async function importEcountOfflineSalesUpload(req) {
 
     // 신규 브랜드 자동 onboarding은 현재 월 ECOUNT import가 완전히 성공한 뒤에만 실행한다.
     // 기존 AUTO_SAFE 검증(Cafe24 + ECOUNT 양쪽 증거, 코드/이름 충돌 검사 등)을 그대로
-    // 통과한 후보만 승인하며, onboarding 실패가 매출 import 성공 자체를 되돌리지는 않는다.
+    // 통과한 NEW 후보만 승인하며(비활성 코드 재할당은 수동 review 전용), onboarding 실패가 매출 import 성공 자체를 되돌리지는 않는다.
     let brandOnboarding = null;
     if (result.month === currentMonth()) {
       try {
-        const pending = await refreshPendingBrands(
+        const pending = await refreshPendingBrandsUnattended(
           workDir,
           () => loadCurrentPendingBrandSources(null, result.month),
-          { autoApprove: true, buildCompatibility: buildIntelligenceBrandRegistry }
+          { buildCompatibility: buildIntelligenceBrandRegistry }
         );
         brandOnboarding = {
           ok: true,
@@ -7564,6 +7587,57 @@ async function runInstagramBackgroundSync() {
 // minutes only ever costs a Date check; the actual Naver fetch only runs once
 // isWeeklyNaverReportDue() confirms it's Tuesday 10:00-10:59 KST AND this week's report
 // (keyed by its `since` date) hasn't already been generated.
+// ECOUNT product master auto-sync. Onboarding is NEW-only: inactive-code reassignment
+// stays a manual review. Status (attempt/success dates) lives in WORK_DIR so restarts never
+// repeat a day's attempt; failures keep the canonical inventory (see scripts/ecount-auto-sync.mjs).
+const ecountAutoSync = createEcountAutoSync({
+  workDir,
+  sync: () => syncEcountInventory({ env, outDir: join(workDir, "ecount-inventory") }),
+  onboard: async () => {
+    const pending = await refreshPendingBrandsUnattended(workDir, () => loadCurrentPendingBrandSources(null, currentMonth()),
+      { buildCompatibility: buildIntelligenceBrandRegistry });
+    const entries = pending.onboarding || [];
+    const failed = entries.filter((entry) => !entry.ok);
+    return {
+      approvedCount: entries.length - failed.length,
+      approved: entries.filter((entry) => entry.ok).map((entry) => ({ brandCode: entry.candidate?.canonicalBrandCode || null, brandName: entry.candidate?.rawBrandName || null })),
+      error: failed.length ? failed.map((entry) => `${entry.id}: ${entry.error}`).join("; ").slice(0, 500) : null
+    };
+  },
+  refreshSourcing: () => refreshBrandSourcingMaster(workDir)
+});
+
+const ecountAutoSyncEnabled = env.ECOUNT_AUTO_SYNC ? env.ECOUNT_AUTO_SYNC === "on" : Boolean(env.RENDER);
+
+// Read-only view: credential presence is reported as booleans only, never values.
+async function ecountAutoSyncStatus() {
+  return { ...(await ecountAutoSync.getStatus()), enabled: ecountAutoSyncEnabled, credentialsConfigured: ECOUNT_REQUIRED_ENV_KEYS.every((key) => Boolean(env[key])) };
+}
+
+async function runEcountAutoSyncCheck() {
+  try {
+    const result = await ecountAutoSync.run();
+    if (result.ok) console.log(`[ECOUNT_AUTO_SYNC] products ${result.status.lastProductCount}, onboarded ${result.status.lastOnboardingApprovedCount}`);
+    else if (result.error) await logApiError("ecount_auto_sync", new Error(result.error), {});
+  } catch (error) {
+    await logApiError("ecount_auto_sync", error, {});
+  }
+}
+
+// NEW BRANDS (read-only): onboarding date = pending queue approvedAt; policy via the
+// existing commercial-policy route so precedence (explicit > sourcing default) is unchanged.
+async function buildNewBrandsResponse(asOf = new Date()) {
+  const [master, sourcing, queue] = await Promise.all([readBrandMasterFile(), readBrandSourcingMaster(), readPendingBrands(workDir)]);
+  const policies = new Map();
+  for (const brandCode of onboardingDates(queue).keys()) {
+    const capture = capturingResponse();
+    await handleIntelligenceRequest({ method: "GET", url: `/api/intelligence/commercial-policy?brand_code=${encodeURIComponent(brandCode)}`, headers: { host: "internal" } }, capture);
+    policies.set(brandCode, { status: capture.body?.policy_status ?? null, discountPercent: capture.body?.effective_policy?.effective_discount_percent ?? null });
+  }
+  const brands = master.brands.map((brand) => ({ ...brand, sourcing_type: sourcing.get(brand.brand_code) || null }));
+  return buildNewBrands({ brands, queue, asOf, policies });
+}
+
 const naverWeeklyReportScheduler = {
   intervalMs: 15 * 60 * 1000, // 15분
   running: false,

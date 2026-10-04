@@ -52,6 +52,15 @@ async function withServer(overrides, run) {
   }
 }
 
+test("unattended brand onboarding after ECOUNT import and in the daily auto-sync is NEW-only", () => {
+  const importHook = server.slice(server.indexOf("async function importEcountOfflineSalesUpload"), server.indexOf("brandOnboarding\n    };"));
+  assert.match(importHook, /refreshPendingBrandsUnattended\(\s*workDir,/);
+  const autoSync = server.slice(server.indexOf("const ecountAutoSync = createEcountAutoSync"), server.indexOf("async function runEcountAutoSyncCheck"));
+  assert.match(autoSync, /refreshPendingBrandsUnattended\(workDir,/);
+  // No server path may hard-code an unrestricted autoApprove; only the explicit, payload-driven refresh route remains.
+  assert.doesNotMatch(server, /autoApprove:\s*true/);
+});
+
 test("Production ECOUNT import requires an operator session or existing internal authorization", () => {
   assert.match(server, /if \(!isAuthorizedEcountImport\(req\)\)/);
   assert.match(server, /samplas_operator=.*HttpOnly; SameSite=Strict/);
