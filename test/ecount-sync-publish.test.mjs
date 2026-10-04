@@ -52,7 +52,7 @@ async function fakeProduction() {
     if (path.startsWith("/api/inventory/overview")) throw new Error("inventory overview must not be called by the one-click run");
     if (path === "/api/pending-brands") return { ok: true, ...(await queue.readPendingBrands(prodDir)) };
     if (path === "/api/brand-master") return JSON.parse(await readFile(join(prodDir, "brand-master.json"), "utf8"));
-    if (path === "/api/brands/new") return { count: 0, brands: [] };
+    if (path === "/api/brands/new?coverage=0") return { count: 0, brands: [] };
     throw new Error(`unexpected ${method} ${path}`);
   };
   return { prodDir, calls, production };
@@ -89,7 +89,7 @@ test("success: local sync → upload of exactly 3 files → NEW-only onboarding;
     assert.deepEqual(first.verification.pending.needsReview.map(c => c.brandName), ["Next Season"]);
     assert.equal(first.verification.brandMaster.brands, 2);
     assert.ok(!calls.some(c => c.path.startsWith("/api/inventory/overview")), "inventory overview is never requested");
-    assert.deepEqual(calls.filter(c => c.method === "GET").map(c => c.path), ["/api/brand-master", "/api/brands/new", "/api/pending-brands"]);
+    assert.deepEqual(calls.filter(c => c.method === "GET").map(c => c.path), ["/api/brand-master", "/api/brands/new?coverage=0", "/api/pending-brands"]);
     const master = JSON.parse(await readFile(join(prodDir, "brand-master.json"), "utf8"));
     assert.deepEqual(master.brands.map(b => b.brand_code).sort(), ["FRESH1", "STALE7"]);
     assert.equal(master.brands.find(b => b.brand_code === "STALE7").supersededBy, undefined);
@@ -214,8 +214,8 @@ test("verification GETs retry transient 502/503/504 and network errors; auth err
   for (const [label, failures, expectOk, pattern, expectedCalls] of [
     ["502 then success", [httpError(502)], true, null, 2],
     ["network error then success", [new TypeError("fetch failed")], true, null, 2],
-    ["502 three times", [httpError(502), httpError(503), httpError(504)], false, /\/api\/brands\/new: Production 확인 실패 \(HTTP 504\)/, 3],
-    ["401 is not retried", [httpError(401)], false, /\/api\/brands\/new: Production 확인 실패 \(HTTP 401\)/, 1]
+    ["502 three times", [httpError(502), httpError(503), httpError(504)], false, /\/api\/brands\/new\?coverage=0: Production 확인 실패 \(HTTP 504\)/, 3],
+    ["401 is not retried", [httpError(401)], false, /\/api\/brands\/new\?coverage=0: Production 확인 실패 \(HTTP 401\)/, 1]
   ]) {
     const local = await localWork();
     const { prodDir, production } = await fakeProduction();
@@ -224,7 +224,7 @@ test("verification GETs retry transient 502/503/504 and network errors; auth err
       let brandsNewCalls = 0;
       const logs = [];
       const flaky = async (method, path, body) => {
-        if (method === "GET" && path === "/api/brands/new") {
+        if (method === "GET" && path === "/api/brands/new?coverage=0") {
           brandsNewCalls += 1;
           if (queueOfFailures.length) throw queueOfFailures.shift();
         }

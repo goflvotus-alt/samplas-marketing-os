@@ -17,7 +17,8 @@ import {
   isGiftSalesLine,
   buildIntelligenceBrandRegistry,
   handleNaverAdsReadOnlyRoute,
-  capturingResponse
+  capturingResponse,
+  fetchNaverAdgroupIndex
 } from "./intelligence-service.mjs";
 import {
   generateWeeklyNaverAdsReport,
@@ -78,6 +79,7 @@ import { refreshBrandSourcingMaster } from "./scripts/build-brand-sourcing-maste
 import { syncEcountInventory, REQUIRED_ENV_KEYS as ECOUNT_REQUIRED_ENV_KEYS } from "./scripts/sync-ecount-inventory.mjs";
 import { createEcountAutoSync } from "./scripts/ecount-auto-sync.mjs";
 import { buildNewBrands, onboardingDates } from "./scripts/new-brands.mjs";
+import { attachCoverage, summarizeCafe24Products } from "./scripts/new-brand-coverage.mjs";
 import { createLocalEcountProductSyncRoute } from "./scripts/local-ecount-helper.mjs";
 import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
 // STEP63-4: Brand Dashboard가 이미 갖고 있는 Cafe24 brand_code 직접 매칭(productBrandCode/
@@ -493,7 +495,19 @@ const server = isMainModule ? createServer(async (req, res) => {
     }
     if (url.pathname === "/api/brands/new") {
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
-      return json(res, { ok: true, ...(await buildNewBrandsResponse()) });
+      return json(res, { ok: true, ...(await buildNewBrandsResponse(new Date(), { coverage: url.searchParams.get("coverage") !== "0" })) });
+    }
+    if (url.pathname === "/api/cafe24/brand-products") {
+      // Read-only: one brand's Cafe24 products (display/selling/sold_out) for NEW BRANDS coverage.
+      if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
+      if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      const brandCode = String(url.searchParams.get("brand_code") || "");
+      if (!/^[A-Z0-9_]{4,40}$/.test(brandCode)) return json(res, { ok: false, error: "brand_code required" }, 400);
+      try {
+        return json(res, { ok: true, brandCode, products: await fetchCafe24BrandProducts(brandCode) });
+      } catch (error) {
+        return json(res, { ok: false, error: safeErrorMessage(error) }, 502);
+      }
     }
     if (url.pathname === "/api/brand-master") {
       if (req.method === "POST") {
@@ -7695,7 +7709,38 @@ async function runEcountAutoSyncCheck() {
 
 // NEW BRANDS (read-only): onboarding date = pending queue approvedAt; policy via the
 // existing commercial-policy route so precedence (explicit > sourcing default) is unchanged.
-async function buildNewBrandsResponse(asOf = new Date()) {
+// Cafe24 products of one brand. Production calls Cafe24 directly with the brand_code filter;
+// a local server goes through the proxy (Production) route above. Every returned product
+// must carry that brand_code, otherwise the filter was not applied and nothing is counted.
+const cafe24BrandProductsCache = new Map();
+async function fetchCafe24BrandProducts(brandCode) {
+  const cached = cafe24BrandProductsCache.get(brandCode);
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.products;
+  let products = [];
+  if (env.CAFE24_PROXY_BASE_URL) {
+    const response = await fetch(`${env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "")}/api/cafe24/brand-products?brand_code=${encodeURIComponent(brandCode)}`, { headers: cafe24ProxyHeaders() });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.ok) throw Object.assign(new Error(body.error || `Cafe24 brand products proxy error ${response.status}`), { status: response.status });
+    products = body.products || [];
+  } else {
+    for (let offset = 0; offset < 1000; offset += 100) {
+      const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/products`);
+      url.searchParams.set("brand_code", brandCode);
+      url.searchParams.set("limit", "100");
+      url.searchParams.set("offset", String(offset));
+      const body = await cafe24FetchJson(url);
+      if (body.error) throw body.error;
+      const page = (body.products || []).map((p) => ({ product_no: p.product_no, brand_code: p.brand_code, display: p.display, selling: p.selling, sold_out: p.sold_out }));
+      products.push(...page);
+      if (page.length < 100) break;
+    }
+  }
+  if (products.some((p) => p.brand_code !== brandCode)) throw new Error("Cafe24 brand_code filter was not applied");
+  cafe24BrandProductsCache.set(brandCode, { at: Date.now(), products });
+  return products;
+}
+
+async function buildNewBrandsResponse(asOf = new Date(), { coverage = false } = {}) {
   const [master, sourcing, queue] = await Promise.all([readBrandMasterFile(), readBrandSourcingMaster(), readPendingBrands(workDir)]);
   const policies = new Map();
   for (const brandCode of onboardingDates(queue).keys()) {
@@ -7704,7 +7749,17 @@ async function buildNewBrandsResponse(asOf = new Date()) {
     policies.set(brandCode, { status: capture.body?.policy_status ?? null, discountPercent: capture.body?.effective_policy?.effective_discount_percent ?? null });
   }
   const brands = master.brands.map((brand) => ({ ...brand, sourcing_type: sourcing.get(brand.brand_code) || null }));
-  return buildNewBrands({ brands, queue, asOf, policies });
+  const result = buildNewBrands({ brands, queue, asOf, policies });
+  if (!coverage) return result;
+  const cafe24ByCode = new Map();
+  for (const brand of result.brands) {
+    try { cafe24ByCode.set(brand.brandCode, summarizeCafe24Products(await fetchCafe24BrandProducts(brand.brandCode), brand.brandCode)); }
+    catch (error) { cafe24ByCode.set(brand.brandCode, { error: safeErrorMessage(error) }); }
+  }
+  const needsNaver = [...cafe24ByCode.values()].some((c) => c.hasSellableProducts);
+  const naverIndex = needsNaver ? await fetchNaverAdgroupIndex() : { ok: false, adgroups: [], error: "not needed" };
+  const aliasesByCode = new Map(master.brands.map((b) => [b.brand_code, b.name_aliases || []]));
+  return attachCoverage(result, { cafe24ByCode, naverIndex, aliasesByCode });
 }
 
 const naverWeeklyReportScheduler = {

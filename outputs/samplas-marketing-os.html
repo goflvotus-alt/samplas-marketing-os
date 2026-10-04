@@ -1379,6 +1379,25 @@
           </div>
         </div>
 
+        <div class="section-block" id="newBrandsPanel">
+          <div class="section-title compact"><div><p class="eyebrow">NEW BRANDS · 최근 90일</p><h3>신규 브랜드</h3></div></div>
+          <div id="newBrandsSummary" class="ad-status-banner loading">신규 브랜드 확인 중…</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>브랜드</th>
+                  <th>입점</th>
+                  <th>D+</th>
+                  <th>Sourcing</th>
+                  <th>상태</th>
+                </tr>
+              </thead>
+              <tbody id="newBrandsRows"></tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- STEP59-2: Entity Period Control Foundation. 화면 전체가 바라보는 기간을
              명확히 하는 상태 기반만 만든다(entityPeriodState, 실데이터/계산/비교 로직
              없음). Brand Selector state와 결합하지 않는다 — 브랜드를 선택/해제해도 기간은
@@ -2416,5 +2435,6 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="./samplas-marketing-os.js?v=20260828-store-intelligence-real-data"></script>
   <script src="./ecount-product-sync.js?v=20261004b"></script>
+  <script src="./new-brands-panel.js?v=20261004"></script>
 </body>
 </html>

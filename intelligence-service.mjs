@@ -2300,7 +2300,7 @@ function naverAdsPerformancePeriod(url) {
 async function fetchNaverAdsReadOnly(uri, params, credentials, signal) {
   // No caller-controlled method/path or redirects: credentials only go to the
   // configured Search Ads host, and this helper cannot mutate an ad account.
-  if (!["/ncc/campaigns", "/stats"].includes(uri)) throw new Error("Unsupported read-only endpoint");
+  if (!["/ncc/campaigns", "/ncc/adgroups", "/stats"].includes(uri)) throw new Error("Unsupported read-only endpoint");
   const endpoint = new URL(uri, naverAdsBaseUrl);
   endpoint.search = new URLSearchParams(params).toString();
   const response = await fetch(endpoint, {
@@ -2480,6 +2480,37 @@ function naverAdsCredentials() {
   if (!values.secretKey) missing.push("NAVER_ADS_SECRET_KEY");
   if (!values.customerId) missing.push("NAVER_ADS_CUSTOMER_ID");
   return missing.length ? { ok: false, missing } : { ok: true, ...values };
+}
+
+// NEW BRANDS × NAVER coverage (read-only GETs). SAMPLAS runs one campaign whose ad groups
+// are named per brand, so ad group names are the brand-level evidence; keywords are not read.
+// Cached 10 minutes; an error means "not checked", never "registered".
+let naverAdgroupIndexCache = null;
+export async function fetchNaverAdgroupIndex({ now = Date.now() } = {}) {
+  if (naverAdgroupIndexCache && now - naverAdgroupIndexCache.fetchedAtMs < 10 * 60 * 1000) return naverAdgroupIndexCache.value;
+  const credentials = naverAdsCredentials();
+  if (!credentials.ok) return { ok: false, error: "Naver Search Ads credentials are not configured", adgroups: [] };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), naverAdsTimeoutMs);
+  try {
+    const campaigns = normalizeNaverAdsCampaigns(await fetchNaverAdsReadOnly("/ncc/campaigns", {}, credentials, controller.signal));
+    const adgroups = [];
+    for (const campaign of campaigns) {
+      const rows = await fetchNaverAdsReadOnly("/ncc/adgroups", { nccCampaignId: campaign.id }, credentials, controller.signal);
+      if (!Array.isArray(rows)) throw new Error("Invalid ad group response");
+      for (const row of rows) {
+        if (typeof row?.name !== "string") continue;
+        adgroups.push({ name: row.name, campaign: campaign.name, paused: row.userLock === true, status: typeof row.status === "string" ? row.status : null });
+      }
+    }
+    const value = { ok: true, fetchedAt: new Date(now).toISOString(), campaignCount: campaigns.length, adgroups };
+    naverAdgroupIndexCache = { fetchedAtMs: now, value };
+    return value;
+  } catch (error) {
+    return { ok: false, error: controller.signal.aborted ? "Naver Search Ads request timed out" : "Naver Search Ads request failed", adgroups: [] };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchNaverKeywordSearch(keyword, credentials) {

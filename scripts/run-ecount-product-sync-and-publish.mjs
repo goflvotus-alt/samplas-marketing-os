@@ -142,7 +142,7 @@ export async function runEcountSyncAndPublish({ workDir, sync, upload, productio
     result.verification = { provenance: { ok: failures.length === 0 && !result.onboarding.error, source: provenance?.ecountProductSource ?? null, count: provenance?.ecountProductCount ?? null, at: provenance?.ecountProductsAt ?? null } };
     for (const [key, path, pick] of [
       ["brandMaster", "/api/brand-master", (b) => ({ brands: b.brands?.length ?? null, updatedAt: b.updatedAt ?? null })],
-      ["newBrands", "/api/brands/new", (b) => ({ count: b.count, brands: (b.brands || []).map((x) => x.brandName) })],
+      ["newBrands", "/api/brands/new?coverage=0", (b) => ({ count: b.count, brands: (b.brands || []).map((x) => x.brandName) })],
       ["pending", "/api/pending-brands", (b) => { const p = summarizePending({ candidates: b.candidates }); return { needsReview: p.needsReview, blocked: p.blocked }; }]
     ]) {
       try {
