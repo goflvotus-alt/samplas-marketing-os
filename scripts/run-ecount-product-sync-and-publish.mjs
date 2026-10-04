@@ -2,7 +2,9 @@
 // so ECOUNT is called locally and Render only receives verified snapshot files):
 //   1. local full ECOUNT sync (atomic, aborts on any failure)  2. verify product-master
 //   3. upload latest/diagnostic/product-master to Render       4. Production pending refresh,
-//   NEW-only AUTO_SAFE (enforced server-side)                 5. read-only Production checks.
+//   NEW-only AUTO_SAFE (enforced server-side)                 5. lightweight read-only checks
+//   (refresh provenance, brand-master, brands/new, pending-brands). /api/inventory/overview is
+//   never called here: its full 14,746-row computation restarted the Render instance.
 // Usage: node scripts/run-ecount-product-sync-and-publish.mjs [--dry-run]
 // --dry-run: no ECOUNT call, no upload, Production refresh with ?dryRun=1 (no writes).
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
@@ -77,7 +79,7 @@ export async function runEcountSyncAndPublish({ workDir, sync, upload, productio
     log("[2/5] product-master 검증…");
     const master = await readEcountProductMaster(workDir); // throws on an invalid product-master
     const meta = await readJson(join(workDir, PRODUCT_MASTER_FILE));
-    const diagnostic = await readJson(join(workDir, "ecount-inventory/diagnostic.json"));
+    await readJson(join(workDir, "ecount-inventory/diagnostic.json")); // must exist and parse before upload
     const latest = await readJson(join(workDir, "ecount-inventory/latest.json"));
     if (master?.source !== PRODUCT_MASTER_FILE || master.complete !== true) throw new Error("product-master.json이 없거나 완전하지 않습니다.");
     if (result.sync && meta.totalProducts !== result.sync.productCount) throw new Error(`product-master 상품 수 불일치: ${meta.totalProducts} ≠ sync ${result.sync.productCount}`);
@@ -100,10 +102,6 @@ export async function runEcountSyncAndPublish({ workDir, sync, upload, productio
     try {
       const refresh = await production("POST", `/api/pending-brands/refresh${dryRun ? "?dryRun=1" : ""}`, dryRun ? {} : { autoApprove: true });
       result.onboarding = { ...summarizePending(refresh), provenance: refresh.provenance || null };
-      const source = refresh.provenance?.ecountProductSource;
-      if (source !== PRODUCT_MASTER_FILE || refresh.provenance?.ecountProductCount !== meta.totalProducts) {
-        result.onboarding.warning = `Production이 읽은 상품 마스터가 다릅니다: ${source} / ${refresh.provenance?.ecountProductCount}`;
-      }
     } catch (error) {
       // Inventory is already published and valid; only onboarding is reported as failed.
       result.onboarding = { error: String(error?.message || error) };
@@ -111,16 +109,25 @@ export async function runEcountSyncAndPublish({ workDir, sync, upload, productio
 
     result.stage = "verify-production";
     log("[5/5] Production 확인(읽기 전용)…");
-    result.verification = {};
+    const provenance = result.onboarding.provenance;
+    const failures = [];
+    if (!result.onboarding.error) {
+      // Proof that Production now reads exactly the uploaded product-master.
+      if (provenance?.ecountProductSource !== PRODUCT_MASTER_FILE) failures.push(`Production 상품 마스터 출처가 다릅니다: ${provenance?.ecountProductSource ?? "없음"}`);
+      if (provenance?.ecountProductCount !== meta.totalProducts) failures.push(`Production 상품 수 ${provenance?.ecountProductCount ?? "없음"} ≠ 로컬 ${meta.totalProducts}`);
+      if (!provenance?.ecountProductsAt) failures.push("Production 상품 마스터 시각(ecountProductsAt)이 없습니다.");
+    }
+    result.verification = { provenance: { ok: failures.length === 0 && !result.onboarding.error, source: provenance?.ecountProductSource ?? null, count: provenance?.ecountProductCount ?? null, at: provenance?.ecountProductsAt ?? null } };
     for (const [key, path, pick] of [
-      ["inventory", "/api/inventory/overview?limit=1", (b) => ({ itemsTotal: b.itemsTotal, generatedAt: b.generatedAt, matchesLocal: b.itemsTotal === latest.length && b.generatedAt === diagnostic.finishedAt })],
       ["brandMaster", "/api/brand-master", (b) => ({ brands: b.brands?.length ?? null, updatedAt: b.updatedAt ?? null })],
-      ["newBrands", "/api/brands/new", (b) => ({ count: b.count, brands: (b.brands || []).map((x) => x.brandName) })]
+      ["newBrands", "/api/brands/new", (b) => ({ count: b.count, brands: (b.brands || []).map((x) => x.brandName) })],
+      ["pending", "/api/pending-brands", (b) => { const p = summarizePending({ candidates: b.candidates }); return { needsReview: p.needsReview, blocked: p.blocked }; }]
     ]) {
       try { result.verification[key] = pick(await production("GET", path)); }
-      catch (error) { result.verification[key] = { error: String(error?.message || error) }; }
+      catch (error) { result.verification[key] = { error: String(error?.message || error) }; failures.push(`${path}: ${result.verification[key].error}`); }
     }
-    result.ok = !result.onboarding.error;
+    result.verification.failures = failures;
+    result.ok = !result.onboarding.error && failures.length === 0;
     result.stage = "done";
     return result;
   } catch (error) {
@@ -145,7 +152,7 @@ export function formatSummary(r) {
       : ["sync", "verify-product-master", "upload"].includes(r.stage) ? "Production에는 아무것도 반영하지 않았습니다." : "");
     return lines.join("\n").trim();
   }
-  lines.push(r.dryRun ? "ECOUNT SYNC DRY RUN COMPLETE (Production 변경 없음)" : r.ok ? "ECOUNT SYNC COMPLETE" : "ECOUNT SYNC COMPLETE — ONBOARDING FAILED", "");
+  lines.push(r.onboarding?.error ? "ECOUNT SYNC COMPLETE — ONBOARDING FAILED" : !r.ok ? "ECOUNT SYNC — VERIFICATION FAILED" : r.dryRun ? "ECOUNT SYNC DRY RUN COMPLETE (Production 변경 없음)" : "ECOUNT SYNC COMPLETE", "");
   lines.push(`Products: ${n(r.productMaster?.totalProducts)} (pages ${r.productMaster?.pageCount}, duplicates ${r.productMaster?.duplicateCount}, ${r.productMaster?.firstProdCd} ~ ${r.productMaster?.lastProdCd})`);
   if (r.newProducts !== null && r.newProducts !== undefined) lines.push(`New products: ${r.newProducts >= 0 ? "+" : ""}${r.newProducts}`);
   const o = r.onboarding || {};
@@ -157,11 +164,13 @@ export function formatSummary(r) {
     if (o.needsReview.length) lines.push("", "Needs review:", ...o.needsReview.map((c) => `- ${c.brandName} — ${c.reason}`));
     const blocked = Object.entries(o.blocked);
     if (blocked.length) lines.push("", "Blocked:", ...blocked.map(([reason, count]) => `- ${reason.toLowerCase().replace(/_/g, " ")} ${count}`));
-    if (o.warning) lines.push("", `Warning: ${o.warning}`);
+
   }
   const v = r.verification || {};
-  lines.push("", `Production inventory: ${v.inventory?.error || `${n(v.inventory?.itemsTotal)} items, ${v.inventory?.matchesLocal ? "로컬과 일치" : "로컬과 불일치"}`}`);
+  lines.push("", `Production product master: ${v.provenance?.source ?? "-"} ${n(v.provenance?.count)} (${v.provenance?.at ?? "-"}) ${v.provenance?.ok ? "로컬과 일치" : "확인 실패"}`);
+  lines.push(`Production brand master: ${v.brandMaster?.error || `${n(v.brandMaster?.brands)} brands`}`);
   lines.push(`Production NEW BRANDS (90일): ${v.newBrands?.error || `${v.newBrands?.count} — ${(v.newBrands?.brands || []).join(", ")}`}`);
+  if (v.failures?.length) lines.push("", "Verification failed:", ...v.failures.map((f) => `- ${f}`));
   return lines.join("\n");
 }
 

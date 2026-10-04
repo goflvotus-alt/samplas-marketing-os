@@ -49,11 +49,8 @@ async function fakeProduction() {
       const load = async () => ({ ...(await queue.loadPendingBrandSources(prodDir, "2026-10")), cafe24Brands });
       return { ok: true, ...(await queue.refreshPendingBrands(prodDir, load, { dryRun: path.includes("dryRun=1"), autoApprove: body?.autoApprove === true, buildCompatibility: build })) };
     }
-    if (path.startsWith("/api/inventory/overview")) {
-      const latest = JSON.parse(await readFile(join(prodDir, "ecount-inventory/latest.json"), "utf8"));
-      const diagnostic = JSON.parse(await readFile(join(prodDir, "ecount-inventory/diagnostic.json"), "utf8"));
-      return { itemsTotal: latest.length, generatedAt: diagnostic.finishedAt };
-    }
+    if (path.startsWith("/api/inventory/overview")) throw new Error("inventory overview must not be called by the one-click run");
+    if (path === "/api/pending-brands") return { ok: true, ...(await queue.readPendingBrands(prodDir)) };
     if (path === "/api/brand-master") return JSON.parse(await readFile(join(prodDir, "brand-master.json"), "utf8"));
     if (path === "/api/brands/new") return { count: 0, brands: [] };
     throw new Error(`unexpected ${method} ${path}`);
@@ -87,7 +84,12 @@ test("success: local sync → upload of exactly 3 files → NEW-only onboarding;
     assert.deepEqual(first.onboarding.approved.map(a => [a.brandName, a.action]), [["Fresh Label", "NEW"]]);
     assert.deepEqual(first.onboarding.needsReview.map(c => c.brandName), ["Next Season"]);
     assert.equal(first.onboarding.provenance.ecountProductSource, "ecount-inventory/product-master.json");
-    assert.equal(first.verification.inventory.matchesLocal, true);
+    assert.deepEqual(first.verification.provenance, { ok: true, source: "ecount-inventory/product-master.json", count: 10_602, at: first.productMaster.fetchedAt });
+    assert.deepEqual(first.verification.failures, []);
+    assert.deepEqual(first.verification.pending.needsReview.map(c => c.brandName), ["Next Season"]);
+    assert.equal(first.verification.brandMaster.brands, 2);
+    assert.ok(!calls.some(c => c.path.startsWith("/api/inventory/overview")), "inventory overview is never requested");
+    assert.deepEqual(calls.filter(c => c.method === "GET").map(c => c.path), ["/api/brand-master", "/api/brands/new", "/api/pending-brands"]);
     const master = JSON.parse(await readFile(join(prodDir, "brand-master.json"), "utf8"));
     assert.deepEqual(master.brands.map(b => b.brand_code).sort(), ["FRESH1", "STALE7"]);
     assert.equal(master.brands.find(b => b.brand_code === "STALE7").supersededBy, undefined);
@@ -181,4 +183,27 @@ test("a second concurrent run is refused; a stale lock from a dead process is cl
     const after = await runEcountSyncAndPublish({ workDir: local, dryRun: true, sync: async () => ({}), upload: async () => ({}), production });
     assert.equal(after.stage, "done");
   } finally { for (const d of [local, prodDir]) await rm(d, { recursive: true, force: true }); }
+});
+
+test("verification fails when Production does not read exactly the uploaded product-master", async () => {
+  for (const [label, tamper, pattern] of [
+    ["count mismatch", p => ({ ...p, ecountProductCount: p.ecountProductCount - 1 }), /상품 수 .* ≠ 로컬/],
+    ["wrong source", p => ({ ...p, ecountProductSource: "ecount-inventory/raw-products.json" }), /출처가 다릅니다/],
+    ["missing timestamp", p => ({ ...p, ecountProductsAt: null }), /ecountProductsAt/]
+  ]) {
+    const local = await localWork();
+    const { prodDir, calls, production } = await fakeProduction();
+    try {
+      const tampered = async (method, path, body) => {
+        const response = await production(method, path, body);
+        return method === "POST" ? { ...response, provenance: tamper(response.provenance) } : response;
+      };
+      const result = await runEcountSyncAndPublish({ workDir: local, sync: () => syncEcountInventory({ env, outDir: join(local, "ecount-inventory"), request: ecount([...filler(10_600), ...named]), delayMs: 0 }), upload: uploader(local, prodDir, []), production: tampered });
+      assert.equal(result.ok, false, label);
+      assert.equal(result.verification.provenance.ok, false, label);
+      assert.match(result.verification.failures.join("\n"), pattern, label);
+      assert.match(formatSummary(result), /VERIFICATION FAILED[\s\S]*Verification failed:/, label);
+      assert.ok(!calls.some(c => c.path.startsWith("/api/inventory/overview")), label);
+    } finally { for (const d of [local, prodDir]) await rm(d, { recursive: true, force: true }); }
+  }
 });
