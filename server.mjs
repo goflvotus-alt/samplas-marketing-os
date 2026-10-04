@@ -371,7 +371,9 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (url.pathname === "/api/pending-brands/review") {
       if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
       if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
-      return json(res, await reviewPendingBrand(workDir, await readJsonBody(req), buildIntelligenceBrandRegistry));
+      const input = await readJsonBody(req);
+      const sources = input?.action === "REASSIGN_INACTIVE_CODE" ? await loadCurrentPendingBrandSources() : null;
+      return json(res, await reviewPendingBrand(workDir, input, buildIntelligenceBrandRegistry, { sources }));
     }
     if (url.pathname === "/api/pending-brands") {
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
@@ -381,12 +383,10 @@ const server = isMainModule ? createServer(async (req, res) => {
       if (req.method !== "POST") return json(res, { error: "Method Not Allowed" }, 405);
       if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
       const payload = await readJsonBody(req);
-      const data = await refreshPendingBrands(workDir, async () => {
-        const sources = await loadPendingBrandSources(workDir, currentMonth());
-        const seed = await readBrandSeedProducts();
-        return { ...sources, recentReview: payload.recentReview ?? null, products: seed.products.map(product => ({ ...product, brand_code: productBrandCode(product) })), cafe24Brands: await fetchCafe24BrandList(),
-          provenance: { ...sources.provenance, productSource: seed.source, productCount: seed.products.length, cafe24BrandsFetchedAt: new Date().toISOString() } };
-      }, { dryRun: url.searchParams.get("dryRun") === "1" });
+      const refreshMonth = payload.month || currentMonth();
+      if (!isValidMonthKey(refreshMonth)) return json(res, { error: "Invalid month" }, 400);
+      const data = await refreshPendingBrands(workDir, () => loadCurrentPendingBrandSources(payload.recentReview ?? null, refreshMonth),
+        { dryRun: url.searchParams.get("dryRun") === "1", autoApprove: payload.autoApprove === true, buildCompatibility: buildIntelligenceBrandRegistry });
       return json(res, { ok: true, ...data });
     }
     if (url.pathname === "/api/brand-master") {
@@ -1872,6 +1872,33 @@ async function importEcountOfflineSalesUpload(req) {
         totalOfflineSales: itemSnapshot?.totalOfflineSales ?? 0
       };
     })) : null;
+
+    // 신규 브랜드 자동 onboarding은 현재 월 ECOUNT import가 완전히 성공한 뒤에만 실행한다.
+    // 기존 AUTO_SAFE 검증(Cafe24 + ECOUNT 양쪽 증거, 코드/이름 충돌 검사 등)을 그대로
+    // 통과한 후보만 승인하며, onboarding 실패가 매출 import 성공 자체를 되돌리지는 않는다.
+    let brandOnboarding = null;
+    if (result.month === currentMonth()) {
+      try {
+        const pending = await refreshPendingBrands(
+          workDir,
+          () => loadCurrentPendingBrandSources(null, result.month),
+          { autoApprove: true, buildCompatibility: buildIntelligenceBrandRegistry }
+        );
+        brandOnboarding = {
+          ok: true,
+          approvedCount: pending.onboarding?.length ?? 0,
+          approved: (pending.onboarding || []).map((entry) => ({
+            brandCode: entry.candidate?.canonicalBrandCode || null,
+            brandName: entry.candidate?.canonicalName || entry.candidate?.rawBrandName || null,
+            sourcingRefresh: entry.sourcingRefresh || null
+          }))
+        };
+      } catch (error) {
+        brandOnboarding = { ok: false, error: safeErrorMessage(error) };
+        await logApiError("ecount_brand_onboarding", error, { month: result.month });
+      }
+    }
+
     return {
       month: result.month,
       storeCode: warehouseRouted ? null : store.storeCode,
@@ -1884,7 +1911,8 @@ async function importEcountOfflineSalesUpload(req) {
       periodEnd: snapshot?.periodEnd || null,
       totalOfflineSales: snapshot?.totalOfflineSales ?? null,
       totalLineCount: snapshot?.totalLineCount ?? null,
-      importedAt: snapshot?.importedAt || null
+      importedAt: snapshot?.importedAt || null,
+      brandOnboarding
     };
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {});
@@ -2891,6 +2919,13 @@ function suggestBrandNameFromProductName(productName) {
   return normalizeBrandName(match?.[2] || match?.[1] || "");
 }
 
+async function loadCurrentPendingBrandSources(recentReview = null, month = currentMonth()) {
+  const sources = await loadPendingBrandSources(workDir, month);
+  const seed = await readBrandSeedProducts();
+  return { ...sources, recentReview, products: seed.products.map(product => ({ ...product, brand_code: productBrandCode(product) })), cafe24Brands: await fetchCafe24BrandList(),
+    provenance: { ...sources.provenance, productSource: seed.source, productCount: seed.products.length, cafe24BrandsFetchedAt: new Date().toISOString() } };
+}
+
 function normalizeBrandMasterEntry(entry = {}, fallbackCode = "") {
   const brand_code = normalizeBrandCode(entry.brand_code || fallbackCode);
   if (!brand_code) return null;
@@ -2901,6 +2936,7 @@ function normalizeBrandMasterEntry(entry = {}, fallbackCode = "") {
     instagram_tag: normalizeBrandName(entry.instagram_tag),
     active: entry.active === undefined ? true : Boolean(entry.active),
     nameSource: entry.nameSource === "confirmed" ? "confirmed" : "suggested",
+    ...(entry.supersededBy?.brandCode && entry.supersededBy?.effectiveMonth ? { supersededBy: { brandCode: entry.supersededBy.brandCode, effectiveMonth: entry.supersededBy.effectiveMonth } } : {}),
     ...(Array.isArray(entry.sourceCafe24Codes) ? { sourceCafe24Codes: entry.sourceCafe24Codes.map(normalizeBrandCode).filter(Boolean) } : {})
   };
 }
@@ -3615,7 +3651,7 @@ function matchCafe24OrdersToProducts(orders = [], catalog = [], context = {}) {
 // 여기서도 매출 합산 로직 자체는 건드리지 않고 brand_code만 채운다).
 function resolveOnlineProductBrandCode(product, productNo, productBrandMap, identityResolverContext) {
   const directCode = productBrandCode(product) || productBrandMapCode(productBrandMap, productNo);
-  if (directCode) return approvedCafe24BrandCode(directCode, identityResolverContext?.brandMaster);
+  if (directCode) return approvedCafe24BrandCode(directCode, identityResolverContext?.brandMaster, identityResolverContext?.brandCodePeriod);
   if (!identityResolverContext) return "UNASSIGNED";
   const identity = resolveIdentity(
     { productName: productDisplayName(product), cafe24ProductNo: productNo },
@@ -3846,7 +3882,7 @@ function buildBrandSalesInputsFromOrders(orders = [], catalog = [], identityReso
       if (orderId) entry.orderIds.add(String(orderId));
       salesByProduct.set(productKey, entry);
 
-      const brand_code = product ? approvedCafe24BrandCode(productBrandCode(product), identityResolverContext?.brandMaster) || "UNASSIGNED" : "UNASSIGNED";
+      const brand_code = product ? approvedCafe24BrandCode(productBrandCode(product), identityResolverContext?.brandMaster, identityResolverContext?.brandCodePeriod) || "UNASSIGNED" : "UNASSIGNED";
       const orderKey = String(orderId || "");
       if (orderKey) {
         const brandOrders = brandOrderHistory.get(brand_code) || new Map();
@@ -3920,6 +3956,7 @@ async function buildBrandSalesDiagnostics(since, until) {
   // Dashboard 자신이 이미 그 기간의 온라인 카탈로그이므로, UNASSIGNED로 남은 상품은
   // Priority 1(Product Registry verified, cafe24ProductNo 매칭)만으로 충분하다.
   const identityResolverContext = await loadResolverContext({ workDir });
+  identityResolverContext.brandCodePeriod = { since, until };
 
   if (env.CAFE24_PROXY_BASE_URL) {
     const [dashboard, ordersResult, brandMaster] = await Promise.all([
@@ -4121,6 +4158,7 @@ async function buildPromotionSummary(categoryNo, since, until) {
     readBrandMasterWithSeed()
   ]);
   const identityResolverContext = await loadResolverContext({ workDir });
+  identityResolverContext.brandCodePeriod = { since, until };
   const catalog = dashboard.products || [];
   const promotionCatalog = catalog.filter((product) => (product.categoryNos || []).map(String).includes(categoryNoStr));
 

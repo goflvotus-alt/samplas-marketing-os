@@ -31,11 +31,12 @@ export function pendingBrandUiMetadata(candidate, canonical, aliases = [], evide
   const names = [candidate.rawBrandName, candidate.cafe24Name, ...(candidate.cafe24Variants || []), ...(candidate.ecountVariants || [])].filter(Boolean).map(normalizeBrandKey);
   const identity = b => ({ brandCode: b.brand_code, canonicalName: b.brand_name });
   const codeMatches = (brands || []).filter(b => candidate.sourceBrandCode && [b.brand_code, ...(b.sourceCafe24Codes || [])].includes(candidate.sourceBrandCode));
+  const activeCodeMatches = codeMatches.filter(b => b.active !== false);
   const exactNameMatches = (brands || []).filter(b => b.brand_name && names.includes(normalizeBrandKey(b.brand_name)));
   const exactAliasMatches = (brands || []).filter(b => parseBrandAliases(b.name_aliases).some(a => names.includes(normalizeBrandKey(a))));
   const identities = new Set([...codeMatches, ...exactNameMatches, ...exactAliasMatches].map(b => b.brand_code));
-  const conflict = codeMatches.some(b => !names.includes(normalizeBrandKey(b.brand_name)) && !exactAliasMatches.includes(b));
-  const result = !Array.isArray(brands) ? "UNKNOWN" : identities.size > 1 || codeMatches.length > 1 ? "DUPLICATE_IDENTITY" : conflict ? "CODE_NAME_CONFLICT" : exactNameMatches.length ? "EXACT_EXISTING" : exactAliasMatches.length ? "ALIAS_EXISTING" : codeMatches.length ? "EXACT_EXISTING" : "NO_EXISTING_IDENTITY";
+  const conflict = activeCodeMatches.some(b => !names.includes(normalizeBrandKey(b.brand_name)) && !exactAliasMatches.includes(b));
+  const result = !Array.isArray(brands) ? "UNKNOWN" : identities.size > 1 || codeMatches.length > 1 ? "DUPLICATE_IDENTITY" : conflict ? "CODE_NAME_CONFLICT" : exactNameMatches.length ? "EXACT_EXISTING" : exactAliasMatches.length ? "ALIAS_EXISTING" : activeCodeMatches.length ? "EXACT_EXISTING" : "NO_EXISTING_IDENTITY";
   return { ...hint, masterComparison: {
     sourceBrandCode: candidate.sourceBrandCode || null,
     codeMatch: codeMatches.length > 0,
@@ -55,6 +56,7 @@ function operationalMetadata(candidate, canonical, aliases = [], evidence = revi
   if (!Array.isArray(canonical) && !Array.isArray(canonical?.brands)) return none("UNKNOWN");
   if (candidate.status !== "PENDING") return none("REVIEWED");
   if (candidate.heldAt) return none("HOLD");
+  if (candidate.reviewReason === "INACTIVE_CODE_REUSED") return none("INACTIVE_CODE_REUSED");
   if (candidate.reviewReason === "CODE_NAME_CONFLICT") return none("CODE_NAME_CONFLICT");
   if (candidate.relatedCandidateIds?.length || candidate.reviewReason === "DUPLICATE_IDENTITY_CONFLICT") return none("DUPLICATE_IDENTITY_CONFLICT");
   if (candidate.collabCandidates?.length || ["COLLABORATION", "COLLAB_REVIEW"].includes(candidate.reviewReason)) return none("COLLAB_REVIEW");

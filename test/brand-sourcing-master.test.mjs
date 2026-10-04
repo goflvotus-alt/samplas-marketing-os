@@ -16,8 +16,10 @@ test("brand sourcing signals and conservative rollup", () => {
   assert.equal(stripConsignmentPrefix("SECOND / CON ITEM"), "SECOND / CON ITEM");
   assert.equal(isExactThirtyPercent("30", "100"), true);
   assert.equal(isExactThirtyPercent("30.01", "100"), false);
-  assert.equal(classifyBrandSourcing({ co_sales_lines: 1, con_prefix_products: 0, exact_30_products: 0, resolved_sales_lines: 1, resolved_products: 0 }, "WHOLESALE"), "HYBRID");
-  assert.equal(classifyBrandSourcing({ co_sales_lines: 0, con_prefix_products: 0, exact_30_products: 0, resolved_sales_lines: 1, resolved_products: 1 }, null), "UNKNOWN");
+  assert.equal(classifyBrandSourcing({ co_sales_lines: 1, non_co_sales_lines: 0, con_prefix_products: 0, exact_30_products: 0, wholesale_products: 0 }), "CONSIGNMENT");
+  assert.equal(classifyBrandSourcing({ co_sales_lines: 0, non_co_sales_lines: 1, con_prefix_products: 0, exact_30_products: 0, wholesale_products: 1 }, null), "WHOLESALE");
+  assert.equal(classifyBrandSourcing({ co_sales_lines: 1, non_co_sales_lines: 1, con_prefix_products: 0, exact_30_products: 0, wholesale_products: 0 }, null), "HYBRID");
+  assert.equal(classifyBrandSourcing({ co_sales_lines: 0, non_co_sales_lines: 0, con_prefix_products: 0, exact_30_products: 0, wholesale_products: 0 }), "UNKNOWN");
 });
 
 test("builder resolves canonical aliases without treating operational groups as brands", () => {
@@ -34,7 +36,7 @@ test("builder resolves canonical aliases without treating operational groups as 
     salesSnapshots: [{ month: "2026-07", importedAt: "2026-08-10T00:00:00.000Z", salesLines: [{ productName: "BONNAE / Bag", brandGroup: "BON CO" }] }],
     candidates: [{ brand_code: "B00000SA", sourcing_type: "WHOLESALE" }]
   });
-  assert.equal(result.brands.find((row) => row.brand_code === "B00000SA").sourcing_type, "HYBRID");
+  assert.equal(result.brands.find((row) => row.brand_code === "B00000SA").sourcing_type, "CONSIGNMENT");
   assert.equal(result.brands.find((row) => row.brand_code === "B00000HM").sourcing_type, "OWN_PRODUCTION");
   assert.equal(result.brands.find((row) => row.brand_code === "B00000ZZ").sourcing_type, "UNKNOWN");
   assert.equal(result.sources.exact_30_percent_signal, "NOT_ACTIVE");

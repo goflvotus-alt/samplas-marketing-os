@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
 import { buildBrandRegistry, extractSlashBrandCandidate, resolveBrand } from "./brand-engine.mjs";
+import { KNOWN_STORE_CODES, readEcountOfflineSalesSnapshot } from "./read-ecount-offline-sales-snapshot.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const WORK = join(ROOT, "work");
@@ -30,16 +31,26 @@ export function isExactThirtyPercent(inPrice, outPrice) {
   return input.value * 100n * 10n ** BigInt(output.scale) === output.value * 30n * 10n ** BigInt(input.scale);
 }
 
-export function classifyBrandSourcing(evidence = {}, historicalType = null, ownProduction = false) {
+export function classifyBrandSourcing(evidence = {}, ownProduction = false) {
   if (ownProduction) return "OWN_PRODUCTION";
-  const consignmentCount = evidence.co_sales_lines + evidence.con_prefix_products + evidence.exact_30_products;
-  if (historicalType === "WHOLESALE") return consignmentCount ? "HYBRID" : "WHOLESALE";
-  if (historicalType === "CONSIGNMENT") return "CONSIGNMENT";
-  const allSalesConsignment = evidence.resolved_sales_lines > 0 && evidence.co_sales_lines === evidence.resolved_sales_lines;
-  const allProductsConsignment = evidence.resolved_products > 0
-    && (evidence.con_prefix_products === evidence.resolved_products || evidence.exact_30_products === evidence.resolved_products);
-  if (allSalesConsignment || allProductsConsignment) return "CONSIGNMENT";
-  return consignmentCount ? "PARTIAL" : "UNKNOWN";
+
+  // 과거 sourcing 후보값은 판정에 사용하지 않는다.
+  // 현재 운영 데이터만 사용:
+  // 위탁: CO 그룹 / CON- prefix / 입고가가 판매가의 정확히 30%
+  // 사입: 비-CO 판매행 / 위탁 신호가 없는 일반 상품
+  const hasConsignment =
+    evidence.co_sales_lines > 0 ||
+    evidence.con_prefix_products > 0 ||
+    evidence.exact_30_products > 0;
+
+  const hasWholesale =
+    evidence.non_co_sales_lines > 0 ||
+    evidence.wholesale_products > 0;
+
+  if (hasConsignment && hasWholesale) return "HYBRID";
+  if (hasConsignment) return "CONSIGNMENT";
+  if (hasWholesale) return "WHOLESALE";
+  return "UNKNOWN";
 }
 
 function resolveProductName(name, registry) {
@@ -47,14 +58,16 @@ function resolveProductName(name, registry) {
   return extracted ? resolveBrand(extracted.candidate, registry) : null;
 }
 
-export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots, candidates }) {
+export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots }) {
   const registry = buildBrandRegistry(brandMaster);
   const evidence = new Map(registry.brands.map((brand) => [brand.id, {
     resolved_products: 0,
     con_prefix_products: 0,
     exact_30_products: 0,
+    wholesale_products: 0,
     resolved_sales_lines: 0,
-    co_sales_lines: 0
+    co_sales_lines: 0,
+    non_co_sales_lines: 0
   }]));
   const exact30Active = products.some((product) => isExactThirtyPercent(product.IN_PRICE, product.OUT_PRICE));
 
@@ -63,8 +76,11 @@ export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots
     const row = resolved && evidence.get(resolved.brandId);
     if (!row) continue;
     row.resolved_products += 1;
-    if (stripConsignmentPrefix(product.PROD_DES) !== String(product.PROD_DES || "")) row.con_prefix_products += 1;
-    if (exact30Active && isExactThirtyPercent(product.IN_PRICE, product.OUT_PRICE)) row.exact_30_products += 1;
+    const hasConPrefix = stripConsignmentPrefix(product.PROD_DES) !== String(product.PROD_DES || "");
+    const exactThirty = exact30Active && isExactThirtyPercent(product.IN_PRICE, product.OUT_PRICE);
+    if (hasConPrefix) row.con_prefix_products += 1;
+    if (exactThirty) row.exact_30_products += 1;
+    if (!hasConPrefix && !exactThirty) row.wholesale_products += 1;
   }
 
   for (const snapshot of salesSnapshots) {
@@ -74,23 +90,23 @@ export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots
       if (!row) continue;
       row.resolved_sales_lines += 1;
       if (isOperationalCoGroup(line.brandGroup)) row.co_sales_lines += 1;
+      else row.non_co_sales_lines += 1;
     }
   }
 
-  const historical = new Map(candidates.map((row) => [row.brand_code, row.sourcing_type]));
   const entries = registry.brands.map((brand) => {
     const row = evidence.get(brand.id);
-    const historicalType = historical.get(brand.id) || null;
-    const sourcing_type = classifyBrandSourcing(row, historicalType, brand.id === "B00000HM");
+    const sourcing_type = classifyBrandSourcing(row, brand.id === "B00000HM");
     return {
       brand_code: brand.id,
       brand_name: brand.name,
       sourcing_type,
       evidence: {
-        historical_candidate: historicalType,
         operational_co_sales_lines: row.co_sales_lines,
+        operational_non_co_sales_lines: row.non_co_sales_lines,
         con_prefix_products: row.con_prefix_products,
-        exact_30_percent_products: row.exact_30_products
+        exact_30_percent_products: row.exact_30_products,
+        wholesale_products: row.wholesale_products
       },
       coverage: {
         resolved_products: row.resolved_products,
@@ -107,24 +123,31 @@ export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots
       brand_master: "work/brand-master.json",
       inventory: "work/ecount-inventory/raw-products.json",
       sales_months: salesSnapshots.map((row) => row.month).sort(),
-      historical_candidates: "work/brand-sourcing-candidates.json",
       exact_30_percent_signal: exact30Active ? "ACTIVE" : "NOT_ACTIVE"
     },
     brands: entries
   };
 }
 
-async function loadInputs() {
-  const brandMaster = JSON.parse(await readFile(join(WORK, "brand-master.json"), "utf8"));
-  const inventory = JSON.parse(await readFile(join(WORK, "ecount-inventory/raw-products.json"), "utf8"));
-  const candidates = JSON.parse(await readFile(join(WORK, "brand-sourcing-candidates.json"), "utf8"));
-  const salesFiles = (await readdir(join(WORK, "ecount-sales"))).filter((name) => /^\d{4}-(?:0[1-9]|1[0-2])\.json$/.test(name)).sort();
-  const salesSnapshots = await Promise.all(salesFiles.map(async (name) => JSON.parse(await readFile(join(WORK, "ecount-sales", name), "utf8"))));
+async function loadInputs(workDir = WORK) {
+  const brandMaster = JSON.parse(await readFile(join(workDir, "brand-master.json"), "utf8"));
+  const inventory = JSON.parse(await readFile(join(workDir, "ecount-inventory/raw-products.json"), "utf8"));
+  // Sourcing은 현재 운영 데이터만 사용하며 과거 후보 파일은 읽지 않는다.
+  const salesFiles = await readdir(join(workDir, "ecount-sales"));
+  const salesMonths = [...new Set(salesFiles.flatMap((name) => {
+    const match = name.match(/^(\d{4}-(?:0[1-9]|1[0-2]))(?:\.([A-Z0-9_-]+))?\.json$/);
+    if (!match) return [];
+    if (match[2] && !KNOWN_STORE_CODES.includes(match[2])) return [];
+    return [match[1]];
+  }))].sort();
+  const salesSnapshots = (await Promise.all(
+    salesMonths.map((month) => readEcountOfflineSalesSnapshot(month, { workDir }))
+  )).filter(Boolean);
   const products = inventory?.Data?.Result;
-  if (!Array.isArray(brandMaster?.brands) || !Array.isArray(products) || !Array.isArray(candidates)) {
+  if (!Array.isArray(brandMaster?.brands) || !Array.isArray(products)) {
     throw new Error("Brand sourcing input structure is invalid.");
   }
-  return { brandMaster, products, salesSnapshots, candidates };
+  return { brandMaster, products, salesSnapshots };
 }
 
 async function writeAtomic(file, data) {
@@ -134,9 +157,14 @@ async function writeAtomic(file, data) {
   await rename(temp, file);
 }
 
+export async function refreshBrandSourcingMaster(workDir = WORK) {
+  const result = buildBrandSourcingMaster(await loadInputs(workDir));
+  await writeAtomic(join(workDir, "brand-sourcing-master.json"), result);
+  return result;
+}
+
 export async function main() {
-  const result = buildBrandSourcingMaster(await loadInputs());
-  await writeAtomic(OUTPUT, result);
+  const result = await refreshBrandSourcingMaster();
   console.log(JSON.stringify({ output: OUTPUT, brands: result.brands.length, summary: result.summary }, null, 2));
   return result;
 }

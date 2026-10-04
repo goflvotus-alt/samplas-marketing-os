@@ -131,6 +131,55 @@ test("known code requires exact canonical name or unambiguous known alias, never
 });
 
 const driftCases = [["B0000BDG", "BORC", "PERSONSOUL"], ["B0000BDJ", "GKL", "UNDER THE SIGN"], ["B0000BDM", "LAMASKARADE", "PRAYING"]];
+const inactiveLegacyMaster = { brands: [
+  { brand_code: "B0000BDG", brand_name: "BORC", name_aliases: [], active: false, nameSource: "suggested" },
+  { brand_code: "B00000WK", brand_name: "Birth of Royal Child", name_aliases: [], active: true, nameSource: "suggested" }
+] };
+const personsoulObservation = { brand_code: "B0000BDG", brand_name: "PERSONSOUL", product_count: 23 };
+
+test("inactive legacy BORC does not classify PERSONSOUL as code-name conflict", () => {
+  const before = JSON.stringify(inactiveLegacyMaster);
+  const queue = detectPendingBrands({ canonical: inactiveLegacyMaster, cafe24Brands: [personsoulObservation] });
+  assert.equal(queue.candidates.length, 1, "inactive-only code must not skip the Cafe24 observation");
+  const c = queue.candidates[0];
+  assert.equal(c.status, "PENDING");
+  assert.equal(c.reviewReason, "UNRESOLVED");
+  assert.equal(c.canonicalName, undefined);
+  assert.equal(c.sourceBrandCode, "B0000BDG");
+  assert.equal(c.rawBrandName, "PERSONSOUL");
+  assert.equal(JSON.stringify(inactiveLegacyMaster), before);
+});
+
+test("inactive-only Cafe24 code remains observable without previous candidates", () => {
+  const queue = detectPendingBrands({ canonical: { brands: [inactiveLegacyMaster.brands[0]] }, cafe24Brands: [personsoulObservation] });
+  assert.equal(queue.candidates.length, 1);
+  assert.equal(queue.candidates[0].source, "CAFE24");
+  assert.deepEqual(queue.candidates[0].cafe24Variants, ["PERSONSOUL"]);
+});
+
+test("inactive legacy PERSONSOUL refresh preserves existing pending candidate ID", () => {
+  const previous = detectPendingBrands({ canonical: { brands: [] }, cafe24Brands: [personsoulObservation] });
+  const queue = detectPendingBrands({ canonical: inactiveLegacyMaster, cafe24Brands: [personsoulObservation], previous });
+  assert.equal(queue.candidates.length, 1);
+  assert.equal(queue.candidates[0].id, previous.candidates[0].id);
+  assert.equal(queue.candidates[0].status, "PENDING");
+  assert.equal(queue.candidates[0].reviewReason, "UNRESOLVED");
+  const previousConflict = structuredClone(previous);
+  Object.assign(previousConflict.candidates[0], { reviewReason: "CODE_NAME_CONFLICT", canonicalName: "BORC" });
+  const refreshed = detectPendingBrands({ canonical: inactiveLegacyMaster, cafe24Brands: [personsoulObservation], previous: previousConflict });
+  assert.equal(refreshed.candidates.length, 1);
+  assert.equal(refreshed.candidates[0].id, previousConflict.candidates[0].id);
+  assert.equal(refreshed.candidates[0].status, "PENDING");
+});
+
+test("inactive legacy owner remains comparison evidence without claiming PERSONSOUL identity", () => {
+  const c = { status: "PENDING", reviewReason: "UNRESOLVED", source: "CAFE24", sourceBrandCode: "B0000BDG", rawBrandName: "PERSONSOUL", cafe24Variants: ["PERSONSOUL"] };
+  const metadata = pendingBrandUiMetadata(c, { brands: [inactiveLegacyMaster.brands[0]] });
+  assert.equal(metadata.masterComparison.result, "NO_EXISTING_IDENTITY");
+  assert.deepEqual(metadata.masterComparison.codeMatches, [{ brandCode: "B0000BDG", canonicalName: "BORC" }]);
+  assert.equal(metadata.recommendedUiAction, null, "legacy claims still prevent automatic NEW eligibility");
+});
+
 test("three real code conflicts enrich existing ECOUNT IDs and preserve all 12 pending rows", () => {
   const brands = driftCases.map(([brand_code, brand_name]) => ({ brand_code, brand_name, name_aliases: [], nameSource: "suggested" }));
   const ecountLines = [...driftCases.map(([, , BRAND]) => ({ BRAND })), ...Array.from({ length: 9 }, (_, i) => ({ BRAND: `Unresolved ${i}` }))];

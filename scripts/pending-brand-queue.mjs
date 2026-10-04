@@ -7,6 +7,7 @@ import { detectPersonalPayment } from "./load-ecount-offline-sales.mjs";
 import { readEcountOfflineSalesSnapshot } from "./read-ecount-offline-sales-snapshot.mjs";
 import { pendingBrandUiMetadata } from "./pending-brand-ui-metadata.mjs";
 import { readWorkbenchSources, buildIdentityWorkbench } from "./brand-identity-workbench.mjs";
+import { refreshBrandSourcingMaster } from "./build-brand-sourcing-master.mjs";
 
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, "utf8")); }
@@ -40,6 +41,43 @@ function candidateFrom(row, source) {
     collabCandidates: collaboration?.type === "collab" ? collaboration.candidates : [] };
 }
 
+// Fresh source rows, not persisted BOTH/eligibility hints, authorize onboarding.
+export function isAutoSafePendingDecision(candidate, canonical, sources) {
+  const brands = Array.isArray(canonical) ? canonical : canonical?.brands;
+  if (!Array.isArray(brands) || !Array.isArray(sources?.cafe24Brands) || !Array.isArray(sources?.ecountLines) ||
+      candidate.status !== "PENDING" || candidate.source !== "BOTH" || candidate.heldAt ||
+      candidate.collabCandidates?.length || candidate.relatedCandidateIds?.length ||
+      !["UNRESOLVED", "CODE_NAME_CONFLICT", "INACTIVE_CODE_REUSED"].includes(candidate.reviewReason)) return null;
+  const code = normalizeBrandKey(candidate.sourceBrandCode);
+  const name = normalizeBrandKey(candidate.rawBrandName);
+  if (!code || code === "B0000000" || !name || candidate.rawBrandName.length > 200 ||
+      extractBracketBrandCandidate(`[${candidate.rawBrandName}]`)?.type === "collab") return null;
+  const live = sources.cafe24Brands.map(row => candidateFrom({ ...row, brand_name: row.brand_name || row.brandName || row.name }, "CAFE24"));
+  const current = live.filter(row => normalizeBrandKey(row.sourceBrandCode) === code);
+  if (!current.length || current.some(row => normalizeBrandKey(row.rawBrandName) !== name || row.collabCandidates.length) ||
+      live.some(row => normalizeBrandKey(row.rawBrandName) === name && normalizeBrandKey(row.sourceBrandCode) !== code)) return null;
+  const products = (sources.products || []).map(row => candidateFrom(row, "CAFE24"));
+  if (products.some(row => (normalizeBrandKey(row.sourceBrandCode) === code && normalizeBrandKey(row.rawBrandName) !== name) ||
+      (normalizeBrandKey(row.rawBrandName) === name && normalizeBrandKey(row.sourceBrandCode) !== code))) return null;
+  const ecount = sources.ecountLines.filter(row => !row.isPersonalPayment && !detectPersonalPayment(row.customerName).isPersonalPayment &&
+    !/^QQQ/i.test(String(row.productCode || row.ecountProdCd || ""))).map(row => candidateFrom(row, "ECOUNT"));
+  if (!ecount.some(row => normalizeBrandKey(row.rawBrandName) === name && !row.collabCandidates.length) ||
+      [...(candidate.cafe24Variants || []), ...(candidate.ecountVariants || [])].some(n => normalizeBrandKey(n) !== name)) return null;
+  const owners = brands.filter(b => normalizeBrandKey(b.brand_code) === code);
+  if (owners.length > 1 || owners.some(b => b.active !== false || b.supersededBy)) return null;
+  const legacy = owners[0];
+  for (const b of brands) {
+    const names = [b.brand_name, ...parseBrandAliases(b.name_aliases)].map(normalizeBrandKey);
+    const codes = [b.brand_code, ...(b.sourceCafe24Codes || [])].map(normalizeBrandKey);
+    if (names.includes(name) || codes.includes(name) || names.includes(code) || (b !== legacy && codes.includes(code))) return null;
+  }
+  if ((sources.aliases || []).some(a => normalizeBrandKey(a.alias) === name ||
+      (normalizeBrandKey(a.alias) === code && a.brandId !== legacy?.brand_code)) ||
+      (sources.compatibility || []).some(b => normalizeBrandKey(b.name) === name ||
+        (normalizeBrandKey(b.id) === code && b.id !== legacy?.brand_code))) return null;
+  return { action: legacy ? "REASSIGN_INACTIVE_CODE" : "NEW", ...(legacy ? { legacyBrandCode: legacy.brand_code } : {}) };
+}
+
 // Detection is deliberately separate from attribution: no resolver consumes this queue.
 export function detectPendingBrands({ canonical, compatibility = [], aliases = [], cafe24Brands = [], products = [], ecountLines = [], previous = { candidates: [] }, recentReview = null, now = new Date().toISOString() }) {
   if (!(Array.isArray(canonical) || Array.isArray(canonical?.brands)) ||
@@ -55,6 +93,7 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
     else owners.set(key, b.id);
   }
   const knownCodes = new Set(registry.brands.map(b => normalizeBrandKey(b.id)));
+  const activelyOwnedCodes = new Set(registry.brands.filter(b => b.active !== false).map(b => normalizeBrandKey(b.id)));
   const canonicalRows = Array.isArray(canonical) ? canonical : canonical.brands;
   const liveByCode = new Map(cafe24Brands.map(b => [normalizeBrandKey(b.brand_code || b.brandCode || b.code), b]));
   // Explicit, bounded audit input, not a permanent list or suggested-only rule.
@@ -66,7 +105,7 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
       typeof recentReview.evidence !== "string" || !recentReview.evidence.trim() || recentReview.evidence.length > 1000)) invalidDecision("Invalid recent review evidence");
   const codeEvidence = new Map();
   for (const [code, live] of liveByCode) {
-    const b = canonicalRows.find(b => normalizeBrandKey(b.brand_code) === code);
+    const b = canonicalRows.find(b => normalizeBrandKey(b.brand_code) === code && b.active !== false);
     if (!b || code === normalizeBrandKey("B0000000")) continue;
     const currentName = normalizeBrandName(live.brand_name || live.brandName || live.name || "");
     if (!currentName) continue;
@@ -97,7 +136,7 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
       const reviewedObservation = previous.candidates.some(p => source === "CAFE24"
         ? normalizeBrandKey(p.sourceBrandCode) === normalizeBrandKey(c.sourceBrandCode)
         : [p.rawBrandName, ...(p.ecountVariants || [])].some(name => normalizeBrandKey(name) === normalizeBrandKey(c.rawBrandName)));
-      if (source === "CAFE24" && (!c.sourceBrandCode || c.sourceBrandCode === "B0000000" || (knownCodes.has(normalizeBrandKey(c.sourceBrandCode)) && !reviewedObservation && !evidence))) continue;
+      if (source === "CAFE24" && (!c.sourceBrandCode || c.sourceBrandCode === "B0000000" || (activelyOwnedCodes.has(normalizeBrandKey(c.sourceBrandCode)) && !reviewedObservation && !evidence))) continue;
       if (source === "ECOUNT" && !c.rawBrandName) continue;
       const key = normalizeBrandKey(c.rawBrandName);
       const hit = conflicts.has(key) ? null : resolveBrand(c.rawBrandName, registry) || resolveBrand(c.rawBrandName, compat);
@@ -170,6 +209,13 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
       ((candidate.sourceBrandCode && normalizeBrandKey(c.sourceBrandCode) === normalizeBrandKey(candidate.sourceBrandCode)) ||
       [c.rawBrandName, ...(c.cafe24Variants || []), ...(c.ecountVariants || [])].some(n => names.has(normalizeBrandKey(n))))).map(c => c.id);
   }
+  for (const candidate of all.filter(c => observedIds.has(c.id))) {
+    const decision = isAutoSafePendingDecision(candidate, canonical, { cafe24Brands, products, ecountLines, aliases, compatibility });
+    if (decision?.action === "REASSIGN_INACTIVE_CODE") {
+      candidate.reviewReason = "INACTIVE_CODE_REUSED";
+      for (const field of ["canonicalName", "canonicalAliases", "recentReviewEvidence"]) delete candidate[field];
+    }
+  }
   const observed = all.filter(c => observedIds.has(c.id));
   return { version: 1, updatedAt: now, candidates: all, scan: { observed: observed.length,
     cafe24: observed.filter(c => c.source === "CAFE24").length, ecount: observed.filter(c => c.source === "ECOUNT").length,
@@ -187,8 +233,8 @@ export async function loadPendingBrandSources(workDir, month) {
   return { canonical, compatibility, aliases, products, ecountLines: snapshot?.salesLines || [], provenance: { month, productCount: products.length, ecountLineCount: snapshot?.salesLines?.length || 0, ecountAvailable: Boolean(snapshot), catalogGeneratedAt: catalog.generatedAt || catalog.updatedAt || null, ecountSources: snapshot?.sources || [], ecountImportedAt: snapshot?.importedAt || null } };
 }
 
-// Serialize local refreshes and atomically replace only the queue. Failed scans
-// leave its previous contents intact. ponytail: single-process writer; use a
+// Serialize refresh and review writes. Queue-only is the default; explicit
+// onboarding uses the same decision transaction. ponytail: single-process writer; use a
 // cross-process lock if multiple server processes ever share this work directory.
 let refreshTail = Promise.resolve();
 export function withPendingBrandWrite(task) {
@@ -196,7 +242,7 @@ export function withPendingBrandWrite(task) {
   refreshTail = result;
   return result;
 }
-export function refreshPendingBrands(workDir, loadSources, { dryRun = false } = {}) {
+export function refreshPendingBrands(workDir, loadSources, { dryRun = false, autoApprove = false, buildCompatibility } = {}) {
   return withPendingBrandWrite(async () => {
     const sources = await loadSources();
     const result = detectPendingBrands({ ...sources, previous: await readPendingBrands(workDir) });
@@ -208,17 +254,45 @@ export function refreshPendingBrands(workDir, loadSources, { dryRun = false } = 
       try { await writeFile(temp, `${JSON.stringify(result, null, 2)}\n`, { flag: "wx" }); await rename(temp, file); }
       finally { await unlink(temp).catch(error => { if (error.code !== "ENOENT") throw error; }); }
     }
+    if (!dryRun && autoApprove) {
+      const onboarding = [];
+      for (const candidate of result.candidates) {
+        const canonical = await readJson(join(workDir, "brand-master.json"), null);
+        const decision = isAutoSafePendingDecision(candidate, canonical, sources);
+        if (!decision) continue;
+        try {
+          onboarding.push(await reviewPendingBrandUnlocked(workDir, { id: candidate.id, action: decision.action, brandName: candidate.rawBrandName }, buildCompatibility, { sources }));
+        } catch (error) {
+          onboarding.push({ ok: false, id: candidate.id, error: error.message });
+        }
+      }
+      return { ...result, ...(await readPendingBrands(workDir)), onboarding, dryRun };
+    }
     return { ...result, dryRun };
   });
 }
 
 function invalidDecision(message) { throw Object.assign(new Error(message), { status: 400 }); }
 
-export function approvedCafe24BrandCode(code, canonical) {
+export function approvedCafe24BrandCode(code, canonical, period = null) {
   const brands = Array.isArray(canonical) ? canonical : canonical?.brands || [];
-  // Existing primary keys always win. Only explicit approval metadata can map a
-  // new source code; ordinary name aliases never reinterpret Cafe24 keys.
-  if (brands.some(b => b.brand_code === code)) return code;
+  const owners = brands.filter(b => b.brand_code === code);
+  if (owners.length) {
+    const owner = owners[0];
+    const transition = owner.supersededBy;
+    const matches = brands.filter(b => b.active !== false && b.sourceCafe24Codes?.includes(code));
+    if (owners.length !== 1 || owner.active !== false || !transition ||
+        !/^\d{4}-(0[1-9]|1[0-2])$/.test(transition.effectiveMonth || "") || matches.length !== 1 ||
+        matches[0].brand_code !== transition.brandCode) return code;
+    // Saved prior months keep their original identity. A cross-boundary range
+    // cannot safely attribute one product total to either identity.
+    if (period) {
+      if (!period.since || !period.until) return code;
+      if (period.until.slice(0, 7) < transition.effectiveMonth) return code;
+      if (period.since.slice(0, 7) < transition.effectiveMonth) return "UNASSIGNED";
+    }
+    return matches[0].brand_code;
+  }
   const matches = brands.filter(b => b.sourceCafe24Codes?.includes(code));
   return matches.length === 1 ? matches[0].brand_code : code;
 }
@@ -244,8 +318,8 @@ function confirmExistingTarget(canonical, candidate, aliases) {
 }
 
 // Pure prevalidation: no source file is touched until every alias/target is valid.
-export function planPendingBrandDecision(canonical, queue, input, now = new Date().toISOString(), aliases = []) {
-  if (!input || !["NEW", "LINK", "IGNORE", "HOLD", "CONFIRM_EXISTING"].includes(input.action) || typeof input.id !== "string") invalidDecision("Invalid pending brand decision");
+export function planPendingBrandDecision(canonical, queue, input, now = new Date().toISOString(), aliases = [], sources = null) {
+  if (!input || !["NEW", "LINK", "IGNORE", "HOLD", "CONFIRM_EXISTING", "REASSIGN_INACTIVE_CODE"].includes(input.action) || typeof input.id !== "string") invalidDecision("Invalid pending brand decision");
   if (input.note !== undefined && (typeof input.note !== "string" || input.note.length > 1000)) invalidDecision("Invalid review note");
   const nextQueue = structuredClone(queue);
   const candidate = nextQueue.candidates.find(c => c.id === input.id);
@@ -262,7 +336,17 @@ export function planPendingBrandDecision(canonical, queue, input, now = new Date
     return { canonical: nextCanonical, queue: nextQueue, candidate };
   }
   let target;
-  if (input.action === "CONFIRM_EXISTING") {
+  if (input.action === "REASSIGN_INACTIVE_CODE") {
+    const decision = isAutoSafePendingDecision(candidate, canonical, sources && { ...sources, aliases });
+    if (decision?.action !== input.action) invalidDecision("Current source evidence is not eligible for inactive code reassignment");
+    const code = `MANUAL_${candidate.id}`;
+    if (brands.some(b => normalizeBrandKey(b.brand_code) === normalizeBrandKey(code))) invalidDecision("Canonical code already exists");
+    target = { brand_code: code, brand_name: normalizeBrandName(candidate.rawBrandName), name_aliases: [], instagram_tag: "", active: true, nameSource: "confirmed", sourceCafe24Codes: [candidate.sourceBrandCode] };
+    const legacy = brands.find(b => b.brand_code === decision.legacyBrandCode);
+    legacy.supersededBy = { brandCode: code, effectiveMonth: new Date(now).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 7) };
+    brands.push(target);
+    if (!Array.isArray(nextCanonical)) nextCanonical.updatedAt = now;
+  } else if (input.action === "CONFIRM_EXISTING") {
     target = confirmExistingTarget(canonical, candidate, aliases);
     if (!target || input.canonicalBrandCode !== target.brand_code) invalidDecision("Candidate is not eligible for CONFIRM_EXISTING or canonical target mismatched");
   } else if (input.action !== "IGNORE") {
@@ -299,20 +383,23 @@ export function planPendingBrandDecision(canonical, queue, input, now = new Date
     if (input.action === "NEW") brands.push(target);
     if (!codeConflict && !Array.isArray(nextCanonical)) nextCanonical.updatedAt = now;
   }
-  Object.assign(candidate, { status: { NEW: "APPROVED", LINK: "LINKED", IGNORE: "IGNORED", CONFIRM_EXISTING: "APPROVED" }[input.action], approvalAction: input.action,
+  Object.assign(candidate, { status: { NEW: "APPROVED", REASSIGN_INACTIVE_CODE: "APPROVED", LINK: "LINKED", IGNORE: "IGNORED", CONFIRM_EXISTING: "APPROVED" }[input.action], approvalAction: input.action,
     approvedAt: now, canonicalBrandCode: target?.brand_code || null, note: input.note || "" });
   nextQueue.updatedAt = now;
   return { canonical: nextCanonical, queue: nextQueue, candidate };
 }
 
-export function reviewPendingBrand(workDir, input, buildCompatibility, { replace = rename } = {}) {
-  return withPendingBrandWrite(async () => {
+export function reviewPendingBrand(workDir, input, buildCompatibility, options = {}) {
+  return withPendingBrandWrite(() => reviewPendingBrandUnlocked(workDir, input, buildCompatibility, options));
+}
+
+async function reviewPendingBrandUnlocked(workDir, input, buildCompatibility, { replace = rename, sources = null } = {}) {
     const canonicalFile = join(workDir, "brand-master.json");
     const canonical = await readJson(canonicalFile, null);
-    const aliases = input?.action === "CONFIRM_EXISTING" ? await readJson(join(workDir, "intelligence/brand-aliases.json"), []) : [];
-    const result = planPendingBrandDecision(canonical, await readPendingBrands(workDir), input, new Date().toISOString(), aliases);
+    const aliases = await readJson(join(workDir, "intelligence/brand-aliases.json"), []);
+    const result = planPendingBrandDecision(canonical, await readPendingBrands(workDir), input, new Date().toISOString(), aliases, sources);
     const files = [];
-    if (!["IGNORE", "HOLD", "CONFIRM_EXISTING"].includes(input.action) && result.candidate.reviewReason !== "CODE_NAME_CONFLICT") {
+    if (!["IGNORE", "HOLD", "CONFIRM_EXISTING"].includes(input.action) && (input.action === "REASSIGN_INACTIVE_CODE" || result.candidate.reviewReason !== "CODE_NAME_CONFLICT")) {
       const existingAliases = await readJson(join(workDir, "intelligence/brand-aliases.json"), []);
       const target = (Array.isArray(result.canonical) ? result.canonical : result.canonical.brands).find(b => b.brand_code === result.candidate.canonicalBrandCode);
       const claims = new Set([target.brand_name, ...parseBrandAliases(target.name_aliases)].map(normalizeBrandKey));
@@ -357,8 +444,16 @@ export function reviewPendingBrand(workDir, input, buildCompatibility, { replace
         await unlink(file).catch(error => { if (error.code !== "ENOENT") throw error; });
       }
     }
-    return { ok: true, candidate: result.candidate };
-  });
+    let sourcingRefresh;
+    if (["NEW", "REASSIGN_INACTIVE_CODE"].includes(input.action)) {
+      try {
+        const sourcing = await refreshBrandSourcingMaster(workDir);
+        sourcingRefresh = { ok: true, brands: sourcing.brands.length, generatedAt: sourcing.generatedAt };
+      } catch (error) {
+        sourcingRefresh = { ok: false, error: error.message };
+      }
+    }
+    return { ok: true, candidate: result.candidate, ...(sourcingRefresh ? { sourcingRefresh } : {}) };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
