@@ -6,7 +6,7 @@ services:
     region: oregon
     buildCommand: npm install
     startCommand: npm start
-    healthCheckPath: /api/status
+    healthCheckPath: /healthz
     disk:
       name: samplas-cafe24-token-store
       mountPath: /var/data

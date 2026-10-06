@@ -166,6 +166,13 @@ async function runVeilFoundScheduledCheck() {
 const server = isMainModule ? createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+    // Render health check: no I/O and no external calls. /api/status (Instagram/Cafe24/Meta/Dropbox
+    // checks) timed out after 5 s during a pending refresh and Render restarted the instance (2026-10-06).
+    if (url.pathname === "/healthz") {
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end('{"ok":true}');
+      return;
+    }
     if (mcpEnabled && (url.pathname === "/mcp" || url.pathname.startsWith("/.well-known/oauth-protected-resource"))) {
       if (await (await loadMcpRoute())(req, res, url)) return;
     }
