@@ -26,7 +26,9 @@ import ExcelJS from "exceljs";
 import { seoulDateKey, previousTuesdayToMondayRange, previousWeekRange, wowChange } from "./naver-ads-weekly-report.mjs";
 
 import { analyzeInstagram } from "./instagram-weekly-analysis.mjs";
-import { ACTION_COLUMNS, writeDecisionSheet, addExecutiveRead, addWowFormatting, metricPresent } from "./weekly-report-analysis.mjs";
+import { writeDecisionSheet, addExecutiveRead, addWowFormatting, metricPresent } from "./weekly-report-analysis.mjs";
+
+import { instagramDashboard, instagramContentRows, instagramActions, addActionTable, styleTable } from "./weekly-report-presentation.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -178,12 +180,19 @@ function buildSummarySheet(workbook, model) {
 
 function buildContentSheet(workbook, name, posts, model) {
   const sheet = workbook.addWorksheet(name);
-  setupSheet(sheet, CONTENT_COLUMNS);
+  setupSheet(sheet, [...CONTENT_COLUMNS,
+    ...['saveRate','shareRate','engagementRate'].map(key=>({header:({saveRate:'Save Rate',shareRate:'Share Rate',engagementRate:'Engagement Rate'})[key],key,width:16,style:{numFmt:'0.0%'}})),
+    {header:'performance_signal',key:'performance_signal',width:38},{header:'next_action',key:'next_action',width:40}]);
   if (!model.ok) {
     sheet.addRow({ date: `UNAVAILABLE — ${model.error}` });
     return sheet;
   }
-  for (const post of posts) sheet.addRow(post);
+  for (const post of instagramContentRows({...model,content:posts})) {
+    const row=sheet.addRow(post);
+    if(post.performance_signal.includes('WINNER'))row.getCell('performance_signal').font={bold:true,color:{argb:'FF216A3E'}};
+    else if(post.performance_signal==='LOW PERFORMER')row.getCell('performance_signal').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF2E8'}};
+  }
+  styleTable(sheet);
   return sheet;
 }
 
@@ -231,10 +240,13 @@ export async function buildWeeklyInstagramReportWorkbook(model) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "SAMPLAS Marketing OS";
   workbook.created = new Date();
-  buildSummarySheet(workbook, model);
-  buildContentSheet(workbook, "02_콘텐츠성과", model.content, model);
-  writeDecisionSheet(workbook,"03_콘텐츠분석",model.analysis||[]);
+  instagramDashboard(workbook, model);
+  buildContentSheet(workbook, "02_콘텐츠", model.content, model);
+  addActionTable(workbook,"03_다음주",instagramActions(model),[['Priority','priority'],['What happened','happened'],['Evidence','evidence'],['Action','action'],['Success metric','success'],['Decision next week','decision']]);
+  buildSummarySheet(workbook, model).state="hidden";
+  writeDecisionSheet(workbook,"03_콘텐츠분석",model.analysis||[]).state="hidden";
   const stories=workbook.addWorksheet("04_스토리분석");
+  stories.state="hidden";
   setupSheet(stories,[{header:"date",key:"date",width:14},{header:"id",key:"id",width:22},...['reach','replies','tapsForward','tapsBack','exits'].map(key=>({header:key,key,width:16})),{header:"signal",key:"signal",width:24},{header:"interpretation",key:"interpretation",width:55},{header:"this_week_action",key:"this_week_action",width:55},{header:"basis",key:"basis",width:65}]);
   if(model.stories===null)stories.addRow({basis:"UNAVAILABLE — no story history supplied; no fabricated full-week story totals."});
   else{
@@ -250,7 +262,6 @@ export async function buildWeeklyInstagramReportWorkbook(model) {
     }
     if(!model.stories.length)stories.addRow({basis:"No cached stories in this period; full-week coverage not guaranteed, not zero historical activity."});
   }
-  writeDecisionSheet(workbook,"05_다음주액션",model.actions||[],ACTION_COLUMNS);
   buildAccountInsightsSheet(workbook, model);
   buildRawSheet(workbook, model);
   return workbook;
@@ -290,7 +301,7 @@ export async function writeInstagramWeeklyReportFile(workbook, { since, until, o
     const validation = new ExcelJS.Workbook();
     await validation.xlsx.readFile(tempPath);
     const sheetNames = validation.worksheets.map((sheet) => sheet.name);
-    for (const required of ["01_주간요약", "02_콘텐츠성과", "03_콘텐츠분석", "04_스토리분석", "05_다음주액션", "ACCOUNT INSIGHTS", "RAW"]) {
+    for (const required of ["01_한눈에", "02_콘텐츠", "03_다음주", "01_주간요약", "03_콘텐츠분석", "04_스토리분석", "ACCOUNT INSIGHTS", "RAW"]) {
       if (!sheetNames.includes(required)) throw new Error(`Generated workbook is missing sheet: ${required}`);
     }
   } catch (error) {

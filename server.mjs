@@ -34,6 +34,7 @@ import {
 } from "./scripts/dropbox-report-uploader.mjs";
 import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
 import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs";
+import { runWeeklyReportPreview, handleWeeklyReportPreview } from "./scripts/weekly-report-manual.mjs";
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
 import { getVeilFoundStatus, runVeilFoundPublisher } from "./scripts/veil-found-publisher.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
@@ -312,6 +313,22 @@ const server = isMainModule ? createServer(async (req, res) => {
         { refresh: url.searchParams.get("refresh") === "1" }
       );
       return json(res, data);
+    }
+    if (url.pathname === "/api/reports/weekly/run") {
+      return handleWeeklyReportPreview(req, res, {
+        authorized: isAuthorizedInternalRequest, readBody: readJsonBody, json,
+        run: body => runWeeklyReportPreview(body, {
+          env,
+          hasPersistentMetaConnection: async () => Boolean((await readMetaTokenRecord())?.accessToken),
+          fetchers: {
+            naver: fetchNaverAdsPerformanceForWeeklyReport,
+            instagram: buildInstagramRangeDataForWeeklyReport,
+            meta: buildMetaAdsSummaryForWeeklyReport,
+            actualOrders: fetchCafe24ActualOrdersForWeeklyReport,
+            actualAnalytics: fetchCafe24AnalyticsForWeeklyReport
+          }
+        })
+      });
     }
     if (url.pathname === "/api/meta-ads/score-weights") {
       if (req.method === "POST") {

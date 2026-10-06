@@ -96,12 +96,12 @@ test("unavailable current-week data does not write a file and reports the reason
   assert.match(result.error, /access token/i);
 });
 
-test("XLSX generation — workbook has all 5 decision sheets plus hidden debug sheets with the expected CONTENT headers", async () => {
+test("XLSX generation — workbook has 3 visible decision sheets plus hidden audit sheets with the expected CONTENT headers", async () => {
   const model = buildWeeklyInstagramReportModel({ current: currentPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
   const workbook = await buildWeeklyInstagramReportWorkbook(model);
   const names = workbook.worksheets.map((sheet) => sheet.name);
-  assert.deepEqual(names, ["01_주간요약", "02_콘텐츠성과", "03_콘텐츠분석", "04_스토리분석", "05_다음주액션", "ACCOUNT INSIGHTS", "RAW"]);
-  const contentHeaders = workbook.getWorksheet("02_콘텐츠성과").getRow(1).values.filter(Boolean);
+  assert.deepEqual(names, ["01_한눈에", "02_콘텐츠", "03_다음주", "01_주간요약", "03_콘텐츠분석", "04_스토리분석", "ACCOUNT INSIGHTS", "RAW"]);
+  const contentHeaders = workbook.getWorksheet("02_콘텐츠").getRow(1).values.filter(Boolean);
   for (const expected of ["Date", "Title", "Type", "Views", "Reach", "Likes", "Comments", "Saves", "Shares", "Permalink"]) {
     assert.ok(contentHeaders.includes(expected), `missing CONTENT header: ${expected}`);
   }

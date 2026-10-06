@@ -20,6 +20,8 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import ExcelJS from "exceljs";
 
+import { naverDashboard, naverActions, naverCampaignSignal, addActionTable, styleTable } from "./weekly-report-presentation.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // ---------------------------------------------------------------------------
@@ -186,21 +188,20 @@ const KPI_ROWS = [
 ];
 
 const CAMPAIGN_COLUMNS = [
-  { header: "Campaign ID", key: "campaignId", width: 16 },
-  { header: "Campaign Name", key: "campaignName", width: 28 },
-  { header: "Status", key: "status", width: 12 },
-  { header: "Spend", key: "spend", width: 14, style: { numFmt: WON_FMT } },
-  { header: "Impressions", key: "impressions", width: 14, style: { numFmt: NUM_FMT } },
-  { header: "Clicks", key: "clicks", width: 12, style: { numFmt: NUM_FMT } },
-  { header: "CTR", key: "ctr", width: 10, style: { numFmt: PCT1_FMT } },
-  { header: "CPC", key: "cpc", width: 12, style: { numFmt: WON_FMT } },
-  { header: "Conversions", key: "conversions", width: 13, style: { numFmt: NUM_FMT } },
-  { header: "Conversion Value", key: "conversionValue", width: 16, style: { numFmt: WON_FMT } },
-  { header: "CVR", key: "conversionRate", width: 12, style: { numFmt: PCT1_FMT } },
-  { header: "CPA", key: "cpa", width: 12, style: { numFmt: WON_FMT } },
-  { header: "ROAS", key: "roas", width: 10, style: { numFmt: MULTIPLE_FMT } },
-  { header: "WoW Spend", key: "wowSpend", width: 12, style: { numFmt: PCT1_SIGNED_FMT } },
-  { header: "WoW Conv. Value", key: "wowConversionValue", width: 16, style: { numFmt: PCT1_SIGNED_FMT } }
+  {header:"Campaign",key:"campaignName",width:28},{header:"Status",key:"status",width:12},
+  {header:"Spend",key:"spend",width:14,style:{numFmt:WON_FMT}},
+  {header:"Conversions",key:"conversions",width:14,style:{numFmt:NUM_FMT}},
+  {header:"Revenue",key:"conversionValue",width:16,style:{numFmt:WON_FMT}},
+  {header:"ROAS",key:"roas",width:12,style:{numFmt:MULTIPLE_FMT}},
+  {header:"CPA",key:"cpa",width:14,style:{numFmt:WON_FMT}},
+  {header:"CTR",key:"ctr",width:12,style:{numFmt:PCT1_FMT}},
+  {header:"CPC",key:"cpc",width:14,style:{numFmt:WON_FMT}},
+  {header:"CVR",key:"conversionRate",width:12,style:{numFmt:PCT1_FMT}},
+  {header:"WoW Spend",key:"wowSpend",width:14,style:{numFmt:PCT1_SIGNED_FMT}},
+  {header:"WoW Revenue",key:"wowConversionValue",width:14,style:{numFmt:PCT1_SIGNED_FMT}},
+  {header:"Performance Signal",key:"performanceSignal",width:24},
+  {header:"Campaign ID",key:"campaignId",width:24},{header:"Impressions",key:"impressions",width:14,style:{numFmt:NUM_FMT}},
+  {header:"Clicks",key:"clicks",width:12,style:{numFmt:NUM_FMT}}
 ];
 
 function setupSheet(sheet, columns) {
@@ -272,7 +273,7 @@ function buildSummarySheet(workbook, model) {
 }
 
 function buildCampaignsSheet(workbook, model) {
-  const sheet = workbook.addWorksheet("CAMPAIGNS");
+  const sheet = workbook.addWorksheet("02_캠페인");
   setupSheet(sheet, CAMPAIGN_COLUMNS);
   if (!model.ok) {
     sheet.addRow({ campaignId: `UNAVAILABLE — ${model.error}` });
@@ -281,10 +282,12 @@ function buildCampaignsSheet(workbook, model) {
   for (const row of model.campaigns) {
     sheet.addRow({
       ...row,
+      performanceSignal: naverCampaignSignal(row,model),
       ctr: row.ctr === null || row.ctr === undefined ? null : row.ctr / 100,
       conversionRate: row.conversionRate === null || row.conversionRate === undefined ? null : row.conversionRate / 100
     });
   }
+  styleTable(sheet);
   addPerformanceFormatting(sheet,{spend:"spend",outcome:"conversions",roas:"roas"});
   addWowFormatting(sheet,"wowConversionValue",2,sheet.rowCount,"conversionValue");
   return sheet;
@@ -319,8 +322,10 @@ export async function buildWeeklyReportWorkbook(model) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "SAMPLAS Marketing OS";
   workbook.created = new Date();
-  buildSummarySheet(workbook, model);
+  naverDashboard(workbook, model);
   buildCampaignsSheet(workbook, model);
+  addActionTable(workbook,"03_액션",naverActions(model).slice(0,5),[['Priority','priority'],['What happened','happened'],['Evidence','evidence'],['Likely area','area'],['Action this week','action'],['Success check','success']]);
+  buildSummarySheet(workbook, model).state="hidden";
   buildUnavailableEntitySheet(workbook, "ADGROUPS", [
     { header: "Adgroup ID", key: "adgroupId", width: 30 },
     { header: "Campaign", key: "campaignName", width: 20 },
@@ -351,6 +356,7 @@ export async function buildWeeklyReportWorkbook(model) {
   ], model.keywords);
   writeDecisionSheet(workbook,"AI_ANALYSIS",model.analysis||[]);
   buildRawSheet(workbook, model);
+  for(const name of ["ADGROUPS","KEYWORDS","AI_ANALYSIS","RAW"])workbook.getWorksheet(name).state="hidden";
   return workbook;
 }
 
@@ -394,7 +400,7 @@ export async function writeWeeklyReportFile(workbook, { since, until, outputDir 
     const validation = new ExcelJS.Workbook();
     await validation.xlsx.readFile(tempPath);
     const sheetNames = validation.worksheets.map((sheet) => sheet.name);
-    for (const required of ["SUMMARY", "CAMPAIGNS", "ADGROUPS", "KEYWORDS", "AI_ANALYSIS", "RAW"]) {
+    for (const required of ["01_한눈에", "02_캠페인", "03_액션", "SUMMARY", "ADGROUPS", "KEYWORDS", "AI_ANALYSIS", "RAW"]) {
       if (!sheetNames.includes(required)) throw new Error(`Generated workbook is missing sheet: ${required}`);
     }
   } catch (error) {
