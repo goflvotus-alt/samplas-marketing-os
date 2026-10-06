@@ -115,6 +115,14 @@ const port = Number(env.PORT || 8787);
 const host = env.HOST || "127.0.0.1";
 const graphVersion = env.GRAPH_VERSION || "v25.0";
 const isMainModule = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+// ChatGPT read-only MCP endpoint (Phase 1). Off unless MCP_ENABLED=on; the module and its
+// dependencies are imported only on the first MCP request while enabled.
+const mcpEnabled = env.MCP_ENABLED === "on";
+let mcpRoutePromise = null;
+function loadMcpRoute() {
+  mcpRoutePromise ||= import("./scripts/mcp/mcp-route.mjs").then((m) => m.createMcpRoute(m.mcpConfigFromEnv(env, port)));
+  return mcpRoutePromise;
+}
 const operatorSessions = new Set();
 
 const mimeTypes = {
@@ -157,6 +165,9 @@ async function runVeilFoundScheduledCheck() {
 const server = isMainModule ? createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+    if (mcpEnabled && (url.pathname === "/mcp" || url.pathname.startsWith("/.well-known/oauth-protected-resource"))) {
+      if (await (await loadMcpRoute())(req, res, url)) return;
+    }
     if (url.pathname === "/") {
       return serveFile(res, join(outputDir, "samplas-marketing-os.html"));
     }

@@ -36,6 +36,14 @@ services:
         sync: false
       - key: META_AD_ACCOUNT_ID
         sync: false
+      - key: MCP_ENABLED
+        sync: false
+      - key: MCP_RESOURCE_URL
+        sync: false
+      - key: OAUTH_ISSUER
+        sync: false
+      - key: MCP_ALLOWED_SUBJECTS
+        sync: false
       - key: CAFE24_MALL_ID
         sync: false
       - key: CAFE24_CLIENT_ID
