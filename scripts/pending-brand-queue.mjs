@@ -42,6 +42,28 @@ function candidateFrom(row, source) {
     collabCandidates: collaboration?.type === "collab" ? collaboration.candidates : [] };
 }
 
+// Normalized names with non-collaboration ECOUNT evidence (sales lines + product master),
+// built once per source arrays. The auto-safe check runs for every candidate; re-parsing all
+// 14,842 product rows each time blocked the event loop past Render's 5 s health check (2026-10-06).
+// ponytail: keyed by array identity; rebuild if a caller ever mutates the arrays in place.
+const NO_ROWS = Object.freeze([]);
+const ecountEvidenceCache = new WeakMap();
+function ecountEvidenceNames(lines, products = NO_ROWS) {
+  let byProducts = ecountEvidenceCache.get(lines);
+  if (!byProducts) ecountEvidenceCache.set(lines, (byProducts = new WeakMap()));
+  let names = byProducts.get(products);
+  if (!names) {
+    names = new Set();
+    for (const row of [...lines, ...products]) {
+      if (row.isPersonalPayment || detectPersonalPayment(row.customerName).isPersonalPayment || /^QQQ/i.test(String(row.productCode || row.ecountProdCd || ""))) continue;
+      const c = candidateFrom(row, "ECOUNT");
+      if (!c.collabCandidates.length) names.add(normalizeBrandKey(c.rawBrandName));
+    }
+    byProducts.set(products, names);
+  }
+  return names;
+}
+
 // Fresh source rows, not persisted BOTH/eligibility hints, authorize onboarding.
 export function isAutoSafePendingDecision(candidate, canonical, sources) {
   const brands = Array.isArray(canonical) ? canonical : canonical?.brands;
@@ -61,9 +83,7 @@ export function isAutoSafePendingDecision(candidate, canonical, sources) {
   if (products.some(row => (normalizeBrandKey(row.sourceBrandCode) === code && normalizeBrandKey(row.rawBrandName) !== name) ||
       (normalizeBrandKey(row.rawBrandName) === name && normalizeBrandKey(row.sourceBrandCode) !== code))) return null;
   // Current ECOUNT product master counts as ECOUNT evidence; sales are optional.
-  const ecount = [...sources.ecountLines, ...(sources.ecountProducts || [])].filter(row => !row.isPersonalPayment && !detectPersonalPayment(row.customerName).isPersonalPayment &&
-    !/^QQQ/i.test(String(row.productCode || row.ecountProdCd || ""))).map(row => candidateFrom(row, "ECOUNT"));
-  if (!ecount.some(row => normalizeBrandKey(row.rawBrandName) === name && !row.collabCandidates.length) ||
+  if (!ecountEvidenceNames(sources.ecountLines, sources.ecountProducts || NO_ROWS).has(name) ||
       [...(candidate.cafe24Variants || []), ...(candidate.ecountVariants || [])].some(n => normalizeBrandKey(n) !== name)) return null;
   const owners = brands.filter(b => normalizeBrandKey(b.brand_code) === code);
   if (owners.length > 1 || owners.some(b => b.active !== false || b.supersededBy)) return null;
@@ -126,6 +146,15 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
   }
   const observations = [];
   const excluded = [];
+  // Built once per scan instead of per row: with 14,842 product-master rows the per-row
+  // re-normalization of every previous candidate blocked the event loop for seconds on Render.
+  const reviewedCafe24Codes = new Set(previous.candidates.map(p => normalizeBrandKey(p.sourceBrandCode)));
+  const reviewedEcountNames = new Set(previous.candidates.flatMap(p => [p.rawBrandName, ...(p.ecountVariants || [])]).map(name => normalizeBrandKey(name)));
+  const resolved = new Map();
+  const resolveOnce = raw => {
+    if (!resolved.has(raw)) resolved.set(raw, resolveBrand(raw, registry) || resolveBrand(raw, compat));
+    return resolved.get(raw);
+  };
   // Product master rows only corroborate a Cafe24 brand (sales-free BOTH). They never
   // open ECOUNT-only candidates: free-text PROD_DES would flood the queue with item names.
   for (const [source, rows, corroborateOnly] of [["CAFE24", cafe24Brands.map(b => ({ ...b, brand_name: b.brand_name || b.brandName || b.name }))], ["CAFE24", products], ["ECOUNT", ecountLines], ["ECOUNT", ecountProducts, true]]) {
@@ -137,13 +166,13 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
       if (qqq || (source === "ECOUNT" && (row.isPersonalPayment === true || detectPersonalPayment(row.customerName).isPersonalPayment))) {
         excluded.push({ source, reason: qqq ? "QQQ" : "PERSONAL_PAYMENT" }); continue;
       }
-      const reviewedObservation = previous.candidates.some(p => source === "CAFE24"
-        ? normalizeBrandKey(p.sourceBrandCode) === normalizeBrandKey(c.sourceBrandCode)
-        : [p.rawBrandName, ...(p.ecountVariants || [])].some(name => normalizeBrandKey(name) === normalizeBrandKey(c.rawBrandName)));
+      const reviewedObservation = source === "CAFE24"
+        ? reviewedCafe24Codes.has(normalizeBrandKey(c.sourceBrandCode))
+        : reviewedEcountNames.has(normalizeBrandKey(c.rawBrandName));
       if (source === "CAFE24" && (!c.sourceBrandCode || c.sourceBrandCode === "B0000000" || (activelyOwnedCodes.has(normalizeBrandKey(c.sourceBrandCode)) && !reviewedObservation && !evidence))) continue;
       if (source === "ECOUNT" && !c.rawBrandName) continue;
       const key = normalizeBrandKey(c.rawBrandName);
-      const hit = conflicts.has(key) ? null : resolveBrand(c.rawBrandName, registry) || resolveBrand(c.rawBrandName, compat);
+      const hit = conflicts.has(key) ? null : resolveOnce(c.rawBrandName);
       // A grandfathered exact whole collaboration name is already accepted;
       // never resolve its individual participants to a single brand.
       if (source === "ECOUNT" && hit && !reviewedObservation) continue;
