@@ -44,6 +44,7 @@ function freshMetaContext(overrides = {}) {
     // (see the SyntaxError comment above), so a harmless stand-in is injected here.
     buildMetaAdsSummaryForWeeklyReport: () => {},
     fetchCafe24ActualOrdersForWeeklyReport: () => {},
+    fetchCafe24AnalyticsForWeeklyReport: () => {},
     safeErrorMessage: (error) => String(error?.message || error),
     logApiError: async () => {},
     seoulDateKey: () => "2026-09-29",

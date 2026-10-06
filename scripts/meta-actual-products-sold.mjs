@@ -279,12 +279,12 @@ export function buildActualProductsSold({
   if (queryMode) {
     const queries = data.trackingQueries;
     const requiredCodes = [...Object.keys(LEGACY_MAPPINGS), "meta_adv_video"];
-    const complete = Array.isArray(queries) && requiredCodes.every(code => queries.some(q => q.code === code))
+    const complete = Array.isArray(queries) && requiredCodes.every(code => queries.some(q => q?.code === code))
       && queries.every(q => q && typeof q.code === "string" && q.code.startsWith("meta_") && q.ok === true && q.complete === true);
     if (!complete) return {
       available: false, rows: [],
       reason: "Cafe24 inflow query failed or incomplete; no Meta revenue substitution.",
-      possibleLimitReached: queries?.some(q => q?.count >= 500) || false
+      possibleLimitReached: Array.isArray(queries) && queries.some(q => q?.count >= 500)
     };
     const queried = new Set(queries.map(q => q.code));
     for (const order of data.orders) {
