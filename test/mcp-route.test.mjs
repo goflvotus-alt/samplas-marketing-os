@@ -200,3 +200,65 @@ test("misconfiguration fails closed; dev-noauth only off Render and on loopback"
     assert.equal((await post(renderConfigured.resourceUrl)).status, 401, "Render with config still requires a token");
   } finally { await renderConfigured.close(); }
 });
+
+const rpc = (t, token, message, headers = {}) => fetch(t.resourceUrl, {
+  method: "POST", body: typeof message === "string" ? message : JSON.stringify(message),
+  headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", Authorization: `Bearer ${token}`, ...headers }
+});
+
+test("wire format: initialize, id preservation, notifications, unknown method, malformed JSON-RPC", async () => {
+  const t = await setup();
+  try {
+    const token = await t.sign();
+    const init = await rpc(t, token, { jsonrpc: "2.0", id: "init-7", method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "c", version: "1" } } });
+    assert.equal(init.status, 200);
+    assert.match(init.headers.get("content-type"), /^application\/json/);
+    assert.deepEqual(await init.json(), { jsonrpc: "2.0", id: "init-7", result: {
+      protocolVersion: "2025-06-18", capabilities: { tools: { listChanged: false } },
+      serverInfo: { name: "samplas-marketing-os", title: "SAMPLAS Marketing OS", version: "1.0.0" },
+      instructions: "Read-only SAMPLAS Marketing OS data. Always report meta.completeness and meta.notes; never present partial or unavailable data as complete, and never treat a null amount as 0."
+    } });
+    const future = await (await rpc(t, token, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2099-01-01" } })).json();
+    assert.equal(future.result.protocolVersion, "2025-11-25", "unknown version negotiates to latest supported");
+
+    const note = await rpc(t, token, { jsonrpc: "2.0", method: "notifications/initialized" });
+    assert.equal(note.status, 202);
+    assert.equal(await note.text(), "");
+    assert.deepEqual(await (await rpc(t, token, { jsonrpc: "2.0", id: 0, method: "ping" })).json(), { jsonrpc: "2.0", id: 0, result: {} });
+
+    const list = await (await rpc(t, token, { jsonrpc: "2.0", id: 42, method: "tools/list", params: {} })).json();
+    assert.equal(list.id, 42);
+    assert.equal(list.result.tools.length, 10);
+    for (const tool of list.result.tools) {
+      assert.equal(tool.inputSchema.type, "object", tool.name);
+      assert.equal(tool.inputSchema.additionalProperties, false, tool.name);
+    }
+
+    assert.deepEqual(await (await rpc(t, token, { jsonrpc: "2.0", id: 5, method: "resources/list" })).json(), { jsonrpc: "2.0", id: 5, error: { code: -32601, message: "Method not found: resources/list" } });
+    assert.deepEqual(await (await rpc(t, token, { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "set_discount", arguments: {} } })).json(), { jsonrpc: "2.0", id: 6, error: { code: -32602, message: "Unknown tool: set_discount" } });
+    assert.equal((await (await rpc(t, token, { jsonrpc: "2.0", id: 7, method: "tools/call", params: {} })).json()).error.code, -32602);
+
+    for (const [label, message, code] of [
+      ["missing jsonrpc", { id: 1, method: "ping" }, -32600],
+      ["batch", [{ jsonrpc: "2.0", id: 1, method: "ping" }], -32600],
+      ["null id", { jsonrpc: "2.0", id: null, method: "ping" }, -32600],
+      ["missing method", { jsonrpc: "2.0", id: 9 }, -32600],
+      ["parse error", "{\"jsonrpc\":", -32700]
+    ]) {
+      const res = await rpc(t, token, message);
+      assert.equal(res.status, 400, label);
+      assert.equal((await res.json()).error.code, code, label);
+    }
+    const badVersion = await rpc(t, token, { jsonrpc: "2.0", id: 1, method: "ping" }, { "MCP-Protocol-Version": "1999-01-01" });
+    assert.equal(badVersion.status, 400);
+    assert.equal((await rpc(t, token, { jsonrpc: "2.0", id: 1, method: "ping" }, { "MCP-Protocol-Version": "2025-06-18" })).status, 200);
+  } finally { await t.close(); }
+});
+
+test("dev-noauth rejects browser Origin (DNS rebinding guard)", async () => {
+  const dev = await setup({ configured: false, authMode: "dev-noauth" });
+  try {
+    const res = await fetch(dev.resourceUrl, { method: "POST", body: initBody, headers: { "Content-Type": "application/json", Origin: "http://evil.example" } });
+    assert.equal(res.status, 403);
+  } finally { await dev.close(); }
+});

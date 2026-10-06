@@ -23,3 +23,13 @@ test("MCP module safety: no writes, no shell, no non-GET upstream calls", async 
     assert.doesNotMatch(source, /samplas\.(propose|apply)/, file);
   }
 });
+
+test("MCP runtime does not load the MCP SDK or a schema library (memory gate)", async () => {
+  const dir = new URL("../scripts/mcp/", import.meta.url);
+  for (const file of (await readdir(dir)).filter((f) => f !== "smoke.mjs")) {
+    const source = await readFile(new URL(file, dir), "utf8");
+    assert.doesNotMatch(source, /from "(@modelcontextprotocol\/|zod|ajv|hono)/, file);
+  }
+  const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.deepEqual(Object.keys(pkg.dependencies).sort(), ["exceljs", "jose"]);
+});
