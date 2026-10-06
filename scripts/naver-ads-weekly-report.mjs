@@ -63,6 +63,14 @@ export function previousTuesdayToMondayRange(referenceDateKey = seoulDateKey()) 
   return { since, until };
 }
 
+export function previousMondayToSundayRange(referenceDateKey = seoulDateKey()) {
+  const yesterday = addDaysToDateKey(referenceDateKey, -1);
+  const daysBackToSunday = isoWeekdayOfDateKey(yesterday) % 7;
+  const until = addDaysToDateKey(yesterday, -daysBackToSunday);
+  const since = addDaysToDateKey(until, -6);
+  return { since, until };
+}
+
 export function previousWeekRange({ since, until }) {
   return { since: addDaysToDateKey(since, -7), until: addDaysToDateKey(until, -7) };
 }
@@ -97,7 +105,9 @@ export function wowChange(current, previous) {
   return Number.isFinite(value) ? value : null;
 }
 
-const SUMMARY_FIELDS = ["spend", "impressions", "clicks", "ctr", "cpc", "conversions", "conversionValue", "cpa", "roas"];
+import { analyzeNaver, writeDecisionSheet, addExecutiveRead, addWowFormatting, addPerformanceFormatting } from "./weekly-report-analysis.mjs";
+
+const SUMMARY_FIELDS = ["spend", "impressions", "clicks", "ctr", "cpc", "conversions", "conversionValue", "conversionRate", "cpa", "roas"];
 
 // ---------------------------------------------------------------------------
 // Report data model: combines the current-week and previous-week Phase 1 performance
@@ -131,7 +141,7 @@ export function buildWeeklyReportModel({ current, previous, since, until, previo
       }))
     : [];
 
-  return {
+  const model = {
     since,
     until,
     previousSince,
@@ -148,6 +158,8 @@ export function buildWeeklyReportModel({ current, previous, since, until, previo
     keywords: { available: false, reason: "Naver Ads Phase 1 client only fetches campaign-level data (/ncc/campaigns + /stats); keyword level (/ncc/keywords) is not implemented." },
     raw: currentOk ? current : null
   };
+  model.analysis=analyzeNaver(model,current,previous);
+  return model;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +168,7 @@ export function buildWeeklyReportModel({ current, previous, since, until, previo
 
 const NUM_FMT = "#,##0";
 const WON_FMT = "#,##0\"원\"";
-const PCT1_FMT = "0.0\"%\"";
+const PCT1_FMT = "0.0%";
 const PCT1_SIGNED_FMT = "+0.0\"%\";-0.0\"%\";0.0\"%\"";
 const MULTIPLE_FMT = "0.00\"x\"";
 
@@ -168,6 +180,7 @@ const KPI_ROWS = [
   ["CPC", "cpc", WON_FMT],
   ["Conversions (전환)", "conversions", NUM_FMT],
   ["Conversion Value (전환매출)", "conversionValue", WON_FMT],
+  ["CVR", "conversionRate", PCT1_FMT],
   ["CPA", "cpa", WON_FMT],
   ["ROAS", "roas", MULTIPLE_FMT]
 ];
@@ -183,6 +196,7 @@ const CAMPAIGN_COLUMNS = [
   { header: "CPC", key: "cpc", width: 12, style: { numFmt: WON_FMT } },
   { header: "Conversions", key: "conversions", width: 13, style: { numFmt: NUM_FMT } },
   { header: "Conversion Value", key: "conversionValue", width: 16, style: { numFmt: WON_FMT } },
+  { header: "CVR", key: "conversionRate", width: 12, style: { numFmt: PCT1_FMT } },
   { header: "CPA", key: "cpa", width: 12, style: { numFmt: WON_FMT } },
   { header: "ROAS", key: "roas", width: 10, style: { numFmt: MULTIPLE_FMT } },
   { header: "WoW Spend", key: "wowSpend", width: 12, style: { numFmt: PCT1_SIGNED_FMT } },
@@ -216,16 +230,26 @@ function buildSummarySheet(workbook, model) {
   }
 
   for (const [label, field, numFmt] of KPI_ROWS) {
+    const percentPointField = field === "ctr" || field === "conversionRate";
+    const currentValue = percentPointField && model.summary[field] !== null
+      ? model.summary[field] / 100
+      : model.summary[field];
+    const previousValue = percentPointField && model.previousSummary?.[field] !== null && model.previousSummary?.[field] !== undefined
+      ? model.previousSummary[field] / 100
+      : model.previousSummary?.[field] ?? null;
     const row = sheet.addRow({
       label,
-      current: model.summary[field],
-      previous: model.previousSummary ? model.previousSummary[field] : null,
+      current: currentValue,
+      previous: previousValue,
       wow: model.wow ? model.wow[field] : null
     });
     row.getCell("current").numFmt = numFmt;
     if (model.previousSummary) row.getCell("previous").numFmt = numFmt;
     if (model.wow) row.getCell("wow").numFmt = PCT1_SIGNED_FMT;
   }
+
+  let metricRow=4;for(const [,field] of KPI_ROWS)addWowFormatting(sheet,"wow",metricRow,metricRow++,field);
+  addExecutiveRead(sheet,model.analysis||[]);
 
   if (model.campaigns.length) {
     sheet.addRow({});
@@ -254,7 +278,15 @@ function buildCampaignsSheet(workbook, model) {
     sheet.addRow({ campaignId: `UNAVAILABLE — ${model.error}` });
     return sheet;
   }
-  for (const row of model.campaigns) sheet.addRow(row);
+  for (const row of model.campaigns) {
+    sheet.addRow({
+      ...row,
+      ctr: row.ctr === null || row.ctr === undefined ? null : row.ctr / 100,
+      conversionRate: row.conversionRate === null || row.conversionRate === undefined ? null : row.conversionRate / 100
+    });
+  }
+  addPerformanceFormatting(sheet,{spend:"spend",outcome:"conversions",roas:"roas"});
+  addWowFormatting(sheet,"wowConversionValue",2,sheet.rowCount,"conversionValue");
   return sheet;
 }
 
@@ -317,6 +349,7 @@ export async function buildWeeklyReportWorkbook(model) {
     { header: "CPA", key: "cpa", width: 12 },
     { header: "ROAS", key: "roas", width: 10 }
   ], model.keywords);
+  writeDecisionSheet(workbook,"AI_ANALYSIS",model.analysis||[]);
   buildRawSheet(workbook, model);
   return workbook;
 }
@@ -361,7 +394,7 @@ export async function writeWeeklyReportFile(workbook, { since, until, outputDir 
     const validation = new ExcelJS.Workbook();
     await validation.xlsx.readFile(tempPath);
     const sheetNames = validation.worksheets.map((sheet) => sheet.name);
-    for (const required of ["SUMMARY", "CAMPAIGNS", "ADGROUPS", "KEYWORDS", "RAW"]) {
+    for (const required of ["SUMMARY", "CAMPAIGNS", "ADGROUPS", "KEYWORDS", "AI_ANALYSIS", "RAW"]) {
       if (!sheetNames.includes(required)) throw new Error(`Generated workbook is missing sheet: ${required}`);
     }
   } catch (error) {

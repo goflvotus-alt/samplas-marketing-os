@@ -25,6 +25,9 @@ import { randomUUID } from "node:crypto";
 import ExcelJS from "exceljs";
 import { seoulDateKey, previousTuesdayToMondayRange, previousWeekRange, wowChange } from "./naver-ads-weekly-report.mjs";
 
+import { analyzeInstagram } from "./instagram-weekly-analysis.mjs";
+import { ACTION_COLUMNS, writeDecisionSheet, addExecutiveRead, addWowFormatting, metricPresent } from "./weekly-report-analysis.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export { seoulDateKey, previousTuesdayToMondayRange, previousWeekRange, wowChange };
@@ -42,7 +45,7 @@ const AGGREGATE_FIELDS = ["postCount", "views", "reach", "likes", "comments", "s
 
 function aggregatePosts(posts) {
   const engagementValues = posts.map((post) =>
-    post.totalInteractions ?? [post.likes, post.comments, post.saves, post.shares].filter((v) => v !== null && v !== undefined).reduce((a, b) => a + Number(b), 0)
+    post.totalInteractions ?? ([post.likes, post.comments, post.saves, post.shares].some(metricPresent) ? [post.likes, post.comments, post.saves, post.shares].filter(metricPresent).reduce((a, b) => a + b, 0) : null)
   );
   return {
     postCount: posts.length,
@@ -52,7 +55,7 @@ function aggregatePosts(posts) {
     comments: sumMetric(posts, "comments"),
     saves: sumMetric(posts, "saves"),
     shares: sumMetric(posts, "shares"),
-    engagement: engagementValues.length ? engagementValues.reduce((a, b) => a + Number(b || 0), 0) : null
+    engagement: engagementValues.some(metricPresent) ? engagementValues.filter(metricPresent).reduce((a, b) => a + b, 0) : null
   };
 }
 
@@ -75,7 +78,7 @@ export function buildWeeklyInstagramReportModel({ current, previous, since, unti
     ? Object.fromEntries(AGGREGATE_FIELDS.map((field) => [field, wowChange(summary[field], previousSummary[field])]))
     : null;
 
-  return {
+  const model = {
     since,
     until,
     previousSince,
@@ -89,8 +92,14 @@ export function buildWeeklyInstagramReportModel({ current, previous, since, unti
     accountSnapshot: currentOk ? (current.account || null) : null,
     content: currentOk ? posts : [],
     reels: currentOk ? posts.filter(isReel) : [],
+    source: "instagram_graph_api",
+    deliveryBasis: "Date-filtered monthly cache / Graph API collector; not a weekly account insight query",
+    weeklyUniqueReach: metricPresent(current?.accountWeeklyUniqueReach) ? current.accountWeeklyUniqueReach : null,
+    stories: Array.isArray(current?.stories) ? current.stories.filter(story=>{const date=String(story.date||story.timestamp||'').slice(0,10);return date>=since&&date<=until;}) : null,
     raw: currentOk ? current : null
   };
+  const analysis=analyzeInstagram(model);model.analysis=analysis.rows;model.actions=analysis.actions;
+  return model;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,7 +112,7 @@ const PCT1_SIGNED_FMT = "+0.0\"%\";-0.0\"%\";0.0\"%\"";
 const KPI_ROWS = [
   ["게시물 수 (Post Count)", "postCount"],
   ["조회수 / Views", "views"],
-  ["Reach (도달)", "reach"],
+  ["게시물별 Reach 합계 (주간 고유 도달 아님)", "reach"],
   ["Likes", "likes"],
   ["Comments", "comments"],
   ["Saves", "saves"],
@@ -121,6 +130,7 @@ const CONTENT_COLUMNS = [
   { header: "Comments", key: "comments", width: 10, style: { numFmt: NUM_FMT } },
   { header: "Saves", key: "saves", width: 10, style: { numFmt: NUM_FMT } },
   { header: "Shares", key: "shares", width: 10, style: { numFmt: NUM_FMT } },
+  { header: "Engagement", key: "totalInteractions", width: 14, style: { numFmt: NUM_FMT } },
   { header: "Permalink", key: "permalink", width: 40 }
 ];
 
@@ -132,7 +142,7 @@ function setupSheet(sheet, columns) {
 }
 
 function buildSummarySheet(workbook, model) {
-  const sheet = workbook.addWorksheet("SUMMARY");
+  const sheet = workbook.addWorksheet("01_주간요약");
   setupSheet(sheet, [
     { header: "지표 (Metric)", key: "label", width: 28 },
     { header: "이번 주", key: "current", width: 16 },
@@ -158,6 +168,11 @@ function buildSummarySheet(workbook, model) {
     if (model.previousSummary) row.getCell("previous").numFmt = NUM_FMT;
     if (model.wow) row.getCell("wow").numFmt = PCT1_SIGNED_FMT;
   }
+  sheet.addRow({label:"Account unique reach (week)",current:model.weeklyUniqueReach??"N/A"});
+  sheet.addRow({label:"source",current:model.source});
+  sheet.addRow({label:"delivery basis",current:model.deliveryBasis});
+  let rowNumber=4;for(const [,metric] of KPI_ROWS)addWowFormatting(sheet,"wow",rowNumber,rowNumber++,metric);
+  addExecutiveRead(sheet,model.analysis||[]);
   return sheet;
 }
 
@@ -174,6 +189,7 @@ function buildContentSheet(workbook, name, posts, model) {
 
 function buildAccountInsightsSheet(workbook, model) {
   const sheet = workbook.addWorksheet("ACCOUNT INSIGHTS");
+  sheet.state="hidden";
   setupSheet(sheet, [
     { header: "지표 (Metric)", key: "label", width: 32 },
     { header: "값", key: "value", width: 20 },
@@ -185,18 +201,19 @@ function buildAccountInsightsSheet(workbook, model) {
   }
   sheet.addRow({ label: "이번 주 게시물 수", value: model.summary.postCount, basis: `${model.since} ~ ${model.until} (weekly, precise)` });
   sheet.addRow({ label: "이번 주 조회수 합계", value: model.summary.views ?? "—", basis: "weekly, sum of real per-post views" });
-  sheet.addRow({ label: "이번 주 Reach 합계", value: model.summary.reach ?? "—", basis: "weekly, sum of real per-post reach" });
+  sheet.addRow({ label: "게시물별 Reach 합계", value: model.summary.reach ?? "—", basis: "weekly sum of per-post reach; NOT account-level weekly unique reach" });
   sheet.addRow({ label: "이번 주 Engagement 합계", value: model.summary.engagement ?? "—", basis: "weekly, sum of real per-post engagement" });
   sheet.addRow({});
   const snapshot = model.accountSnapshot;
   sheet.addRow({ label: "Followers (최신 월간 스냅샷)", value: snapshot?.followers ?? "UNAVAILABLE", basis: "MONTH snapshot, NOT weekly-precise — Instagram client only exposes account identity at month granularity" });
   sheet.addRow({ label: "Follower 증감 (최신 월간 스냅샷)", value: snapshot?.followerDelta ?? "UNAVAILABLE", basis: "MONTH snapshot, NOT weekly-precise" });
-  sheet.addRow({ label: "Account Reach (최신 월간 스냅샷)", value: snapshot?.reach ?? "UNAVAILABLE", basis: "MONTH snapshot — see 위 '이번 주 Reach 합계' for the real weekly figure" });
+  sheet.addRow({ label: "Account Reach (최신 월간 스냅샷)", value: snapshot?.reach ?? "UNAVAILABLE", basis: "MONTH snapshot; 게시물별 Reach 합계 is non-unique and not account weekly reach" });
   return sheet;
 }
 
 function buildRawSheet(workbook, model) {
   const sheet = workbook.addWorksheet("RAW");
+  sheet.state="hidden";
   sheet.addRow(["source", "instagram_graph_api"]);
   sheet.addRow([]);
   if (!model.ok) {
@@ -215,8 +232,25 @@ export async function buildWeeklyInstagramReportWorkbook(model) {
   workbook.creator = "SAMPLAS Marketing OS";
   workbook.created = new Date();
   buildSummarySheet(workbook, model);
-  buildContentSheet(workbook, "CONTENT", model.content, model);
-  buildContentSheet(workbook, "REELS", model.reels, model);
+  buildContentSheet(workbook, "02_콘텐츠성과", model.content, model);
+  writeDecisionSheet(workbook,"03_콘텐츠분석",model.analysis||[]);
+  const stories=workbook.addWorksheet("04_스토리분석");
+  setupSheet(stories,[{header:"date",key:"date",width:14},{header:"id",key:"id",width:22},...['reach','replies','tapsForward','tapsBack','exits'].map(key=>({header:key,key,width:16})),{header:"signal",key:"signal",width:24},{header:"interpretation",key:"interpretation",width:55},{header:"this_week_action",key:"this_week_action",width:55},{header:"basis",key:"basis",width:65}]);
+  if(model.stories===null)stories.addRow({basis:"UNAVAILABLE — no story history supplied; no fabricated full-week story totals."});
+  else{
+    const measured=model.stories.filter(s=>!s.unavailableReason);
+    const leader=measured.filter(s=>metricPresent(s.replies)&&s.replies>0).slice().sort((a,b)=>b.replies-a.replies)[0];
+    const exitLeader=measured.filter(s=>metricPresent(s.exits)&&s.exits>0).slice().sort((a,b)=>b.exits-a.exits)[0];
+    for(const story of model.stories){
+      const unavailable=!!story.unavailableReason,signal=unavailable?"INSIGHTS UNAVAILABLE":story===leader?"REPLIES LEADER":story===exitLeader?"EXITS REVIEW":"AVAILABLE STORY";
+      stories.addRow({date:String(story.date||story.timestamp||'').slice(0,10),id:story.id,...Object.fromEntries(['reach','replies','tapsForward','tapsBack','exits'].map(k=>[k,unavailable?null:story[k]??null])),signal,
+        interpretation:unavailable?"Collector fallback zeros are not measured story performance.":story===leader?"Most replies among available cached stories; no sales-effect inference.":story===exitLeader?"Most exits among available cached stories; count alone is not an exit rate.":"Only observed cached history; not a complete weekly total.",
+        this_week_action:unavailable?"Restore insights before judging this story.":story===leader?"Retest the observed reply-driving structure; compare replies next week.":story===exitLeader?"Review opening/frame sequence and test one change; do not infer causality.":"Monitor observed metrics without inventing missing history.",
+        basis:"Available cached stories only; full-week coverage not guaranteed"});
+    }
+    if(!model.stories.length)stories.addRow({basis:"No cached stories in this period; full-week coverage not guaranteed, not zero historical activity."});
+  }
+  writeDecisionSheet(workbook,"05_다음주액션",model.actions||[],ACTION_COLUMNS);
   buildAccountInsightsSheet(workbook, model);
   buildRawSheet(workbook, model);
   return workbook;
@@ -256,7 +290,7 @@ export async function writeInstagramWeeklyReportFile(workbook, { since, until, o
     const validation = new ExcelJS.Workbook();
     await validation.xlsx.readFile(tempPath);
     const sheetNames = validation.worksheets.map((sheet) => sheet.name);
-    for (const required of ["SUMMARY", "CONTENT", "REELS", "ACCOUNT INSIGHTS", "RAW"]) {
+    for (const required of ["01_주간요약", "02_콘텐츠성과", "03_콘텐츠분석", "04_스토리분석", "05_다음주액션", "ACCOUNT INSIGHTS", "RAW"]) {
       if (!sheetNames.includes(required)) throw new Error(`Generated workbook is missing sheet: ${required}`);
     }
   } catch (error) {

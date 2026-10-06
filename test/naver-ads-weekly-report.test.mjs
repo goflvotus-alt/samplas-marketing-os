@@ -139,11 +139,23 @@ test("unavailable current-week data does not write a file and reports the reason
 });
 
 // 8. Excel generation
-test("8. Excel generation — workbook opens, all 5 sheets exist, expected headers exist", async () => {
+test("7b. CTR cells use standard Excel percentage ratios, not percentage-point numbers", async () => {
+  const model = buildWeeklyReportModel({ current: currentPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
+  const workbook = await buildWeeklyReportWorkbook(model);
+  const summary = workbook.getWorksheet("SUMMARY");
+  const ctrRow = summary.getRows(1, summary.rowCount).find((row) => row.getCell(1).value === "CTR");
+  assert.equal(ctrRow.getCell(2).value, 0.01);
+  assert.equal(ctrRow.getCell(2).numFmt, "0.0%");
+  const campaign = workbook.getWorksheet("CAMPAIGNS");
+  assert.equal(campaign.getRow(2).getCell(7).value, 0.01);
+  assert.equal(campaign.getRow(2).getCell(7).numFmt, "0.0%");
+});
+
+test("8. Excel generation — workbook opens, all 6 sheets exist, expected headers exist", async () => {
   const model = buildWeeklyReportModel({ current: currentPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
   const workbook = await buildWeeklyReportWorkbook(model);
   const names = workbook.worksheets.map((sheet) => sheet.name);
-  assert.deepEqual(names, ["SUMMARY", "CAMPAIGNS", "ADGROUPS", "KEYWORDS", "RAW"]);
+  assert.deepEqual(names, ["SUMMARY", "CAMPAIGNS", "ADGROUPS", "KEYWORDS", "AI_ANALYSIS", "RAW"]);
   const campaignHeaders = workbook.getWorksheet("CAMPAIGNS").getRow(1).values.filter(Boolean);
   for (const expected of ["Campaign ID", "Campaign Name", "Spend", "Impressions", "Clicks", "CTR", "CPC", "Conversions", "Conversion Value", "CPA", "ROAS"]) {
     assert.ok(campaignHeaders.includes(expected), `missing CAMPAIGNS header: ${expected}`);

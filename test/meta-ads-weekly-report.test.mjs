@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import ExcelJS from "exceljs";
 import {
-  previousTuesdayToMondayRange,
+  previousMondayToSundayRange,
   wowChange,
   buildWeeklyMetaReportModel,
   buildWeeklyMetaReportWorkbook,
@@ -48,8 +48,8 @@ const previousByLevel = {
   ad: levelPayload([], previousTotals)
 };
 
-test("date range reuses Naver's Tuesday-Monday week math unchanged", () => {
-  assert.deepEqual(previousTuesdayToMondayRange("2026-09-29"), { since: "2026-09-22", until: "2026-09-28" });
+test("date range uses the most recently completed Monday-Sunday week", () => {
+  assert.deepEqual(previousMondayToSundayRange("2026-09-29"), { since: "2026-09-21", until: "2026-09-27" });
 });
 
 test("KPI aggregation — campaign-level totals pass through unchanged, never fabricated", () => {
@@ -95,23 +95,23 @@ test("unavailable current-week data does not write a file and reports the reason
   assert.match(result.error, /access token/i);
 });
 
-test("XLSX generation — workbook has all 5 required sheets with the expected CAMPAIGNS headers", async () => {
+test("XLSX generation — workbook has all 7 decision sheets plus RAW with the expected CAMPAIGNS headers", async () => {
   const model = buildWeeklyMetaReportModel({ current: currentByLevel, previous: previousByLevel, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
   const workbook = await buildWeeklyMetaReportWorkbook(model);
   const names = workbook.worksheets.map((sheet) => sheet.name);
-  assert.deepEqual(names, ["SUMMARY", "CAMPAIGNS", "ADSETS", "ADS", "RAW"]);
-  const campaignHeaders = workbook.getWorksheet("CAMPAIGNS").getRow(1).values.filter(Boolean);
+  assert.deepEqual(names, ["SUMMARY", "CAMPAIGN", "AD SET", "CREATIVE_AD", "TREND", "AI_ANALYSIS", "ACTUAL_PRODUCTS_SOLD", "RAW"]);
+  const campaignHeaders = workbook.getWorksheet("CAMPAIGN").getRow(1).values.filter(Boolean);
   for (const expected of ["Campaign ID", "Campaign Name", "Spend", "Impressions", "Reach", "Clicks", "CTR", "CPC", "CPM", "Purchases", "Purchase Value", "CPA", "ROAS"]) {
     assert.ok(campaignHeaders.includes(expected), `missing CAMPAIGNS header: ${expected}`);
   }
 });
 
 test("end to end through generateWeeklyMetaAdsReport picks the correct week by since", async () => {
-  const fetchByLevel = async (since, until, level) => (since === "2026-09-22" ? currentByLevel[level] : previousByLevel[level]);
+  const fetchByLevel = async (since, until, level) => (since === "2026-09-21" ? currentByLevel[level] : previousByLevel[level]);
   const result = await generateWeeklyMetaAdsReport({ referenceDateKey: "2026-09-29", fetchByLevel, outputDir: tempDir });
   assert.equal(result.ok, true);
-  assert.equal(result.since, "2026-09-22");
-  assert.equal(result.until, "2026-09-28");
+  assert.equal(result.since, "2026-09-21");
+  assert.equal(result.until, "2026-09-27");
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(result.filePath);
   const summarySheet = workbook.getWorksheet("SUMMARY");
@@ -121,7 +121,7 @@ test("end to end through generateWeeklyMetaAdsReport picks the correct week by s
 
 test("duplicate report handling — a second local run for the same week is versioned, never overwritten", async () => {
   const dir = join(tempDir, "dup-test");
-  const fetchByLevel = async (since, until, level) => (since === "2026-09-22" ? currentByLevel[level] : previousByLevel[level]);
+  const fetchByLevel = async (since, until, level) => (since === "2026-09-21" ? currentByLevel[level] : previousByLevel[level]);
   await generateWeeklyMetaAdsReport({ referenceDateKey: "2026-09-29", fetchByLevel, outputDir: dir });
   await generateWeeklyMetaAdsReport({ referenceDateKey: "2026-09-29", fetchByLevel, outputDir: dir });
   const files = await readdir(dir);

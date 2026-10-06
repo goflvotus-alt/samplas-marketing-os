@@ -7867,6 +7867,11 @@ export async function buildMetaAdsSummaryForWeeklyReport(since, until, level) {
   }
 }
 
+// Reporting adapter: reuse the canonical Cafe24 reader without tracking-code filtering.
+export async function fetchCafe24ActualOrdersForWeeklyReport(since, until) {
+  return fetchCafe24Orders(since, until, { limit: 500 });
+}
+
 async function runMetaWeeklyReportCheck() {
   if (metaWeeklyReportScheduler.running) return;
   if (!isWeeklyNaverReportDue(new Date(), metaWeeklyReportScheduler.lastRunSinceKey)) return;
@@ -7883,6 +7888,7 @@ async function runMetaWeeklyReportCheck() {
     const result = await generateWeeklyMetaAdsReport({
       referenceDateKey: seoulDateKey(),
       fetchByLevel: buildMetaAdsSummaryForWeeklyReport,
+      fetchActualOrders: fetchCafe24ActualOrdersForWeeklyReport,
       env,
       saveReport: destination.mode === "dropbox"
         ? (workbook, { since, until }) => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: `${destination.dir.replace(/\/+$/, "")}/META_ADS_WEEKLY_${since}_${until}.xlsx`, env })
@@ -7927,7 +7933,16 @@ const instagramWeeklyReportScheduler = {
 export async function buildInstagramRangeDataForWeeklyReport(since, until) {
   try {
     const data = await buildInstagramRangeData(since, until);
-    return { ok: true, since: data.since, until: data.until, posts: data.posts || [], account: data.account || null };
+    const stories = await readCachedStories().catch(() => null);
+    return {
+      ok: true,
+      since: data.since,
+      until: data.until,
+      source: "instagram_graph_api",
+      posts: data.posts || [],
+      account: data.account || null,
+      stories: stories?.stories || null
+    };
   } catch (error) {
     return { ok: false, error: safeErrorMessage(error) };
   }

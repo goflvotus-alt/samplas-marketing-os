@@ -15,18 +15,21 @@
 //              purchase value (Meta-reported), cpa, roas, frequency
 //   NOTE: "purchases"/"purchase value"/"roas" are Meta's own attributed conversions
 //   (action_type "purchase"), not Cafe24 actual revenue — never mixed with Cafe24 data
-//   anywhere in this module.
+//   in the attribution KPIs; Cafe24 actual orders are a separate sheet.
 import { mkdir, rename, writeFile, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import ExcelJS from "exceljs";
-import { seoulDateKey, previousTuesdayToMondayRange, previousWeekRange, wowChange } from "./naver-ads-weekly-report.mjs";
+import { seoulDateKey, previousMondayToSundayRange, previousWeekRange, wowChange } from "./naver-ads-weekly-report.mjs";
+
+import { buildActualProductsSold } from "./meta-actual-products-sold.mjs";
+import { analyzeMetaLevels, writeDecisionSheet, addExecutiveRead, addWowFormatting, addPerformanceFormatting } from "./weekly-report-analysis.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-export { seoulDateKey, previousTuesdayToMondayRange, previousWeekRange, wowChange };
+export { seoulDateKey, previousMondayToSundayRange, previousWeekRange, wowChange };
 
 const SUMMARY_FIELDS = ["spend", "reach", "impressions", "clicks", "ctr", "cpc", "cpm", "purchases", "purchaseValue", "cpa", "roas"];
 const LEVELS = ["campaign", "adset", "ad"];
@@ -50,7 +53,7 @@ function levelOk(data) {
   return Boolean(data) && data.ok !== false && Array.isArray(data.rows);
 }
 
-export function buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil }) {
+export function buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil, actualOrders }) {
   const campaignCurrent = current?.campaign;
   const currentOk = levelOk(campaignCurrent);
 
@@ -89,6 +92,8 @@ export function buildWeeklyMetaReportModel({ current, previous, since, until, pr
     campaigns: rowsForLevel("campaign", "campaignId"),
     adsets: rowsForLevel("adset", "adsetId"),
     ads: rowsForLevel("ad", "adId"),
+    analysis: analyzeMetaLevels(current, previous),
+    actualProducts: buildActualProductsSold({data:actualOrders,since,until}),
     raw: currentOk ? current : null
   };
 }
@@ -122,6 +127,7 @@ function levelColumns(labelHeader, idHeader) {
     { header: idHeader, key: "id", width: 18 },
     { header: labelHeader, key: "name", width: 26 },
     { header: "Status", key: "status", width: 12 },
+    { header: "Objective", key: "objective", width: 22 },
     { header: "Spend", key: "spend", width: 14, style: { numFmt: WON_FMT } },
     { header: "Impressions", key: "impressions", width: 14, style: { numFmt: NUM_FMT } },
     { header: "Reach", key: "reach", width: 14, style: { numFmt: NUM_FMT } },
@@ -174,6 +180,8 @@ function buildSummarySheet(workbook, model) {
     if (model.previousSummary) row.getCell("previous").numFmt = numFmt;
     if (model.wow) row.getCell("wow").numFmt = PCT1_SIGNED_FMT;
   }
+  let n=5;for(const [,field] of KPI_ROWS)addWowFormatting(sheet,"wow",n,n++,field);
+  addExecutiveRead(sheet,model.analysis||[]);
   return sheet;
 }
 
@@ -185,8 +193,10 @@ function buildLevelSheet(workbook, name, rows, model, { labelHeader, idHeader, i
     return sheet;
   }
   for (const row of rows) {
-    sheet.addRow({ id: row[idField], name: row[nameField] || row.label, ...row });
+    const added=sheet.addRow({ id: row[idField], name: row[nameField] || row.label, ...row });
+    if(/SALES|CONVERSIONS|PRODUCT_CATALOG/i.test(row.objective||""))addPerformanceFormatting(sheet,{spend:"spend",outcome:"purchases",roas:"roas",from:added.number,to:added.number});
   }
+  addWowFormatting(sheet,"wowPurchaseValue",2,sheet.rowCount,"purchaseValue");
   return sheet;
 }
 
@@ -213,9 +223,22 @@ export async function buildWeeklyMetaReportWorkbook(model) {
   workbook.creator = "SAMPLAS Marketing OS";
   workbook.created = new Date();
   buildSummarySheet(workbook, model);
-  buildLevelSheet(workbook, "CAMPAIGNS", model.campaigns, model, { labelHeader: "Campaign Name", idHeader: "Campaign ID", idField: "campaignId", nameField: "campaignName" });
-  buildLevelSheet(workbook, "ADSETS", model.adsets, model, { labelHeader: "Adset Name", idHeader: "Adset ID", idField: "adsetId", nameField: "adsetName" });
-  buildLevelSheet(workbook, "ADS", model.ads, model, { labelHeader: "Ad Name", idHeader: "Ad ID", idField: "adId", nameField: "adName" });
+  buildLevelSheet(workbook, "CAMPAIGN", model.campaigns, model, { labelHeader: "Campaign Name", idHeader: "Campaign ID", idField: "campaignId", nameField: "campaignName" });
+  buildLevelSheet(workbook, "AD SET", model.adsets, model, { labelHeader: "Adset Name", idHeader: "Adset ID", idField: "adsetId", nameField: "adsetName" });
+  buildLevelSheet(workbook, "CREATIVE_AD", model.ads, model, { labelHeader: "Ad Name", idHeader: "Ad ID", idField: "adId", nameField: "adName" });
+  const trend=workbook.addWorksheet("TREND");
+  setupSheet(trend,[{header:"Period",key:"period",width:26},...SUMMARY_FIELDS.map(key=>({header:key,key,width:16}))]);
+  if(model.previousSummary)trend.addRow({period:`${model.previousSince} ~ ${model.previousUntil}`,...model.previousSummary});
+  if(model.summary)trend.addRow({period:`${model.since} ~ ${model.until}`,...model.summary});
+  trend.addRow({period:"Available range only; no fabricated 8-week history"});
+  writeDecisionSheet(workbook,"AI_ANALYSIS",model.analysis||[]);
+  const actual=workbook.addWorksheet("ACTUAL_PRODUCTS_SOLD");
+  const cols=["order_id","order_date","inflow_path","ad_mapping","product_name","product_no","product_code","option_size","quantity","product_amount","actual_paid_amount","order_status","attribution_note"];
+  setupSheet(actual,cols.map(key=>({header:key=== "product_code"?"SKU/product_code":key==="option_size"?"option/size":key,key,width:["ad_mapping","attribution_note"].includes(key)?65:22})));
+  if(!model.actualProducts?.available)actual.addRow({attribution_note:"UNAVAILABLE — "+(model.actualProducts?.reason||"Cafe24 actual orders not supplied; no Meta revenue substitution.")});
+  else{for(const row of model.actualProducts.rows)actual.addRow(row);if(model.actualProducts.missingItems||model.actualProducts.missingDates)actual.addRow({attribution_note:`Coverage warning: missing item detail ${model.actualProducts.missingItems}; missing trusted date ${model.actualProducts.missingDates}. Not a complete sales reconciliation.`});}
+  if(model.actualProducts?.possibleLimitReached)actual.addRow({attribution_note:"Coverage warning: existing Cafe24 reader limit reached; report may be partial."});
+  for(const key of ["product_amount","actual_paid_amount"])actual.getColumn(key).numFmt=WON_FMT;
   buildRawSheet(workbook, model);
   return workbook;
 }
@@ -254,7 +277,7 @@ export async function writeMetaWeeklyReportFile(workbook, { since, until, output
     const validation = new ExcelJS.Workbook();
     await validation.xlsx.readFile(tempPath);
     const sheetNames = validation.worksheets.map((sheet) => sheet.name);
-    for (const required of ["SUMMARY", "CAMPAIGNS", "ADSETS", "ADS", "RAW"]) {
+    for (const required of ["SUMMARY", "CAMPAIGN", "AD SET", "CREATIVE_AD", "TREND", "AI_ANALYSIS", "ACTUAL_PRODUCTS_SOLD", "RAW"]) {
       if (!sheetNames.includes(required)) throw new Error(`Generated workbook is missing sheet: ${required}`);
     }
   } catch (error) {
@@ -269,9 +292,9 @@ export async function writeMetaWeeklyReportFile(workbook, { since, until, output
 // Orchestrator
 // ---------------------------------------------------------------------------
 
-export async function generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLevel, outputDir, env = process.env, saveReport } = {}) {
+export async function generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLevel, fetchActualOrders, outputDir, env = process.env, saveReport } = {}) {
   if (typeof fetchByLevel !== "function") throw new Error("generateWeeklyMetaAdsReport requires fetchByLevel(since, until, level)");
-  const { since, until } = previousTuesdayToMondayRange(referenceDateKey);
+  const { since, until } = previousMondayToSundayRange(referenceDateKey);
   const { since: previousSince, until: previousUntil } = previousWeekRange({ since, until });
 
   const [current, previous] = await Promise.all([
@@ -279,7 +302,9 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLev
     fetchAllMetaLevels(previousSince, previousUntil, fetchByLevel)
   ]);
 
-  const model = buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil });
+  let actualOrders;
+  if(fetchActualOrders&&levelOk(current.campaign)){try{actualOrders=await fetchActualOrders(since,until);}catch{actualOrders={ok:false};}}
+  const model = buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil, actualOrders });
   if (!model.ok) {
     return { ok: false, since, until, error: model.error, filePath: null };
   }
@@ -305,13 +330,13 @@ async function createServerFetcher() {
   if (typeof serverModule.buildMetaAdsSummaryForWeeklyReport !== "function") {
     throw new Error("server.mjs does not export buildMetaAdsSummaryForWeeklyReport — CLI cannot run standalone.");
   }
-  return serverModule.buildMetaAdsSummaryForWeeklyReport;
+  return {fetchByLevel:serverModule.buildMetaAdsSummaryForWeeklyReport,fetchActualOrders:serverModule.fetchCafe24ActualOrdersForWeeklyReport};
 }
 
 async function main() {
   const referenceDateKey = process.argv[2] || undefined;
-  const fetchByLevel = await createServerFetcher();
-  const result = await generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLevel });
+  const {fetchByLevel,fetchActualOrders} = await createServerFetcher();
+  const result = await generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLevel,fetchActualOrders });
   console.log(JSON.stringify(result, null, 2));
   if (!result.ok) process.exitCode = 1;
 }

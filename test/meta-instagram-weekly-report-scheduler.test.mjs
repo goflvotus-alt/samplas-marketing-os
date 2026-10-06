@@ -43,6 +43,7 @@ function freshMetaContext(overrides = {}) {
     // arg) — it's normally the real exported adapter, excluded from this slice on purpose
     // (see the SyntaxError comment above), so a harmless stand-in is injected here.
     buildMetaAdsSummaryForWeeklyReport: () => {},
+    fetchCafe24ActualOrdersForWeeklyReport: () => {},
     safeErrorMessage: (error) => String(error?.message || error),
     logApiError: async () => {},
     seoulDateKey: () => "2026-09-29",
