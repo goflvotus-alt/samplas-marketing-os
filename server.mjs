@@ -977,6 +977,15 @@ const server = isMainModule ? createServer(async (req, res) => {
         token: await metaTokenDiagnostics()
       });
     }
+    if (url.pathname === "/api/diagnostics/cafe24-orders-debug") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method not allowed; GET only." }, 405);
+      try {
+        return json(res, await readCafe24OrdersDebug(url.searchParams.get("limit")));
+      } catch {
+        // Keep this diagnostic read-only even when the log cannot be read.
+        return json(res, { ok: false, error: "Cafe24 Orders debug log could not be read." }, 500);
+      }
+    }
     if (url.pathname === "/api/diagnostics/logs") {
       const data = await readApiErrorLog(Number(url.searchParams.get("limit") || 50));
       return json(res, data);
@@ -1208,6 +1217,56 @@ function classifyApiError(error) {
   if (message.includes("invalid refresh_token") || message.includes("refresh token")) return "expired_refresh_token";
   if (message.includes("invalid_token") || message.includes("access_token")) return "invalid_access_token";
   return "api_error";
+}
+
+function redactCafe24OrdersDebug(value) {
+  const sensitiveKey = /token|secret|authorization|password|credential|cookie|api[_-]?key|basic[_-]?auth/i;
+  const secrets = Object.entries(env).filter(([key, val]) => sensitiveKey.test(key) && typeof val === "string" && val)
+    .map(([, val]) => val);
+  if (metaStoredAccessTokenCache) secrets.push(metaStoredAccessTokenCache);
+  const variants = [...new Set(secrets.flatMap(secret => [secret, encodeURIComponent(secret)]))].sort((a, b) => b.length - a.length);
+  function redact(item) {
+    if (Array.isArray(item)) return item.map(redact);
+    if (item && typeof item === "object") return Object.fromEntries(Object.entries(item).map(([key, val]) => [key, sensitiveKey.test(key) && typeof val !== "boolean" ? "[REDACTED]" : redact(val)]));
+    if (typeof item !== "string") return item;
+    let safe = item;
+    for (const secret of variants) safe = safe.replaceAll(secret, "[REDACTED]");
+    // Strip stale credentials even when they no longer match current env values.
+    safe = safe.replace(/https?:\/\/[^\s"<>]+/gi, raw => {
+      try {
+        const url = new URL(raw);
+        if (url.username) url.username = "REDACTED";
+        if (url.password) url.password = "REDACTED";
+        for (const key of [...url.searchParams.keys()]) if (sensitiveKey.test(key)) url.searchParams.set(key, "[REDACTED]");
+        return url.href;
+      } catch { return "[REDACTED_URL]"; }
+    });
+    return safe
+      .replace(/\b(?:Bearer|Basic)\s+[^\s,;"<>]+/gi, "[REDACTED_AUTH]")
+      .replace(/(["']?[\w-]*(?:token|secret|password|credential|authorization|cookie|api[_-]?key)[\w-]*["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&,;}]+)/gi, "$1[REDACTED]");
+  }
+  return redact(value);
+}
+
+async function readCafe24OrdersDebug(limit = 50) {
+  const parsed = Number(limit);
+  const count = limit === null || limit === "" || !Number.isFinite(parsed) ? 50 : Math.min(Math.max(Math.floor(parsed), 1), 200);
+  let text;
+  try { text = await readFile(join(workDir, "cafe24-orders-debug.ndjson"), "utf8"); }
+  catch (error) {
+    if (error.code === "ENOENT") return { ok: true, source: "cafe24_orders_debug", logs: [] };
+    throw error;
+  }
+  const logs = [];
+  for (const line of text.split(/\r?\n/).filter(Boolean).reverse()) {
+    try {
+      const entry = JSON.parse(line);
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      logs.push(redactCafe24OrdersDebug(entry));
+      if (logs.length === count) break;
+    } catch { /* Malformed records are never returned as raw text. */ }
+  }
+  return { ok: true, source: "cafe24_orders_debug", logs: logs.reverse() };
 }
 
 async function readApiErrorLog(limit = 50) {
