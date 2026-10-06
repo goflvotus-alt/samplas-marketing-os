@@ -82,6 +82,27 @@ export function offlineMonthsCompleteness(offline) {
 const RANK = { COMPLETE: 0, UNKNOWN: 1, PARTIAL: 2, UNAVAILABLE: 3 };
 const worst = (...values) => values.reduce((a, b) => (RANK[b] > RANK[a] ? b : a), "COMPLETE");
 const slice = (list, n) => (Array.isArray(list) ? list.slice(0, n) : list);
+// One reading of /api/intelligence/commercial-policy for both policy-bearing tools. found:false only
+// means "no explicit policy": the server still returns the SOURCING_DEFAULT fallback and the effective
+// percent it applies (EXPLICIT_POLICY > SOURCING_DEFAULT is decided there, not here).
+function policySummary(body) {
+  const explicit = body.policy || null;
+  const fallback = body.fallback || null;
+  return {
+    policyStatus: body.policy_status ?? null,
+    policySource: body.policy_status ?? null,
+    explicitPolicy: Boolean(explicit),
+    sourcingType: explicit?.sourcing_type ?? fallback?.sourcing_type ?? null,
+    stylistDiscountPercent: explicit?.stylist_discount_percent ?? fallback?.stylist_discount_percent ?? null,
+    discountPercent: body.effective_policy?.effective_discount_percent ?? explicit?.stylist_discount_percent ?? fallback?.stylist_discount_percent ?? null,
+    discountStatus: explicit?.discount_status ?? null,
+    sourceDocument: explicit?.source ?? null,
+    effectivePolicy: body.effective_policy ?? null,
+    fallback
+  };
+}
+const policyUnresolved = (body) => body.policy_status === "UNRESOLVED" || (!body.policy && !body.fallback);
+
 const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in obj).map((k) => [k, obj[k]]));
 
 export const READ_TOOLS = [
@@ -196,15 +217,8 @@ export const READ_TOOLS = [
         canonicalName: entry.brand_name || resolved.brand.name,
         aliases: entry.name_aliases || [],
         active: entry.active,
-        sourcingType: policy.policy?.sourcing_type ?? entry.sourcing_type ?? null,
-        commercialPolicy: {
-          policyStatus: policy.policy_status ?? null,
-          stylistDiscountPercent: policy.policy?.stylist_discount_percent ?? null,
-          discountStatus: policy.policy?.discount_status ?? null,
-          policySource: policy.policy?.source ?? null,
-          effectivePolicy: policy.effective_policy ?? null,
-          fallback: policy.fallback ?? null
-        },
+        sourcingType: policySummary(policy).sourcingType ?? entry.sourcing_type ?? null,
+        commercialPolicy: policySummary(policy),
         isNew: Boolean(row),
         newBrand: row && pick(row, ["approvedAt", "daysSinceOnboarding", "operationStatus", "operationStatusLabel"]),
         cafe24: row?.cafe24 ?? null,
@@ -345,20 +359,20 @@ export const READ_TOOLS = [
       if (brand) {
         const query = /^B[0-9A-Z]{7}$/.test(brand) ? { brand_code: brand } : { name: brand };
         const body = await up.getJson("/api/intelligence/commercial-policy", query);
-        if (!body.found) throw new ToolError("NOT_FOUND", `No commercial policy match for "${brand}"`);
+        if (policyUnresolved(body)) throw new ToolError("NOT_FOUND", `No canonical brand or commercial policy for "${brand}"`);
         const p = body.policy || {};
+        const brandCode = p.brand_code ?? body.fallback?.brand_code ?? body.brand?.brandId ?? null;
+        const summary = policySummary(body);
         return envelope("get_commercial_policy", {
-          brand: { brandCode: p.brand_code ?? body.brand?.brandId ?? null, name: p.canonical_brand_name ?? body.brand?.name ?? null },
-          policyStatus: body.policy_status,
-          sourcingType: p.sourcing_type ?? null,
-          stylistDiscountPercent: p.stylist_discount_percent ?? null,
-          discountStatus: p.discount_status ?? null,
+          brand: { brandCode, name: p.canonical_brand_name ?? body.fallback?.canonical_brand_name ?? body.brand?.name ?? null },
+          brandCode,
+          ...summary,
           note: p.note ?? null,
-          productRules: slice(p.product_rules, 10),
-          policySource: p.source ?? null,
-          effectivePolicy: body.effective_policy ?? null,
-          fallback: body.fallback ?? null
-        }, { source: "/api/intelligence/commercial-policy", completeness: "COMPLETE" });
+          productRules: slice(p.product_rules, 10)
+        }, {
+          source: "/api/intelligence/commercial-policy", completeness: "COMPLETE",
+          notes: summary.explicitPolicy ? [] : [`no explicit policy; ${summary.policyStatus} from ${body.fallback?.policy_source ?? "sourcing"} applies`]
+        });
       }
       const body = await up.getJson("/api/intelligence/commercial-policy");
       const rows = (body.policies || []).filter((p) =>

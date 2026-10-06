@@ -321,3 +321,59 @@ test("every tool result is redacted for names with titles, phone numbers and ema
   assert.ok(text.includes("[비공개] 개인결제창 26.08.15"));
   assert.doesNotMatch(text, /페노메코/);
 });
+
+// Shapes observed on Production 2026-10-06 (/api/intelligence/commercial-policy).
+const policyBodies = {
+  BLUEMARBLE: { ok: true, brand: { brandId: "B0000BEI", name: "BLUEMARBLE", matchedBy: "name" }, found: false, policy_status: "SOURCING_DEFAULT", policy: null,
+    fallback: { brand_code: "B0000BEI", canonical_brand_name: "BLUEMARBLE", sourcing_type: "WHOLESALE", stylist_discount_percent: 20, policy_status: "SOURCING_DEFAULT", policy_source: "brand-sourcing-master", warning: "Commercial Policy 미등록 브랜드입니다. sourcing 기반 기본 권장 할인율입니다." },
+    effective_policy: { base_discount_percent: 20, effective_discount_percent: 20, matched_product_rule: null, product_name: null, decision_source: "SOURCING_FALLBACK" } },
+  "AE SYNCTX": { ok: true, brand: { brandId: "B00000MT", name: "AE SYNCTX", matchedBy: "name" }, found: true, policy_status: "EXPLICIT_POLICY",
+    policy: { brand_code: "B00000MT", canonical_brand_name: "AE SYNCTX", sourcing_type: "CONSIGNMENT", stylist_discount_percent: 10, discount_status: "STANDARD", note: null, product_rules: [], source: { file: "x.xlsb", row: 29 } },
+    fallback: null, effective_policy: { base_discount_percent: 10, effective_discount_percent: 10, decision_source: "BRAND_POLICY" } },
+  unknown: { ok: true, brand: null, found: false, policy_status: "UNRESOLVED", policy: null, fallback: null, effective_policy: null },
+  B9999ZZZ: { ok: true, brand: { brandId: "B9999ZZZ", name: null, matchedBy: "brand_code" }, found: false, policy_status: "UNRESOLVED", policy: null, fallback: null, effective_policy: null }
+};
+const policyStub = () => stub({ "/api/intelligence/commercial-policy": (p) => policyBodies[p.name || p.brand_code] || policyBodies.unknown });
+
+test("commercial policy: SOURCING_DEFAULT fallback brand is returned, not NOT_FOUND", async () => {
+  const out = await runReadTool("get_commercial_policy", { brand: "BLUEMARBLE" }, policyStub());
+  assert.equal(out.ok, true, JSON.stringify(out.error));
+  assert.equal(out.data.brand.brandCode, "B0000BEI");
+  assert.equal(out.data.brandCode, "B0000BEI");
+  assert.equal(out.data.explicitPolicy, false);
+  assert.equal(out.data.policySource, "SOURCING_DEFAULT");
+  assert.equal(out.data.sourcingType, "WHOLESALE");
+  assert.equal(out.data.discountPercent, 20);
+  assert.equal(out.data.stylistDiscountPercent, 20);
+  assert.equal(out.data.effectivePolicy.decision_source, "SOURCING_FALLBACK");
+  assert.ok(out.meta.notes.some((n) => n.includes("SOURCING_DEFAULT")));
+});
+
+test("commercial policy: explicit policy keeps precedence (AE SYNCTX 10%)", async () => {
+  const out = await runReadTool("get_commercial_policy", { brand: "AE SYNCTX" }, policyStub());
+  assert.equal(out.data.explicitPolicy, true);
+  assert.equal(out.data.policySource, "EXPLICIT_POLICY");
+  assert.equal(out.data.discountPercent, 10);
+  assert.equal(out.data.sourcingType, "CONSIGNMENT");
+  assert.deepEqual(out.data.sourceDocument, { file: "x.xlsb", row: 29 });
+});
+
+test("commercial policy: unresolved brand name or code is NOT_FOUND", async () => {
+  for (const brand of ["zzzz-not-a-brand", "B9999ZZZ"]) {
+    assert.equal((await runReadTool("get_commercial_policy", { brand }, policyStub())).error?.code, "NOT_FOUND", brand);
+  }
+});
+
+test("get_brand: fallback brand shows explicit vs effective policy", async () => {
+  const routes = { ...brandRoutes(), "/api/intelligence/brands/resolve": { ok: true, brand: { brandId: "B0000BEI", name: "BLUEMARBLE" } },
+    "/api/brand-master": { ok: true, updatedAt: "t", brands: [{ brand_code: "B0000BEI", brand_name: "BLUEMARBLE", name_aliases: ["BLUEMARBLE"], active: true, sourcing_type: "WHOLESALE" }] },
+    "/api/intelligence/commercial-policy": policyBodies.BLUEMARBLE };
+  const out = await runReadTool("get_brand", { brand: "BLUEMARBLE" }, stub(routes));
+  const cp = out.data.commercialPolicy;
+  assert.equal(cp.policyStatus, "SOURCING_DEFAULT");
+  assert.equal(cp.explicitPolicy, false);
+  assert.equal(cp.stylistDiscountPercent, 20);
+  assert.equal(cp.discountPercent, 20);
+  assert.equal(cp.policySource, "SOURCING_DEFAULT");
+  assert.equal(out.data.sourcingType, "WHOLESALE");
+});
