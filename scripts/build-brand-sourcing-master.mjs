@@ -54,13 +54,18 @@ export function classifyBrandSourcing(evidence = {}, ownProduction = false) {
   return "UNKNOWN";
 }
 
-function resolveProductName(name, registry) {
+// resolveBrand normalizes every registry name per call; products repeat a few hundred brand
+// prefixes, so one resolution per prefix keeps the rebuild off the event loop (7 s -> well under 1 s).
+function resolveProductName(name, registry, byPrefix) {
   const extracted = extractSlashBrandCandidate(stripConsignmentPrefix(name));
-  return extracted ? resolveBrand(extracted.candidate, registry) : null;
+  if (!extracted) return null;
+  if (!byPrefix.has(extracted.candidate)) byPrefix.set(extracted.candidate, resolveBrand(extracted.candidate, registry));
+  return byPrefix.get(extracted.candidate);
 }
 
 export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots, inventorySource = "ecount-inventory/raw-products.json" }) {
   const registry = buildBrandRegistry(brandMaster);
+  const byPrefix = new Map();
   const evidence = new Map(registry.brands.map((brand) => [brand.id, {
     resolved_products: 0,
     con_prefix_products: 0,
@@ -73,7 +78,7 @@ export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots
   const exact30Active = products.some((product) => isExactThirtyPercent(product.IN_PRICE, product.OUT_PRICE));
 
   for (const product of products) {
-    const resolved = resolveProductName(product.PROD_DES, registry);
+    const resolved = resolveProductName(product.PROD_DES, registry, byPrefix);
     const row = resolved && evidence.get(resolved.brandId);
     if (!row) continue;
     row.resolved_products += 1;
@@ -86,7 +91,7 @@ export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots
 
   for (const snapshot of salesSnapshots) {
     for (const line of snapshot.salesLines || []) {
-      const resolved = resolveProductName(line.productName, registry);
+      const resolved = resolveProductName(line.productName, registry, byPrefix);
       const row = resolved && evidence.get(resolved.brandId);
       if (!row) continue;
       row.resolved_sales_lines += 1;
