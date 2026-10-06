@@ -82,6 +82,7 @@ import { createEcountAutoSync } from "./scripts/ecount-auto-sync.mjs";
 import { buildNewBrands, onboardingDates } from "./scripts/new-brands.mjs";
 import { attachCoverage, summarizeCafe24Products } from "./scripts/new-brand-coverage.mjs";
 import { createLocalEcountProductSyncRoute } from "./scripts/local-ecount-helper.mjs";
+import { toClientsSummaryView } from "./scripts/clients-summary-view.mjs";
 import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
 // STEP63-4: Brand Dashboard가 이미 갖고 있는 Cafe24 brand_code 직접 매칭(productBrandCode/
 // productBrandMapCode)은 절대 재해석하지 않는다 — 그 두 경로가 모두 실패해 "UNASSIGNED"로
@@ -1041,9 +1042,11 @@ const server = isMainModule ? createServer(async (req, res) => {
       // store 쿼리를 여기서도 반드시 읽어 넘겨야 한다.
       const storeParam = url.searchParams.get("store");
       const storeCode = storeParam && storeParam !== "ALL" ? storeParam : null;
+      // view=summary: same canonical aggregates without per-client records (MCP read tools).
+      const summaryView = url.searchParams.get("view") === "summary";
       try {
         const cafe24 = await fetchCafe24Orders(since, until, { limit: 500 });
-        const overview = await buildClientsOverview({ since, until, cafe24Orders: cafe24.orders, storeCode });
+        const overview = await buildClientsOverview({ since, until, cafe24Orders: cafe24.orders, storeCode, details: !summaryView });
         const coverage = await buildClientsSourceCoverage(since, until, storeCode, !cafe24.error);
         let summary = coverage.offline.available ? overview.summary : {
           ...overview.summary,
@@ -1064,7 +1067,8 @@ const server = isMainModule ? createServer(async (req, res) => {
             ({ summary, accounting } = reconcileHistoricalClientsSummary(summary, overview.summary, archive));
           }
         }
-        return json(res, { ok: true, ...overview, summary, coverage, storeCoverage: coverage.offline, ...(accounting ? { accounting } : {}) });
+        const payload = { ok: true, ...overview, summary, coverage, storeCoverage: coverage.offline, ...(accounting ? { accounting } : {}) };
+        return json(res, summaryView ? toClientsSummaryView(payload) : payload);
       } catch (error) {
         return json(res, { ok: false, error: "Internal Server Error", message: safeErrorMessage(error) }, 500);
       }

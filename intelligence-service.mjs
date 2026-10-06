@@ -3471,7 +3471,10 @@ export async function buildClientsOverview(options = {}) {
   // 그 값을 얻으려면 buildBrandSalesDiagnostics()를 추가로 호출해야 하는데, 이는 Clients
   // 요청마다 새로운 Cafe24 상품 카탈로그 조회를 발생시켜 "불필요한 새 API 반복 호출 금지"
   // 지시사항과 충돌한다(work/reports/STEP63-3.md 4번 항목에 이 판단 근거를 상세히 기록).
-  const identityResolverContext = await loadResolverContext({ workDir: options.workDir || workRoot });
+  // details:false (Clients summary view) skips only the per-line purchaseDetails build and its
+  // identity resolution; every aggregate below is computed from the same lines either way.
+  const includeDetails = options.details !== false;
+  const identityResolverContext = includeDetails ? await loadResolverContext({ workDir: options.workDir || workRoot }) : null;
 
   const ecountClients = await loadEcountClientLines(options.workDir);
   // STEP49-2A-2: 주입 경로도 canonicalizeCafe24ClientOrders()로 기존 캐시 경로와 동일한
@@ -3604,7 +3607,7 @@ export async function buildClientsOverview(options = {}) {
       ? group.matchKey
       : buildClientDisplayName(representativeRawName, classification);
 
-    const purchaseDetails = [
+    const purchaseDetails = !includeDetails ? [] : [
       ...offlinePositiveLines.map((line) => {
         // STEP63-3: 원본 brand(ECOUNT brandGroup, operational metadata)는 절대 덮어쓰지
         // 않는다 — STEP63-2/62-2B의 Integrated Identity Pipeline을 productName 기준으로만
