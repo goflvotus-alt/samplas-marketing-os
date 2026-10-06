@@ -293,3 +293,31 @@ test("upstream errors become structured tool errors", async () => {
   const out = await runReadTool("get_sales_summary", { since: "2026-09-01", until: "2026-09-30" }, up);
   assert.deepEqual(out, { ok: false, error: { code: "UPSTREAM_UNAVAILABLE", message: "Marketing OS returned HTTP 502", retryable: true, details: {} } });
 });
+
+test("monthly report drops order history and signed media URLs", async () => {
+  const up = stub({ "/api/reports/monthly": { month: "2026-09", generatedAt: "t", status: "draft", archiveStatus: "saved",
+    sales: { coverage: { complete: true } },
+    commerce: { brandSales: [{ brand_code: "B1", brand_name: "X", salesAmount: 10, orderCount: 1, orderHistory: [{ orderId: "O-1", orderDate: "2026-09-01", products: [{ productName: "김병규 실장님 개인결제창" }] }] }], productSales: [] },
+    marketing: {}, content: { topContent: [{ id: "1", date: "d", title: "t", type: "릴스", permalink: "https://www.instagram.com/p/x", mediaUrl: "https://cdn/x?oh=sig", thumbnailUrl: "https://cdn/t?oh=sig", coverImageUrl: "https://cdn/c", caption: "long", reach: 5, views: 6, saves: 1, shares: 2, likes: 3 }] } } });
+  const out = await runReadTool("get_monthly_report", { month: "2026-09" }, up);
+  assert.equal(out.data.commerce.brandSales[0].orderHistory, undefined);
+  assert.equal(out.data.commerce.brandSales[0].salesAmount, 10);
+  assert.deepEqual(Object.keys(out.data.content.topContent[0]).sort(), ["date", "id", "likes", "permalink", "reach", "saves", "shares", "title", "type", "views"]);
+  assert.doesNotMatch(JSON.stringify(out), /O-1|oh=sig|김병규/);
+});
+
+test("every tool result is redacted for names with titles, phone numbers and emails", async () => {
+  const up = stub({ "/api/inventory/overview": () => ({ ok: true, generatedAt: "t", coverage: {}, operations: {},
+    brandRollup: [{ brandKey: "raw:김욱 이사님 의상 제작건", brandName: "김욱 이사님 의상 제작건", negativeReviewCount: 1, negativeUnits: 2 },
+      { brandKey: "k2", brandName: "문의 010-1234-5678 / a.b@example.com", negativeReviewCount: 1, negativeUnits: 1 },
+      { brandKey: "k3", brandName: "일반 손님 고객님 AE SYNCTX", negativeReviewCount: 1, negativeUnits: 0 },
+      { brandKey: "k4", brandName: "페노메코님 개인결제창 26.08.15", negativeReviewCount: 1, negativeUnits: 0 }],
+    itemsTotal: 0, items: [] }) });
+  const out = await runReadTool("get_inventory", { view: "brands", status: "negative_review" }, up);
+  const text = JSON.stringify(out);
+  assert.doesNotMatch(text, /김욱|이사님|010-1234-5678|a\.b@example\.com/);
+  assert.equal(out.data.brands[0].brandName, "[비공개] 의상 제작건");
+  assert.ok(text.includes("일반 손님 고객님 AE SYNCTX"), "generic words and brand names are untouched");
+  assert.ok(text.includes("[비공개] 개인결제창 26.08.15"));
+  assert.doesNotMatch(text, /페노메코/);
+});

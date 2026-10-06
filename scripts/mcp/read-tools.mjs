@@ -109,9 +109,13 @@ export const READ_TOOLS = [
     async run({ month }, up) {
       const body = await up.getJson("/api/reports/monthly", { month });
       const { provenance: _salesProvenance, ...sales } = body.sales || {};
-      const commerce = body.commerce && { ...body.commerce, brandSales: slice(body.commerce.brandSales, 10), productSales: slice(body.commerce.productSales, 10) };
+      // orderHistory carries order ids and personal-payment line names: never leaves the server.
+      const brandSales = (body.commerce?.brandSales || []).slice(0, 10).map(({ orderHistory: _orders, ...brand }) => brand);
+      const commerce = body.commerce && { ...body.commerce, brandSales, productSales: slice(body.commerce.productSales, 10) };
       const marketing = body.marketing && { ...body.marketing, attentionCampaigns: slice(body.marketing.attentionCampaigns, 10) };
-      const content = body.content && (({ aboveAverageSaveRatePosts: _drop, ...rest }) => ({ ...rest, topContent: slice(rest.topContent, 5) }))(body.content);
+      // Media/thumbnail URLs are signed CDN links; keep the public permalink and metrics only.
+      const topContent = (body.content?.topContent || []).slice(0, 5).map((post) => pick(post, ["id", "date", "title", "type", "permalink", "reach", "views", "likes", "saves", "shares"]));
+      const content = body.content && (({ aboveAverageSaveRatePosts: _drop, ...rest }) => ({ ...rest, topContent }))(body.content);
       const coverage = body.sales?.coverage || null;
       const notes = monthNotes(coverage || {});
       if (body.status === "draft") notes.push("report status is draft (not final)");
@@ -402,6 +406,24 @@ async function foreignPeriod(up, since, until, storeCode) {
 
 export const MAX_TOOL_RESULT_BYTES = 200_000;
 
+// Last-line PII guard for every tool result (the endpoint may run without auth). Masks phone
+// numbers, emails and "name + title" forms such as "김OO 실장님" that appear in canonical free-text
+// fields (personal-payment product names, ECOUNT item names). Generic words like 손님/고객님 are kept.
+// The 개인결제창 rule masks everything before that marker, whatever form the buyer name takes.
+const PII_PATTERNS = [
+  [/01[016789][-\s.]?\d{3,4}[-\s.]?\d{4}/g, "[비공개]"],
+  [/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "[비공개]"],
+  [/[가-힣]{2,4}\s?(실장|이사|팀장|대표|과장|부장|차장|원장|작가|디렉터|매니저|에디터|기자)님/g, "[비공개]"],
+  // Cafe24 personal-payment items are named after the buyer ("<name> 개인결제창 <date>").
+  [/^[^\n]*?(?=\s*개인결제창)/, "[비공개]"]
+];
+function redact(value) {
+  if (typeof value === "string") return PII_PATTERNS.reduce((text, [pattern, mask]) => text.replace(pattern, mask), value);
+  if (Array.isArray(value)) return value.map(redact);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redact(v)]));
+  return value;
+}
+
 // Validates arguments, runs the tool and returns either an envelope or a ToolError JSON.
 export async function runReadTool(name, args, up) {
   const tool = READ_TOOLS.find((t) => t.name === name);
@@ -409,7 +431,7 @@ export async function runReadTool(name, args, up) {
   const parsed = validateArgs(tool.input, args);
   if (parsed.error) return new ToolError("VALIDATION_FAILED", parsed.error.slice(0, 300)).toJSON();
   try {
-    return capPayload(await tool.run(parsed.value, up), MAX_TOOL_RESULT_BYTES);
+    return capPayload(redact(await tool.run(parsed.value, up)), MAX_TOOL_RESULT_BYTES);
   } catch (error) {
     if (error instanceof ToolError) return error.toJSON();
     return new ToolError("UPSTREAM_UNAVAILABLE", "Unexpected gateway error", { retryable: true }).toJSON();
