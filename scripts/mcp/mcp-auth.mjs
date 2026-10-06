@@ -1,12 +1,18 @@
-// OAuth 2.1 resource-server checks for the read-only MCP endpoint (plan §3).
-// Phase 1 knows exactly one scope: samplas.read. There is no shared secret: tokens are
-// verified against the authorization server's public JWKS.
+// Authentication for the read-only MCP endpoint (plan §3). Modes (MCP_AUTH_MODE):
+// - "oauth" (default): OAuth 2.1 resource server; one scope, samplas.read; tokens verified
+//   against the authorization server's public JWKS. No shared secret.
+// - "none": no authentication, for the private-plugin connection test only. Must be set explicitly.
+// - "dev-noauth": local development; honored only off Render and from loopback.
+// Any other value fails closed (503).
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 export const READ_SCOPE = "samplas.read";
 const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+export const AUTH_MODES = new Set(["oauth", "none", "dev-noauth"]);
 
 export function createMcpAuth({ resourceUrl, issuer, audience = resourceUrl, jwksUrl, allowedSubjects = [], mode = "oauth", isRender = false, jwks }) {
+  const validMode = AUTH_MODES.has(mode);
+  const noAuth = mode === "none";
   const devNoAuth = mode === "dev-noauth" && !isRender;
   const configured = Boolean(resourceUrl && issuer && audience && allowedSubjects.length);
   const metadataUrl = resourceUrl ? new URL("/.well-known/oauth-protected-resource", resourceUrl).href : null;
@@ -22,6 +28,8 @@ export function createMcpAuth({ resourceUrl, issuer, audience = resourceUrl, jwk
   const deny = (error, description) => ({ ok: false, status: 401, error: error || "missing_token", wwwAuthenticate: challenge(error, description) });
 
   async function authenticate(req) {
+    if (!validMode) return { ok: false, status: 503, error: "invalid_auth_mode" };
+    if (noAuth) return { ok: true, subject: "anonymous" };
     if (devNoAuth && LOOPBACK.has(req.socket?.remoteAddress)) return { ok: true, subject: "dev-noauth" };
     if (!configured) return { ok: false, status: 503, error: "not_configured" };
     const header = String(req.headers.authorization || "");
@@ -50,5 +58,8 @@ export function createMcpAuth({ resourceUrl, issuer, audience = resourceUrl, jwk
     };
   }
 
-  return { authenticate, protectedResourceMetadata, challenge, configured, devNoAuth };
+  // ChatGPT reads these per-tool security schemes from tools/list.
+  const securitySchemes = noAuth ? [{ type: "noauth" }] : [{ type: "oauth2", scopes: [READ_SCOPE] }];
+
+  return { authenticate, protectedResourceMetadata, challenge, configured: validMode && configured, devNoAuth, noAuth, validMode, securitySchemes };
 }

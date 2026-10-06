@@ -11,19 +11,20 @@ export const MAX_BODY_BYTES = 64 * 1024;
 export const MAX_CONCURRENT = 2;
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const MAX_QUEUED = 10;
-const SECURITY = [{ type: "oauth2", scopes: [READ_SCOPE] }];
 const SERVER_INFO = { name: "samplas-marketing-os", title: "SAMPLAS Marketing OS", version: "1.0.0" };
 const INSTRUCTIONS = "Read-only SAMPLAS Marketing OS data. Always report meta.completeness and meta.notes; never present partial or unavailable data as complete, and never treat a null amount as 0.";
 
-export const TOOL_DESCRIPTORS = READ_TOOLS.map((tool) => ({
-  name: tool.name,
-  title: tool.title,
-  description: tool.description,
-  inputSchema: tool.input,
-  annotations: { title: tool.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  securitySchemes: SECURITY,
-  _meta: { securitySchemes: SECURITY }
-}));
+export function toolDescriptors(securitySchemes = [{ type: "oauth2", scopes: [READ_SCOPE] }]) {
+  return READ_TOOLS.map((tool) => ({
+    name: tool.name,
+    title: tool.title,
+    description: tool.description,
+    inputSchema: tool.input,
+    annotations: { title: tool.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    securitySchemes,
+    _meta: { securitySchemes }
+  }));
+}
 
 // JSON-RPC error codes (JSON-RPC 2.0 spec).
 const PARSE_ERROR = -32700;
@@ -65,7 +66,7 @@ async function readBody(req) {
 }
 
 // Returns { status, body } for one JSON-RPC message. body === null means 202 with no content.
-export async function handleRpcMessage(message, upstream) {
+export async function handleRpcMessage(message, upstream, tools = toolDescriptors()) {
   if (Array.isArray(message)) return { status: 400, body: rpcError(null, INVALID_REQUEST, "Batch requests are not supported") };
   if (!message || typeof message !== "object" || message.jsonrpc !== "2.0") return { status: 400, body: rpcError(null, INVALID_REQUEST, "Invalid JSON-RPC 2.0 message") };
   const isNotification = !("id" in message);
@@ -90,7 +91,7 @@ export async function handleRpcMessage(message, upstream) {
     case "ping":
       return { status: 200, body: rpcResult(id, {}) };
     case "tools/list":
-      return { status: 200, body: rpcResult(id, { tools: TOOL_DESCRIPTORS }) };
+      return { status: 200, body: rpcResult(id, { tools }) };
     case "tools/call": {
       if (typeof params.name !== "string") return { status: 200, body: rpcError(id, INVALID_PARAMS, "params.name must be a string") };
       if (!READ_TOOLS.some((t) => t.name === params.name)) return { status: 200, body: rpcError(id, INVALID_PARAMS, `Unknown tool: ${params.name.slice(0, 60)}`) };
@@ -122,9 +123,12 @@ export function createMcpRoute({ upstreamBaseUrl, auth: authConfig, timeoutMs = 
   const upstream = createUpstream({ baseUrl: upstreamBaseUrl, timeoutMs });
   const auth = createMcpAuth(authConfig);
   const gate = createGate(MAX_CONCURRENT);
+  const tools = toolDescriptors(auth.securitySchemes);
 
   return async function handleMcp(req, res, url) {
     if (url.pathname === "/.well-known/oauth-protected-resource" || url.pathname === "/.well-known/oauth-protected-resource/mcp") {
+      if (auth.noAuth) return false; // no OAuth discovery in none mode: normal 404
+      if (!auth.validMode) return sendJson(res, 503, { ok: false, error: "Invalid MCP_AUTH_MODE" }), true;
       if (req.method !== "GET") return sendJson(res, 405, { ok: false, error: "Method Not Allowed" }, { Allow: "GET" }), true;
       if (!auth.configured) return sendJson(res, 503, { ok: false, error: "MCP OAuth is not configured" }), true;
       return sendJson(res, 200, auth.protectedResourceMetadata()), true;
@@ -135,7 +139,7 @@ export function createMcpRoute({ upstreamBaseUrl, auth: authConfig, timeoutMs = 
     if (auth.devNoAuth && req.headers.origin) return sendJson(res, 403, rpcError(null, INVALID_REQUEST, "Origin not allowed")), true;
     const who = await auth.authenticate(req);
     if (!who.ok) {
-      if (who.status === 503) return sendJson(res, 503, rpcError(null, -32000, "MCP OAuth is not configured")), true;
+      if (who.status === 503) return sendJson(res, 503, rpcError(null, -32000, who.error === "invalid_auth_mode" ? "Invalid MCP_AUTH_MODE" : "MCP OAuth is not configured")), true;
       return sendJson(res, 401, rpcError(null, -32001, `AUTH_REQUIRED: ${who.error}`), { "WWW-Authenticate": who.wwwAuthenticate }), true;
     }
     if (req.method !== "POST") return sendJson(res, 405, rpcError(null, -32000, "Method not allowed: stateless MCP accepts POST only"), { Allow: "POST" }), true;
@@ -146,7 +150,7 @@ export function createMcpRoute({ upstreamBaseUrl, auth: authConfig, timeoutMs = 
     if (parsed.tooLarge) return sendJson(res, 413, rpcError(null, INVALID_REQUEST, `Request body exceeds ${MAX_BODY_BYTES} bytes`)), true;
     if (parsed.invalid) return sendJson(res, 400, rpcError(null, PARSE_ERROR, "Parse error")), true;
 
-    const outcome = await gate(() => handleRpcMessage(parsed.body, upstream));
+    const outcome = await gate(() => handleRpcMessage(parsed.body, upstream, tools));
     if (outcome.busy) return sendJson(res, 503, rpcError(parsed.body?.id, -32000, "MCP is busy; retry shortly"), { "Retry-After": "5" }), true;
     const { status, body } = outcome.value;
     if (body === null) {

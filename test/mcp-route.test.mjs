@@ -262,3 +262,46 @@ test("dev-noauth rejects browser Origin (DNS rebinding guard)", async () => {
     assert.equal(res.status, 403);
   } finally { await dev.close(); }
 });
+
+test("MCP_AUTH_MODE=none: no token needed; no OAuth config or metadata; tools stay read-only", async () => {
+  const t = await setup({ configured: false, authMode: "none", isRender: true });
+  try {
+    const client = await connect(t.resourceUrl, null);
+    const { tools } = await client.listTools();
+    assert.equal(tools.length, 10);
+    const result = await client.callTool({ name: "get_foreign_sales", arguments: { since: "2026-01-01", until: "2026-09-30", compareSince: "2025-01-01", compareUntil: "2025-09-30" } });
+    assert.equal(result.structuredContent.data.current.foreign.salesAmount, 133480850);
+    assert.equal(result.structuredContent.data.comparison.foreign.salesAmount, null);
+    await client.close();
+
+    const raw = await (await post(t.resourceUrl, { body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) })).json();
+    for (const tool of raw.result.tools) {
+      assert.deepEqual(tool.securitySchemes, [{ type: "noauth" }], tool.name);
+      assert.equal(tool.annotations.readOnlyHint, true, tool.name);
+    }
+    const res = await post(t.resourceUrl);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("www-authenticate"), null);
+    assert.equal((await fetch(`${t.app.base}/.well-known/oauth-protected-resource`)).status, 404, "no OAuth discovery in none mode");
+    assert.equal((await post(t.resourceUrl, { body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "set_discount", arguments: {} } }) })).status, 200);
+    assert.ok(t.state.seen.every((s) => s.method === "GET"));
+  } finally { await t.close(); }
+});
+
+test("invalid or empty MCP_AUTH_MODE fails closed even with OAuth configured", async () => {
+  for (const mode of ["None", "off", "noauth", "", " none"]) {
+    const t = await setup({ authMode: mode });
+    try {
+      const res = await post(t.resourceUrl, { token: await t.sign() });
+      assert.equal(res.status, 503, `mode ${JSON.stringify(mode)}`);
+      assert.equal((await fetch(`${t.app.base}/.well-known/oauth-protected-resource`)).status, 503, `metadata ${JSON.stringify(mode)}`);
+    } finally { await t.close(); }
+  }
+});
+
+test("mcpConfigFromEnv: unset mode means oauth; value passes through unmodified", async () => {
+  const { mcpConfigFromEnv } = await import("../scripts/mcp/mcp-route.mjs");
+  assert.equal(mcpConfigFromEnv({}, 1).auth.mode, "oauth");
+  assert.equal(mcpConfigFromEnv({ MCP_AUTH_MODE: "none" }, 1).auth.mode, "none");
+  assert.equal(mcpConfigFromEnv({ MCP_AUTH_MODE: "None" }, 1).auth.mode, "None");
+});
