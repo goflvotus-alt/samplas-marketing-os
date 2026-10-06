@@ -75,7 +75,8 @@ import {
   trustedCafe24OrderDate
 } from "./scripts/cafe24-order-amount.mjs";
 import { normalizeBrandCode, normalizeBrandName, parseBrandAliases } from "./scripts/brand-engine.mjs";
-import { readPendingBrands, refreshPendingBrands, refreshPendingBrandsUnattended, loadPendingBrandSources, reviewPendingBrand, withPendingBrandWrite, approvedCafe24BrandCode, splitCodeIdentity, SPLIT_ACTION } from "./scripts/pending-brand-queue.mjs";
+import { readPendingBrands, refreshPendingBrands, refreshPendingBrandsUnattended, loadPendingBrandSources, reviewPendingBrand, withPendingBrandWrite, approvedCafe24BrandCode, splitCodeIdentity, SPLIT_ACTION, readIdentitySplitBackup, restoreIdentitySplitBackup } from "./scripts/pending-brand-queue.mjs";
+import { rebuildArchiveBrandSales } from "./scripts/archive-brand-attribution.mjs";
 import { refreshBrandSourcingMaster } from "./scripts/build-brand-sourcing-master.mjs";
 import { syncEcountInventory, REQUIRED_ENV_KEYS as ECOUNT_REQUIRED_ENV_KEYS } from "./scripts/sync-ecount-inventory.mjs";
 import { createEcountAutoSync } from "./scripts/ecount-auto-sync.mjs";
@@ -510,6 +511,22 @@ const server = isMainModule ? createServer(async (req, res) => {
       }
       const sources = input?.action === "REASSIGN_INACTIVE_CODE" ? await loadCurrentPendingBrandSources() : null;
       return json(res, await reviewPendingBrand(workDir, input, buildIntelligenceBrandRegistry, { sources }));
+    }
+    // Identity-split maintenance: byte-exact restore of a split backup, and brand-attribution-only
+    // rebuild of a saved archive. Internal auth plus the same CODE_IDENTITY_SPLIT_WRITE gate as the split.
+    if (url.pathname === "/api/pending-brands/split-restore" || url.pathname === "/api/reports/monthly/brand-attribution-rebuild") {
+      if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
+      if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      const input = await readJsonBody(req);
+      const restoring = url.pathname.endsWith("/split-restore");
+      const dryRun = !restoring && input.dryRun !== false;
+      if (!dryRun && env.CODE_IDENTITY_SPLIT_WRITE !== "on") return json(res, { ok: false, error: "SPLIT_WRITE_DISABLED", message: "identity-split writes are disabled" }, 403);
+      try {
+        if (restoring) return json(res, await restoreIdentitySplitBackup(workDir, input.backupId));
+        return json(res, await rebuildArchiveBrandAttribution(input.month, input.backupId, { dryRun }));
+      } catch (error) {
+        return json(res, { ok: false, error: error.code || "FAILED", message: safeErrorMessage(error) }, Number(error.status) >= 400 ? Number(error.status) : 500);
+      }
     }
     if (url.pathname === "/api/pending-brands") {
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
@@ -4993,6 +5010,41 @@ async function buildSplitAttributionPreview(plan, beforeCanonical) {
     });
   }
   return { months: rows };
+}
+
+// Recompute only commerce.brandSales of a saved archive after an identity split. `before` uses the
+// Brand Master / Product Registry captured in the split backup, `after` the current files; both go
+// through the official offline merge. Sales totals and all other sections are left as saved.
+async function rebuildArchiveBrandAttribution(month, backupId, { dryRun = true } = {}) {
+  if (!isValidMonthKey(month) || month >= currentMonth()) throw Object.assign(new Error("Only a closed month can be rebuilt"), { code: "VALIDATION_FAILED", status: 400 });
+  const archive = await readMonthlyArchive(month);
+  if (!archive || archive.archiveStatus !== "saved") throw Object.assign(new Error("No saved archive for this month"), { code: "NOT_FOUND", status: 404 });
+  // Without a backupId (dry-run only) `before` is the current state: a consistency check that the
+  // canonical merge reproduces the saved archive before any split is attempted.
+  if (!backupId && !dryRun) throw Object.assign(new Error("backupId from the split is required to write"), { code: "VALIDATION_FAILED", status: 400 });
+  const backup = backupId ? await readIdentitySplitBackup(workDir, backupId) : null;
+  const backupJson = async (relativePath) => (backup?.manifest.files.find((f) => f.relativePath === relativePath)?.existed ? JSON.parse(await readFile(join(backup.dir, relativePath), "utf8")) : null);
+  const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+  const offlineLines = Array.isArray(snapshot?.salesLines) ? snapshot.salesLines : [];
+  const onlineCatalog = { brands: archive.commerce?.brandSales || [], products: archive.commerce?.productSales || [] };
+  const since = `${month}-01`;
+  const until = monthEndKey(month);
+  const [beforeContext, afterContext] = await Promise.all([
+    loadResolverContext({ workDir, onlineCatalog, brandMaster: (await backupJson("brand-master.json")) || undefined, productRegistry: (await backupJson("product-registry.json")) || undefined }),
+    loadResolverContext({ workDir, onlineCatalog })
+  ]);
+  const before = mergeOfflineBrandSales({ offlineLines, since, until, identityContext: beforeContext });
+  const after = mergeOfflineBrandSales({ offlineLines, since, until, identityContext: afterContext });
+  // Relabel only codes whose canonical name actually changed between the backup and now.
+  const beforeNames = new Map(beforeContext.brandMaster.brands.map((brand) => [brand.brand_code, brand.brand_name]));
+  const names = new Map(afterContext.brandMaster.brands.filter((brand) => brand.brand_name && beforeNames.get(brand.brand_code) !== brand.brand_name).map((brand) => [brand.brand_code, brand.brand_name]));
+  const result = rebuildArchiveBrandSales({ brandSales: archive.commerce?.brandSales || [], before, after, names });
+  const summary = { ok: true, dryRun, month, backupId: backupId || null, changes: result.changes, totals: result.totals, salesUnchanged: true };
+  if (dryRun) return summary;
+  const next = { ...archive, commerce: { ...archive.commerce, brandSales: result.brandSales, brandSalesAttributionRebuild: { backupId, at: new Date().toISOString() } }, archiveStatus: "saved" };
+  await writeMonthlyArchive(month, next);
+  const readBack = await readMonthlyArchive(month);
+  return { ...summary, readBack: { salesTotal: readBack?.sales?.totalSales?.amount ?? null, brandSalesRows: readBack?.commerce?.brandSales?.length ?? 0 } };
 }
 
 async function buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSource) {
