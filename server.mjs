@@ -33,6 +33,7 @@ import {
   saveWeeklyReportToDropboxAtPath
 } from "./scripts/dropbox-report-uploader.mjs";
 import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
+import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs";
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
 import { getVeilFoundStatus, runVeilFoundPublisher } from "./scripts/veil-found-publisher.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
@@ -275,6 +276,14 @@ const server = isMainModule ? createServer(async (req, res) => {
         { level: url.searchParams.get("level") || "ad" }
       );
       return json(res, data);
+    }
+    if (url.pathname === "/api/meta-ads/landing-diagnostics") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method not allowed; GET only." }, 405);
+      try {
+        return json(res, await fetchLandingDiagnostics(cleanAdAccountId(), graphGet));
+      } catch (error) {
+        return json(res, { ok: false, source: "meta_marketing_api", error: safeErrorMessage(error) }, 502);
+      }
     }
     if (url.pathname === "/api/meta-ads/full-report") {
       const data = await buildMetaAdsFullReportWithCache(

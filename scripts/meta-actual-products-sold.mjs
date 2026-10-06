@@ -5,6 +5,9 @@ const MAPPINGS={meta_meantime_look:'MEANTIME 착장 광고',meta_ssage:'SSㅏ게
 const text=value=>typeof value==='string'||typeof value==='number'?String(value):null;
 export function buildActualProductsSold({data,since,until}){
   if(!data||data.ok===false||data.error||data.source==='csv_required'||(data.requiresCsv||data.csvRequired)||!Array.isArray(data.orders))return {available:false,reason:'Cafe24 actual orders unavailable; Meta-attributed revenue is never substituted.',rows:[]};
+  // Only explicit order-level fields used by the attribution reader establish coverage.
+  // Empty/null fields mean exposed but unattributed, not missing payload capability.
+  if(!data.orders.some(order=>order&&['inflow_path','ghost_mall_id'].some(key=>Object.hasOwn(order,key))))return {available:false,reason:'Cafe24 order payload does not expose inflow tracking fields; ad-level actual product attribution is unavailable.',rows:[]};
   const rows=[],seen=new Set();let missingItems=0,missingDates=0;
   for(const order of data.orders){
     const code=text(order.inflow_path)||text(order.ghost_mall_id),secondary=text(order.ghost_mall_id);
