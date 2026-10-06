@@ -2327,6 +2327,7 @@ function isAuthorizedEcountImport(req) {
 }
 
 async function fetchCafe24Orders(startDate, endDate, options = {}) {
+  if (options.weeklyMetaTracking === true) return fetchCafe24WeeklyTrackingOrders(startDate, endDate, options);
   const pastMonth = !isCurrentMonth(monthFromDate(endDate));
   if (options.inflowPath && pastMonth) {
     throw Object.assign(
@@ -2427,6 +2428,33 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
   await mkdir(workDir, { recursive: true });
   await writeFile(join(workDir, `cafe24-orders-${startDate}_${endDate}.json`), JSON.stringify(result, null, 2));
   return result;
+}
+
+// Only the Meta weekly adapter opts in: no canonical cache reads/writes or proxy fallback.
+// Cafe24 allows date-filtered inflow queries across calendar months. Keep this
+// reporting exception narrower: one week within the last 35 days, no future dates.
+async function fetchCafe24WeeklyTrackingOrders(startDate, endDate, options) {
+  const parse = value => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return NaN;
+    const date = new Date(value + 'T00:00:00Z');
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value ? date.getTime() : NaN;
+  };
+  const start = parse(startDate), end = parse(endDate);
+  const today = Date.parse(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()) + 'T00:00:00Z');
+  if (!META_WEEKLY_TRACKING_CODES.includes(options.inflowPath) || !Number.isFinite(start) || !Number.isFinite(end) || end < start || end - start > 6 * 86400000 || start < today - 35 * 86400000 || end > today) {
+    throw Object.assign(new Error('Meta weekly inflow query requires a recent bounded weekly period and known tracking code.'), { status: 400 });
+  }
+  if (!env.CAFE24_MALL_ID) throw new Error('Cafe24 direct API mall configuration required for Meta weekly tracking.');
+  await ensureCafe24AccessToken();
+  let body;
+  try { body = await cafe24GetOrders(startDate, endDate, { limit: 500, inflowPath: options.inflowPath, strictOrders: true }); }
+  catch (error) {
+    if (!isCafe24InvalidToken(error)) throw error;
+    await refreshCafe24Token();
+    body = await cafe24GetOrders(startDate, endDate, { limit: 500, inflowPath: options.inflowPath, strictOrders: true });
+  }
+  if (!body || body.error || !Array.isArray(body.orders)) throw new Error('Incomplete Cafe24 inflow query response.');
+  return { source: 'cafe24_admin_api_inflow', orders: body.orders };
 }
 
 async function fallbackCafe24OrdersAfterError(startDate, endDate, error) {
@@ -6158,6 +6186,7 @@ async function cafe24GetOrders(startDate, endDate, options = {}) {
     url.searchParams.set("limit", String(pageSize));
     url.searchParams.set("offset", String(offset));
     const body = await cafe24FetchOrdersPage(url);
+    if (options.strictOrders && !Array.isArray(body?.orders)) throw new Error("Incomplete Cafe24 inflow orders page.");
     const pageOrders = body.orders || [];
     orders.push(...pageOrders);
     if (pageOrders.length < pageSize) break;
@@ -8053,9 +8082,29 @@ export async function buildMetaAdsSummaryForWeeklyReport(since, until, level) {
   }
 }
 
-// Reporting adapter: reuse the canonical Cafe24 reader without tracking-code filtering.
+// Query provenance is internal metadata; never fabricate Cafe24 response fields.
+const META_WEEKLY_TRACKING_CODES = ['meta_meantime_look', 'meta_ssage', 'meta_adv_catalog', 'meta_adv_image', 'meta_adv_video'];
 export async function fetchCafe24ActualOrdersForWeeklyReport(since, until) {
-  return fetchCafe24Orders(since, until, { limit: 500 });
+  const orders = [], trackingQueries = [];
+  for (const code of META_WEEKLY_TRACKING_CODES) {
+    try {
+      const result = await fetchCafe24Orders(since, until, { limit: 500, inflowPath: code, weeklyMetaTracking: true });
+      if (!result || result.error || result.ok === false || result.source !== 'cafe24_admin_api_inflow' || !Array.isArray(result.orders) || result.orders.some(order => !order || typeof order !== 'object')) throw new Error('Incomplete query result');
+      const complete = result.orders.length < 500;
+      trackingQueries.push({ code, ok: true, complete, count: result.orders.length });
+      orders.push(...result.orders.map(order => ({ ...order, _metaTrackingCode: code })));
+    } catch {
+      // No raw API error, headers, or order payload in report/log metadata.
+      trackingQueries.push({ code, ok: false, complete: false });
+    }
+  }
+  return { source: 'cafe24_inflow_queries', orders, trackingQueries };
+}
+
+// Preserve Analytics acquisition context through the existing reader; it never
+// supplies actual products or paid amounts, nor repairs failed inflow queries.
+export async function fetchCafe24AnalyticsForWeeklyReport(since, until) {
+  return fetchCafe24AnalyticsOrderDetails({ startDate: since, endDate: until });
 }
 
 async function runMetaWeeklyReportCheck() {
@@ -8075,6 +8124,7 @@ async function runMetaWeeklyReportCheck() {
       referenceDateKey: seoulDateKey(),
       fetchByLevel: buildMetaAdsSummaryForWeeklyReport,
       fetchActualOrders: fetchCafe24ActualOrdersForWeeklyReport,
+      fetchActualAnalytics: fetchCafe24AnalyticsForWeeklyReport,
       env,
       saveReport: destination.mode === "dropbox"
         ? (workbook, { since, until }) => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: `${destination.dir.replace(/\/+$/, "")}/META_ADS_WEEKLY_${since}_${until}.xlsx`, env })

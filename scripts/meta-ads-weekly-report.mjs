@@ -53,7 +53,7 @@ function levelOk(data) {
   return Boolean(data) && data.ok !== false && Array.isArray(data.rows);
 }
 
-export function buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil, actualOrders }) {
+export function buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil, actualOrders, actualAnalytics }) {
   const campaignCurrent = current?.campaign;
   const currentOk = levelOk(campaignCurrent);
 
@@ -93,7 +93,13 @@ export function buildWeeklyMetaReportModel({ current, previous, since, until, pr
     adsets: rowsForLevel("adset", "adsetId"),
     ads: rowsForLevel("ad", "adId"),
     analysis: analyzeMetaLevels(current, previous),
-    actualProducts: buildActualProductsSold({data:actualOrders,since,until}),
+    actualProducts: buildActualProductsSold({
+      data: actualOrders,
+      analytics: actualAnalytics,
+      metaAds: current?.ad?.rows || [],
+      since,
+      until
+    }),
     raw: currentOk ? current : null
   };
 }
@@ -233,12 +239,33 @@ export async function buildWeeklyMetaReportWorkbook(model) {
   trend.addRow({period:"Available range only; no fabricated 8-week history"});
   writeDecisionSheet(workbook,"AI_ANALYSIS",model.analysis||[]);
   const actual=workbook.addWorksheet("ACTUAL_PRODUCTS_SOLD");
-  const cols=["order_id","order_date","inflow_path","ad_mapping","product_name","product_no","product_code","option_size","quantity","product_amount","actual_paid_amount","order_status","attribution_note"];
+  const cols=[
+    "order_id",
+    "order_date",
+    "inflow_path",
+    "tracking_source",
+    "ad_mapping",
+    "campaign_id",
+    "content_id",
+    "analytics_ad",
+    "analytics_medium",
+    "analytics_keyword",
+    "product_name",
+    "product_no",
+    "product_code",
+    "option_size",
+    "quantity",
+    "product_amount",
+    "actual_paid_amount",
+    "analytics_order_amount",
+    "order_status",
+    "attribution_note"
+  ];
   setupSheet(actual,cols.map(key=>({header:key=== "product_code"?"SKU/product_code":key==="option_size"?"option/size":key,key,width:["ad_mapping","attribution_note"].includes(key)?65:22})));
   if(!model.actualProducts?.available)actual.addRow({attribution_note:"UNAVAILABLE — "+(model.actualProducts?.reason||"Cafe24 actual orders not supplied; no Meta revenue substitution.")});
   else{for(const row of model.actualProducts.rows)actual.addRow(row);if(model.actualProducts.missingItems||model.actualProducts.missingDates)actual.addRow({attribution_note:`Coverage warning: missing item detail ${model.actualProducts.missingItems}; missing trusted date ${model.actualProducts.missingDates}. Not a complete sales reconciliation.`});}
   if(model.actualProducts?.possibleLimitReached)actual.addRow({attribution_note:"Coverage warning: existing Cafe24 reader limit reached; report may be partial."});
-  for(const key of ["product_amount","actual_paid_amount"])actual.getColumn(key).numFmt=WON_FMT;
+  for(const key of ["product_amount","actual_paid_amount","analytics_order_amount"])actual.getColumn(key).numFmt=WON_FMT;
   buildRawSheet(workbook, model);
   return workbook;
 }
@@ -292,7 +319,7 @@ export async function writeMetaWeeklyReportFile(workbook, { since, until, output
 // Orchestrator
 // ---------------------------------------------------------------------------
 
-export async function generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLevel, fetchActualOrders, outputDir, env = process.env, saveReport } = {}) {
+export async function generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLevel, fetchActualOrders, fetchActualAnalytics, outputDir, env = process.env, saveReport } = {}) {
   if (typeof fetchByLevel !== "function") throw new Error("generateWeeklyMetaAdsReport requires fetchByLevel(since, until, level)");
   const { since, until } = previousMondayToSundayRange(referenceDateKey);
   const { since: previousSince, until: previousUntil } = previousWeekRange({ since, until });
@@ -303,8 +330,36 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLev
   ]);
 
   let actualOrders;
-  if(fetchActualOrders&&levelOk(current.campaign)){try{actualOrders=await fetchActualOrders(since,until);}catch{actualOrders={ok:false};}}
-  const model = buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil, actualOrders });
+  let actualAnalytics;
+
+  if (levelOk(current.campaign)) {
+    if (fetchActualOrders) {
+      try {
+        actualOrders = await fetchActualOrders(since, until);
+      } catch {
+        actualOrders = { ok: false };
+      }
+    }
+
+    if (fetchActualAnalytics) {
+      try {
+        actualAnalytics = await fetchActualAnalytics(since, until);
+      } catch {
+        actualAnalytics = { ok: false };
+      }
+    }
+  }
+
+  const model = buildWeeklyMetaReportModel({
+    current,
+    previous,
+    since,
+    until,
+    previousSince,
+    previousUntil,
+    actualOrders,
+    actualAnalytics
+  });
   if (!model.ok) {
     return { ok: false, since, until, error: model.error, filePath: null };
   }
@@ -330,13 +385,27 @@ async function createServerFetcher() {
   if (typeof serverModule.buildMetaAdsSummaryForWeeklyReport !== "function") {
     throw new Error("server.mjs does not export buildMetaAdsSummaryForWeeklyReport — CLI cannot run standalone.");
   }
-  return {fetchByLevel:serverModule.buildMetaAdsSummaryForWeeklyReport,fetchActualOrders:serverModule.fetchCafe24ActualOrdersForWeeklyReport};
+  return {
+    fetchByLevel: serverModule.buildMetaAdsSummaryForWeeklyReport,
+    fetchActualOrders: serverModule.fetchCafe24ActualOrdersForWeeklyReport,
+    fetchActualAnalytics: serverModule.fetchCafe24AnalyticsForWeeklyReport
+  };
 }
 
 async function main() {
   const referenceDateKey = process.argv[2] || undefined;
-  const {fetchByLevel,fetchActualOrders} = await createServerFetcher();
-  const result = await generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLevel,fetchActualOrders });
+  const {
+    fetchByLevel,
+    fetchActualOrders,
+    fetchActualAnalytics
+  } = await createServerFetcher();
+
+  const result = await generateWeeklyMetaAdsReport({
+    referenceDateKey,
+    fetchByLevel,
+    fetchActualOrders,
+    fetchActualAnalytics
+  });
   console.log(JSON.stringify(result, null, 2));
   if (!result.ok) process.exitCode = 1;
 }
