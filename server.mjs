@@ -75,7 +75,7 @@ import {
   trustedCafe24OrderDate
 } from "./scripts/cafe24-order-amount.mjs";
 import { normalizeBrandCode, normalizeBrandName, parseBrandAliases } from "./scripts/brand-engine.mjs";
-import { readPendingBrands, refreshPendingBrands, refreshPendingBrandsUnattended, loadPendingBrandSources, reviewPendingBrand, withPendingBrandWrite, approvedCafe24BrandCode } from "./scripts/pending-brand-queue.mjs";
+import { readPendingBrands, refreshPendingBrands, refreshPendingBrandsUnattended, loadPendingBrandSources, reviewPendingBrand, withPendingBrandWrite, approvedCafe24BrandCode, splitCodeIdentity, SPLIT_ACTION } from "./scripts/pending-brand-queue.mjs";
 import { refreshBrandSourcingMaster } from "./scripts/build-brand-sourcing-master.mjs";
 import { syncEcountInventory, REQUIRED_ENV_KEYS as ECOUNT_REQUIRED_ENV_KEYS } from "./scripts/sync-ecount-inventory.mjs";
 import { createEcountAutoSync } from "./scripts/ecount-auto-sync.mjs";
@@ -495,6 +495,19 @@ const server = isMainModule ? createServer(async (req, res) => {
       if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
       if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
       const input = await readJsonBody(req);
+      if (input?.action === SPLIT_ACTION) {
+        // Dry-run by default. Writes stay off until the operator enables CODE_IDENTITY_SPLIT_WRITE=on.
+        const dryRun = input.dryRun !== false;
+        if (!dryRun && env.CODE_IDENTITY_SPLIT_WRITE !== "on") {
+          return json(res, { ok: false, error: "SPLIT_WRITE_DISABLED", message: "SPLIT_CODE_IDENTITY writes are disabled; run with dryRun" }, 403);
+        }
+        try {
+          const sources = await loadCurrentPendingBrandSources();
+          return json(res, await splitCodeIdentity(workDir, input, buildIntelligenceBrandRegistry, { sources, dryRun, preview: dryRun ? buildSplitAttributionPreview : null }));
+        } catch (error) {
+          return json(res, { ok: false, error: error.code || "SPLIT_FAILED", message: safeErrorMessage(error) }, Number(error.status) >= 400 ? Number(error.status) : 500);
+        }
+      }
       const sources = input?.action === "REASSIGN_INACTIVE_CODE" ? await loadCurrentPendingBrandSources() : null;
       return json(res, await reviewPendingBrand(workDir, input, buildIntelligenceBrandRegistry, { sources }));
     }
@@ -4930,6 +4943,58 @@ export async function buildMonthlyArchive(month) {
 // 오판돼 다시 병합되는(SECOND MERGE, docs/reports/NEXT-JULY-HISTORICAL-ONLINE-
 // SNAPSHOT-FORENSICS.md §3) 사고를 막는다. 새 스냅샷 읽기를 추가하지 않고, 이미
 // 호출 중인 readEcountOfflineSalesSnapshot()의 결과를 그대로 재사용한다.
+// SPLIT_CODE_IDENTITY dry-run: monthly attribution before/after through the official pipeline
+// (mergeOfflineBrandSales + Unified Identity) with the canonical state swapped in memory. Offline lines
+// are re-resolved; online paid amounts follow Cafe24 code ownership by period (approvedCafe24BrandCode).
+// Reads only; nothing is written.
+async function buildSplitAttributionPreview(plan, beforeCanonical) {
+  const code = plan.newIdentity.brand_code;
+  const oldCode = plan.oldIdentity.brand_code;
+  const months = [];
+  for (let month = plan.effectiveMonth; month <= currentMonth();) {
+    months.push(month);
+    const [year, m] = month.split("-").map(Number);
+    month = m === 12 ? `${year + 1}-01` : `${year}-${String(m + 1).padStart(2, "0")}`;
+  }
+  const rows = [];
+  for (const month of months) {
+    const since = `${month}-01`;
+    const until = monthEndKey(month);
+    const archive = await readMonthlyArchive(month).catch(() => null);
+    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+    const lines = Array.isArray(snapshot?.salesLines) ? snapshot.salesLines : [];
+    const onlineCatalog = archive?.commerce ? { brands: archive.commerce.brandSales || [], products: archive.commerce.productSales || [] } : undefined;
+    const [before, after] = await Promise.all([
+      loadResolverContext({ workDir, onlineCatalog, brandMaster: beforeCanonical }),
+      loadResolverContext({ workDir, onlineCatalog, brandMaster: plan.canonical, productRegistry: plan.productRegistry })
+    ]).then(([a, b]) => [mergeOfflineBrandSales({ offlineLines: lines, since, until, identityContext: a }), mergeOfflineBrandSales({ offlineLines: lines, since, until, identityContext: b })]);
+    const offline = (list, brandCode) => list.find((row) => row.brand_code === brandCode)?.offlineSalesAmount || 0;
+    const sum = (list) => list.reduce((total, row) => total + Number(row.offlineSalesAmount || 0), 0);
+    const savedRow = (archive?.commerce?.brandSales || []).find((row) => row.brand_code === code) || null;
+    const online = Number(savedRow?.onlinePaidAmount || 0);
+    const onlineOwnerAfter = approvedCafe24BrandCode(code, plan.canonical, { since, until });
+    const side = (brandCode, onlineAmount) => ({ brandCode, online: onlineAmount, offline: offline(after, brandCode), total: onlineAmount + offline(after, brandCode) });
+    const oldAfter = side(oldCode, onlineOwnerAfter === oldCode ? online : 0);
+    const newAfter = side(code, onlineOwnerAfter === code ? online : 0);
+    const beforeTotal = online + offline(before, code);
+    rows.push({
+      month,
+      treatment: archive?.archiveStatus === "saved" ? "ARCHIVE_REBUILD" : lines.length ? "REALTIME" : "UNAVAILABLE",
+      savedArchive: savedRow ? { brandCode: code, brandName: savedRow.brand_name, online: savedRow.onlinePaidAmount, offline: savedRow.offlineSalesAmount, total: savedRow.salesAmount } : null,
+      before: { brandCode: code, brandName: plan.oldIdentity.brand_name, online, offline: offline(before, code), total: beforeTotal, unassignedOffline: offline(before, "UNASSIGNED") },
+      after: { old: { name: plan.oldIdentity.brand_name, ...oldAfter }, new: { name: plan.newIdentity.brand_name, ...newAfter }, unassignedOnline: onlineOwnerAfter === "UNASSIGNED" ? online : 0, unassignedOffline: offline(after, "UNASSIGNED") },
+      monthOfflineTotal: { before: sum(before), after: sum(after), preserved: sum(before) === sum(after) },
+      // Old row + offline that leaves UNASSIGNED must equal the two identities (+ unassigned online) after.
+      reconciliation: (() => {
+        const left = beforeTotal + offline(before, "UNASSIGNED") - offline(after, "UNASSIGNED");
+        const right = oldAfter.total + newAfter.total + (onlineOwnerAfter === "UNASSIGNED" ? online : 0);
+        return { beforeCodeTotalPlusResolvedUnassigned: left, afterOldPlusNew: right, balanced: left === right };
+      })()
+    });
+  }
+  return { months: rows };
+}
+
 async function buildMonthlyArchiveBrandSales(monthStart, monthEnd, commerceSource) {
   const snapshot = await readEcountOfflineSalesSnapshot(monthStart.slice(0, 7), { workDir });
   const offlineLines = Array.isArray(snapshot?.salesLines)

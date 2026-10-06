@@ -10,6 +10,8 @@ import { readWorkbenchSources, buildIdentityWorkbench } from "./brand-identity-w
 import { refreshBrandSourcingMaster, stripConsignmentPrefix } from "./build-brand-sourcing-master.mjs";
 import { readEcountProductMaster } from "./ecount-product-master.mjs";
 import { CODE_REUSE_REVIEW_REASON, auditUnconfirmedCafe24Codes, classifyCodeReuse } from "./cafe24-code-reuse.mjs";
+import { SPLIT_ACTION, planCodeIdentitySplit } from "./code-identity-split.mjs";
+import { buildBrandSourcingMaster, loadInputs as loadSourcingInputs } from "./build-brand-sourcing-master.mjs";
 
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, "utf8")); }
@@ -339,6 +341,16 @@ function invalidDecision(message) { throw Object.assign(new Error(message), { st
 export function approvedCafe24BrandCode(code, canonical, period = null) {
   const brands = Array.isArray(canonical) ? canonical : canonical?.brands || [];
   const owners = brands.filter(b => b.brand_code === code);
+  // Split identities (SPLIT_CODE_IDENTITY): the new owner holds the code from externalCodes.cafe24.since;
+  // earlier periods go to the former owner whose formerCodes interval covers them, crossings are UNASSIGNED.
+  const since = owners.length === 1 ? owners[0].externalCodes?.cafe24?.since : null;
+  if (since && period?.since && period?.until) {
+    if (period.until.slice(0, 7) < since) {
+      const former = brands.filter(b => (b.formerCodes || []).some(f => f.code === code && f.until && period.until.slice(0, 7) <= f.until));
+      return former.length === 1 ? former[0].brand_code : "UNASSIGNED";
+    }
+    if (period.since.slice(0, 7) < since) return "UNASSIGNED";
+  }
   if (owners.length) {
     const owner = owners[0];
     const transition = owner.supersededBy;
@@ -476,6 +488,22 @@ async function reviewPendingBrandUnlocked(workDir, input, buildCompatibility, { 
         [join(workDir, "intelligence/brand-aliases.json"), derived.aliases], [canonicalFile, result.canonical]);
     }
     files.push([join(workDir, "pending-brand-queue.json"), result.queue]);
+    await writeFilesAtomically(files, { replace });
+    let sourcingRefresh;
+    if (["NEW", "REASSIGN_INACTIVE_CODE"].includes(input.action)) {
+      try {
+        const sourcing = await refreshBrandSourcingMaster(workDir);
+        sourcingRefresh = { ok: true, brands: sourcing.brands.length, generatedAt: sourcing.generatedAt };
+      } catch (error) {
+        sourcingRefresh = { ok: false, error: error.message };
+      }
+    }
+    return { ok: true, candidate: result.candidate, ...(sourcingRefresh ? { sourcingRefresh } : {}) };
+}
+
+// All-or-nothing replacement of several JSON files: every target is staged first, then replaced;
+// any failure restores the files already replaced from their backups.
+async function writeFilesAtomically(files, { replace = rename } = {}) {
     const prepared = [];
     const replaced = [];
     let rollbackFailed = false;
@@ -507,16 +535,6 @@ async function reviewPendingBrandUnlocked(workDir, input, buildCompatibility, { 
         await unlink(file).catch(error => { if (error.code !== "ENOENT") throw error; });
       }
     }
-    let sourcingRefresh;
-    if (["NEW", "REASSIGN_INACTIVE_CODE"].includes(input.action)) {
-      try {
-        const sourcing = await refreshBrandSourcingMaster(workDir);
-        sourcingRefresh = { ok: true, brands: sourcing.brands.length, generatedAt: sourcing.generatedAt };
-      } catch (error) {
-        sourcingRefresh = { ok: false, error: error.message };
-      }
-    }
-    return { ok: true, candidate: result.candidate, ...(sourcingRefresh ? { sourcingRefresh } : {}) };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -526,3 +544,61 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const result = await refreshPendingBrands(workDir, () => loadPendingBrandSources(workDir, month), { dryRun: true });
   console.log(JSON.stringify(result, null, 2));
 }
+
+// SPLIT_CODE_IDENTITY executor. dryRun computes the full plan (plus compatibility and sourcing previews)
+// and writes nothing. A real run writes Brand Master, commercial policy, product registry, compatibility
+// and the pending queue in one atomic step, then rebuilds sourcing (same post-commit rule as NEW).
+export function splitCodeIdentity(workDir, input, buildCompatibility, { replace = rename, sources = null, dryRun = true, preview = null } = {}) {
+  return withPendingBrandWrite(async () => {
+    const files = {
+      canonical: join(workDir, "brand-master.json"),
+      policies: join(workDir, "brand-commercial-policy.json"),
+      productRegistry: join(workDir, "product-registry.json"),
+      compatibility: join(workDir, "intelligence/brand-master-list.json"),
+      aliases: join(workDir, "intelligence/brand-aliases.json"),
+      queue: join(workDir, "pending-brand-queue.json")
+    };
+    const canonical = await readJson(files.canonical, null);
+    const policies = await readJson(files.policies, { policies: [] });
+    const productRegistry = await readJson(files.productRegistry, { entries: [] });
+    const queue = await readPendingBrands(workDir);
+    const plan = planCodeIdentitySplit({ canonical, policies, productRegistry, queue, input, sources, now: new Date().toISOString() });
+    if (plan.status === "ALREADY_SPLIT") return { ok: true, ...plan, dryRun };
+    const brandsAfter = Array.isArray(plan.canonical) ? plan.canonical : plan.canonical.brands;
+    const derived = buildCompatibility(brandsAfter);
+    const codes = new Set([plan.newIdentity.brand_code, plan.oldIdentity.brand_code]);
+    const compatBefore = await readJson(files.compatibility, []);
+    const compatibility = {
+      before: (Array.isArray(compatBefore) ? compatBefore : []).filter(b => codes.has(b.id)),
+      after: derived.brands.filter(b => codes.has(b.id))
+    };
+    const summary = { status: "PLANNED", version: plan.version, preconditions: plan.preconditions, effectiveMonth: plan.effectiveMonth,
+      oldIdentity: plan.oldIdentity, newIdentity: plan.newIdentity, diff: { ...plan.diff, compatibility } };
+    if (dryRun) {
+      let sourcing = null;
+      try {
+        const preview = buildBrandSourcingMaster({ ...(await loadSourcingInputs(workDir)), brandMaster: plan.canonical });
+        const pick = code => preview.brands.find(b => b.brand_code === code) || null;
+        sourcing = { old: pick(plan.oldIdentity.brand_code), new: pick(plan.newIdentity.brand_code) };
+      } catch (error) {
+        sourcing = { error: error.message };
+      }
+      const attribution = preview ? await preview(plan, canonical) : null;
+      return { ok: true, dryRun: true, ...summary, diff: { ...summary.diff, sourcing }, ...(attribution ? { attribution } : {}) };
+    }
+    if (input.expectedVersion === undefined) throw Object.assign(new Error("expectedVersion from the dry-run is required"), { code: "VERSION_REQUIRED", status: 409 });
+    await writeFilesAtomically([[files.canonical, plan.canonical], [files.policies, plan.policies], [files.productRegistry, plan.productRegistry],
+      [files.compatibility, derived.brands], [files.aliases, derived.aliases], [files.queue, plan.queue]], { replace });
+    let sourcingRefresh;
+    try {
+      const sourcing = await refreshBrandSourcingMaster(workDir);
+      sourcingRefresh = { ok: true, brands: sourcing.brands.length, generatedAt: sourcing.generatedAt };
+    } catch (error) {
+      sourcingRefresh = { ok: false, error: error.message };
+    }
+    return { ok: true, dryRun: false, ...summary, sourcingRefresh };
+  });
+}
+
+export { SPLIT_ACTION };
+

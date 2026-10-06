@@ -19,7 +19,8 @@ function executableResolverCalls(source) {
 test("every Production resolver consumer receives canonical runtime workDir", () => {
   const serverCalls = executableResolverCalls(server);
   const intelligenceCalls = executableResolverCalls(intelligence);
-  assert.equal(serverCalls.length, 7);
+  // 9 = 7 report/attribution consumers + 2 in the SPLIT_CODE_IDENTITY dry-run preview (before/after canonical).
+  assert.equal(serverCalls.length, 9);
   assert.equal(intelligenceCalls.length, 1);
   for (const call of [...serverCalls, ...intelligenceCalls]) assert.match(call, /workDir/);
 });

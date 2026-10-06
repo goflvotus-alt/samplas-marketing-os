@@ -93,11 +93,13 @@ function buildOnlineCatalogRegistry(onlineCatalog, brandMaster) {
   return buildBrandRegistry(shaped);
 }
 
-export async function loadResolverContext({ workDir: overrideWorkDir, onlineCatalog } = {}) {
+// brandMaster/productRegistry overrides let a dry-run (SPLIT_CODE_IDENTITY preview) resolve against
+// a planned canonical state held in memory, through the same pipeline, without writing files.
+export async function loadResolverContext({ workDir: overrideWorkDir, onlineCatalog, brandMaster: brandMasterOverride, productRegistry: productRegistryOverride } = {}) {
   const dir = overrideWorkDir || workDir;
   const [brandMaster, productRegistry, reviewQueue] = await Promise.all([
-    readJsonIfExists(join(dir, "brand-master.json")),
-    readJsonIfExists(join(dir, "product-registry.json")),
+    brandMasterOverride || readJsonIfExists(join(dir, "brand-master.json")),
+    productRegistryOverride || readJsonIfExists(join(dir, "product-registry.json")),
     readJsonIfExists(join(dir, "brand-alias-review-queue.json"))
   ]);
   const resolvedBrandMaster = brandMaster || { brands: [] };

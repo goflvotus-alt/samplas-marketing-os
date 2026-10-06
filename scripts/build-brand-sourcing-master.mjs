@@ -135,7 +135,7 @@ export function buildBrandSourcingMaster({ brandMaster, products, salesSnapshots
   };
 }
 
-async function loadInputs(workDir = WORK) {
+export async function loadInputs(workDir = WORK) {
   const brandMaster = JSON.parse(await readFile(join(workDir, "brand-master.json"), "utf8"));
   // product-master.json first, raw-products.json fallback (mapped to the raw field names).
   const master = await readEcountProductMaster(workDir);
