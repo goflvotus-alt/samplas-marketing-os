@@ -944,6 +944,33 @@ const server = isMainModule ? createServer(async (req, res) => {
         return json(res, { ok: false, error: safeErrorMessage(error) }, 400);
       }
     }
+
+    if (url.pathname === "/api/diagnostics/cafe24-analytics-orderdetails") {
+      if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) {
+        return json(res, { error: "Unauthorized" }, 401);
+      }
+      try {
+        const startDate = url.searchParams.get("start_date") || todayKey();
+        const endDate = url.searchParams.get("end_date") || startDate;
+        const orderId = url.searchParams.get("order_id") || undefined;
+
+        const data = await fetchCafe24AnalyticsOrderDetails({
+          startDate,
+          endDate,
+          orderId
+        });
+
+        return json(res, data);
+      } catch (error) {
+        return json(res, {
+          ok: false,
+          status: error.status || 500,
+          error: safeErrorMessage(error),
+          body: error.body || null
+        }, error.status || 500);
+      }
+    }
+
     if (url.pathname === "/api/diagnostics/cafe24-token-store") {
       const token = await cafe24TokenDiagnostics();
       return json(res, {
@@ -6295,6 +6322,65 @@ async function cafe24FetchJson(url, options = {}) {
     return { error };
   }
   return body;
+}
+
+
+async function fetchCafe24AnalyticsOrderDetails({
+  startDate,
+  endDate,
+  orderId
+} = {}) {
+  await ensureCafe24AccessToken();
+
+  const url = new URL("https://ca-api.cafe24data.com/sales/orderdetails");
+  url.searchParams.set("mall_id", env.CAFE24_MALL_ID);
+  url.searchParams.set("shop_no", "1");
+  url.searchParams.set("start_date", startDate);
+  url.searchParams.set("end_date", endDate);
+  url.searchParams.set("device_type", "total");
+  url.searchParams.set("limit", "100");
+
+  if (orderId) {
+    url.searchParams.set("orderId", orderId);
+  }
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
+      "Content-Type": "application/json"
+    }
+  });
+
+  const text = await response.text();
+
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = { message: text.slice(0, 1000) };
+  }
+
+  if (!response.ok) {
+    const error = new Error(
+      body?.message ||
+      body?.error_description ||
+      `Cafe24 Analytics API error ${response.status}`
+    );
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+
+  return {
+    ok: true,
+    statusCode: response.status,
+    request: {
+      startDate,
+      endDate,
+      orderId: orderId || null
+    },
+    data: body
+  };
 }
 
 async function attachCafe24OrderItems(orders = []) {
