@@ -2386,6 +2386,7 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
     syncedAt: new Date().toISOString(),
     startDate,
     endDate,
+    apiVersion: cafe24ApiVersion(),
     orders,
     ...summary
   };
