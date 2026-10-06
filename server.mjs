@@ -6073,11 +6073,20 @@ function cafe24ApiVersion() {
   return env.CAFE24_API_VERSION || env.CAFE24_ADMIN_API_VERSION || "2025-06-01";
 }
 
-function cafe24OrdersHeaders() {
+function cafe24OrdersApiVersion() {
+  if (env.CAFE24_ORDERS_API_VERSION) return env.CAFE24_ORDERS_API_VERSION;
+  const configured = cafe24ApiVersion();
+  return configured < "2025-07-01" ? "2025-07-01" : configured;
+}
+
+function cafe24OrdersHeaders(url) {
   return {
     Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
     "Content-Type": "application/json",
-    "X-Cafe24-Api-Version": cafe24ApiVersion()
+    // This header builder is also used by non-order readers; preserve their version.
+    "X-Cafe24-Api-Version": !url || /^\/api\/v2\/admin\/orders(?:\/|$)/.test(new URL(url).pathname)
+      ? cafe24OrdersApiVersion()
+      : cafe24ApiVersion()
   };
 }
 
@@ -6087,7 +6096,7 @@ function safeCafe24OrdersUrl(url) {
 }
 
 function cafe24OrdersDebugContext(url, extra = {}) {
-  const headers = cafe24OrdersHeaders();
+  const headers = cafe24OrdersHeaders(url);
   return {
     mallId: env.CAFE24_MALL_ID || null,
     configuredScopes: env.CAFE24_SCOPES || null,
@@ -6150,7 +6159,7 @@ async function cafe24FetchJson(url, options = {}) {
   await ensureCafe24AccessToken();
   await logCafe24OrdersDebug("request", cafe24OrdersDebugContext(url));
   const response = await fetch(url, {
-    headers: cafe24OrdersHeaders(),
+    headers: cafe24OrdersHeaders(url),
     signal: options.signal
   });
   const text = await response.text();
@@ -6223,7 +6232,7 @@ async function cafe24GetOrderItems(orderId) {
   await ensureCafe24AccessToken();
   await logCafe24OrdersDebug("items_request", cafe24OrdersDebugContext(url, { orderId }));
   const response = await fetch(url, {
-    headers: cafe24OrdersHeaders()
+    headers: cafe24OrdersHeaders(url)
   });
   const text = await response.text();
   let body;
@@ -6284,7 +6293,7 @@ async function diagnoseCafe24ProductAccess() {
     const url = new URL(`https://${mallId}.cafe24api.com/api/v2/admin${path}`);
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
     await ensureCafe24AccessToken();
-    const response = await fetch(url, { headers: cafe24OrdersHeaders() });
+    const response = await fetch(url, { headers: cafe24OrdersHeaders(url) });
     const body = await response.json().catch(() => ({}));
     return { ok: response.ok, status: response.status, body };
   };
