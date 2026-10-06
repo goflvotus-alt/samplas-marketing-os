@@ -7,6 +7,7 @@ import ExcelJS from 'exceljs';
 import { buildWeeklyInstagramReportModel, buildWeeklyInstagramReportWorkbook } from '../scripts/instagram-weekly-report.mjs';
 import { buildWeeklyReportModel, buildWeeklyReportWorkbook } from '../scripts/naver-ads-weekly-report.mjs';
 import { instagramWinners, instagramActions, reachRate, naverCampaignSignal } from '../scripts/weekly-report-presentation.mjs';
+import { instagramDecision, naverDecision, unitFormat } from '../scripts/weekly-onepage-report.mjs';
 import { runWeeklyReportPreview, handleWeeklyReportPreview, validateWeeklyPreviewRequest } from '../scripts/weekly-report-manual.mjs';
 const dates={since:'2026-09-29',until:'2026-10-05',previousSince:'2026-09-22',previousUntil:'2026-09-28'};
 const posts=[{id:'1',title:'착장 A',type:'릴스',date:'2026-10-01',reach:300,views:600,saves:40,shares:20,likes:100,comments:10,totalInteractions:170},{id:'2',title:'신상품 B',type:'피드',date:'2026-10-02',reach:100,views:200,saves:10,shares:5,likes:30,comments:2,totalInteractions:47},{id:'3',title:'미측정',type:'피드',reach:0,saves:null,shares:0,totalInteractions:0}];
@@ -18,63 +19,28 @@ const cellText=w=>JSON.stringify(w.worksheets.filter(s=>s.state==='visible').map
 const allText=w=>JSON.stringify(w.worksheets.map(s=>s.getSheetValues()));
 const visible=w=>w.worksheets.filter(s=>s.state==='visible').map(s=>s.name);
 
-test('Instagram: 3 decision sheets; technical/account/story sheets hidden after XLSX round trip',async()=>{
- const w=await buildWeeklyInstagramReportWorkbook(ig()),loaded=new ExcelJS.Workbook();await loaded.xlsx.load(await w.xlsx.writeBuffer());
- assert.deepEqual(visible(loaded),['01_한눈에','02_콘텐츠','03_다음주']);
- for(const name of ['01_주간요약','03_콘텐츠분석','04_스토리분석','ACCOUNT INSIGHTS','RAW'])assert.equal(loaded.getWorksheet(name).state,'hidden');
-});
-test('Instagram: dashboard KPIs, Korean verdict, exact post reach and no invented unique reach',async()=>{
- const m=ig(),w=await buildWeeklyInstagramReportWorkbook(m),s=w.getWorksheet('01_한눈에');
- assert.equal(s.getCell('A1').value,'SAMPLAS WEEKLY REPORT');assert.match(s.getCell('A4').value,/WEEKLY VERDICT/);
- assert.equal(s.getCell('A7').value,3);assert.equal(s.getCell('E7').value,800);assert.equal(s.getCell('I7').value,400);
- assert.equal(s.getCell('A12').value,217);assert.equal(s.getCell('E12').value,50);assert.equal(s.getCell('I12').value,25);
- assert(cellText(w).includes('게시물 Reach 합계'));assert(cellText(w).includes('계정 주간 고유 도달: N/A'));
- assert(!cellText(w).includes('999999'));assert.equal(m.weeklyUniqueReach,null);
-});
-test('Instagram: merged winners and top three no duplicated post',async()=>{
- const m=ig(),winners=instagramWinners(m.content);assert.equal(winners.length,1);assert.equal(winners[0].signals.length,4);
- const w=await buildWeeklyInstagramReportWorkbook(m);assert(cellText(w).includes('REACH WINNER / SAVE WINNER / SHARE WINNER / ENGAGEMENT WINNER'));
- assert.equal(instagramWinners([{reach:0,saves:0,shares:0,totalInteractions:0}]).length,0);
-});
-test('Instagram: rate denominators and missing values; source post metrics unchanged',async()=>{
- for(const r of [0,-1,null,undefined,NaN])assert.equal(reachRate(2,r),null);assert.equal(reachRate(null,100),null);assert.equal(reachRate(0,100),0);
- const m=ig(),before=JSON.stringify(m),w=await buildWeeklyInstagramReportWorkbook(m),s=w.getWorksheet('02_콘텐츠');
- assert.equal(s.getRow(2).getCell('saveRate').value,40/300);assert.equal(s.getRow(2).getCell('shareRate').value,20/300);assert.equal(s.getRow(2).getCell('engagementRate').value,170/300);
- for(const k of ['saveRate','shareRate','engagementRate'])assert.equal(s.getRow(4).getCell(k).value,'N/A');
- for(let i=0;i<posts.length;i++)for(const k of ['reach','views','likes','comments','saves','shares','totalInteractions'])assert.equal(s.getRow(i+2).getCell(k).value,posts[i][k]??null);
- assert.equal(JSON.stringify(m),before);assert.equal(s.getRow(2).getCell('performance_signal').font.color.argb,'FF216A3E');
-});
-test('Instagram: max five actions and P1 first, Korean actions',async()=>{
- const m=ig();m.actions=[...m.actions,...m.actions,...m.actions];const rows=instagramActions(m);assert(rows.length<=5);assert.deepEqual(rows.map(a=>a.priority),rows.map(a=>a.priority).sort());
- const w=await buildWeeklyInstagramReportWorkbook(m);assert(w.getWorksheet('03_다음주').rowCount<=6);assert(rows.every(a=>/[가-힣]/.test(a.action)));
-});
-test('Instagram: missing prior cannot assert growth; missing current cannot claim metrics',async()=>{
- const m=buildWeeklyInstagramReportModel({...dates,current:{ok:true,posts:[]},previous:null});const w=await buildWeeklyInstagramReportWorkbook(m);assert.match(w.getWorksheet('01_한눈에').getCell('A4').value,/전주 비교 데이터가 없습니다/);
- const bad=await buildWeeklyInstagramReportWorkbook(buildWeeklyInstagramReportModel({...dates,current:{ok:false},previous:null}));assert.match(bad.getWorksheet('01_한눈에').getCell('A4').value,/보류/);assert.equal(bad.getWorksheet('01_한눈에').getCell('A7').value,'N/A');
-});
-test('Naver: three visible sheets; unavailable details hidden and coverage note small',async()=>{
- const w=await buildWeeklyReportWorkbook(nav()),loaded=new ExcelJS.Workbook();await loaded.xlsx.load(await w.xlsx.writeBuffer());assert.deepEqual(visible(loaded),['01_한눈에','02_캠페인','03_액션']);
- for(const name of ['SUMMARY','ADGROUPS','KEYWORDS','AI_ANALYSIS','RAW'])assert.equal(loaded.getWorksheet(name).state,'hidden');
- assert(cellText(w).includes('Coverage:'));assert(!cellText(w).includes('/ncc/keywords'));assert(allText(w).includes('/ncc/keywords'));
-});
-test('Naver: Korean conversion-broken verdict, funnel and seven KPI cards',async()=>{
- const w=await buildWeeklyReportWorkbook(nav()),s=w.getWorksheet('01_한눈에');assert.match(s.getCell('A4').value,/입찰 축소보다 전환 추적·랜딩·재고·검색 품질/);
- assert.equal(s.getCell('A7').value,100000);assert.equal(s.getCell('E7').value,1398);assert.equal(s.getCell('I7').value,72);assert.equal(s.getCell('A12').value,19);assert.equal(s.getCell('E12').value,1.36/100);assert.equal(s.getCell('I12').value,5263);assert.equal(s.getCell('A17').value,2);
- assert.equal(s.getCell('E12').numFmt,'0.0%');const r=s.getRows(1,s.rowCount).find(r=>r.getCell(1).value==='CURRENT');assert.deepEqual([2,3,4].map(c=>r.getCell(c).value),[199514,1398,19]);
- const p=s.getRows(1,s.rowCount).find(r=>r.getCell(1).value==='PREVIOUS');assert.deepEqual([2,3,4].map(c=>p.getCell(c).value),[162474,1298,72]);assert.match(cellText(w),/전환 추적 → 랜딩 → 재고 → 검색 품질/);
-});
-test('Naver: actual campaign values/order/percent units unchanged',async()=>{
- const m=nav(),before=JSON.stringify(m),w=await buildWeeklyReportWorkbook(m),s=w.getWorksheet('02_캠페인');
- assert.deepEqual(s.getRow(1).values.slice(1,14),['Campaign','Status','Spend','Conversions','Revenue','ROAS','CPA','CTR','CPC','CVR','WoW Spend','WoW Revenue','Performance Signal']);
- for(const k of Object.keys(current))assert.equal(s.getRow(2).getCell(k).value,['ctr','conversionRate'].includes(k)?current[k]/100:current[k]);
- assert.equal(s.getRow(2).getCell('performanceSignal').value,'ACTION REQUIRED');assert.equal(JSON.stringify(m),before);
-});
-test('Naver: no new signal thresholds; comparable gain/stable/decline and unknown data',()=>{
- const m={analysis:[]};assert.equal(naverCampaignSignal({conversions:3,wowSpend:0,wowConversionValue:1},m),'STRONG');assert.equal(naverCampaignSignal({conversions:3,wowSpend:1,wowConversionValue:1},m),'HEALTHY');assert.equal(naverCampaignSignal({conversions:3,wowSpend:1,wowConversionValue:-1},m),'WATCH');assert.equal(naverCampaignSignal({conversions:3,wowSpend:null,wowConversionValue:null},m),'WATCH');
-});
-test('Naver: prioritized max five actionable checks from existing analysis',async()=>{
- const w=await buildWeeklyReportWorkbook(nav()),s=w.getWorksheet('03_액션');assert.equal(s.rowCount,5);assert.equal(s.getRow(2).getCell('priority').value,'P1');assert.deepEqual([2,3,4,5].map(i=>s.getRow(i).getCell('area').value),['전환 추적','랜딩','재고','검색 품질']);
-});
+test('Instagram one REPORT only; no hidden or raw sheets after XLSX round-trip',async()=>{const w=await buildWeeklyInstagramReportWorkbook(ig()),l=new ExcelJS.Workbook();await l.xlsx.load(await w.xlsx.writeBuffer());assert.deepEqual(l.worksheets.map(s=>s.name),['REPORT']);assert.equal(l.worksheets[0].state,'visible');});
+test('Naver one REPORT only after XLSX round-trip',async()=>{const w=await buildWeeklyReportWorkbook(nav()),l=new ExcelJS.Workbook();await l.xlsx.load(await w.xlsx.writeBuffer());assert.deepEqual(l.worksheets.map(s=>s.name),['REPORT']);});
+test('Fixed portrait one-page layout and section order',async()=>{for(const w of [await buildWeeklyInstagramReportWorkbook(ig()),await buildWeeklyReportWorkbook(nav())]){const s=w.getWorksheet('REPORT');assert.equal(s.pageSetup.orientation,'portrait');assert.equal(s.pageSetup.fitToHeight,1);assert.equal(s.pageSetup.fitToWidth,1);for(const [row,label] of [[13,'성과 비교'],[26,'핵심 판단'],[32,'상세 성과'],[43,'다음 액션'],[49,'DATA NOTE']])assert.match(String(s.getCell(row,1).value),new RegExp(label));assert.equal(s.rowCount,57);}});
+test('Instagram account weekly reach never uses post sums or monthly snapshot',async()=>{const m=ig();m.accountSnapshot={followers:12340,reach:999999,profileVisits:500};const w=await buildWeeklyInstagramReportWorkbook(m),s=w.getWorksheet('REPORT');assert.equal(s.getCell('A6').value,12340);assert.equal(s.getCell('A6').numFmt,'#,##0"명"');assert.match(s.getCell('A7').value,/월간/);assert.equal(s.getCell('G6').value,'N/A');assert.equal(s.getCell('C17').value,'N/A');assert.equal(s.getCell('C19').value,'N/A');assert(!cellText(w).includes('999999'));});
+test('Instagram measured weekly unique reach is used directly; prior comparison remains unavailable',async()=>{const m=ig();m.weeklyUniqueReach=1234;const s=(await buildWeeklyInstagramReportWorkbook(m)).getWorksheet('REPORT');assert.equal(s.getCell('G6').value,1234);assert.equal(s.getCell('C17').value,1234);assert.equal(s.getCell('E17').value,'N/A');});
+test('Instagram unavailable account metrics are N/A and engagement uses actual post totals',async()=>{const s=(await buildWeeklyInstagramReportWorkbook(ig())).getWorksheet('REPORT');for(const cell of ['D6','J6','A10','D10'])assert.equal(s.getCell(cell).value,'N/A');assert.equal(s.getCell('G10').value,217);assert.equal(s.getCell('C21').value,217);assert.equal(s.getCell('C22').value,800);});
+test('Instagram content metrics exact; participation denominator guarded',async()=>{const m=ig(),before=JSON.stringify(m),s=(await buildWeeklyInstagramReportWorkbook(m)).getWorksheet('REPORT');const row=s.getRows(34,8).find(r=>r.getCell(3).value==='착장 A');assert(row);for(const [col,key] of [[5,'reach'],[6,'views'],[7,'likes'],[8,'comments'],[9,'saves'],[10,'shares']])assert.equal(row.getCell(col).value,posts[0][key]);assert.equal(row.getCell(11).value,170/300);assert.equal(row.getCell(11).numFmt,'#,##0.00%');assert.equal(JSON.stringify(m),before);});
+test('Instagram zero reach yields N/A while measured zero counts remain zero',async()=>{const m=buildWeeklyInstagramReportModel({...dates,current:{ok:true,posts:[{id:'z',reach:0,views:0,likes:0,comments:0,saves:0,shares:0,totalInteractions:0}]},previous:{ok:true,posts:[]}});const s=(await buildWeeklyInstagramReportWorkbook(m)).getWorksheet('REPORT');assert.equal(s.getCell('E34').value,0);assert.equal(s.getCell('I34').value,0);assert.equal(s.getCell('K34').value,'N/A');for(const n of [0,-1,null,NaN])assert.equal(reachRate(1,n),null);});
+test('Story fallback zeros and missing coverage never enter summary or performance scaling',async()=>{const m=ig(),s=(await buildWeeklyInstagramReportWorkbook(m)).getWorksheet('REPORT');const row=s.getRows(34,8).find(r=>r.getCell(2).value==='Story');assert.equal(row.getCell(5).value,'N/A');assert.equal(row.getCell(12).value,'관찰');assert.equal(s.getCell('G10').value,217);assert(!cellText(await buildWeeklyInstagramReportWorkbook(m)).includes('999999'));});
+test('Reel high distribution with weak reactions is never expanded',()=>{const strong={type:'릴스',reach:100,views:200,saves:10,shares:10,totalInteractions:40};assert.notEqual(instagramDecision({...strong,reach:10000,views:100000,saves:0,shares:0,totalInteractions:1},[strong,{...strong,reach:10000,views:100000,saves:0,shares:0,totalInteractions:1}]),'확대');});
+test('Feed repeat decision requires deeper save/share/engagement signals',()=>{const low={type:'피드',reach:100,views:10000,saves:1,shares:1,totalInteractions:2},high={...low,views:100,saves:10,shares:5,totalInteractions:20};assert.equal(instagramDecision(high,[low,high]),'확대');assert.equal(instagramDecision(low,[low,high]),'개선');assert.equal(instagramDecision(high,[high]),'관찰');});
+test('Reel expansion requires both distribution and measured reactions',()=>{const low={type:'릴스',reach:100,views:200,saves:1,shares:1,totalInteractions:4},high={...low,reach:200,views:400,saves:10,shares:5,totalInteractions:40};assert.equal(instagramDecision(high,[low,high]),'확대');});
+test('At most four judgments, eight detail rows and three actions; source disclosure for truncation',async()=>{const m=ig();m.content=[...m.content,...m.content,...m.content,...m.content];m.actions=[...m.actions,...m.actions,...m.actions];const w=await buildWeeklyInstagramReportWorkbook(m),s=w.getWorksheet('REPORT');assert.equal(s.getCell('A31').value,null);assert.equal(s.getCell('A42').value,null);assert.equal(s.getCell('A47').value,null);assert.match(cellText(w),/상세 8/);});
+test('Naver values and percent-point conversion unchanged',async()=>{const m=nav(),before=JSON.stringify(m),s=(await buildWeeklyReportWorkbook(m)).getWorksheet('REPORT');for(const [cell,key] of [['B34','spend'],['C34','impressions'],['D34','clicks'],['F34','cpc'],['G34','conversions'],['I34','conversionValue'],['J34','cpa'],['K34','roas']])assert.equal(s.getCell(cell).value,current[key]);assert.equal(s.getCell('E34').value,current.ctr/100);assert.equal(s.getCell('H34').value,current.conversionRate/100);assert.equal(s.getCell('C21').value,current.conversionRate/100);assert.equal(JSON.stringify(m),before);});
+test('Naver dashboard has six cards and current/previous/WoW in fixed positions',async()=>{const s=(await buildWeeklyReportWorkbook(nav())).getWorksheet('REPORT');assert.equal(s.getCell('A6').value,100000);assert.equal(s.getCell('E6').value,1398);assert.equal(s.getCell('I6').value,72);assert.equal(s.getCell('A10').value,19);assert.equal(s.getCell('E10').value,200000);assert.equal(s.getCell('I10').value,2);assert.equal(s.getCell('E20').value,72);assert.equal(s.getCell('G20').value,(19-72)/72);});
+test('Naver healthy traffic / broken conversion diagnosis retains tracking-first action',async()=>{const w=await buildWeeklyReportWorkbook(nav());assert.match(cellText(w),/입찰 축소보다 전환 추적·랜딩·재고·검색 품질/);assert.match(w.getWorksheet('REPORT').getCell('C44').value,/전환 이벤트/);assert.deepEqual(w.worksheets.map(s=>s.name),['REPORT']);});
+test('Naver high CTR without conversions and low-volume high ROAS never justify scaling',()=>{assert.equal(naverDecision({spend:100,ctr:99,conversions:0}, {analysis:[]}),'축소 검토');assert.equal(naverDecision({spend:100,ctr:99,conversions:1,roas:100,wowSpend:0,wowConversionValue:50},{analysis:[]}),'유지');assert.equal(naverDecision({spend:100,conversions:null},{analysis:[]}),'관찰');});
+test('Units, comma formats, 0/N/A and no abbreviations',async()=>{for(const w of [await buildWeeklyInstagramReportWorkbook(ig()),await buildWeeklyReportWorkbook(nav())]){const s=w.getWorksheet('REPORT');s.eachRow(row=>row.eachCell(c=>{if(typeof c.value==='number')assert.match(c.numFmt,/(#,##0|%|x)/);}));assert(!/\d[MK]\b/.test(cellText(w)));assert(!cellText(w).includes('undefined'));assert(!cellText(w).includes('Infinity'));}assert.equal(unitFormat('원'),'#,##0"원"');assert.equal(unitFormat('%'),'#,##0.00%');});
+test('Naver missing unsupported levels disclosed without fabricated brands/groups',async()=>{const w=await buildWeeklyReportWorkbook(nav());assert.match(cellText(w),/캠페인 단위/);assert.match(cellText(w),/신규 브랜드 등록 여부는 미제공/);assert(!cellText(w).includes('/ncc/keywords'));});
+test('Missing source/prior cannot assert improvement; source models stay immutable',async()=>{const m=buildWeeklyInstagramReportModel({...dates,current:{ok:true,posts:[]},previous:null}),s=(await buildWeeklyInstagramReportWorkbook(m)).getWorksheet('REPORT');assert.match(s.getCell('D27').value,/전주 비교 데이터가 없습니다/);const n=await buildWeeklyReportWorkbook(buildWeeklyReportModel({...dates,current:{ok:false},previous:null}));assert.equal(n.getWorksheet('REPORT').getCell('A6').value,'N/A');assert.match(n.getWorksheet('REPORT').getCell('D27').value,/보류/);});
+
+test('Instagram format comparison uses only actual prior posts',async()=>{const m=ig(),s=(await buildWeeklyInstagramReportWorkbook(m)).getWorksheet('REPORT');assert.match(s.getCell('D29').value,/현재 Feed 2건 \/ Reel 1건 · 직전 Feed 0건 \/ Reel 1건/);assert.equal(m.previousContent.length,1);});
 
 const fakeEnv={DROPBOX_APP_KEY:'fixture',DROPBOX_APP_SECRET:'fixture',DROPBOX_REFRESH_TOKEN:'fixture'};
 const fetchers=()=>({instagram:async()=>({ok:true,posts}),naver:async()=>({ok:true,summary:current,campaigns:[]}),meta:async()=>({rows:[],totals:{spend:0}}),actualOrders:async()=>({source:'cafe24_inflow_queries',orders:[],trackingQueries:['meta_meantime_look','meta_ssage','meta_adv_catalog','meta_adv_image','meta_adv_video'].map(code=>({code,ok:true,complete:true,count:0}))}),actualAnalytics:async()=>({available:false,reason:'fixture'})});

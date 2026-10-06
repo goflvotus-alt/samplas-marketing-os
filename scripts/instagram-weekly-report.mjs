@@ -30,6 +30,8 @@ import { writeDecisionSheet, addExecutiveRead, addWowFormatting, metricPresent }
 
 import { instagramDashboard, instagramContentRows, instagramActions, addActionTable, styleTable } from "./weekly-report-presentation.mjs";
 
+import { instagramOnePage } from "./weekly-onepage-report.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export { seoulDateKey, previousTuesdayToMondayRange, previousWeekRange, wowChange };
@@ -93,6 +95,7 @@ export function buildWeeklyInstagramReportModel({ current, previous, since, unti
     // Month-snapshot only — never claimed as weekly-precise. See module header note.
     accountSnapshot: currentOk ? (current.account || null) : null,
     content: currentOk ? posts : [],
+    previousContent: rangeOk(previous) ? previous.posts : null,
     reels: currentOk ? posts.filter(isReel) : [],
     source: "instagram_graph_api",
     deliveryBasis: "Date-filtered monthly cache / Graph API collector; not a weekly account insight query",
@@ -240,30 +243,7 @@ export async function buildWeeklyInstagramReportWorkbook(model) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "SAMPLAS Marketing OS";
   workbook.created = new Date();
-  instagramDashboard(workbook, model);
-  buildContentSheet(workbook, "02_콘텐츠", model.content, model);
-  addActionTable(workbook,"03_다음주",instagramActions(model),[['Priority','priority'],['What happened','happened'],['Evidence','evidence'],['Action','action'],['Success metric','success'],['Decision next week','decision']]);
-  buildSummarySheet(workbook, model).state="hidden";
-  writeDecisionSheet(workbook,"03_콘텐츠분석",model.analysis||[]).state="hidden";
-  const stories=workbook.addWorksheet("04_스토리분석");
-  stories.state="hidden";
-  setupSheet(stories,[{header:"date",key:"date",width:14},{header:"id",key:"id",width:22},...['reach','replies','tapsForward','tapsBack','exits'].map(key=>({header:key,key,width:16})),{header:"signal",key:"signal",width:24},{header:"interpretation",key:"interpretation",width:55},{header:"this_week_action",key:"this_week_action",width:55},{header:"basis",key:"basis",width:65}]);
-  if(model.stories===null)stories.addRow({basis:"UNAVAILABLE — no story history supplied; no fabricated full-week story totals."});
-  else{
-    const measured=model.stories.filter(s=>!s.unavailableReason);
-    const leader=measured.filter(s=>metricPresent(s.replies)&&s.replies>0).slice().sort((a,b)=>b.replies-a.replies)[0];
-    const exitLeader=measured.filter(s=>metricPresent(s.exits)&&s.exits>0).slice().sort((a,b)=>b.exits-a.exits)[0];
-    for(const story of model.stories){
-      const unavailable=!!story.unavailableReason,signal=unavailable?"INSIGHTS UNAVAILABLE":story===leader?"REPLIES LEADER":story===exitLeader?"EXITS REVIEW":"AVAILABLE STORY";
-      stories.addRow({date:String(story.date||story.timestamp||'').slice(0,10),id:story.id,...Object.fromEntries(['reach','replies','tapsForward','tapsBack','exits'].map(k=>[k,unavailable?null:story[k]??null])),signal,
-        interpretation:unavailable?"Collector fallback zeros are not measured story performance.":story===leader?"Most replies among available cached stories; no sales-effect inference.":story===exitLeader?"Most exits among available cached stories; count alone is not an exit rate.":"Only observed cached history; not a complete weekly total.",
-        this_week_action:unavailable?"Restore insights before judging this story.":story===leader?"Retest the observed reply-driving structure; compare replies next week.":story===exitLeader?"Review opening/frame sequence and test one change; do not infer causality.":"Monitor observed metrics without inventing missing history.",
-        basis:"Available cached stories only; full-week coverage not guaranteed"});
-    }
-    if(!model.stories.length)stories.addRow({basis:"No cached stories in this period; full-week coverage not guaranteed, not zero historical activity."});
-  }
-  buildAccountInsightsSheet(workbook, model);
-  buildRawSheet(workbook, model);
+  instagramOnePage(workbook, model);
   return workbook;
 }
 
@@ -301,7 +281,7 @@ export async function writeInstagramWeeklyReportFile(workbook, { since, until, o
     const validation = new ExcelJS.Workbook();
     await validation.xlsx.readFile(tempPath);
     const sheetNames = validation.worksheets.map((sheet) => sheet.name);
-    for (const required of ["01_한눈에", "02_콘텐츠", "03_다음주", "01_주간요약", "03_콘텐츠분석", "04_스토리분석", "ACCOUNT INSIGHTS", "RAW"]) {
+    for (const required of ["REPORT"]) {
       if (!sheetNames.includes(required)) throw new Error(`Generated workbook is missing sheet: ${required}`);
     }
   } catch (error) {

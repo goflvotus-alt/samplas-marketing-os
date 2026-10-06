@@ -22,6 +22,8 @@ import ExcelJS from "exceljs";
 
 import { naverDashboard, naverActions, naverCampaignSignal, addActionTable, styleTable } from "./weekly-report-presentation.mjs";
 
+import { naverOnePage } from "./weekly-onepage-report.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // ---------------------------------------------------------------------------
@@ -322,41 +324,7 @@ export async function buildWeeklyReportWorkbook(model) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "SAMPLAS Marketing OS";
   workbook.created = new Date();
-  naverDashboard(workbook, model);
-  buildCampaignsSheet(workbook, model);
-  addActionTable(workbook,"03_액션",naverActions(model).slice(0,5),[['Priority','priority'],['What happened','happened'],['Evidence','evidence'],['Likely area','area'],['Action this week','action'],['Success check','success']]);
-  buildSummarySheet(workbook, model).state="hidden";
-  buildUnavailableEntitySheet(workbook, "ADGROUPS", [
-    { header: "Adgroup ID", key: "adgroupId", width: 30 },
-    { header: "Campaign", key: "campaignName", width: 20 },
-    { header: "Spend", key: "spend", width: 14 },
-    { header: "Impressions", key: "impressions", width: 14 },
-    { header: "Clicks", key: "clicks", width: 12 },
-    { header: "CTR", key: "ctr", width: 10 },
-    { header: "CPC", key: "cpc", width: 12 },
-    { header: "Conversions", key: "conversions", width: 13 },
-    { header: "Conversion Value", key: "conversionValue", width: 16 },
-    { header: "CPA", key: "cpa", width: 12 },
-    { header: "ROAS", key: "roas", width: 10 },
-    { header: "WoW change", key: "wow", width: 12 }
-  ], model.adgroups);
-  buildUnavailableEntitySheet(workbook, "KEYWORDS", [
-    { header: "Keyword", key: "keyword", width: 30 },
-    { header: "Campaign", key: "campaignName", width: 20 },
-    { header: "Adgroup", key: "adgroupName", width: 20 },
-    { header: "Impressions", key: "impressions", width: 14 },
-    { header: "Clicks", key: "clicks", width: 12 },
-    { header: "CTR", key: "ctr", width: 10 },
-    { header: "CPC", key: "cpc", width: 12 },
-    { header: "Spend", key: "spend", width: 14 },
-    { header: "Conversions", key: "conversions", width: 13 },
-    { header: "Conversion Value", key: "conversionValue", width: 16 },
-    { header: "CPA", key: "cpa", width: 12 },
-    { header: "ROAS", key: "roas", width: 10 }
-  ], model.keywords);
-  writeDecisionSheet(workbook,"AI_ANALYSIS",model.analysis||[]);
-  buildRawSheet(workbook, model);
-  for(const name of ["ADGROUPS","KEYWORDS","AI_ANALYSIS","RAW"])workbook.getWorksheet(name).state="hidden";
+  naverOnePage(workbook, model);
   return workbook;
 }
 
@@ -400,7 +368,7 @@ export async function writeWeeklyReportFile(workbook, { since, until, outputDir 
     const validation = new ExcelJS.Workbook();
     await validation.xlsx.readFile(tempPath);
     const sheetNames = validation.worksheets.map((sheet) => sheet.name);
-    for (const required of ["01_한눈에", "02_캠페인", "03_액션", "SUMMARY", "ADGROUPS", "KEYWORDS", "AI_ANALYSIS", "RAW"]) {
+    for (const required of ["REPORT"]) {
       if (!sheetNames.includes(required)) throw new Error(`Generated workbook is missing sheet: ${required}`);
     }
   } catch (error) {

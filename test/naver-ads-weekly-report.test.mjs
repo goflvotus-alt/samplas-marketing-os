@@ -125,9 +125,9 @@ test("7. previous-week comparison flows end to end through generateWeeklyNaverAd
   assert.equal(result.until, "2026-09-28");
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(result.filePath);
-  const summarySheet = workbook.getWorksheet("SUMMARY");
-  const spendRow = summarySheet.getRows(1, summarySheet.rowCount).find((row) => row.getCell(1).value === "Spend (광고비)");
-  assert.equal(spendRow.getCell(4).value, 25); // (1,000,000 - 800,000) / 800,000 * 100
+  const summarySheet = workbook.getWorksheet("REPORT");
+  const spendRow = summarySheet.getRows(1, summarySheet.rowCount).find((row) => row.number >= 15 && row.getCell(1).value === "광고비");
+  assert.equal(spendRow.getCell(7).value, 0.25); // (1,000,000 - 800,000) / 800,000 * 100
 });
 
 test("unavailable current-week data does not write a file and reports the reason", async () => {
@@ -142,22 +142,22 @@ test("unavailable current-week data does not write a file and reports the reason
 test("7b. CTR cells use standard Excel percentage ratios, not percentage-point numbers", async () => {
   const model = buildWeeklyReportModel({ current: currentPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
   const workbook = await buildWeeklyReportWorkbook(model);
-  const summary = workbook.getWorksheet("SUMMARY");
+  const summary = workbook.getWorksheet("REPORT");
   const ctrRow = summary.getRows(1, summary.rowCount).find((row) => row.getCell(1).value === "CTR");
-  assert.equal(ctrRow.getCell(2).value, 0.01);
-  assert.equal(ctrRow.getCell(2).numFmt, "0.0%");
-  const campaign = workbook.getWorksheet("02_캠페인");
-  assert.equal(campaign.getRow(2).getCell("ctr").value, 0.01);
-  assert.equal(campaign.getRow(2).getCell("ctr").numFmt, "0.0%");
+  assert.equal(ctrRow.getCell(3).value, 0.01);
+  assert.equal(ctrRow.getCell(3).numFmt, "#,##0.00%");
+  const campaign = workbook.getWorksheet("REPORT");
+  assert.equal(campaign.getRow(34).getCell(5).value, 0.01);
+  assert.equal(campaign.getRow(34).getCell(5).numFmt, "#,##0.00%");
 });
 
 test("8. Excel generation — workbook opens, 3 visible decision sheets and hidden audit sheets exist, expected headers exist", async () => {
   const model = buildWeeklyReportModel({ current: currentPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
   const workbook = await buildWeeklyReportWorkbook(model);
   const names = workbook.worksheets.map((sheet) => sheet.name);
-  assert.deepEqual(names, ["01_한눈에", "02_캠페인", "03_액션", "SUMMARY", "ADGROUPS", "KEYWORDS", "AI_ANALYSIS", "RAW"]);
-  const campaignHeaders = workbook.getWorksheet("02_캠페인").getRow(1).values.filter(Boolean);
-  for (const expected of ["Campaign ID", "Campaign", "Spend", "Impressions", "Clicks", "CTR", "CPC", "Conversions", "Revenue", "CPA", "ROAS"]) {
+  assert.deepEqual(names, ["REPORT"]);
+  const campaignHeaders = workbook.getWorksheet("REPORT").getRow(33).values.filter(Boolean);
+  for (const expected of ["캠페인", "광고비", "노출", "클릭", "CTR", "CPC", "전환", "전환매출", "CPA", "ROAS"]) {
     assert.ok(campaignHeaders.includes(expected), `missing CAMPAIGNS header: ${expected}`);
   }
 });

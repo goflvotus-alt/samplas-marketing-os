@@ -68,24 +68,13 @@ test("account snapshot stays a separate month-basis figure, never blended into t
   assert.notEqual(model.accountSnapshot.followers, model.summary.views);
 });
 
-test("ACCOUNT INSIGHTS sheet explicitly labels weekly-sum rows vs month-snapshot rows by basis", async () => {
-  const model = buildWeeklyInstagramReportModel({ current: currentPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
-  const workbook = await buildWeeklyInstagramReportWorkbook(model);
-  const sheet = workbook.getWorksheet("ACCOUNT INSIGHTS");
-  const rows = sheet.getRows(1, sheet.rowCount);
-  const weeklyRow = rows.find((row) => String(row.getCell(1).value || "").includes("조회수 합계"));
-  assert.match(String(weeklyRow.getCell(3).value), /weekly/i);
-  const followerRow = rows.find((row) => String(row.getCell(1).value || "").includes("Followers"));
-  assert.match(String(followerRow.getCell(3).value), /MONTH snapshot/);
+test("REPORT distinguishes monthly follower snapshot from weekly engagement",async()=>{
+ const m=buildWeeklyInstagramReportModel({current:currentPayload,previous:previousPayload,since:"2026-09-22",until:"2026-09-28"});
+ const w=await buildWeeklyInstagramReportWorkbook(m),s=w.getWorksheet("REPORT");
+ assert.equal(s.getCell("A6").value,12000);assert.equal(s.getCell("A15").value,"팔로워");assert.equal(s.getCell("C15").value,"N/A");assert.match(s.getCell("A7").value,/월간/);
 });
-
-test("a metric the API doesn't expose is UNAVAILABLE, never fabricated", async () => {
-  const noAccountPayload = { ok: true, since: "2026-09-22", until: "2026-09-28", posts: currentPosts, account: null };
-  const model = buildWeeklyInstagramReportModel({ current: noAccountPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
-  const workbook = await buildWeeklyInstagramReportWorkbook(model);
-  const sheet = workbook.getWorksheet("ACCOUNT INSIGHTS");
-  const followerRow = sheet.getRows(1, sheet.rowCount).find((row) => String(row.getCell(1).value || "").includes("Followers"));
-  assert.equal(followerRow.getCell(2).value, "UNAVAILABLE");
+test("unprovided weekly/account metrics remain N/A",async()=>{
+ const m=buildWeeklyInstagramReportModel({current:{ok:true,posts:currentPosts,account:null},previous:previousPayload,since:"2026-09-22",until:"2026-09-28"});const w=await buildWeeklyInstagramReportWorkbook(m);assert.equal(w.getWorksheet("REPORT").getCell("A6").value,"N/A");
 });
 
 test("unavailable current-week data does not write a file and reports the reason, never fabricating posts", async () => {
@@ -100,9 +89,9 @@ test("XLSX generation — workbook has 3 visible decision sheets plus hidden aud
   const model = buildWeeklyInstagramReportModel({ current: currentPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
   const workbook = await buildWeeklyInstagramReportWorkbook(model);
   const names = workbook.worksheets.map((sheet) => sheet.name);
-  assert.deepEqual(names, ["01_한눈에", "02_콘텐츠", "03_다음주", "01_주간요약", "03_콘텐츠분석", "04_스토리분석", "ACCOUNT INSIGHTS", "RAW"]);
-  const contentHeaders = workbook.getWorksheet("02_콘텐츠").getRow(1).values.filter(Boolean);
-  for (const expected of ["Date", "Title", "Type", "Views", "Reach", "Likes", "Comments", "Saves", "Shares", "Permalink"]) {
+  assert.deepEqual(names, ["REPORT"]);
+  const contentHeaders = workbook.getWorksheet("REPORT").getRow(33).values.filter(Boolean);
+  for (const expected of ["게시일", "콘텐츠명", "종류", "조회", "도달", "좋아요", "댓글", "저장", "공유", "참여율", "판단"]) {
     assert.ok(contentHeaders.includes(expected), `missing CONTENT header: ${expected}`);
   }
 });
@@ -114,9 +103,8 @@ test("end to end through generateWeeklyInstagramReport picks the correct week by
   assert.equal(result.since, "2026-09-22");
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(result.filePath);
-  const summarySheet = workbook.getWorksheet("01_주간요약");
-  const postCountRow = summarySheet.getRows(1, summarySheet.rowCount).find((row) => row.getCell(1).value === "게시물 수 (Post Count)");
-  assert.equal(postCountRow.getCell(2).value, 4);
+  const summarySheet = workbook.getWorksheet("REPORT");
+  assert.equal(summarySheet.getCell("C22").value,9800);
 });
 
 test("duplicate report handling — a second local run for the same week is versioned, never overwritten", async () => {

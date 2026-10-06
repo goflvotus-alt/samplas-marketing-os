@@ -51,7 +51,7 @@ export function instagramWinners(posts) {
   }
   return [...winners.values()];
 }
-const igLabels={postCount:'게시물 수',views:'조회수',reach:'게시물 Reach 합계',engagement:'반응',saves:'저장',shares:'공유'};
+const igLabels={postCount:'게시물 수',views:'조회수',reach:'게시물 Reach 합계',likes:'좋아요',comments:'댓글',engagement:'반응',saves:'저장',shares:'공유'};
 export function instagramVerdict(model) {
   if(!model.ok)return '주간 데이터가 없어 성과 판단을 보류합니다.';
   if(!model.previousSummary)return '전주 비교 데이터가 없습니다. 이번 주 콘텐츠 실측값을 기준으로 다음 테스트를 준비합니다.';
