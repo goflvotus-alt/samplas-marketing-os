@@ -64,6 +64,20 @@ Out of scope: see §20.
 | Cons | More memory and attack surface in the process that already restarted under load; MCP and OAuth churn forces Production redeploys | One more service; one more hop | Only works when the Mac is on; needs a public tunnel to localhost; ChatGPT cannot reach `127.0.0.1` |
 | Verdict | Not for V1 | **V1** | Phase 3 only |
 
+### 4.1a Phase 1 amendment (approved 2026-10-06)
+
+For Phase 1 the gateway is **colocated** inside Marketing OS as an isolated module (`scripts/mcp/`), mounted at `/mcp`. The reasons:
+- On the Render free tier a separate gateway service and Production would both sleep, so the first ChatGPT call would pay two cold starts.
+- The inventory hot path that caused restarts is fixed (`c090864`).
+
+Guards:
+- The module issues GET only, to a fixed path allowlist, over loopback.
+- `MCP_ENABLED` defaults to off, and the module is loaded only when it is on.
+- An RSS increase of 40 MB or more stops the rollout.
+- `MCP_UPSTREAM_BASE_URL` lets the module move to a separate service later without code changes.
+
+Phase 1 uses no Production agent tokens and no `/api/agent/health`, because every upstream route is an existing public GET. §4.2, §5.2, §15 and §19 apply from Phase 2 or when the gateway is split out.
+
 ### 4.2 Recommended topology
 
 ```text
