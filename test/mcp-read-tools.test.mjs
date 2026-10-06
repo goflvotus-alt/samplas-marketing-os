@@ -114,9 +114,9 @@ test("clients: summary only, no client records or contacts", async () => {
   const up = stub({ "/api/intelligence/clients": (p) => clientsBody(p.since, p.until) });
   const out = await runReadTool("get_clients_summary", { since: "2026-09-01", until: "2026-09-30" }, up);
   const text = JSON.stringify(out);
-  assert.doesNotMatch(text, /010-0000-0000|contact|purchaseDateCounts|products/);
-  assert.deepEqual(out.data.stylistTop10, [{ name: "Stylist A", purchaseCount: 3, salesAmount: 100 }]);
-  assert.equal(out.data.clients, undefined);
+  assert.doesNotMatch(text, /Stylist A|010-0000-0000|contact|purchaseDateCounts|products/);
+  assert.deepEqual(Object.keys(out.data).sort(), ["accounting", "summary", "typeBreakdown"]);
+  assert.deepEqual(up.calls[0].params, { since: "2026-09-01", until: "2026-09-30", view: "summary" });
   assert.equal(out.meta.completeness, "PARTIAL");
 });
 
@@ -135,6 +135,7 @@ test("foreign sales: canonical row as is; 2025 missing is null not 0; growth nul
   assert.equal(out.meta.completeness, "UNAVAILABLE");
   assert.ok(out.meta.notes.some((n) => /amount is unavailable, not 0/.test(n)));
   assert.deepEqual(up.calls.map((c) => c.params.since), ["2026-01-01", "2025-01-01"]);
+  assert.ok(up.calls.every((c) => c.params.view === "summary"), "foreign sales reads the summary view only");
 
   // `available:false` with included months still counts as data (observed upstream quirk).
   const single = await runReadTool("get_foreign_sales", { since: "2026-09-01", until: "2026-09-30" }, up);

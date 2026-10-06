@@ -123,21 +123,18 @@ export const READ_TOOLS = [
   {
     name: "get_clients_summary",
     title: "Clients summary",
-    description: "Client type breakdown (stylist, press, customer, foreign, online first signup, staff) and top-10 lists for a date range. Summary only: no individual client records, contacts or orders.",
+    description: "Client totals and type breakdown (stylist, press, customer, foreign, online first signup, staff) for a date range. Aggregates only: no client names, records, contacts or orders.",
     input: object({ ...period, store }, ["since", "until"]),
     async run({ since, until, store: storeCode }, up) {
       checkPeriod(since, until);
-      const body = await up.getJson("/api/intelligence/clients", { since, until, store: storeCode });
-      const top = (list) => (list || []).map((c) => pick(c, ["name", "purchaseCount", "salesAmount"]));
+      const body = await up.getJson("/api/intelligence/clients", { since, until, store: storeCode, view: "summary" });
       const offline = body.coverage?.offline;
       const completeness = body.coverage?.complete === true ? "COMPLETE"
         : body.coverage?.online?.available || (offline?.includedMonths || []).length ? "PARTIAL" : "UNAVAILABLE";
       return envelope("get_clients_summary", {
-        summary: body.summary, typeBreakdown: body.typeBreakdown,
-        stylistTop10: top(body.stylistTop10), pressTop10: top(body.pressTop10), ffTop10: top(body.ffTop10),
-        accounting: body.accounting
+        summary: body.summary, typeBreakdown: body.typeBreakdown, accounting: body.accounting ?? null
       }, {
-        source: "/api/intelligence/clients", coverage: { ...body.coverage, storeCoverage: body.storeCoverage }, completeness,
+        source: "/api/intelligence/clients?view=summary", coverage: { ...body.coverage, storeCoverage: body.storeCoverage }, completeness,
         requestedPeriod: { since, until }, availablePeriod: { since: body.periodStart, until: body.periodEnd },
         notes: [...monthNotes(offline || {}), NO_TIMESTAMP]
       });
@@ -163,7 +160,7 @@ export const READ_TOOLS = [
       }
       const strip = ({ notes: _n, ...rest }) => rest;
       return envelope("get_foreign_sales", { current: strip(current), comparison: comparison && strip(comparison), growth }, {
-        source: "/api/intelligence/clients#typeBreakdown[type=foreign]",
+        source: "/api/intelligence/clients?view=summary#typeBreakdown[type=foreign]",
         coverage: { current: current.coverage, comparison: comparison?.coverage ?? null },
         completeness: worst(current.completeness, comparison?.completeness ?? "COMPLETE"),
         requestedPeriod: { since, until, ...(compareSince ? { compareSince, compareUntil } : {}) },
@@ -376,7 +373,7 @@ export const READ_TOOLS = [
 ];
 
 async function foreignPeriod(up, since, until, storeCode) {
-  const body = await up.getJson("/api/intelligence/clients", { since, until, store: storeCode });
+  const body = await up.getJson("/api/intelligence/clients", { since, until, store: storeCode, view: "summary" });
   const row = (body.typeBreakdown || []).find((t) => t.type === "foreign");
   if (!row) throw new ToolError("UPSTREAM_UNAVAILABLE", "Marketing OS clients response has no foreign type row", { details: { path: "/api/intelligence/clients" } });
   const offline = body.coverage?.offline || {};
