@@ -9,6 +9,7 @@ import { pendingBrandUiMetadata } from "./pending-brand-ui-metadata.mjs";
 import { readWorkbenchSources, buildIdentityWorkbench } from "./brand-identity-workbench.mjs";
 import { refreshBrandSourcingMaster, stripConsignmentPrefix } from "./build-brand-sourcing-master.mjs";
 import { readEcountProductMaster } from "./ecount-product-master.mjs";
+import { CODE_REUSE_REVIEW_REASON, auditUnconfirmedCafe24Codes, classifyCodeReuse } from "./cafe24-code-reuse.mjs";
 
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, "utf8")); }
@@ -68,7 +69,7 @@ function ecountEvidenceNames(lines, products = NO_ROWS) {
 export function isAutoSafePendingDecision(candidate, canonical, sources) {
   const brands = Array.isArray(canonical) ? canonical : canonical?.brands;
   if (!Array.isArray(brands) || !Array.isArray(sources?.cafe24Brands) || !Array.isArray(sources?.ecountLines) ||
-      candidate.status !== "PENDING" || candidate.source !== "BOTH" || candidate.heldAt ||
+      candidate.status !== "PENDING" || candidate.source !== "BOTH" || candidate.heldAt || candidate.requiresIdentitySplit ||
       candidate.collabCandidates?.length || candidate.relatedCandidateIds?.length ||
       !["UNRESOLVED", "CODE_NAME_CONFLICT", "INACTIVE_CODE_REUSED"].includes(candidate.reviewReason)) return null;
   const code = normalizeBrandKey(candidate.sourceBrandCode);
@@ -247,6 +248,17 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
       [c.rawBrandName, ...(c.cafe24Variants || []), ...(c.ecountVariants || [])].some(n => names.has(normalizeBrandKey(n))))).map(c => c.id);
   }
   for (const candidate of all.filter(c => observedIds.has(c.id))) {
+    // A Cafe24 code owned by a different, inactive canonical identity is code reuse: it needs an
+    // old/new identity split (manual), never an in-place reassignment. Re-evaluated every scan.
+    const owners = candidate.status === "PENDING" && candidate.sourceBrandCode
+      ? canonicalRows.filter(b => normalizeBrandKey(b.brand_code) === normalizeBrandKey(candidate.sourceBrandCode)) : [];
+    const reuse = owners.length === 1 && owners[0].active === false && !owners[0].supersededBy
+      ? classifyCodeReuse({ candidateName: candidate.rawBrandName, code: candidate.sourceBrandCode, owner: owners[0], cafe24Brands, products, ecountProducts, ecountLines }) : null;
+    if (reuse) {
+      Object.assign(candidate, reuse, { reviewReason: CODE_REUSE_REVIEW_REASON });
+      for (const field of ["canonicalName", "canonicalAliases", "recentReviewEvidence"]) delete candidate[field];
+      continue;
+    }
     const decision = isAutoSafePendingDecision(candidate, canonical, { cafe24Brands, products, ecountLines, ecountProducts, aliases, compatibility });
     if (decision?.action === "REASSIGN_INACTIVE_CODE") {
       candidate.reviewReason = "INACTIVE_CODE_REUSED";
@@ -254,7 +266,9 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
     }
   }
   const observed = all.filter(c => observedIds.has(c.id));
-  return { version: 1, updatedAt: now, candidates: all, scan: { observed: observed.length,
+  return { version: 1, updatedAt: now, candidates: all,
+    ...(cafe24Brands.length ? { audit: { unconfirmedCafe24Codes: auditUnconfirmedCafe24Codes(canonicalRows, cafe24Brands) } } : {}),
+    scan: { observed: observed.length,
     cafe24: observed.filter(c => c.source === "CAFE24").length, ecount: observed.filter(c => c.source === "ECOUNT").length,
     both: observed.filter(c => c.source === "BOTH").length, review: observed.filter(c => c.reviewReason !== "UNRESOLVED").length,
     excluded: excluded.length, exclusions: excluded } };
@@ -385,6 +399,7 @@ export function planPendingBrandDecision(canonical, queue, input, now = new Date
   }
   let target;
   if (input.action === "REASSIGN_INACTIVE_CODE") {
+    if (candidate.requiresIdentitySplit) invalidDecision("Cafe24 code reuse requires an identity split, not REASSIGN_INACTIVE_CODE");
     const decision = isAutoSafePendingDecision(candidate, canonical, sources && { ...sources, aliases });
     if (decision?.action !== input.action) invalidDecision("Current source evidence is not eligible for inactive code reassignment");
     const code = `MANUAL_${candidate.id}`;

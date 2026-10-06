@@ -10373,7 +10373,7 @@ async function renderPendingBrandReview(brands) {
         brands.filter(b => b.brand_code === hint.reviewCanonicalTarget).length === 1) return "LINK";
     return null;
   };
-  const reasonLabels = { UNRESOLVED: "신규 / 미해결", ALIAS_CONFLICT: "별칭 충돌", COLLABORATION: "협업 검토", CODE_NAME_CONFLICT: "브랜드 코드 이름 충돌", RECENT_AUTO_SEEDED_REVIEW: "최근 자동 등록 가능성 검토" };
+  const reasonLabels = { UNRESOLVED: "신규 / 미해결", ALIAS_CONFLICT: "별칭 충돌", COLLABORATION: "협업 검토", CODE_NAME_CONFLICT: "브랜드 코드 이름 충돌", CODE_REUSE_SPLIT_REQUIRED: "코드 재사용 감지", RECENT_AUTO_SEEDED_REVIEW: "최근 자동 등록 가능성 검토" };
   const identityText = matches => (matches || []).map(b => `${b.canonicalName} · ${b.brandCode}`).join(" / ") || "없음";
   const comparisonLabel = c => {
     const m = c.uiReview?.masterComparison;
@@ -10415,6 +10415,7 @@ async function renderPendingBrandReview(brands) {
         ${c.canonicalName !== undefined ? `<span>기존: ${esc(c.canonicalName)}</span><span>Cafe24 상품: ${c.cafe24ProductCount == null ? "확인 불가" : apiNum(c.cafe24ProductCount)}개</span>` : ""}
       </div>
       <p class="pending-master-comparison">기존 비교: <strong>${esc(comparisonLabel(c))}</strong></p>
+      ${c.requiresIdentitySplit ? `<p class="pending-code-reuse">코드 재사용 감지 · 기존: ${esc(c.previousCanonicalBrand)} (${esc(c.previousCanonicalCode)}) · 현재 Cafe24: ${esc(c.currentCafe24Brand)} · 권장 시작: ${esc(c.suggestedEffectiveMonth || "판단 보류")} · 분류: ${esc(c.codeReuseClassification)} · 수동 분리 필요 (자동 승인·재할당 불가)</p>` : ""}
       ${c.uiReview?.masterComparison?.result === "CODE_NAME_CONFLICT" ? `<p>현재 Cafe24 코드 ${esc(c.sourceBrandCode)}는 Brand Master에서 ${esc(c.uiReview.masterComparison.codeMatchCanonicalName)}로 등록되어 있습니다. 자동 변경할 수 없어 별도 검토가 필요합니다.</p>` : ""}
       <details class="pending-review-evidence"><summary>상세 보기</summary>
       ${comparisonDetails(c)}

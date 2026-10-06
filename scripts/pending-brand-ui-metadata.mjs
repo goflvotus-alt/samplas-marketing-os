@@ -56,6 +56,7 @@ function operationalMetadata(candidate, canonical, aliases = [], evidence = revi
   if (!Array.isArray(canonical) && !Array.isArray(canonical?.brands)) return none("UNKNOWN");
   if (candidate.status !== "PENDING") return none("REVIEWED");
   if (candidate.heldAt) return none("HOLD");
+  if (candidate.reviewReason === "CODE_REUSE_SPLIT_REQUIRED") return none("CODE_REUSE_SPLIT_REQUIRED");
   if (candidate.reviewReason === "INACTIVE_CODE_REUSED") return none("INACTIVE_CODE_REUSED");
   if (candidate.reviewReason === "CODE_NAME_CONFLICT") return none("CODE_NAME_CONFLICT");
   if (candidate.relatedCandidateIds?.length || candidate.reviewReason === "DUPLICATE_IDENTITY_CONFLICT") return none("DUPLICATE_IDENTITY_CONFLICT");

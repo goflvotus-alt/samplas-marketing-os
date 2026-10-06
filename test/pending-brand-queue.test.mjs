@@ -137,13 +137,15 @@ const inactiveLegacyMaster = { brands: [
 ] };
 const personsoulObservation = { brand_code: "B0000BDG", brand_name: "PERSONSOUL", product_count: 23 };
 
-test("inactive legacy BORC does not classify PERSONSOUL as code-name conflict", () => {
+test("inactive legacy BORC does not classify PERSONSOUL as code-name conflict (it is code reuse)", () => {
   const before = JSON.stringify(inactiveLegacyMaster);
   const queue = detectPendingBrands({ canonical: inactiveLegacyMaster, cafe24Brands: [personsoulObservation] });
   assert.equal(queue.candidates.length, 1, "inactive-only code must not skip the Cafe24 observation");
   const c = queue.candidates[0];
   assert.equal(c.status, "PENDING");
-  assert.equal(c.reviewReason, "UNRESOLVED");
+  assert.notEqual(c.reviewReason, "CODE_NAME_CONFLICT");
+  assert.equal(c.reviewReason, "CODE_REUSE_SPLIT_REQUIRED");
+  assert.equal(c.previousCanonicalBrand, "BORC");
   assert.equal(c.canonicalName, undefined);
   assert.equal(c.sourceBrandCode, "B0000BDG");
   assert.equal(c.rawBrandName, "PERSONSOUL");
@@ -163,7 +165,7 @@ test("inactive legacy PERSONSOUL refresh preserves existing pending candidate ID
   assert.equal(queue.candidates.length, 1);
   assert.equal(queue.candidates[0].id, previous.candidates[0].id);
   assert.equal(queue.candidates[0].status, "PENDING");
-  assert.equal(queue.candidates[0].reviewReason, "UNRESOLVED");
+  assert.equal(queue.candidates[0].reviewReason, "CODE_REUSE_SPLIT_REQUIRED");
   const previousConflict = structuredClone(previous);
   Object.assign(previousConflict.candidates[0], { reviewReason: "CODE_NAME_CONFLICT", canonicalName: "BORC" });
   const refreshed = detectPendingBrands({ canonical: inactiveLegacyMaster, cafe24Brands: [personsoulObservation], previous: previousConflict });

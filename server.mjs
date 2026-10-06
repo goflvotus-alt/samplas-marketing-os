@@ -83,6 +83,7 @@ import { buildNewBrands, onboardingDates } from "./scripts/new-brands.mjs";
 import { attachCoverage, summarizeCafe24Products } from "./scripts/new-brand-coverage.mjs";
 import { createLocalEcountProductSyncRoute } from "./scripts/local-ecount-helper.mjs";
 import { toClientsSummaryView } from "./scripts/clients-summary-view.mjs";
+import { parseIdentityMetadata } from "./scripts/cafe24-code-reuse.mjs";
 import { mergeOfflineBrandSales } from "./scripts/monthly-brand-sales.mjs";
 // STEP63-4: Brand Dashboard가 이미 갖고 있는 Cafe24 brand_code 직접 매칭(productBrandCode/
 // productBrandMapCode)은 절대 재해석하지 않는다 — 그 두 경로가 모두 실패해 "UNASSIGNED"로
@@ -3206,6 +3207,22 @@ async function loadCurrentPendingBrandSources(recentReview = null, month = curre
     provenance: { ...sources.provenance, productSource: seed.source, productCount: seed.products.length, cafe24BrandsFetchedAt: new Date().toISOString() } };
 }
 
+// Code-reuse identity metadata (scripts/cafe24-code-reuse.mjs) is additive: kept only when present
+// and valid, so saves never drop it and legacy entries are unchanged.
+function identityMetadataFields(entry) {
+  if (entry.identityCode === undefined && entry.externalCodes === undefined && entry.formerCodes === undefined) return {};
+  try {
+    const meta = parseIdentityMetadata(entry);
+    return {
+      ...(entry.identityCode !== undefined ? { identityCode: meta.identityCode } : {}),
+      ...(entry.externalCodes !== undefined ? { externalCodes: meta.externalCodes } : {}),
+      ...(entry.formerCodes !== undefined ? { formerCodes: meta.formerCodes } : {})
+    };
+  } catch {
+    return {};
+  }
+}
+
 function normalizeBrandMasterEntry(entry = {}, fallbackCode = "") {
   const brand_code = normalizeBrandCode(entry.brand_code || fallbackCode);
   if (!brand_code) return null;
@@ -3217,7 +3234,8 @@ function normalizeBrandMasterEntry(entry = {}, fallbackCode = "") {
     active: entry.active === undefined ? true : Boolean(entry.active),
     nameSource: entry.nameSource === "confirmed" ? "confirmed" : "suggested",
     ...(entry.supersededBy?.brandCode && entry.supersededBy?.effectiveMonth ? { supersededBy: { brandCode: entry.supersededBy.brandCode, effectiveMonth: entry.supersededBy.effectiveMonth } } : {}),
-    ...(Array.isArray(entry.sourceCafe24Codes) ? { sourceCafe24Codes: entry.sourceCafe24Codes.map(normalizeBrandCode).filter(Boolean) } : {})
+    ...(Array.isArray(entry.sourceCafe24Codes) ? { sourceCafe24Codes: entry.sourceCafe24Codes.map(normalizeBrandCode).filter(Boolean) } : {}),
+    ...identityMetadataFields(entry)
   };
 }
 

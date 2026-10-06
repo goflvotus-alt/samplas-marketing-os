@@ -21,25 +21,21 @@ function fixture(code = "STALE7", oldName = "Legacy Seven", name = "Next Season"
 const build = brands => ({ brands: brands.map(b => ({ id: b.brand_code, name: b.brand_name, active: b.active })), aliases: [] });
 
 for (const args of [["B0000BDG", "BORC", "PERSONSOUL"], ["STALE7", "Legacy Seven", "Next Season"]]) {
-  test(`inactive reuse preserves legacy identity: ${args[2]}`, () => {
+  // 2026-10: code reuse is split into old/new identities (Phase 2); an in-place REASSIGN would
+  // attribute the new brand's earlier Cafe24 sales to the legacy identity, so it is refused.
+  test(`code reuse keeps legacy identity and refuses in-place reassignment: ${args[2]}`, () => {
     const sources = fixture(...args);
     const before = structuredClone(sources.canonical);
     const detected = queue.detectPendingBrands(sources);
     const c = detected.candidates[0];
     assert.equal(c.source, "BOTH");
-    assert.equal(c.reviewReason, "INACTIVE_CODE_REUSED");
-    assert.equal(queue.isAutoSafePendingDecision(c, sources.canonical, sources)?.action, "REASSIGN_INACTIVE_CODE");
-    const result = queue.planPendingBrandDecision(sources.canonical, detected, { id: c.id, action: "REASSIGN_INACTIVE_CODE" }, "2026-09-30T12:00:00Z", [], sources);
-    const old = result.canonical.brands[0];
-    const added = result.canonical.brands[1];
-    assert.deepEqual({ ...old, supersededBy: undefined }, { ...before.brands[0], supersededBy: undefined });
-    assert.notEqual(added.brand_code, args[0]);
-    assert.equal(added.brand_name, args[2]);
-    assert.deepEqual(added.sourceCafe24Codes, [args[0]]);
-    assert.equal(queue.approvedCafe24BrandCode(args[0], result.canonical), added.brand_code);
-    assert.equal(queue.approvedCafe24BrandCode(args[0], result.canonical, { since: "2026-08-01", until: "2026-08-31" }), args[0]);
-    assert.equal(resolveBrand(args[1], buildBrandRegistry(result.canonical)).brandId, args[0]);
-    assert.equal(resolveBrand(args[2], buildBrandRegistry(result.canonical)).brandId, added.brand_code);
+    assert.equal(c.reviewReason, "CODE_REUSE_SPLIT_REQUIRED");
+    assert.equal(c.requiresIdentitySplit, true);
+    assert.equal(c.previousCanonicalBrand, args[1]);
+    assert.equal(c.codeReuseClassification, "REVIEW_REQUIRED", "no Cafe24 creation date in this fixture");
+    assert.equal(queue.isAutoSafePendingDecision(c, sources.canonical, sources), null);
+    assert.throws(() => queue.planPendingBrandDecision(sources.canonical, detected, { id: c.id, action: "REASSIGN_INACTIVE_CODE" }, "2026-09-30T12:00:00Z", [], sources), /identity split/);
+    assert.equal(resolveBrand(args[1], buildBrandRegistry(sources.canonical)).brandId, args[0]);
     assert.deepEqual(sources.canonical, before);
   });
 }
@@ -60,12 +56,12 @@ test("AUTO_SAFE rejects missing, stale, contradictory and competing evidence", (
   ];
   for (const sources of cases) {
     assert.equal(queue.isAutoSafePendingDecision(current, sources.canonical, sources), null);
-    assert.throws(() => queue.planPendingBrandDecision(sources.canonical, { candidates: [current] }, { id: current.id, action: "REASSIGN_INACTIVE_CODE" }, undefined, sources.aliases || [], sources), /evidence|eligible/i);
+    assert.throws(() => queue.planPendingBrandDecision(sources.canonical, { candidates: [current] }, { id: current.id, action: "REASSIGN_INACTIVE_CODE" }, undefined, sources.aliases || [], sources), /evidence|eligible|identity split/i);
   }
   for (const patch of [{ heldAt: "hold" }, { status: "APPROVED" }, { relatedCandidateIds: ["other"] }, { collabCandidates: ["A", "B"] }]) {
     assert.equal(queue.isAutoSafePendingDecision({ ...current, ...patch }, good.canonical, good), null);
   }
-  assert.throws(() => queue.planPendingBrandDecision(good.canonical, { candidates: [current] }, { id: current.id, action: "REASSIGN_INACTIVE_CODE" }), /evidence|eligible/i);
+  assert.throws(() => queue.planPendingBrandDecision(good.canonical, { candidates: [current] }, { id: current.id, action: "REASSIGN_INACTIVE_CODE" }), /evidence|eligible|identity split/i);
 });
 
 test("fresh reuse evidence reclassifies an existing conflict without changing its ID", () => {
@@ -74,7 +70,7 @@ test("fresh reuse evidence reclassifies an existing conflict without changing it
   assert.equal(previous.candidates[0].reviewReason, "CODE_NAME_CONFLICT");
   const next = queue.detectPendingBrands({ ...sources, previous });
   assert.equal(next.candidates[0].id, previous.candidates[0].id);
-  assert.equal(next.candidates[0].reviewReason, "INACTIVE_CODE_REUSED");
+  assert.equal(next.candidates[0].reviewReason, "CODE_REUSE_SPLIT_REQUIRED");
   assert.equal(next.candidates[0].canonicalName, undefined);
 });
 
@@ -111,11 +107,28 @@ async function setup(sources) {
   return { dir, files };
 }
 
-test("reassignment atomic rollback and post-commit sourcing refresh", async () => {
+test("code-reuse REASSIGN is refused before any write", async () => {
   const sources = fixture(); const { dir, files } = await setup(sources);
   try {
     const input = { id: files["pending-brand-queue.json"].candidates[0].id, action: "REASSIGN_INACTIVE_CODE" };
-    for (const failAt of [1, 2, 3, 4]) {
+    await assert.rejects(queue.reviewPendingBrand(dir, input, build, { sources, replace: async () => { throw Error("must not write"); } }), /identity split/);
+    for (const [name, value] of Object.entries(files)) assert.equal(await readFile(join(dir, name), "utf8"), JSON.stringify(value));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("decision atomic rollback and post-commit sourcing refresh (NEW path)", async () => {
+  const sources = { ...fixture(), canonical: { brands: [] } };
+  const count = await setup(sources);
+  let writes = 0;
+  try {
+    const id = count.files["pending-brand-queue.json"].candidates[0].id;
+    await queue.reviewPendingBrand(count.dir, { id, action: "NEW", brandName: "Next Season" }, build, { sources, replace: async (a, b) => { writes += 1; await rename(a, b); } });
+  } finally { await rm(count.dir, { recursive: true, force: true }); }
+  assert.ok(writes >= 2, "brand master and queue are both replaced");
+  const { dir, files } = await setup(sources);
+  try {
+    const input = { id: files["pending-brand-queue.json"].candidates[0].id, action: "NEW", brandName: "Next Season" };
+    for (let failAt = 1; failAt <= writes; failAt += 1) {
       let n = 0;
       await assert.rejects(queue.reviewPendingBrand(dir, input, build, { sources, replace: async (a, b) => { if (++n === failAt) throw Error("injected"); await rename(a, b); } }), /injected/);
       for (const [name, value] of Object.entries(files)) assert.equal(await readFile(join(dir, name), "utf8"), JSON.stringify(value));
@@ -123,6 +136,7 @@ test("reassignment atomic rollback and post-commit sourcing refresh", async () =
     const result = await queue.reviewPendingBrand(dir, input, build, { sources });
     assert.equal(result.sourcingRefresh.ok, true);
     const sourcing = JSON.parse(await readFile(join(dir, "brand-sourcing-master.json"), "utf8"));
+    assert.equal(result.candidate.canonicalBrandCode, "STALE7");
     assert.equal(sourcing.brands.find(b => b.brand_code === result.candidate.canonicalBrandCode).sourcing_type, "CONSIGNMENT");
     for (const name of ["monthly-archive.json", "product-registry.json"]) assert.equal(await readFile(join(dir, name), "utf8"), JSON.stringify(files[name]));
   } finally { await rm(dir, { recursive: true, force: true }); }
@@ -146,9 +160,11 @@ test("refresh opt-in only; dry-run and GET never auto-write; failed sourcing is 
 });
 
 test("supersession is explicit, unique and period-bound; active owners still win", () => {
-  const sources = fixture(); const detected = queue.detectPendingBrands(sources);
-  const master = queue.planPendingBrandDecision(sources.canonical, detected, { id: detected.candidates[0].id, action: "REASSIGN_INACTIVE_CODE" }, "2026-09-30T15:00:00Z", [], sources).canonical;
-  assert.equal(master.brands[0].supersededBy.effectiveMonth, "2026-10", "KST month boundary");
+  // Existing supersededBy data (e.g. entries written before 2026-10) keeps resolving period-bound.
+  const master = { brands: [
+    { brand_code: "STALE7", brand_name: "Legacy Seven", active: false, name_aliases: [], supersededBy: { brandCode: "MANUAL_next", effectiveMonth: "2026-10" } },
+    { brand_code: "MANUAL_next", brand_name: "Next Season", active: true, name_aliases: [], sourceCafe24Codes: ["STALE7"] }
+  ] };
   assert.equal(queue.approvedCafe24BrandCode("STALE7", master, { since: "2026-09-01", until: "2026-09-30" }), "STALE7");
   assert.equal(queue.approvedCafe24BrandCode("STALE7", master, { since: "2026-10-01", until: "2026-10-31" }), master.brands[1].brand_code);
   assert.equal(queue.approvedCafe24BrandCode("STALE7", master, { since: "2026-09-01", until: "2026-10-31" }), "UNASSIGNED");
@@ -215,29 +231,22 @@ test("authenticated HTTP bulk refresh onboards NEW only; reassignment needs expl
     assert.equal(fresh.approvalAction, "NEW");
     assert.deepEqual(refresh.body.onboarding.map(e => e.candidate?.canonicalBrandCode), ["FRESH1"], "bulk refresh approves NEW only");
     assert.equal(refresh.body.onboarding[0].sourcingRefresh.ok, true);
-    assert.equal(reuse.status, "PENDING", "eligible inactive-code reuse is never bulk-approved");
-    assert.equal(reuse.reviewReason, "INACTIVE_CODE_REUSED");
+    assert.equal(reuse.status, "PENDING", "code reuse is never bulk-approved");
+    assert.equal(reuse.reviewReason, "CODE_REUSE_SPLIT_REQUIRED");
+    assert.equal(reuse.requiresIdentitySplit, true);
     const afterBulk = (await http(port, "/api/brand-master")).body;
     assert.equal(afterBulk.brands.length, 2);
     assert.equal(afterBulk.brands.find(b => b.brand_code === "STALE7").supersededBy, undefined);
     const manual = await http(port, "/api/pending-brands/review", "POST", true, { id: reuse.id, action: "REASSIGN_INACTIVE_CODE" });
-    assert.equal(manual.status, 200, JSON.stringify(manual.body));
-    assert.equal(manual.body.candidate.status, "APPROVED");
-    assert.equal(manual.body.candidate.approvalAction, "REASSIGN_INACTIVE_CODE");
+    assert.equal(manual.status, 400, JSON.stringify(manual.body));
+    assert.match(JSON.stringify(manual.body), /identity split/);
     const master = (await http(port, "/api/brand-master")).body;
-    assert.ok(master.brands.find(b => b.brand_code === "STALE7").supersededBy, "read normalization preserves provenance");
-    const policy = await http(port, "/api/intelligence/commercial-policy?name=Next%20Season&product_name=Jacket");
-    assert.equal(policy.status, 200);
-    assert.equal(policy.body.brand.brandId, manual.body.candidate.canonicalBrandCode);
-    assert.equal(policy.body.policy_status, "SOURCING_DEFAULT");
-    assert.equal(policy.body.effective_policy.effective_discount_percent, 10);
-    assert.equal(policy.body.online_price, null, "no fabricated price without Product Registry link");
-    const nextProduct = await http(port, "/api/intelligence/commercial-policy?name=Next%20Season&product_name=New%20Bag");
-    assert.equal(nextProduct.body.effective_policy.effective_discount_percent, 10);
+    assert.equal(master.brands.length, 2, "manual REASSIGN wrote nothing");
+    assert.equal(master.brands.find(b => b.brand_code === "STALE7").supersededBy, undefined);
     assert.equal((await http(port, "/api/intelligence/commercial-policy?name=Unregistered")).body.policy_status, "UNRESOLVED");
     const repeated = await http(port, "/api/pending-brands/refresh", "POST", true, { autoApprove: true });
     assert.equal(repeated.body.onboarding.length, 0);
-    assert.equal((await http(port, "/api/brand-master")).body.brands.length, 3);
+    assert.equal((await http(port, "/api/brand-master")).body.brands.length, 2);
     assert.equal(await readFile(join(dir, "monthly-archive.json"), "utf8"), JSON.stringify(files["monthly-archive.json"]));
     assert.equal(await readFile(join(dir, "product-registry.json"), "utf8"), JSON.stringify(files["product-registry.json"]));
   } finally {
@@ -281,16 +290,14 @@ test("unattended onboarding approves NEW only; inactive-code reuse waits for an 
 
     const masterBefore = await readFile(join(reuseDir.dir, "brand-master.json"), "utf8");
     const b = await queue.refreshPendingBrandsUnattended(reuseDir.dir, async () => reused, { buildCompatibility: build });
-    assert.equal(queue.isAutoSafePendingDecision(b.candidates[0], reused.canonical, reused)?.action, "REASSIGN_INACTIVE_CODE", "eligible, but not unattended");
+    assert.equal(queue.isAutoSafePendingDecision(b.candidates[0], reused.canonical, reused), null, "code reuse is never auto-safe");
     assert.equal(b.onboarding.length, 0);
     assert.equal(b.candidates[0].status, "PENDING");
-    assert.equal(b.candidates[0].reviewReason, "INACTIVE_CODE_REUSED");
+    assert.equal(b.candidates[0].reviewReason, "CODE_REUSE_SPLIT_REQUIRED");
     assert.equal(await readFile(join(reuseDir.dir, "brand-master.json"), "utf8"), masterBefore);
 
-    const manual = await queue.reviewPendingBrand(reuseDir.dir, { id: b.candidates[0].id, action: "REASSIGN_INACTIVE_CODE" }, build, { sources: reused });
-    assert.equal(manual.candidate.status, "APPROVED");
-    assert.equal(manual.candidate.approvalAction, "REASSIGN_INACTIVE_CODE");
-    assert.ok(JSON.parse(await readFile(join(reuseDir.dir, "brand-master.json"), "utf8")).brands.find(x => x.brand_code === "STALE7").supersededBy);
+    await assert.rejects(queue.reviewPendingBrand(reuseDir.dir, { id: b.candidates[0].id, action: "REASSIGN_INACTIVE_CODE" }, build, { sources: reused }), /identity split/);
+    assert.equal(await readFile(join(reuseDir.dir, "brand-master.json"), "utf8"), masterBefore, "manual REASSIGN refused, nothing written");
   } finally { for (const d of [created.dir, reuseDir.dir]) await rm(d, { recursive: true, force: true }); }
 });
 
@@ -301,10 +308,11 @@ test("PERSONSOUL / UNDER THE SIGN / PRAYING type reuse is never reassigned by bu
       const masterBefore = await readFile(join(dir, "brand-master.json"), "utf8");
       const result = await queue.refreshPendingBrands(dir, async () => sources, { autoApprove: true, buildCompatibility: build });
       const c = result.candidates[0];
-      assert.equal(queue.isAutoSafePendingDecision(c, sources.canonical, sources)?.action, "REASSIGN_INACTIVE_CODE", `${args[2]} is eligible`);
+      assert.equal(queue.isAutoSafePendingDecision(c, sources.canonical, sources), null, `${args[2]} is never auto-safe`);
       assert.equal(result.onboarding.length, 0, args[2]);
       assert.equal(c.status, "PENDING");
-      assert.equal(c.reviewReason, "INACTIVE_CODE_REUSED");
+      assert.equal(c.reviewReason, "CODE_REUSE_SPLIT_REQUIRED");
+      assert.equal(c.previousCanonicalBrand, args[1]);
       assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), masterBefore, `${args[2]} Brand Master untouched`);
     } finally { await rm(dir, { recursive: true, force: true }); }
   }

@@ -72,10 +72,11 @@ export function summarizePending(refresh) {
   const pending = (refresh?.candidates || []).filter((c) => c.status === "PENDING");
   const approved = (refresh?.onboarding || []).filter((e) => e.ok).map((e) => ({ brandCode: e.candidate?.canonicalBrandCode, brandName: e.candidate?.rawBrandName, action: e.candidate?.approvalAction }));
   const failed = (refresh?.onboarding || []).filter((e) => !e.ok).map((e) => ({ id: e.id, error: e.error }));
-  const needsReview = pending.filter((c) => c.reviewReason === REVIEW_REASON).map((c) => ({ brandName: c.rawBrandName, cafe24Code: c.sourceBrandCode, reason: "inactive code reassignment" }));
+  const needsReview = pending.filter((c) => c.reviewReason === REVIEW_REASON || c.requiresIdentitySplit).map((c) => ({ brandName: c.rawBrandName, cafe24Code: c.sourceBrandCode,
+    reason: c.requiresIdentitySplit ? `code reuse — identity split required (${c.codeReuseClassification}, from ${c.suggestedEffectiveMonth || "review"})` : "inactive code reassignment" }));
   const blocked = {};
   for (const c of pending) {
-    if (c.reviewReason === REVIEW_REASON) continue;
+    if (c.reviewReason === REVIEW_REASON || c.requiresIdentitySplit) continue;
     const key = c.collabCandidates?.length ? "COLLABORATION" : c.reviewReason || "UNRESOLVED";
     blocked[key] = (blocked[key] || 0) + 1;
   }

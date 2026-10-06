@@ -93,7 +93,7 @@ test("success: local sync → upload of exactly 3 files → NEW-only onboarding;
     const master = JSON.parse(await readFile(join(prodDir, "brand-master.json"), "utf8"));
     assert.deepEqual(master.brands.map(b => b.brand_code).sort(), ["FRESH1", "STALE7"]);
     assert.equal(master.brands.find(b => b.brand_code === "STALE7").supersededBy, undefined);
-    assert.match(formatSummary(first), /ECOUNT SYNC COMPLETE[\s\S]*New brands onboarded: 1[\s\S]*Fresh Label[\s\S]*Needs review:\n- Next Season — inactive code reassignment/);
+    assert.match(formatSummary(first), /ECOUNT SYNC COMPLETE[\s\S]*New brands onboarded: 1[\s\S]*Fresh Label[\s\S]*Needs review:\n- Next Season — code reuse — identity split required/);
 
     const second = await run();
     assert.equal(second.ok, true);
