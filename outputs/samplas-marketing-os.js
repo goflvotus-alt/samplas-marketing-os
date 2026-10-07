@@ -12514,7 +12514,9 @@ async function refreshClientsView() {
     return;
   }
   statusTarget.className = "ad-status-banner good";
-  const asOfNote = data.asOf ? ` · 오프라인 최신 ${esc(String(data.asOf.offlineThrough).slice(5))}` : "";
+  // Current month (as-of cutoff) or a closed month whose offline data ends early (canonical partial).
+  const asOfNote = (data.asOf?.offlineThrough ? ` · 오프라인 최신 ${esc(String(data.asOf.offlineThrough).slice(5))}` : "")
+    + (data.asOf?.missingOfflineDays > 0 ? ` · 월말 ${esc(String(data.asOf.missingOfflineDays))}일 미수집 (부분 집계)` : "");
   statusTarget.innerHTML = `<span class="status-dot"></span><strong>고객 데이터 연결됨</strong><span class="note">${esc(range.label)} · 데이터 기준 ${esc(data.periodStart || range.since)} ~ ${esc(data.periodEnd || range.until)}${asOfNote}</span>`;
   clientsOverviewState = data;
   renderClientsSummaryCards(data.summary || {}, (data.typeBreakdown || []).find((row) => row.type === "ff") || {}, data.storeCode || null, data.storeCoverage || null, data.accounting || null);

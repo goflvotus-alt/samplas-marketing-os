@@ -1195,15 +1195,22 @@ const server = isMainModule ? createServer(async (req, res) => {
           offlineQuantity: null
         };
         let accounting = null;
+        let historicalAsOf = null;
         const month = since.slice(0, 7);
         if (!storeCode && since === `${month}-01` && until === monthEndKey(month) && month < currentMonth()) {
           const archive = await readMonthlyArchive(month);
-          if (archive?.archiveStatus === "saved" && Number.isFinite(Number(archive?.sales?.totalSales?.amount))) {
-            ({ summary, accounting } = reconcileHistoricalClientsSummary(summary, overview.summary, archive));
+          if (archive?.archiveStatus === "saved") {
+            // A null archive total (offline incomplete) falls back to the canonical /api/sales/total amounts.
+            const canonical = finiteOrNull(archive?.sales?.totalSales?.amount) === null ? await buildCanonicalTotalSales({ since, until }) : null;
+            const snapshot = canonical ? await readEcountOfflineSalesSnapshot(month, { workDir }) : null;
+            const resolved = resolveHistoricalClientsSales({ summary, detailSummary: overview.summary, archive, canonical, offlineThrough: snapshot?.periodEnd || null, since, until });
+            ({ summary, accounting } = resolved);
+            if (resolved.asOf) { historicalAsOf = resolved.asOf; }
           }
         }
         const payload = { ok: true, ...overview, summary, coverage, storeCoverage: coverage.offline, ...(accounting ? { accounting } : {}),
-          ...(asOf ? { requestedPeriod: { since, until: requestedUntil }, asOf } : {}) };
+          ...(asOf ? { requestedPeriod: { since, until: requestedUntil }, asOf } : {}),
+          ...(historicalAsOf ? { requestedPeriod: { since, until }, asOf: historicalAsOf } : {}) };
         return json(res, summaryView ? toClientsSummaryView(payload) : payload);
       } catch (error) {
         return json(res, { ok: false, error: "Internal Server Error", message: safeErrorMessage(error) }, 500);
@@ -5372,23 +5379,48 @@ export function buildStoreCategoryIntelligence(lines = [], identityContext = {})
   return { available: true, items, coverage: { totalRevenue, assignedRevenue: totalRevenue - unclassifiedRevenue, unclassifiedRevenue } };
 }
 
-export function reconcileHistoricalClientsSummary(summary, detailSummary, archive) {
-  const totalSalesAmount = Number(archive.sales.totalSales.amount);
-  const attributedRevenue = Number(detailSummary?.totalSalesAmount || 0);
+// A missing amount is unknown, never 0: Number(null) is 0, so test for null/undefined/"" first.
+export function finiteOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function reconcileHistoricalClientsSummary(summary, detailSummary, archive, { basis = "saved_monthly_archive" } = {}) {
+  const totalSalesAmount = finiteOrNull(archive?.sales?.totalSales?.amount);
+  const attributedRevenue = finiteOrNull(detailSummary?.totalSalesAmount) ?? 0;
+  const purchases = finiteOrNull(summary?.totalPurchaseCount);
   return {
     summary: {
       ...summary,
-      onlineSalesAmount: Number(archive.sales.onlineSales.paidAmount),
-      offlineSalesAmount: Number(archive.sales.offlineSales.offlineSalesAmount),
+      onlineSalesAmount: finiteOrNull(archive?.sales?.onlineSales?.paidAmount),
+      offlineSalesAmount: finiteOrNull(archive?.sales?.offlineSales?.offlineSalesAmount),
       totalSalesAmount,
-      avgOrderValue: Number(summary?.totalPurchaseCount || 0) > 0 ? totalSalesAmount / Number(summary.totalPurchaseCount) : null
+      avgOrderValue: totalSalesAmount !== null && purchases > 0 ? totalSalesAmount / purchases : null
     },
     accounting: {
-      basis: "saved_monthly_archive",
+      basis,
       attributedRevenue,
-      unassignedRevenue: totalSalesAmount - attributedRevenue
+      unassignedRevenue: totalSalesAmount === null ? null : totalSalesAmount - attributedRevenue
     }
   };
+}
+
+// Closed month, saved archive. A complete archive keeps the saved reconciliation. An archive whose total
+// is null (offline coverage ended before month end) shows the canonical known amounts for the same range,
+// the /api/sales/total figures, with coverage kept partial and the offline-through date. Nothing is
+// estimated for the missing days; amounts the canonical source does not know stay null.
+export function resolveHistoricalClientsSales({ summary, detailSummary, archive, canonical, offlineThrough, since, until }) {
+  if (finiteOrNull(archive?.sales?.totalSales?.amount) !== null) return reconcileHistoricalClientsSummary(summary, detailSummary, archive);
+  const known = { sales: {
+    onlineSales: { paidAmount: canonical?.onlineSales?.paidAmount ?? null },
+    offlineSales: { offlineSalesAmount: canonical?.offlineSales?.offlineSalesAmount ?? null },
+    totalSales: { amount: canonical?.totalSales?.amount ?? null }
+  } };
+  const resolved = reconcileHistoricalClientsSummary(summary, detailSummary, known, { basis: "canonical_partial_coverage" });
+  const through = /^\d{4}-\d{2}-\d{2}$/.test(String(offlineThrough || "")) && offlineThrough >= since && offlineThrough < until ? offlineThrough : null;
+  const missingOfflineDays = through ? Math.round((Date.parse(`${until}T00:00:00Z`) - Date.parse(`${through}T00:00:00Z`)) / 86400000) : null;
+  return { ...resolved, asOf: { basis: "canonical_partial_coverage", onlineThrough: until, offlineThrough: through, missingOfflineDays, coverage: "partial" } };
 }
 
 export function buildBrandClientCross(clients = [], canonicalTotalRevenue = null) {
