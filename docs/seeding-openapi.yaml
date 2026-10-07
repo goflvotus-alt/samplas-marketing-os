@@ -1,0 +1,229 @@
+openapi: 3.1.0
+info:
+  title: SAMPLAS SEEDING private API
+  version: 1.0.0
+servers:
+  - url: https://samplas-marketing-os.onrender.com
+security:
+  - InternalToken: []
+paths:
+  /api/ai-audit/seeding/projects:
+    get:
+      operationId: listSeedingProjects
+      summary: List project metadata and counts without recipient contact information
+      responses:
+        '200':
+          description: Project list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  projects:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: {type: string}
+                        brand: {type: string}
+                        product: {type: string}
+                        version: {type: integer}
+                        updatedAt: {type: string, format: date-time}
+                        counts: {$ref: '#/components/schemas/Summary'}
+        '401': {description: Missing or invalid internal token}
+        '502': {description: Storage unavailable; no data modified}
+  /api/ai-audit/seeding/project:
+    parameters:
+      - in: query
+        name: name
+        required: true
+        schema: {type: string}
+    get:
+      operationId: getSeedingProject
+      summary: Read authenticated project detail including recipient information
+      responses:
+        '200':
+          description: Project, seedings, creators, summary and version ETag
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Detail'}
+        '400': {description: Missing name}
+        '401': {description: Missing or invalid token}
+        '404': {description: Unknown project}
+        '502': {description: Storage unavailable}
+    put:
+      operationId: updateSeedingProject
+      summary: Apply allowlisted operations atomically with project version and Dropbox rev CAS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [version, operations]
+              properties:
+                version: {type: integer, minimum: 1}
+                operations:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [type]
+                    properties:
+                      type:
+                        type: string
+                        enum: [update_seeding, add_seeding, remove_seeding, update_project, add_creator_to_project, update_creator]
+                      instagramId: {type: string, description: Required except update_project; normalized trim/remove @/lowercase}
+                      patch:
+                        type: object
+                        additionalProperties: false
+                        properties:
+                          name: {type: string}
+                          brand: {type: string}
+                          productName: {type: string}
+                          product: {type: string}
+                          publicFormUrl: {type: string}
+                          editFormUrl: {type: string}
+                          responseSheetUrl: {type: string}
+                          responseSheetId: {type: string}
+                          responseSheetName: {type: string}
+                          dmMessage: {type: string}
+                          shortMessage: {type: string}
+                          followupMessage: {type: string}
+                          startDate: {type: string}
+                          endDate: {type: string}
+                          storyCountsAsComplete: {type: boolean}
+                          responseSync: {type: object}
+                          contactStatus: {type: string, enum: [미연락, DM 완료, 무응답, 제외]}
+                          formStatus: {type: string, enum: [미응답, 응답 완료]}
+                          shippingStatus: {type: string, enum: [미출고, 출고 완료]}
+                          size: {type: string}
+                          phone: {type: string}
+                          address: {type: string}
+                          responseAt: {type: string}
+                          uploadWithin7Days: {type: string}
+                          repostConsent: {type: string}
+                          carrier: {type: string}
+                          trackingNumber: {type: string}
+                          shippedAt: {type: string}
+                          deliveryStatus: {type: string, enum: [tracking_missing, registered, picked_up, in_transit, out_for_delivery, delivered, exception, unknown]}
+                          deliveredAt: {type: string}
+                          uploadDeadline: {type: string}
+                          uploadStatus: {type: string, enum: [waiting, check_required, completed, overdue, unavailable]}
+                          uploadedAt: {type: string}
+                          postUrl: {type: string}
+                          postType: {type: string, enum: [feed, reel, story, unknown]}
+                          memo: {type: string}
+                          followup: {type: boolean}
+                          followupContactedAt: {type: string}
+                          uploadStatusMode: {type: string, enum: [auto, manual]}
+                          uploadVerifiedBy: {type: string, enum: ['', manual, external_check, api]}
+                          uploadCheckedAt: {type: string}
+                          trackingCheckedAt: {type: string}
+                          trackingSource: {type: string}
+                          trackingError: {type: string}
+                          trackingHistory: {type: array, items: {type: object}}
+                          responseSource: {type: string}
+                          responseRow: {type: integer}
+                          sourceTimestamp: {type: string}
+                          shippedRecordedAt: {type: string}
+                          uploadedRecordedAt: {type: string}
+                          uploadCheckSuggestion: {type: object}
+            example:
+              version: 12
+              operations:
+                - type: update_seeding
+                  instagramId: purynn__
+                  patch:
+                    trackingNumber: '1234567890'
+                    carrier: CJ대한통운
+      responses:
+        '200':
+          description: Updated detail and new server version
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Detail'}
+        '400': {description: Invalid payload/operation/field/duplicate Instagram ID; nothing written}
+        '401': {description: Missing or invalid token}
+        '404': {description: Unknown project}
+        '409': {description: Version or Dropbox rev conflict; currentVersion returned; nothing overwritten}
+        '502': {description: Storage failure; refresh before retrying any ambiguous write}
+components:
+  securitySchemes:
+    InternalToken:
+      type: apiKey
+      in: header
+      name: x-samplas-internal-token
+  schemas:
+    Detail:
+      type: object
+      properties:
+        ok: {type: boolean}
+        project:
+          type: object
+          properties:
+            id: {type: string}
+            name: {type: string}
+            brand: {type: string}
+            productName: {type: string}
+            version: {type: integer}
+            updatedAt: {type: string, format: date-time}
+            publicFormUrl: {type: string}
+            editFormUrl: {type: string}
+            responseSheetUrl: {type: string}
+            startDate: {type: string}
+            endDate: {type: string}
+        seedings:
+          type: array
+          items:
+            type: object
+            properties:
+              instagramId: {type: string}
+              creatorId: {type: string}
+              contactStatus: {type: string}
+              formStatus: {type: string}
+              size: {type: string}
+              name: {type: string}
+              phone: {type: string}
+              address: {type: string}
+              responseAt: {type: string}
+              uploadWithin7Days: {type: string}
+              repostConsent: {type: string}
+              carrier: {type: string}
+              trackingNumber: {type: string}
+              shippedAt: {type: string}
+              deliveryStatus: {type: string}
+              deliveredAt: {type: string}
+              uploadDeadline: {type: string}
+              uploadStatus: {type: string}
+              uploadedAt: {type: string}
+              postUrl: {type: string}
+              postType: {type: string}
+              memo: {type: string}
+        creators:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: string}
+              instagramId: {type: string}
+              projectHistory: {type: array, items: {type: object}}
+              shipmentCount: {type: integer}
+              uploadCompletedCount: {type: integer}
+              latestSeedingDate: {type: string}
+        summary: {$ref: '#/components/schemas/Summary'}
+    Summary:
+      type: object
+      properties:
+        total: {type: integer}
+        contacted: {type: integer}
+        responded: {type: integer}
+        shipped: {type: integer}
+        uploadCompleted: {type: integer}
+        uploadWaiting: {type: integer}
+        overdue: {type: integer}
+        followUpNeeded: {type: integer}

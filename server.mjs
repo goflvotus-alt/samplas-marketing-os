@@ -1,3 +1,4 @@
+import { handleSeeding } from './scripts/seeding-store.mjs';
 import { createServer } from "node:http";
 import { collectWeeklyAccount, captureWeeklyFollowers } from "./scripts/weekly-account-demand.mjs";
 import { readFile, writeFile, mkdir, readdir as fsReaddir, rename, link, unlink, rm } from "node:fs/promises";
@@ -766,6 +767,21 @@ const server = isMainModule ? createServer(async (req, res) => {
         shippingFee: cafe24ShippingFee,
         isCanceledItem: isCafe24CanceledItem
       }));
+    }
+    if (["/api/ai-audit/seeding/projects", "/api/ai-audit/seeding/project"].includes(url.pathname)) {
+      res.setHeader("Cache-Control", "no-store");
+      let payload;
+      if (req.method === "PUT") {
+        try { payload = await readJsonBody(req); }
+        catch { return json(res, { ok: false, error: "malformed_json" }, 400); }
+      }
+      try {
+        const result = await handleSeeding(req.method, url.pathname, url.searchParams.get("name"), payload, { env });
+        if (result.etag) res.setHeader("ETag", result.etag);
+        return json(res, result.body, result.status);
+      } catch (error) {
+        return json(res, { ok: false, error: error.status === 400 ? error.message : error.status === 404 ? "project_not_found" : "seeding_request_failed" }, error.status || 502);
+      }
     }
     if (url.pathname === "/api/ai-audit/popup/projects") {
       // READ ONLY (Phase 2-1). Reads PROJECTS/<project>/popup.json via Dropbox —
