@@ -104,10 +104,10 @@ test("campaign with no matching previous-week row gets a null WoW instead of a f
 
 // 5 & 6. adgroup / keyword aggregation — Phase 1 has no adgroup/keyword endpoints, so the
 // model must say so explicitly rather than fabricate rows.
-test("5. adgroup aggregation is explicitly reported unavailable (Phase 1 has no /ncc/adgroups call)", () => {
+test("5. adgroup enrichment absent is explicitly unavailable, never a fabricated zero", () => {
   const model = buildWeeklyReportModel({ current: currentPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
   assert.equal(model.adgroups.available, false);
-  assert.match(model.adgroups.reason, /adgroup/i);
+  assert.match(model.adgroups.reason, /광고그룹/);
 });
 
 test("6. keyword aggregation is explicitly reported unavailable (Phase 1 has no /ncc/keywords call)", () => {

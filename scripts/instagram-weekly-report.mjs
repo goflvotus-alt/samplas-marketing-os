@@ -99,7 +99,10 @@ export function buildWeeklyInstagramReportModel({ current, previous, since, unti
     reels: currentOk ? posts.filter(isReel) : [],
     source: "instagram_graph_api",
     deliveryBasis: "Date-filtered monthly cache / Graph API collector; not a weekly account insight query",
-    weeklyUniqueReach: metricPresent(current?.accountWeeklyUniqueReach) ? current.accountWeeklyUniqueReach : null,
+    accountWeekly: current?.accountWeekly || null,
+    previousAccountWeekly: previous?.accountWeekly || null,
+    followerSnapshot: current?.followerSnapshot || null,
+    weeklyUniqueReach: metricPresent(current?.accountWeekly?.reach) ? current.accountWeekly.reach : metricPresent(current?.accountWeeklyUniqueReach) ? current.accountWeeklyUniqueReach : null,
     stories: Array.isArray(current?.stories) ? current.stories.filter(story=>{const date=String(story.date||story.timestamp||'').slice(0,10);return date>=since&&date<=until;}) : null,
     raw: currentOk ? current : null
   };

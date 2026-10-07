@@ -68,10 +68,10 @@ test("account snapshot stays a separate month-basis figure, never blended into t
   assert.notEqual(model.accountSnapshot.followers, model.summary.views);
 });
 
-test("REPORT distinguishes monthly follower snapshot from weekly engagement",async()=>{
+test("REPORT never substitutes monthly followers for current followers_count",async()=>{
  const m=buildWeeklyInstagramReportModel({current:currentPayload,previous:previousPayload,since:"2026-09-22",until:"2026-09-28"});
  const w=await buildWeeklyInstagramReportWorkbook(m),s=w.getWorksheet("REPORT");
- assert.equal(s.getCell("A6").value,12000);assert.equal(s.getCell("A15").value,"팔로워");assert.equal(s.getCell("C15").value,"N/A");assert.match(s.getCell("A7").value,/월간/);
+ assert.equal(s.getCell("A6").value,"N/A");assert.equal(s.getCell("A15").value,"팔로워 · 수집시점");assert.equal(s.getCell("C15").value,"N/A");assert.match(s.getCell("A7").value,/생성 시점/);
 });
 test("unprovided weekly/account metrics remain N/A",async()=>{
  const m=buildWeeklyInstagramReportModel({current:{ok:true,posts:currentPosts,account:null},previous:previousPayload,since:"2026-09-22",until:"2026-09-28"});const w=await buildWeeklyInstagramReportWorkbook(m);assert.equal(w.getWorksheet("REPORT").getCell("A6").value,"N/A");

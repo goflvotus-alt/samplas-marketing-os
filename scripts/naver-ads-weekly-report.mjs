@@ -156,10 +156,11 @@ export function buildWeeklyReportModel({ current, previous, since, until, previo
     previousSummary,
     wow,
     campaigns,
-    // Ad group / keyword level data requires /ncc/adgroups and /ncc/keywords, which the
-    // reused Phase 1 client does not call. Reported explicitly rather than guessed at.
-    adgroups: { available: false, reason: "Naver Ads Phase 1 client only fetches campaign-level data (/ncc/campaigns + /stats); ad group level (/ncc/adgroups) is not implemented." },
+    // Weekly detail is optional. Campaign totals retain the original source semantics.
+    adgroups: current?.adgroups || { available: false, reason: "주간 광고그룹 상세가 제공되지 않았습니다." },
     keywords: { available: false, reason: "Naver Ads Phase 1 client only fetches campaign-level data (/ncc/campaigns + /stats); keyword level (/ncc/keywords) is not implemented." },
+    previousAdgroups: previous?.adgroups || null,
+    searchDemand: current?.searchDemand || { available: false, top10: [], rising5: [], reason: "검색 수요 Snapshot 미제공" },
     raw: currentOk ? current : null
   };
   model.analysis=analyzeNaver(model,current,previous);

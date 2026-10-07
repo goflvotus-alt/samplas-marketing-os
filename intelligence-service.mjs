@@ -1,3 +1,4 @@
+import { demandCandidates, buildSearchDemand } from "./scripts/weekly-account-demand.mjs";
 import { createServer } from "node:http";
 import { withPendingBrandWrite } from "./scripts/pending-brand-queue.mjs";
 import { pathToFileURL } from "node:url";
@@ -2255,6 +2256,7 @@ async function handleNaverSnapshotsPost(req, url, res) {
       message: result.message
     }, result.httpStatus);
   }
+  return withPendingBrandWrite(async () => {
   const store = await readNaverSnapshotsStore();
   const collectedAt = new Date().toISOString();
   const snapshot = createNaverSearchSnapshot({ keyword, collectedAt, rows: result.rows });
@@ -2274,6 +2276,7 @@ async function handleNaverSnapshotsPost(req, url, res) {
     ok: true,
     duplicate: false,
     snapshot
+  });
   });
 }
 
@@ -2500,7 +2503,7 @@ export async function fetchNaverAdgroupIndex({ now = Date.now() } = {}) {
       if (!Array.isArray(rows)) throw new Error("Invalid ad group response");
       for (const row of rows) {
         if (typeof row?.name !== "string") continue;
-        adgroups.push({ name: row.name, campaign: campaign.name, paused: row.userLock === true, status: typeof row.status === "string" ? row.status : null });
+        adgroups.push({ id: typeof row.nccAdgroupId === "string" ? row.nccAdgroupId : null, campaignId: campaign.id, name: row.name, campaign: campaign.name, paused: row.userLock === true, status: typeof row.status === "string" ? row.status : null });
       }
     }
     const value = { ok: true, fetchedAt: new Date(now).toISOString(), campaignCount: campaigns.length, adgroups };
@@ -2511,6 +2514,59 @@ export async function fetchNaverAdgroupIndex({ now = Date.now() } = {}) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// Weekly enrichment shares the existing signed GET client and metric math.
+// Failures affect detail only; campaign totals remain authoritative.
+let weeklyDemandCache = null;
+async function collectWeeklySearchDemand(index, credentials) {
+  const now = new Date().toISOString();
+  const registry = await readBrandRegistry();
+  const candidates = demandCandidates(index.adgroups, registry);
+  const fetched = [];
+  for (const brand of candidates) {
+    const response = await fetchNaverKeywordSearch(brand.name, credentials);
+    if (response.ok) fetched.push(createNaverSearchSnapshot({ keyword: brand.name, collectedAt: now, rows: response.rows }));
+  }
+  // Shared lock with the existing snapshot POST prevents lost updates.
+  return withPendingBrandWrite(async () => {
+    const store = await readNaverSnapshotsStore();
+    for (const snapshot of fetched) {
+      if (!findRecentDuplicateSnapshot(store.snapshots, snapshot)) store.snapshots.push(snapshot);
+    }
+    if (fetched.length) { store.updatedAt = now; await writeNaverSnapshotsStore(store); clearMissionCache(); }
+    return buildSearchDemand(candidates, store.snapshots, now);
+  });
+}
+export async function fetchNaverWeeklyEnrichment(since, until) {
+  const credentials = naverAdsCredentials();
+  const index = await fetchNaverAdgroupIndex();
+  const fallback = { available: false, reason: '광고그룹 통계 조회 실패 또는 불완전 응답', rows: [] };
+  if (!credentials.ok || !index.ok) return { adgroups: fallback, searchDemand: { available: false, top10: [], rising5: [], reason: 'Naver 연결 또는 광고그룹 조회 실패' } };
+  let adgroups = fallback;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), naverAdsTimeoutMs);
+  try {
+    const period = naverAdsPerformancePeriod(new URL(`http://internal/?since=${since}&until=${until}`));
+    if (!period.ok || index.adgroups.some(g => !g.id) || new Set(index.adgroups.map(g => g.id)).size !== index.adgroups.length) throw new Error('Invalid ad group period/index');
+    const stats = new Map();
+    for (let offset = 0; offset < index.adgroups.length; offset += 100) {
+      const batch = index.adgroups.slice(offset, offset + 100), ids = new Set(batch.map(g => g.id));
+      const payload = await fetchNaverAdsReadOnly('/stats', { ids: [...ids].join(','), fields: JSON.stringify(['impCnt','clkCnt','salesAmt','ccnt','convAmt']), timeRange: JSON.stringify({ since, until }), timeIncrement: 'allDays' }, credentials, controller.signal);
+      if (!Array.isArray(payload?.data)) throw new Error('Invalid stats');
+      for (const row of payload.data) {
+        if (!ids.has(row.id) || stats.has(row.id)) throw new Error('Invalid stats identifier');
+        stats.set(row.id, naverAdsMetrics(row));
+      }
+      if (batch.some(g => !stats.has(g.id))) throw new Error('Incomplete stats');
+    }
+    adgroups = { available: true, since, until, source: 'naver-searchad-stats-adgroup', rows: index.adgroups.map(g => ({ ...g, ...stats.get(g.id) })) };
+  } catch { /* Campaign fallback; never make missing groups into zero. */ }
+  finally { clearTimeout(timeout); }
+  if (!weeklyDemandCache || Date.now() - weeklyDemandCache.at > 60000) {
+    weeklyDemandCache = { at: Date.now(), promise: collectWeeklySearchDemand(index, credentials).catch(() => ({ available: false, top10: [], rising5: [], reason: '브랜드 검색 수요 또는 Snapshot 저장 실패' })) };
+  }
+  return { adgroups, searchDemand: await weeklyDemandCache.promise };
 }
 
 async function fetchNaverKeywordSearch(keyword, credentials) {

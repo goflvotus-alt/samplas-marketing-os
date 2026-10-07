@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { collectWeeklyAccount, captureWeeklyFollowers } from "./scripts/weekly-account-demand.mjs";
 import { readFile, writeFile, mkdir, readdir as fsReaddir, rename, link, unlink, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
@@ -18,7 +19,8 @@ import {
   buildIntelligenceBrandRegistry,
   handleNaverAdsReadOnlyRoute,
   capturingResponse,
-  fetchNaverAdgroupIndex
+  fetchNaverAdgroupIndex,
+  fetchNaverWeeklyEnrichment
 } from "./intelligence-service.mjs";
 import {
   generateWeeklyNaverAdsReport,
@@ -8146,7 +8148,10 @@ async function fetchNaverAdsPerformanceForWeeklyReport(since, until) {
   const url = new URL(`http://internal/api/intelligence/naver/ads/performance?since=${since}&until=${until}`);
   const capture = capturingResponse();
   await handleNaverAdsReadOnlyRoute("performance", url, capture);
-  return capture.body;
+  const base = capture.body;
+  if (!base?.ok) return base;
+  const enrichment = await fetchNaverWeeklyEnrichment(since, until).catch(() => ({ adgroups: { available: false, reason: '광고그룹·검색 수요 조회 실패' }, searchDemand: { available: false, reason: '검색 수요 조회 실패', top10: [], rising5: [] } }));
+  return { ...base, ...enrichment };
 }
 
 async function runNaverWeeklyReportCheck() {
@@ -8322,6 +8327,23 @@ export async function buildInstagramRangeDataForWeeklyReport(since, until) {
   try {
     const data = await buildInstagramRangeData(since, until);
     const stories = await readCachedStories().catch(() => null);
+    const igId = env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
+    const accountWeekly = await collectWeeklyAccount({ since, until, fetchMetric: async (metric, start, end) => {
+      if (!igId) throw new Error('Instagram account not configured');
+      // Graph until is exclusive. KST midnight includes the entire final reporting day.
+      const from = Math.floor(Date.parse(`${start}T00:00:00+09:00`) / 1000);
+      const to = Math.floor(Date.parse(`${end}T00:00:00+09:00`) / 1000) + 86400;
+      try { return (await graphGet(`${igId}/insights`, { metric, metric_type: 'total_value', period: 'day', since: from, until: to })).data || []; }
+      catch (error) { await logApiError('instagram_weekly_account', error, { metric, since: start, until: end }); throw error; }
+    }});
+    let followerSnapshot = { followers: null, delta: null, reason: '현재 followers_count 조회 실패' };
+    try {
+      const identity = await graphGet(igId, { fields: 'id,followers_count' });
+      followerSnapshot = { followers: identity.followers_count ?? null, delta: null, reason: '주간 Snapshot 저장 실패' };
+      followerSnapshot = await captureWeeklyFollowers(join(workDir, 'instagram-weekly-followers.json'), { accountId: igId, followers: identity.followers_count });
+    } catch {
+      // Missing identity/storage stays unavailable, never monthly fallback.
+    }
     return {
       ok: true,
       since: data.since,
@@ -8329,6 +8351,8 @@ export async function buildInstagramRangeDataForWeeklyReport(since, until) {
       source: "instagram_graph_api",
       posts: data.posts || [],
       account: data.account || null,
+      accountWeekly,
+      followerSnapshot,
       stories: stories?.stories || null
     };
   } catch (error) {
