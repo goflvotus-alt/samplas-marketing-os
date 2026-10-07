@@ -590,8 +590,12 @@ export function splitCodeIdentity(workDir, input, buildCompatibility, { replace 
     // Exact pre-write copy of everything this split touches plus the archives a later
     // brand-attribution rebuild may change; restoreIdentitySplitBackup() reverts to it byte for byte.
     const backup = await backupWorkFiles(workDir, [...SPLIT_BACKUP_FILES, ...archiveMonthsFrom(plan.effectiveMonth).map(month => `monthly/${month}.json`)], `split-${plan.preconditions.pendingId.slice(0, 8)}`);
-    await writeFilesAtomically([[files.canonical, plan.canonical], [files.policies, plan.policies], [files.productRegistry, plan.productRegistry],
-      [files.compatibility, derived.brands], [files.aliases, derived.aliases], [files.queue, plan.queue]], { replace });
+    try {
+      await writeFilesAtomically([[files.canonical, plan.canonical], [files.policies, plan.policies], [files.productRegistry, plan.productRegistry],
+        [files.compatibility, derived.brands], [files.aliases, derived.aliases], [files.queue, plan.queue]], { replace });
+    } catch (error) {
+      throw Object.assign(error, { backup });
+    }
     let sourcingRefresh;
     try {
       const sourcing = await refreshBrandSourcingMaster(workDir);

@@ -10415,9 +10415,9 @@ async function renderPendingBrandReview(brands) {
         ${c.canonicalName !== undefined ? `<span>기존: ${esc(c.canonicalName)}</span><span>Cafe24 상품: ${c.cafe24ProductCount == null ? "확인 불가" : apiNum(c.cafe24ProductCount)}개</span>` : ""}
       </div>
       <p class="pending-master-comparison">기존 비교: <strong>${esc(comparisonLabel(c))}</strong></p>
-      ${c.requiresIdentitySplit ? `<p class="pending-code-reuse">코드 재사용 감지 · 기존: ${esc(c.previousCanonicalBrand)} (${esc(c.previousCanonicalCode)}) · 현재 Cafe24: ${esc(c.currentCafe24Brand)} · 권장 시작: ${esc(c.suggestedEffectiveMonth || "판단 보류")} · 분류: ${esc(c.codeReuseClassification)} · 수동 분리 필요 (자동 승인·재할당 불가)</p>
+      ${c.requiresIdentitySplit ? `<p class="pending-code-reuse">코드 재사용 감지 · 기존: ${esc(c.previousCanonicalBrand)} (${esc(c.previousCanonicalCode)}) · 현재 Cafe24: ${esc(c.currentCafe24Brand)} · 권장 시작: ${esc(c.suggestedEffectiveMonth || "판단 보류")} · 분류: ${esc(c.codeReuseClassification)} · 수동 분리 필요 (자동 승인·재할당 불가) · ${c.codeReuseClassification === "MINTED_CODE_COLLISION" ? "Dry Run 검증 통과 시 분리 실행 가능" : "수동 검토 필요 (원클릭 실행 불가)"}</p>
       <div class="pending-split-actions"><button type="button" class="button secondary" data-split-dry-run>분리 검토 (Dry Run)</button>
-      <button type="button" class="button" disabled title="Phase 3 전까지 실제 분리는 비활성">분리 실행 · 비활성</button></div>
+      <button type="button" class="button" data-split-execute disabled title="Dry Run 검증 통과 후 활성">분리 실행</button></div>
       <div data-split-preview></div>` : ""}
       ${c.uiReview?.masterComparison?.result === "CODE_NAME_CONFLICT" ? `<p>현재 Cafe24 코드 ${esc(c.sourceBrandCode)}는 Brand Master에서 ${esc(c.uiReview.masterComparison.codeMatchCanonicalName)}로 등록되어 있습니다. 자동 변경할 수 없어 별도 검토가 필요합니다.</p>` : ""}
       <details class="pending-review-evidence"><summary>상세 보기</summary>
@@ -10478,14 +10478,41 @@ async function renderPendingBrandReview(brands) {
       row.querySelector("[data-brand-results]").innerHTML = "";
       return;
     }
+    // Operator session first when the server asks for it (same prompt as the ECOUNT upload).
+    const postOperator = async (url, payload, timeoutMs) => {
+      const result = await postJson(url, payload, timeoutMs);
+      return result.error === "Unauthorized" && await authorizeEcountProductionUpload() ? postJson(url, payload, timeoutMs) : result;
+    };
+    const executeButton = event.target.closest("[data-split-execute]");
+    if (executeButton?.dataset?.splitExecute !== undefined) {
+      // One request: token check -> backup -> split -> read-back -> archive rebuild -> read-back; rollback on failure.
+      const token = executeButton.dataset.splitToken;
+      if (executeButton.disabled || busy || !token) return;
+      const row = executeButton.closest("[data-pending-id]");
+      if (!confirm("분리 실행: 자동 backup → split → archive rebuild → read-back 순서로 처리합니다. 실패하면 자동 rollback 됩니다. 실행할까요?")) return;
+      busy = true;
+      executeButton.disabled = true;
+      executeButton.dataset.splitToken = "";
+      const result = await postOperator("/api/pending-brands/split/execute", { id: row.dataset.pendingId, token }, 600000);
+      busy = false;
+      row.querySelector("[data-split-preview]").innerHTML = splitExecutionHtml(result);
+      if (result.ok) { toast(`분리 완료 · ${result.newIdentity?.brand_name} (${result.newIdentity?.brand_code})`); await renderBrandMasterSettings(); }
+      return;
+    }
     const splitButton = event.target.closest("[data-split-dry-run]");
     if (splitButton?.dataset?.splitDryRun !== undefined) {
-      // Read-only: SPLIT_CODE_IDENTITY dry-run never writes; execution stays disabled in the UI.
+      // Read-only: the dry-run never writes; a passing dry-run returns a single-use execution token.
       const row = splitButton.closest("[data-pending-id]");
       splitButton.disabled = true;
-      const preview = await postJson("/api/pending-brands/review", { id: row.dataset.pendingId, action: "SPLIT_CODE_IDENTITY", dryRun: true }, 120000);
+      const preview = await postOperator("/api/pending-brands/split/dry-run", { id: row.dataset.pendingId }, 180000);
       splitButton.disabled = false;
       row.querySelector("[data-split-preview]").innerHTML = splitPreviewHtml(preview);
+      const execute = row.querySelector("[data-split-execute]");
+      if (execute?.dataset) {
+        const ready = Boolean(preview.ok && preview.execution?.eligible && preview.execution?.writeEnabled && preview.execution?.token);
+        execute.dataset.splitToken = ready ? preview.execution.token : "";
+        execute.disabled = !ready;
+      }
       return;
     }
     const button = event.target.closest("[data-pending-action], [data-pending-refresh]");
@@ -10513,13 +10540,33 @@ function splitPreviewHtml(preview = {}) {
   if (preview.status === "ALREADY_SPLIT") return `<p>이미 분리됨 · ${esc(preview.oldBrandCode)} / ${esc(preview.newBrandCode)}</p>`;
   const o = preview.oldIdentity || {}; const n = preview.newIdentity || {};
   const months = (preview.attribution?.months || []).map((m) => `<tr><td>${esc(m.month)}</td><td>${esc(m.treatment)}</td>
-    <td>${won(m.before.total)}</td><td>${won(m.after.old.total)}</td><td>${won(m.after.new.total)}</td><td>${m.reconciliation?.balanced && m.monthOfflineTotal?.preserved ? "OK" : "확인 필요"}</td></tr>`).join("");
+    <td>${won(m.before.total)}</td><td>${won(m.after.old.total)}</td><td>${won(m.after.new.total)}</td><td>${won(Number(m.before.unassignedOffline || 0) - Number(m.after.unassignedOffline || 0))}</td><td>${m.reconciliation?.balanced && m.monthOfflineTotal?.preserved ? "OK" : "확인 필요"}</td></tr>`).join("");
   return `<div class="pending-split-preview">
     <p>기존: ${esc(o.brand_name)} · ${esc(preview.preconditions?.code)} → ${esc(o.brand_code)} (active ${esc(o.active)})</p>
     <p>신규: ${esc(n.brand_name)} · ${esc(n.brand_code)} · 시작 ${esc(preview.effectiveMonth)}</p>
-    <p>정책 이동 ${esc(preview.diff?.commercialPolicy?.before?.length || 0)}건 · Registry 이동 ${esc(preview.diff?.productRegistry?.moved?.length || 0)}건 · version ${esc(preview.version)}</p>
-    <table><thead><tr><th>월</th><th>처리</th><th>분리 전</th><th>기존</th><th>신규</th><th>검증</th></tr></thead><tbody>${months}</tbody></table>
+    <p>기존 정책 이동: ${esc(preview.diff?.commercialPolicy?.before?.length || 0)}건 → ${esc(o.brand_code)} · 신규 정책: explicit 없음 → SOURCING_DEFAULT (${esc(preview.diff?.sourcing?.new?.sourcing_type || "확인 필요")}) · Registry 이동 ${esc(preview.diff?.productRegistry?.moved?.length || 0)}건 · version ${esc(preview.version)}</p>
+    <table><thead><tr><th>월</th><th>처리</th><th>분리 전</th><th>기존</th><th>신규</th><th>UNASSIGNED 복구</th><th>검증</th></tr></thead><tbody>${months}</tbody></table>
+    ${splitExecutionReadiness(preview.execution)}
   </div>`;
+}
+
+function splitExecutionReadiness(execution) {
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]);
+  if (!execution) return "";
+  const archive = (execution.archiveChecks || []).map((c) => `${esc(c.month)} ${c.ok ? "OK" : "불일치"}`).join(" · ") || "대상 없음";
+  if (!execution.eligible) return `<p class="pending-split-error">분리 실행 불가: ${esc((execution.reasons || []).join(", "))} · archive 재현 ${archive}</p>`;
+  if (!execution.writeEnabled) return `<p class="pending-split-error">검증 통과 · 전역 kill switch(CODE_IDENTITY_SPLIT_WRITE)가 꺼져 있어 실행 불가</p>`;
+  return `<p>검증 통과 · archive 재현 ${archive} · 실행 시 자동 backup 생성 · 실행 토큰 만료 ${esc(execution.expiresAt)} (1회용)</p>`;
+}
+
+function splitExecutionHtml(result = {}) {
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]);
+  const won = (v) => Number(v || 0).toLocaleString("ko-KR");
+  if (result.ok) {
+    const months = (result.archives || []).map((a) => `${esc(a.month)}: 기존 ${won(a.old)} · 신규 ${won(a.new)}`).join(" / ");
+    return `<p>분리 완료 · ${esc(result.oldIdentity?.brand_name)} → ${esc(result.oldIdentity?.brand_code)} · ${esc(result.newIdentity?.brand_name)} → ${esc(result.newIdentity?.brand_code)} · backup ${esc(result.backupId)} · ${months || "archive 변경 없음"}</p>`;
+  }
+  return `<p class="pending-split-error">분리 실패 · 단계 ${esc(result.stage || "-")} · ${esc(result.error)}: ${esc(result.message || "")} · ${result.rolledBack ? "자동 rollback 완료 (후보 PENDING 유지)" : result.backupId ? "rollback 실패 — 즉시 확인 필요" : "변경 없음"}${result.backupId ? ` · backup ${esc(result.backupId)}` : ""}</p>`;
 }
 
 async function renderBrandMasterSettings() {

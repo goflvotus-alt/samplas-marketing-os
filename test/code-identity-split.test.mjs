@@ -245,14 +245,13 @@ test("existing supersededBy data keeps resolving exactly as before", () => {
   assert.equal(queue.approvedCafe24BrandCode("STALE7", master, { since: "2026-09-01", until: "2026-10-31" }), "UNASSIGNED");
 });
 
-test("server wiring: SPLIT is dry-run by default and writes are gated off", async () => {
+test("server wiring: the review route only dry-runs SPLIT; writes need the one-click token route", async () => {
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
-  assert.match(server, /const dryRun = input\.dryRun !== false;/);
-  assert.match(server, /if \(!dryRun && env\.CODE_IDENTITY_SPLIT_WRITE !== "on"\)/);
-  assert.match(server, /preview: dryRun \? buildSplitAttributionPreview : null/);
+  assert.match(server, /if \(input\.dryRun === false\) \{\s*return json\(res, \{ ok: false, error: "SPLIT_TOKEN_REQUIRED"/);
+  assert.match(server, /dryRun: true, preview: buildSplitAttributionPreview \}\)\);/);
   const ui = await readFile(new URL("../outputs/samplas-marketing-os.js", import.meta.url), "utf8");
   assert.match(ui, /data-split-dry-run>분리 검토 \(Dry Run\)/);
-  assert.match(ui, /disabled title="Phase 3 전까지 실제 분리는 비활성">분리 실행 · 비활성/);
+  assert.match(ui, /data-split-execute disabled title="Dry Run 검증 통과 후 활성">분리 실행/);
 });
 
 test("UI: split candidate shows Dry Run only; clicking sends a dry-run and renders the preview without other writes", async () => {
@@ -275,13 +274,13 @@ test("UI: split candidate shows Dry Run only; clicking sends a dry-run and rende
   });
   await render([{ brand_code: "B0000BDG", brand_name: "BORC" }]);
   assert.match(rows.innerHTML, /data-split-dry-run>분리 검토 \(Dry Run\)/);
-  assert.match(rows.innerHTML, /disabled title="Phase 3 전까지 실제 분리는 비활성"/);
+  assert.match(rows.innerHTML, /data-split-execute disabled/);
   assert.equal(writes.length, 0);
   const box = { innerHTML: "" };
   const row = { dataset: { pendingId: "c1" }, querySelector: (selector) => (selector === "[data-split-preview]" ? box : { value: "" }) };
   const button = { dataset: { splitDryRun: "" }, disabled: false, closest: () => row };
   await target.onclick({ target: { closest: () => button } });
-  assert.deepEqual(JSON.parse(JSON.stringify(writes)), [["/api/pending-brands/review", { id: "c1", action: "SPLIT_CODE_IDENTITY", dryRun: true }, 120000]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(writes)), [["/api/pending-brands/split/dry-run", { id: "c1" }, 180000]]);
   assert.equal(reloads, 0);
   assert.match(box.innerHTML, /SPL_00b4a2e6cc/);
   assert.match(box.innerHTML, /2026-09<\/td><td>ARCHIVE_REBUILD<\/td>[\s\S]*OK/);
