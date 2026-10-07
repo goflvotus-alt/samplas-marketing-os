@@ -54,8 +54,6 @@ services:
         sync: false
       - key: CAFE24_SCOPES
         sync: false
-      - key: CAFE24_PROXY_SECRET
-        sync: false
       - key: CAFE24_PROXY_BASIC_AUTH
         sync: false
       - key: NAVER_ADS_API_KEY
