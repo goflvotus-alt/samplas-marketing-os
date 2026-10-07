@@ -1,5 +1,5 @@
 import { readFile, mkdir, writeFile, rename, unlink } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { buildBrandRegistry, resolveBrand, normalizeBrandKey, normalizeBrandName, parseBrandAliases, extractBracketBrandCandidate, extractSlashBrandCandidate } from "./brand-engine.mjs";
@@ -516,7 +516,7 @@ async function writeFilesAtomically(files, { replace = rename } = {}) {
         prepared.push(entry);
         await mkdir(resolve(file, ".."), { recursive: true });
         if (before !== null) await writeFile(backup, before, { flag: "wx" });
-        await writeFile(temp, `${JSON.stringify(data, null, 2)}\n`, { flag: "wx" });
+        await writeFile(temp, Buffer.isBuffer(data) ? data : `${JSON.stringify(data, null, 2)}\n`, { flag: "wx" });
       }
       for (const entry of prepared) { await replace(entry.temp, entry.file); replaced.push(entry); }
     } catch (error) {
@@ -587,6 +587,9 @@ export function splitCodeIdentity(workDir, input, buildCompatibility, { replace 
       return { ok: true, dryRun: true, ...summary, diff: { ...summary.diff, sourcing }, ...(attribution ? { attribution } : {}) };
     }
     if (input.expectedVersion === undefined) throw Object.assign(new Error("expectedVersion from the dry-run is required"), { code: "VERSION_REQUIRED", status: 409 });
+    // Exact pre-write copy of everything this split touches plus the archives a later
+    // brand-attribution rebuild may change; restoreIdentitySplitBackup() reverts to it byte for byte.
+    const backup = await backupWorkFiles(workDir, [...SPLIT_BACKUP_FILES, ...archiveMonthsFrom(plan.effectiveMonth).map(month => `monthly/${month}.json`)], `split-${plan.preconditions.pendingId.slice(0, 8)}`);
     await writeFilesAtomically([[files.canonical, plan.canonical], [files.policies, plan.policies], [files.productRegistry, plan.productRegistry],
       [files.compatibility, derived.brands], [files.aliases, derived.aliases], [files.queue, plan.queue]], { replace });
     let sourcingRefresh;
@@ -596,9 +599,70 @@ export function splitCodeIdentity(workDir, input, buildCompatibility, { replace 
     } catch (error) {
       sourcingRefresh = { ok: false, error: error.message };
     }
-    return { ok: true, dryRun: false, ...summary, sourcingRefresh };
+    return { ok: true, dryRun: false, ...summary, sourcingRefresh, backup };
   });
 }
 
 export { SPLIT_ACTION };
+
+const SPLIT_BACKUP_FILES = Object.freeze(["brand-master.json", "brand-commercial-policy.json", "product-registry.json", "intelligence/brand-master-list.json",
+  "intelligence/brand-aliases.json", "pending-brand-queue.json", "brand-sourcing-master.json"]);
+const BACKUP_ID = /^[0-9A-Za-z_-]{1,80}$/;
+const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
+
+// Closed months from `fromMonth` up to the month before the current KST month.
+function archiveMonthsFrom(fromMonth, now = new Date()) {
+  const current = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 7);
+  const months = [];
+  for (let month = fromMonth; month && month < current;) {
+    months.push(month);
+    const [y, m] = month.split("-").map(Number);
+    month = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+  }
+  return months;
+}
+
+async function backupWorkFiles(workDir, relativePaths, label) {
+  const backupId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${label}`;
+  const dir = join(workDir, "backups", "identity-split", backupId);
+  await mkdir(dir, { recursive: true });
+  const files = [];
+  for (const relativePath of relativePaths) {
+    const bytes = await readFile(join(workDir, relativePath)).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+    if (bytes !== null) {
+      await mkdir(dirname(join(dir, relativePath)), { recursive: true });
+      await writeFile(join(dir, relativePath), bytes, { flag: "wx" });
+    }
+    files.push({ relativePath, existed: bytes !== null, bytes: bytes?.length ?? 0, sha256: bytes ? sha256(bytes) : null });
+  }
+  const manifest = { backupId, createdAt: new Date().toISOString(), label, files };
+  await writeFile(join(dir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, { flag: "wx" });
+  return manifest;
+}
+
+export async function readIdentitySplitBackup(workDir, backupId) {
+  if (!BACKUP_ID.test(String(backupId || ""))) throw Object.assign(new Error("Invalid backupId"), { code: "VALIDATION_FAILED", status: 400 });
+  const dir = join(workDir, "backups", "identity-split", backupId);
+  const manifest = await readJson(join(dir, "manifest.json"), null);
+  if (!manifest) throw Object.assign(new Error("Backup not found"), { code: "NOT_FOUND", status: 404 });
+  return { dir, manifest };
+}
+
+// Byte-exact atomic restore of a split backup (files that did not exist before are removed).
+export function restoreIdentitySplitBackup(workDir, backupId, { replace = rename } = {}) {
+  return withPendingBrandWrite(async () => {
+    const { dir, manifest } = await readIdentitySplitBackup(workDir, backupId);
+    const restore = [];
+    for (const file of manifest.files.filter(f => f.existed)) {
+      const bytes = await readFile(join(dir, file.relativePath));
+      if (sha256(bytes) !== file.sha256) throw Object.assign(new Error(`Backup checksum mismatch: ${file.relativePath}`), { code: "BACKUP_CORRUPT", status: 409 });
+      restore.push([join(workDir, file.relativePath), bytes]);
+    }
+    await writeFilesAtomically(restore, { replace });
+    for (const file of manifest.files.filter(f => !f.existed)) await unlink(join(workDir, file.relativePath)).catch(error => { if (error.code !== "ENOENT") throw error; });
+    const verified = [];
+    for (const file of manifest.files.filter(f => f.existed)) verified.push({ relativePath: file.relativePath, ok: sha256(await readFile(join(workDir, file.relativePath))) === file.sha256 });
+    return { ok: verified.every(v => v.ok), backupId, restored: verified };
+  });
+}
 
