@@ -4215,7 +4215,7 @@ function isExcludedFromBrandPerformance(code) {
   return isPersonalPaymentBrandCode(code);
 }
 
-function allocateCanonicalPaidSalesForOrder(order = {}) {
+export function allocateCanonicalPaidSalesForOrder(order = {}) {
   const activeItems = cafe24OrderItems(order)
     .filter((item) => !isCafe24CanceledItem(item))
     .map((item) => {

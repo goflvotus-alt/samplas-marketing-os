@@ -53,6 +53,9 @@ export function isCafe24StoredValuePayment(order = {}) {
 }
 
 export function isCafe24CanceledItem(item = {}) {
+  // Cafe24 item order_status: C40 취소완료, R40 반품완료 (N40 is a kept/delivered item).
+  const orderStatus = String(item.order_status || "").trim().toUpperCase();
+  if (orderStatus === "C40" || orderStatus === "R40") return true;
   const status = String(item.status_code || item.status || "").trim().toUpperCase();
   const text = String(item.status_text || item.statusText || item.order_status || "").trim().toLowerCase();
   const isCompletedReturn = status === "C3" && text.includes("반품완료");
@@ -97,6 +100,10 @@ export function hasCafe24ActiveOrderItems(order = {}) {
 }
 
 export function isCafe24CanceledOrRefunded(order = {}) {
+  // canceled "M" is Cafe24's partial-claim marker: some items remain and actual_order_amount.payment_amount
+  // already holds the remaining payment. Cafe24 still stamps the order-level claim dates on such orders,
+  // so they must not exclude it; claimed items are skipped at item level (isCafe24CanceledItem).
+  if ([order.canceled, order.cancelled].some((value) => String(value || "").trim().toUpperCase() === "M")) return false;
   const flags = [
     order.canceled,
     order.cancelled,
