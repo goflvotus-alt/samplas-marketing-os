@@ -9,7 +9,7 @@ import { pendingBrandUiMetadata } from "./pending-brand-ui-metadata.mjs";
 import { readWorkbenchSources, buildIdentityWorkbench } from "./brand-identity-workbench.mjs";
 import { refreshBrandSourcingMaster, stripConsignmentPrefix } from "./build-brand-sourcing-master.mjs";
 import { readEcountProductMaster } from "./ecount-product-master.mjs";
-import { CODE_REUSE_REVIEW_REASON, auditUnconfirmedCafe24Codes, classifyCodeReuse } from "./cafe24-code-reuse.mjs";
+import { CODE_REUSE_REVIEW_REASON, cafe24CodeAudit, classifyCodeReuse } from "./cafe24-code-reuse.mjs";
 import { SPLIT_ACTION, planCodeIdentitySplit } from "./code-identity-split.mjs";
 import { planInternalRekey } from "./identity-rekey.mjs";
 import { buildBrandSourcingMaster, loadInputs as loadSourcingInputs } from "./build-brand-sourcing-master.mjs";
@@ -270,7 +270,7 @@ export function detectPendingBrands({ canonical, compatibility = [], aliases = [
   }
   const observed = all.filter(c => observedIds.has(c.id));
   return { version: 1, updatedAt: now, candidates: all,
-    ...(cafe24Brands.length ? { audit: { unconfirmedCafe24Codes: auditUnconfirmedCafe24Codes(canonicalRows, cafe24Brands) } } : {}),
+    ...(cafe24Brands.length ? { audit: cafe24CodeAuditSummary(cafe24CodeAudit(canonicalRows, cafe24Brands, { products, ecountProducts, ecountLines })) } : {}),
     scan: { observed: observed.length,
     cafe24: observed.filter(c => c.source === "CAFE24").length, ecount: observed.filter(c => c.source === "ECOUNT").length,
     both: observed.filter(c => c.source === "BOTH").length, review: observed.filter(c => c.reviewReason !== "UNRESOLVED").length,
@@ -641,6 +641,16 @@ export function rekeyInternalIdentity(workDir, input, buildCompatibility, { cafe
     }
     return { ok: true, version: plan.version, identity: plan.identity, sourcingRefresh, backup };
   });
+}
+
+// Read-only audit block on the pending scan. Only actionable findings stay in unconfirmedCafe24Codes;
+// retired (deleted Cafe24 brand) codes are listed by code for debugging and never become work items.
+function cafe24CodeAuditSummary(audit) {
+  return {
+    unconfirmedCafe24Codes: audit.findings.filter(f => f.actionable),
+    cafe24CodeSummary: { cafe24MaxCode: audit.cafe24MaxCode, ...audit.summary },
+    retiredCafe24Codes: audit.findings.filter(f => f.status === "RETIRED_CAFE24_CODE").map(f => f.brandCode)
+  };
 }
 
 export { SPLIT_ACTION };
