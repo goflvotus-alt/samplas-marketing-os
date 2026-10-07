@@ -260,7 +260,7 @@ test("server wiring: one-click routes need operator auth, execution needs the ki
   const route = server.slice(server.indexOf('url.pathname === "/api/pending-brands/split/dry-run"'), server.indexOf("// Identity-split maintenance"));
   assert.match(route, /if \(req\.method !== "POST"\)[\s\S]*if \(!isAuthorizedOperatorAction\(req\)\) return json\(res, \{ ok: false, error: "Unauthorized" \}, 401\);[\s\S]*identitySplitRunner\.execute/);
   assert.match(server, /enabled: \(\) => env\.CODE_IDENTITY_SPLIT_WRITE === "on"/);
-  assert.match(server, /function isAuthorizedOperatorAction\(req\) \{\n  if \(isLocalRequest\(req\) \|\| isAuthorizedInternalRequest\(req\)\) return true;[\s\S]*?return operatorSessions\.has\(cookies\.samplas_operator\);/);
+  assert.match(server, /function isAuthorizedOperatorAction\(req\) \{\n  if \(isLocalRequest\(req\) \|\| isAuthorizedInternalRequest\(req\)\) return true;[\s\S]*?return hasOperatorSession\(req\);/);
   for (const path of ALLOWED_UPSTREAM_PATHS) assert.doesNotMatch(path, /split|review|restore|rebuild/);
   assert.throws(() => assertSafeUpstreamRequest("POST", "/api/pending-brands"), /GET only/);
   assert.throws(() => assertSafeUpstreamRequest("GET", "/api/pending-brands/split/execute"), /not allowed/);

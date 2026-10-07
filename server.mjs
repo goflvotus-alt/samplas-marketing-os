@@ -183,6 +183,11 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (mcpEnabled && (url.pathname === "/mcp" || url.pathname.startsWith("/.well-known/oauth-protected-resource"))) {
       if (await (await loadMcpRoute())(req, res, url)) return;
     }
+    // Default deny for every /api/ route (2026-10-07): business data is private. Every /api request needs a
+    // loopback request, internal Basic auth or an operator session; route-level checks still apply.
+    if (url.pathname.startsWith("/api/") && !isApiRequestAllowed(req, url.pathname)) {
+      return json(res, { ok: false, error: "Unauthorized" }, 401);
+    }
     if (url.pathname === "/") {
       return serveFile(res, join(outputDir, "samplas-marketing-os.html"));
     }
@@ -2400,9 +2405,30 @@ export function isAuthorizedOperatorRequest(req, credentials = env.SAMPLAS_OPERA
   return auth === `Basic ${Buffer.from(expected).toString("base64")}`;
 }
 
+// Local means both: a local Host header and a loopback socket. The Host header alone can be sent by
+// anyone, so it never grants local access on its own (2026-10-07).
+const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 function isLocalRequest(req) {
   const requestHost = String(req.headers.host || "").split(":")[0];
-  return requestHost === "127.0.0.1" || requestHost === "localhost" || requestHost === "::1";
+  return (requestHost === "127.0.0.1" || requestHost === "localhost" || requestHost === "::1") && LOOPBACK_ADDRESSES.has(req.socket?.remoteAddress);
+}
+
+// Anonymous /api/ entry points, by exact path:
+// - operator login (checks SAMPLAS_OPERATOR_BASIC_AUTH itself)
+// - OAuth provider redirects (cross-site navigation, so no SameSite=Strict cookie; they verify state)
+// The /api/ai-audit/ prefix has its own AI_AUDIT_SECRET check and never accepts the session or Basic.
+const PUBLIC_API_PATHS = new Set(["/api/operator/session", "/api/cafe24/oauth/callback", "/api/meta/oauth/callback"]);
+
+function hasOperatorSession(req) {
+  const cookies = Object.fromEntries(String(req.headers.cookie || "").split(";").map((part) => part.trim().split("=")).filter(([key, value]) => key && value));
+  return operatorSessions.has(cookies.samplas_operator);
+}
+
+// API_READ_AUTH=off is the emergency rollback switch for this gate (route-level write checks stay).
+export function isApiRequestAllowed(req, pathname, { readAuth = env.API_READ_AUTH } = {}) {
+  if (readAuth === "off") return true;
+  if (PUBLIC_API_PATHS.has(pathname) || pathname.startsWith("/api/ai-audit/")) return true;
+  return isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req);
 }
 
 function isAuthorizedEcountImport(req) {
@@ -2418,8 +2444,7 @@ function isAuthorizedOperatorAction(req) {
   } catch {
     return false;
   }
-  const cookies = Object.fromEntries(String(req.headers.cookie || "").split(";").map((part) => part.trim().split("=")).filter(([key, value]) => key && value));
-  return operatorSessions.has(cookies.samplas_operator);
+  return hasOperatorSession(req);
 }
 
 async function fetchCafe24Orders(startDate, endDate, options = {}) {

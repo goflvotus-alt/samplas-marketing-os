@@ -424,21 +424,24 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
       child.once("exit", code => { clearTimeout(timer); reject(new Error(`server exit ${code}: ${stderr}`)); });
     });
     const before = await readFile(join(dir, "brand-master.json"), "utf8");
-    const read = await http(port, "/api/brand-master");
+    assert.equal((await http(port, "/api/brand-master")).status, 401, "anonymous read is refused");
+    const read = await http(port, "/api/brand-master", { token: "test:only" });
     assert.equal(read.status, 200);
     assert.equal(read.body.brands.length, 1);
     assert.equal(read.body.brands[0].active, true);
-    assert.equal((await http(port, "/api/pending-brands")).body.candidates.length, 0);
+    // Default deny (2026-10-07): an anonymous read is refused; the internal Basic credential reads.
+    assert.equal((await http(port, "/api/pending-brands")).status, 401);
+    assert.equal((await http(port, "/api/pending-brands", { token: "test:only" })).body.candidates.length, 0);
     assert.equal((await http(port, "/api/pending-brands/refresh", { method: "POST" })).status, 401);
-    assert.equal((await http(port, "/api/pending-brands/refresh")).status, 405);
+    assert.equal((await http(port, "/api/pending-brands/refresh", { token: "test:only" })).status, 405);
     const dry = await http(port, "/api/pending-brands/refresh?dryRun=1", { method: "POST", token: "test:only" });
     assert.equal(dry.status, 200); assert.equal(dry.body.candidates.length, 1);
-    assert.equal((await http(port, "/api/pending-brands")).body.candidates.length, 0);
+    assert.equal((await http(port, "/api/pending-brands", { token: "test:only" })).body.candidates.length, 0);
     const refresh = await http(port, "/api/pending-brands/refresh", { method: "POST", token: "test:only" });
     assert.equal(refresh.status, 200); assert.equal(refresh.body.candidates.length, 1);
-    assert.equal((await http(port, "/api/pending-brands")).body.candidates.length, 1);
+    assert.equal((await http(port, "/api/pending-brands", { token: "test:only" })).body.candidates.length, 1);
     for (const path of ["/api/diagnostics/brand-sales?since=2026-09-01&until=2026-09-02", "/api/promotion/1/summary?since=2026-09-01&until=2026-09-02"]) {
-      const response = await http(port, path);
+      const response = await http(port, path, { token: "test:only" });
       assert.equal(response.status, 200, JSON.stringify(response.body));
       assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), before);
     }
@@ -450,7 +453,7 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     const approved = await http(port, "/api/pending-brands/review", { method: "POST", token: "test:only", payload: { id, action: "NEW", brandName: "Human Approved" } });
     assert.equal(approved.status, 200, JSON.stringify(approved.body));
     assert.equal(approved.body.candidate.status, "APPROVED");
-    const master = (await http(port, "/api/brand-master")).body;
+    const master = (await http(port, "/api/brand-master", { token: "test:only" })).body;
     assert.equal(master.brands.length, 2);
     assert.deepEqual(master.brands.find(b => b.brand_code === "B1"), read.body.brands[0]);
     assert.equal(master.brands.find(b => b.brand_code === "B2").nameSource, "confirmed");
@@ -470,7 +473,7 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     const aliases = JSON.parse(await readFile(join(dir, "intelligence/brand-aliases.json"), "utf8"));
     assert.ok(aliases.some(a => a.alias === "Known alternate" && a.brandId === "B1"));
     assert.ok(aliases.some(a => a.alias === "B3" && a.brandId === "B1"));
-    const finalMaster = (await http(port, "/api/brand-master")).body.brands;
+    const finalMaster = (await http(port, "/api/brand-master", { token: "test:only" })).body.brands;
     assert.equal(finalMaster.length, 2);
     assert.deepEqual(finalMaster.find(b => b.brand_code === "B1").sourceCafe24Codes, ["B3"]);
     const badRecent = await http(port, "/api/pending-brands/refresh", { method: "POST", token: "test:only", payload: { recentReview: { codes: ["B1"] } } });
@@ -485,7 +488,7 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     await writeFile(join(dir, "pending-brand-queue.json"), JSON.stringify(fixture.queue));
     const confirmCandidate = fixture.queue.candidates[0];
     const confirmInput = { id: confirmCandidate.id, action: "CONFIRM_EXISTING", canonicalBrandCode: confirmCandidate.sourceBrandCode };
-    assert.equal((await http(port, "/api/pending-brands")).body.candidates[0].confirmExistingBrandCode, confirmInput.canonicalBrandCode);
+    assert.equal((await http(port, "/api/pending-brands", { token: "test:only" })).body.candidates[0].confirmExistingBrandCode, confirmInput.canonicalBrandCode);
     const confirmed = await http(port, "/api/pending-brands/review", { method: "POST", token: "test:only", payload: confirmInput });
     assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
     assert.equal(confirmed.body.candidate.approvalAction, "CONFIRM_EXISTING");
@@ -494,7 +497,7 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     assert.equal((await http(port, "/api/pending-brands/review", { method: "POST", token: "test:only", payload: confirmInput })).status, 400);
     assert.equal((await http(port, "/api/pending-brands/review", { method: "POST", token: "test:only", payload: { ...confirmInput, id: "missing" } })).status, 400);
     await rm(join(dir, "brand-master.json"));
-    assert.equal((await http(port, "/api/brand-master")).body.brands.length, 0);
+    assert.equal((await http(port, "/api/brand-master", { token: "test:only" })).body.brands.length, 0);
     await assert.rejects(readFile(join(dir, "brand-master.json")), { code: "ENOENT" });
   } finally {
     if (child && child.exitCode === null) { child.kill(); await once(child, "exit"); }

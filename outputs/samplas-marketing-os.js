@@ -408,11 +408,29 @@ function operationsDateRange(data = selectedMonth()) {
 
 const inFlightJsonRequests = new Map();
 
+// Production /api/ routes require an operator session (2026-10-07). On the first 401, ask for the operator
+// login once (shared by every concurrent request) and retry; the browser only ever holds the HttpOnly
+// session cookie, never a Basic credential. Locally the server allows loopback, so no prompt appears.
+let operatorSessionRequest = null;
+function ensureOperatorSession() {
+  if (!operatorSessionRequest) {
+    operatorSessionRequest = authorizeEcountProductionUpload().finally(() => { setTimeout(() => { operatorSessionRequest = null; }, 1000); });
+  }
+  return operatorSessionRequest;
+}
+
+async function fetchWithOperatorSession(url, init) {
+  const response = await fetch(url, init);
+  if (response.status !== 401 || !String(url).startsWith("/api/") || String(url).startsWith("/api/ai-audit/")) return response;
+  // window.prompt blocks the page, so the caller's abort timer has likely fired; retry on a fresh one.
+  return (await ensureOperatorSession()) ? fetch(url, { ...init, signal: AbortSignal.timeout(120000) }) : response;
+}
+
 async function fetchJson(url, timeoutMs = 8000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+    const response = await fetchWithOperatorSession(url, { cache: "no-store", signal: controller.signal });
     const text = await response.text();
     let body;
     try {
@@ -513,7 +531,7 @@ async function postJson(url, payload, timeoutMs = 8000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithOperatorSession(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -539,7 +557,7 @@ async function patchJson(url, payload, timeoutMs = 8000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithOperatorSession(url, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

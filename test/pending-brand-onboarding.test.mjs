@@ -216,7 +216,8 @@ test("authenticated HTTP bulk refresh onboards NEW only; reassignment needs expl
     const beforeQueue = await readFile(join(dir, "pending-brand-queue.json"), "utf8");
     assert.equal((await http(port, "/api/pending-brands/refresh", "POST")).status, 401);
     assert.equal((await http(port, "/api/pending-brands/review", "POST", false, { action: "REASSIGN_INACTIVE_CODE" })).status, 401);
-    assert.equal((await http(port, "/api/pending-brands")).status, 200);
+    assert.equal((await http(port, "/api/pending-brands")).status, 401, "anonymous read is refused");
+    assert.equal((await http(port, "/api/pending-brands", "GET", true)).status, 200);
     const dry = await http(port, "/api/pending-brands/refresh?dryRun=1", "POST", true, { autoApprove: true });
     assert.equal(dry.status, 200);
     assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), beforeMaster);
@@ -234,19 +235,19 @@ test("authenticated HTTP bulk refresh onboards NEW only; reassignment needs expl
     assert.equal(reuse.status, "PENDING", "code reuse is never bulk-approved");
     assert.equal(reuse.reviewReason, "CODE_REUSE_SPLIT_REQUIRED");
     assert.equal(reuse.requiresIdentitySplit, true);
-    const afterBulk = (await http(port, "/api/brand-master")).body;
+    const afterBulk = (await http(port, "/api/brand-master", "GET", true)).body;
     assert.equal(afterBulk.brands.length, 2);
     assert.equal(afterBulk.brands.find(b => b.brand_code === "STALE7").supersededBy, undefined);
     const manual = await http(port, "/api/pending-brands/review", "POST", true, { id: reuse.id, action: "REASSIGN_INACTIVE_CODE" });
     assert.equal(manual.status, 400, JSON.stringify(manual.body));
     assert.match(JSON.stringify(manual.body), /identity split/);
-    const master = (await http(port, "/api/brand-master")).body;
+    const master = (await http(port, "/api/brand-master", "GET", true)).body;
     assert.equal(master.brands.length, 2, "manual REASSIGN wrote nothing");
     assert.equal(master.brands.find(b => b.brand_code === "STALE7").supersededBy, undefined);
-    assert.equal((await http(port, "/api/intelligence/commercial-policy?name=Unregistered")).body.policy_status, "UNRESOLVED");
+    assert.equal((await http(port, "/api/intelligence/commercial-policy?name=Unregistered", "GET", true)).body.policy_status, "UNRESOLVED");
     const repeated = await http(port, "/api/pending-brands/refresh", "POST", true, { autoApprove: true });
     assert.equal(repeated.body.onboarding.length, 0);
-    assert.equal((await http(port, "/api/brand-master")).body.brands.length, 2);
+    assert.equal((await http(port, "/api/brand-master", "GET", true)).body.brands.length, 2);
     assert.equal(await readFile(join(dir, "monthly-archive.json"), "utf8"), JSON.stringify(files["monthly-archive.json"]));
     assert.equal(await readFile(join(dir, "product-registry.json"), "utf8"), JSON.stringify(files["product-registry.json"]));
   } finally {
