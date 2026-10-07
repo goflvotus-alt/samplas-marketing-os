@@ -77,6 +77,7 @@ import {
 import { normalizeBrandCode, normalizeBrandName, parseBrandAliases } from "./scripts/brand-engine.mjs";
 import { readPendingBrands, refreshPendingBrands, refreshPendingBrandsUnattended, loadPendingBrandSources, reviewPendingBrand, withPendingBrandWrite, approvedCafe24BrandCode, splitCodeIdentity, SPLIT_ACTION, readIdentitySplitBackup, restoreIdentitySplitBackup } from "./scripts/pending-brand-queue.mjs";
 import { rebuildArchiveBrandSales } from "./scripts/archive-brand-attribution.mjs";
+import { createIdentitySplitRunner, checkSplitReadBack } from "./scripts/code-identity-split-runner.mjs";
 import { refreshBrandSourcingMaster } from "./scripts/build-brand-sourcing-master.mjs";
 import { syncEcountInventory, REQUIRED_ENV_KEYS as ECOUNT_REQUIRED_ENV_KEYS } from "./scripts/sync-ecount-inventory.mjs";
 import { createEcountAutoSync } from "./scripts/ecount-auto-sync.mjs";
@@ -497,14 +498,13 @@ const server = isMainModule ? createServer(async (req, res) => {
       if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
       const input = await readJsonBody(req);
       if (input?.action === SPLIT_ACTION) {
-        // Dry-run by default. Writes stay off until the operator enables CODE_IDENTITY_SPLIT_WRITE=on.
-        const dryRun = input.dryRun !== false;
-        if (!dryRun && env.CODE_IDENTITY_SPLIT_WRITE !== "on") {
-          return json(res, { ok: false, error: "SPLIT_WRITE_DISABLED", message: "SPLIT_CODE_IDENTITY writes are disabled; run with dryRun" }, 403);
+        // Read-only here. Execution goes only through /api/pending-brands/split/execute with a dry-run token.
+        if (input.dryRun === false) {
+          return json(res, { ok: false, error: "SPLIT_TOKEN_REQUIRED", message: "Execute through /api/pending-brands/split/execute with a dry-run token" }, 403);
         }
         try {
           const sources = await loadCurrentPendingBrandSources();
-          return json(res, await splitCodeIdentity(workDir, input, buildIntelligenceBrandRegistry, { sources, dryRun, preview: dryRun ? buildSplitAttributionPreview : null }));
+          return json(res, await splitCodeIdentity(workDir, input, buildIntelligenceBrandRegistry, { sources, dryRun: true, preview: buildSplitAttributionPreview }));
         } catch (error) {
           return json(res, { ok: false, error: error.code || "SPLIT_FAILED", message: safeErrorMessage(error) }, Number(error.status) >= 400 ? Number(error.status) : 500);
         }
@@ -512,8 +512,24 @@ const server = isMainModule ? createServer(async (req, res) => {
       const sources = input?.action === "REASSIGN_INACTIVE_CODE" ? await loadCurrentPendingBrandSources() : null;
       return json(res, await reviewPendingBrand(workDir, input, buildIntelligenceBrandRegistry, { sources }));
     }
+    // One-click identity split: dry-run issues a single-use token when every safety check passes;
+    // execute runs backup -> split -> verify -> archive rebuild -> verify and rolls back on any failure.
+    // Operator session (same-origin) or internal auth; never reachable from the read-only MCP.
+    if (url.pathname === "/api/pending-brands/split/dry-run" || url.pathname === "/api/pending-brands/split/execute") {
+      if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
+      if (!isAuthorizedOperatorAction(req)) return json(res, { ok: false, error: "Unauthorized" }, 401);
+      const input = await readJsonBody(req);
+      const id = String(input?.id || "");
+      try {
+        if (url.pathname.endsWith("/dry-run")) return json(res, await identitySplitRunner.dryRun(id));
+        const result = await identitySplitRunner.execute(id, input?.token);
+        return json(res, result, result.ok ? 200 : result.httpStatus);
+      } catch (error) {
+        return json(res, { ok: false, error: error.code || "SPLIT_FAILED", message: safeErrorMessage(error) }, Number(error.status) >= 400 ? Number(error.status) : 500);
+      }
+    }
     // Identity-split maintenance: byte-exact restore of a split backup, and brand-attribution-only
-    // rebuild of a saved archive. Internal auth plus the same CODE_IDENTITY_SPLIT_WRITE gate as the split.
+    // rebuild of a saved archive. Internal auth plus the global CODE_IDENTITY_SPLIT_WRITE kill switch.
     if (url.pathname === "/api/pending-brands/split-restore" || url.pathname === "/api/reports/monthly/brand-attribution-rebuild") {
       if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
       if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
@@ -2346,6 +2362,11 @@ function isLocalRequest(req) {
 }
 
 function isAuthorizedEcountImport(req) {
+  return isAuthorizedOperatorAction(req);
+}
+
+// Local, internal token, or a same-origin browser holding an operator session (/api/operator/session).
+function isAuthorizedOperatorAction(req) {
   if (isLocalRequest(req) || isAuthorizedInternalRequest(req)) return true;
   const origin = String(req.headers.origin || "");
   try {
@@ -5011,6 +5032,28 @@ async function buildSplitAttributionPreview(plan, beforeCanonical) {
   }
   return { months: rows };
 }
+
+// Read-back after a split, against the files actually on disk and the live resolver.
+async function verifyIdentitySplit(dry) {
+  const canonical = JSON.parse(await readFile(join(workDir, "brand-master.json"), "utf8"));
+  const policies = JSON.parse(await readFile(join(workDir, "brand-commercial-policy.json"), "utf8")).policies || [];
+  const candidate = (await readPendingBrands(workDir)).candidates.find((c) => c.id === dry.preconditions.pendingId) || null;
+  const context = await loadResolverContext({ workDir });
+  checkSplitReadBack(dry, { brands: Array.isArray(canonical) ? canonical : canonical.brands || [], policies, candidate,
+    resolveName: (name) => resolveIdentity({ productName: `${name} / identity split probe` }, context).brand?.brandCode ?? null });
+}
+
+const identitySplitRunner = createIdentitySplitRunner({
+  enabled: () => env.CODE_IDENTITY_SPLIT_WRITE === "on",
+  planDryRun: async (id) => splitCodeIdentity(workDir, { id, action: SPLIT_ACTION }, buildIntelligenceBrandRegistry, { sources: await loadCurrentPendingBrandSources(), dryRun: true, preview: buildSplitAttributionPreview }),
+  readCandidate: async (id) => (await readPendingBrands(workDir)).candidates.find((c) => c.id === id) || null,
+  archiveCheck: (month) => rebuildArchiveBrandAttribution(month, null, { dryRun: true }),
+  split: async (id, version) => splitCodeIdentity(workDir, { id, action: SPLIT_ACTION, expectedVersion: version }, buildIntelligenceBrandRegistry, { sources: await loadCurrentPendingBrandSources(), dryRun: false }),
+  verifySplit: verifyIdentitySplit,
+  rebuild: (month, backupId, dryRun) => rebuildArchiveBrandAttribution(month, backupId, { dryRun }),
+  archiveRows: async (month) => (await readMonthlyArchive(month))?.commerce?.brandSales || [],
+  restore: (backupId) => restoreIdentitySplitBackup(workDir, backupId)
+});
 
 // Recompute only commerce.brandSales of a saved archive after an identity split. `before` uses the
 // Brand Master / Product Registry captured in the split backup, `after` the current files; both go
