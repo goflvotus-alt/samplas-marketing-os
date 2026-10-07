@@ -48,13 +48,42 @@ test("all canonical amounts unknown stay null; a real canonical 0 is shown as 0"
   assert.deepEqual([zero.summary.onlineSalesAmount, zero.summary.offlineSalesAmount, zero.summary.totalSalesAmount], [0, 0, 0]);
 });
 
-test("complete archive month (August) keeps the saved archive reconciliation unchanged", () => {
+test("complete archive month without a canonical result falls back to the archive online, recorded as such", () => {
   const summary = { totalClients: 117, totalPurchaseCount: 1080, orderCount: 508 };
   const r = resolveHistoricalClientsSales({ summary, detailSummary: { totalSalesAmount: 286069920 }, archive: augArchive, canonical: null, offlineThrough: null, since: "2026-08-01", until: "2026-08-31" });
   assert.deepEqual([r.summary.onlineSalesAmount, r.summary.offlineSalesAmount, r.summary.totalSalesAmount], [34332620, 253583500, 287916120]);
   assert.equal(r.summary.avgOrderValue, 287916120 / 1080);
-  assert.equal(r.accounting.basis, "saved_monthly_archive");
+  assert.equal(r.accounting.basis, "historical_canonical_online");
+  assert.equal(r.accounting.onlineBasis, "saved_monthly_archive");
+  assert.equal(r.accounting.onlineDeltaFromArchive, null);
   assert.equal(r.asOf, undefined);
+});
+
+// Production after the partial-claim fix: canonical online differs from the frozen archive online.
+const julArchive = { archiveStatus: "saved", sales: { onlineSales: { paidAmount: 35571903 }, offlineSales: { offlineSalesAmount: 237972530 }, totalSales: { amount: 273544433 } } };
+const canonicalOf = (online) => ({ onlineSales: { paidAmount: online }, offlineSales: { offlineSalesAmount: 0 }, totalSales: { amount: online } });
+
+test("complete month: online is the live canonical amount, offline stays the archive, total is recomputed", () => {
+  for (const [archive, online, expectedTotal] of [[julArchive, 35000863, 272973393], [augArchive, 34722620, 288306120]]) {
+    const r = resolveHistoricalClientsSales({ summary: { totalClients: 100, totalPurchaseCount: 10 }, detailSummary: { totalSalesAmount: 1 }, archive, canonical: canonicalOf(online), offlineThrough: null, since: "x", until: "y" });
+    const archiveOnline = archive.sales.onlineSales.paidAmount, archiveOffline = archive.sales.offlineSales.offlineSalesAmount;
+    assert.deepEqual([r.summary.onlineSalesAmount, r.summary.offlineSalesAmount, r.summary.totalSalesAmount], [online, archiveOffline, expectedTotal]);
+    assert.equal(r.summary.totalClients, 100, "attribution and counts untouched");
+    assert.equal(r.summary.avgOrderValue, expectedTotal / 10);
+    assert.deepEqual({ ...r.accounting, attributedRevenue: undefined, unassignedRevenue: undefined }, {
+      basis: "historical_canonical_online", attributedRevenue: undefined, unassignedRevenue: undefined, onlineBasis: "canonical_live",
+      canonicalOnlineAmount: online, archiveOnlineAmount: archiveOnline, onlineDeltaFromArchive: online - archiveOnline,
+      offlineBasis: "saved_monthly_archive", archiveOfflineAmount: archiveOffline });
+    assert.equal(r.asOf, undefined, "complete months show no coverage notice");
+  }
+});
+
+test("complete month: identical canonical and archive online leaves the result unchanged; a null archive online is never 0", () => {
+  const same = resolveHistoricalClientsSales({ summary: {}, detailSummary: {}, archive: augArchive, canonical: canonicalOf(34332620), since: "x", until: "y" });
+  assert.deepEqual([same.summary.onlineSalesAmount, same.summary.totalSalesAmount, same.accounting.onlineDeltaFromArchive], [34332620, 287916120, 0]);
+  const noOnline = { sales: { onlineSales: { paidAmount: null }, offlineSales: { offlineSalesAmount: 100 }, totalSales: { amount: 100 } } };
+  const missing = resolveHistoricalClientsSales({ summary: {}, detailSummary: {}, archive: noOnline, canonical: null, since: "x", until: "y" });
+  assert.deepEqual([missing.summary.onlineSalesAmount, missing.summary.totalSalesAmount, missing.accounting.archiveOnlineAmount], [null, null, null]);
 });
 
 import { spawn } from "node:child_process";
@@ -111,7 +140,9 @@ test("route: closed month with null archive total returns canonical known amount
     assert.deepEqual(p.asOf, { basis: "canonical_partial_coverage", onlineThrough: lastDay(partial), offlineThrough: partialEnd, missingOfflineDays: 1, coverage: "partial" });
     assert.equal(p.storeCoverage.available, false, "coverage stays partial");
     const f = await get(port, `/api/intelligence/clients?since=${full}-01&until=${lastDay(full)}`);
-    assert.equal(f.accounting.basis, "saved_monthly_archive");
+    assert.equal(f.accounting.basis, "historical_canonical_online");
+    assert.equal(f.accounting.onlineBasis, "canonical_live");
+    assert.equal(f.accounting.archiveOfflineAmount, 50000);
     assert.equal(f.summary.totalSalesAmount, 50000);
     assert.equal(f.asOf, undefined);
   } finally {

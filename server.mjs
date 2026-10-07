@@ -1200,9 +1200,10 @@ const server = isMainModule ? createServer(async (req, res) => {
         if (!storeCode && since === `${month}-01` && until === monthEndKey(month) && month < currentMonth()) {
           const archive = await readMonthlyArchive(month);
           if (archive?.archiveStatus === "saved") {
-            // A null archive total (offline incomplete) falls back to the canonical /api/sales/total amounts.
-            const canonical = finiteOrNull(archive?.sales?.totalSales?.amount) === null ? await buildCanonicalTotalSales({ since, until }) : null;
-            const snapshot = canonical ? await readEcountOfflineSalesSnapshot(month, { workDir }) : null;
+            // Online always comes from the live canonical /api/sales/total amounts; a null archive offline
+            // (ECOUNT incomplete) also takes the canonical known offline (partial coverage).
+            const canonical = await buildCanonicalTotalSales({ since, until }).catch(() => null);
+            const snapshot = finiteOrNull(archive?.sales?.offlineSales?.offlineSalesAmount) === null ? await readEcountOfflineSalesSnapshot(month, { workDir }) : null;
             const resolved = resolveHistoricalClientsSales({ summary, detailSummary: overview.summary, archive, canonical, offlineThrough: snapshot?.periodEnd || null, since, until });
             ({ summary, accounting } = resolved);
             if (resolved.asOf) { historicalAsOf = resolved.asOf; }
@@ -5411,7 +5412,23 @@ export function reconcileHistoricalClientsSummary(summary, detailSummary, archiv
 // the /api/sales/total figures, with coverage kept partial and the offline-through date. Nothing is
 // estimated for the missing days; amounts the canonical source does not know stay null.
 export function resolveHistoricalClientsSales({ summary, detailSummary, archive, canonical, offlineThrough, since, until }) {
-  if (finiteOrNull(archive?.sales?.totalSales?.amount) !== null) return reconcileHistoricalClientsSummary(summary, detailSummary, archive);
+  const archiveOffline = finiteOrNull(archive?.sales?.offlineSales?.offlineSalesAmount);
+  if (archiveOffline !== null) {
+    // Complete month: online is the live canonical amount (it reflects post-close Cafe24 claims the
+    // archive froze before); offline stays the saved archive (ECOUNT). The archive online is kept for audit.
+    const archiveOnline = finiteOrNull(archive?.sales?.onlineSales?.paidAmount);
+    const canonicalOnline = finiteOrNull(canonical?.onlineSales?.paidAmount);
+    const online = canonicalOnline ?? archiveOnline;
+    const merged = { sales: { onlineSales: { paidAmount: online }, offlineSales: { offlineSalesAmount: archiveOffline }, totalSales: { amount: online === null ? null : online + archiveOffline } } };
+    const resolved = reconcileHistoricalClientsSummary(summary, detailSummary, merged, { basis: "historical_canonical_online" });
+    return { ...resolved, accounting: { ...resolved.accounting,
+      onlineBasis: canonicalOnline !== null ? "canonical_live" : "saved_monthly_archive",
+      canonicalOnlineAmount: canonicalOnline,
+      archiveOnlineAmount: archiveOnline,
+      onlineDeltaFromArchive: canonicalOnline !== null && archiveOnline !== null ? canonicalOnline - archiveOnline : null,
+      offlineBasis: "saved_monthly_archive",
+      archiveOfflineAmount: archiveOffline } };
+  }
   const known = { sales: {
     onlineSales: { paidAmount: canonical?.onlineSales?.paidAmount ?? null },
     offlineSales: { offlineSalesAmount: canonical?.offlineSales?.offlineSalesAmount ?? null },
