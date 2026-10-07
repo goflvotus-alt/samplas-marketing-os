@@ -1,3 +1,5 @@
+import { resolveBrand as resolveBrandFromEngine } from '../scripts/brand-engine.mjs';
+import { reconcileAdgroupCoverage } from '../scripts/naver-weekly-adgroup-integrity.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
@@ -55,14 +57,14 @@ test('Naver REPORT uses actual adgroup rows, keeps campaign totals and fixed TOP
 const service=await readFile(new URL('../intelligence-service.mjs',import.meta.url),'utf8');
 const slice=(a,b)=>service.slice(service.indexOf(a),service.indexOf(b));
 function naverHarness({missing=false,fail=false,demand=false}={}){
- const calls=[],store={snapshots:[]};const ctx={URL,URLSearchParams,AbortController,setTimeout,clearTimeout,createHmac,naverAdsBaseUrl:'https://api.searchad.naver.com',naverAdsTimeoutMs:1000,env:{NAVER_ADS_API_KEY:'fixture',NAVER_ADS_SECRET_KEY:'fixture',NAVER_ADS_CUSTOMER_ID:'fixture'},fetch:async(url,options)=>{calls.push({path:url.pathname,params:Object.fromEntries(url.searchParams),method:options.method});if(fail&&url.pathname==='/stats')return new Response('{}',{status:400});const payload=url.pathname==='/keywordstool'?{keywordList:[{relKeyword:url.searchParams.get('hintKeywords'),monthlyPcQcCnt:10,monthlyMobileQcCnt:20}]}:url.pathname==='/ncc/campaigns'?[{nccCampaignId:'cmp',name:'SAMPLAS'}]:url.pathname==='/ncc/adgroups'?[{nccAdgroupId:'grp',name:'BRAND A',status:'ELIGIBLE'}]:{data:missing?[]:[{id:'grp',impCnt:1000,clkCnt:20,salesAmt:100,ccnt:2,convAmt:200}]};return new Response(JSON.stringify(payload));},readBrandRegistry:async()=>registry,readNaverSnapshotsStore:async()=>store,writeNaverSnapshotsStore:async()=>{},clearMissionCache:()=>{},normalizeBrandName:value=>String(value).trim(),normalizeBrandKey:value=>String(value).trim().toLowerCase(),withPendingBrandWrite:fn=>fn(),demandCandidates:()=>demand?registry.brands.map(b=>({brandId:b.id,name:b.name})):[],buildSearchDemand:()=>({top10:[],rising5:[]})};
+ const calls=[],store={snapshots:[]};const ctx={resolveBrandFromEngine,URL,URLSearchParams,AbortController,setTimeout,clearTimeout,createHmac,naverAdsBaseUrl:'https://api.searchad.naver.com',naverAdsTimeoutMs:1000,env:{NAVER_ADS_API_KEY:'fixture',NAVER_ADS_SECRET_KEY:'fixture',NAVER_ADS_CUSTOMER_ID:'fixture'},fetch:async(url,options)=>{calls.push({path:url.pathname,params:Object.fromEntries(url.searchParams),method:options.method});if(fail&&url.pathname==='/stats')return new Response('{}',{status:400});const payload=url.pathname==='/keywordstool'?{keywordList:[{relKeyword:url.searchParams.get('hintKeywords'),monthlyPcQcCnt:10,monthlyMobileQcCnt:20}]}:url.pathname==='/ncc/campaigns'?[{nccCampaignId:'cmp',name:'SAMPLAS'}]:url.pathname==='/ncc/adgroups'?[{nccAdgroupId:'grp',name:'BRAND A',status:'ELIGIBLE'}]:{data:missing?[]:[{id:'grp',impCnt:1000,clkCnt:20,salesAmt:100,ccnt:2,convAmt:200}]};return new Response(JSON.stringify(payload));},readBrandRegistry:async()=>registry,readNaverSnapshotsStore:async()=>store,writeNaverSnapshotsStore:async()=>{},clearMissionCache:()=>{},normalizeBrandName:value=>String(value).trim(),normalizeBrandKey:value=>String(value).trim().toLowerCase(),withPendingBrandWrite:fn=>fn(),demandCandidates:()=>demand?registry.brands.map(b=>({brandId:b.id,name:b.name})):[],buildSearchDemand:()=>({top10:[],rising5:[]})};
  runInNewContext([slice('function naverAdsPerformancePeriod','// Minimal `res`-shaped'),slice('function naverAdsCredentials','async function fetchNaverKeywordSearch'),slice('async function fetchNaverKeywordSearch','function brandIntelligencePeriod'),slice('function createNaverSearchSnapshot','async function readJsonBody')].join('\n').replaceAll('export ',''),ctx);
  return {ctx,calls,store};
 }
 test('Actual signed Naver adgroup GET/stats uses exact dates and existing ratio semantics',async()=>{
  const {ctx,calls}=naverHarness();const value=await ctx.fetchNaverWeeklyEnrichment(dates.since,dates.until);assert.equal(value.adgroups.available,true);assert.equal(value.adgroups.rows[0].ctr,2);assert.equal(value.adgroups.rows[0].roas,2);assert.equal(value.adgroups.rows[0].campaignId,'cmp');assert.equal(value.adgroups.rows[0].status,'ELIGIBLE');const request=calls.find(c=>c.path==='/stats');assert.equal(request.params.ids,'grp');assert.deepEqual(JSON.parse(request.params.timeRange),{since:dates.since,until:dates.until});assert(calls.every(c=>c.method==='GET'));
 });
-for(const mode of ['missing','fail'])test(`Naver ${mode} adgroup stats falls back unavailable, never zero`,async()=>{const {ctx}=naverHarness({[mode]:true});const value=await ctx.fetchNaverWeeklyEnrichment(dates.since,dates.until);assert.equal(value.adgroups.available,false);assert.equal(value.adgroups.rows.length,0);});
+for(const mode of ['missing','fail'])test(`Naver ${mode} adgroup stats retain actual name with N/A, never zero`,async()=>{const {ctx}=naverHarness({[mode]:true});const value=await ctx.fetchNaverWeeklyEnrichment(dates.since,dates.until);assert.equal(value.adgroups.available,true);assert.equal(value.adgroups.complete,false);assert.equal(value.adgroups.rows.length,1);assert.equal(value.adgroups.rows[0].name,'BRAND A');assert.equal(value.adgroups.rows[0].spend,null);assert.equal(value.adgroups.rows[0].statsAvailable,false);});
 test('Monthly Instagram collector unchanged; weekly until exclusive KST and metrics independent',async()=>{
  const src=await readFile(new URL('../server.mjs',import.meta.url),'utf8');const a=src.slice(src.indexOf('export async function buildInstagramRangeDataForWeeklyReport'),src.indexOf('async function runInstagramWeeklyReportCheck'));
  const calls=[];const ctx={env:{INSTAGRAM_BUSINESS_ACCOUNT_ID:'ig'},workDir:'/fixture',join,buildInstagramRangeData:async()=>({since:dates.since,until:dates.until,posts:[],account:{followers:9999}}),readCachedStories:async()=>null,collectWeeklyAccount,captureWeeklyFollowers:async()=>({followers:500,delta:null}),logApiError:async()=>{},safeErrorMessage:()=> 'safe',graphGet:async(path,params)=>{calls.push({path,params});return path==='ig'?{followers_count:500}:{data:[{name:params.metric,total_value:{value:0}}]};}};runInNewContext(a.replace('export ',''),ctx);
@@ -73,4 +75,32 @@ test('Current/prior enrichment shares one keyword fetch and preserves existing S
  const {ctx,calls,store}=naverHarness({demand:true});await Promise.all([ctx.fetchNaverWeeklyEnrichment(dates.since,dates.until),ctx.fetchNaverWeeklyEnrichment(dates.previousSince,dates.previousUntil)]);
  assert.equal(calls.filter(c=>c.path==='/keywordstool').length,2);assert.equal(store.snapshots.length,2);for(const row of store.snapshots){assert(row.id&&row.keyword&&row.collectedAt);assert.equal(row.source,'naver-searchad-keywordstool');assert.equal(row.rows[0].monthlyPcQueryCount,10);}
  const ranges=calls.filter(c=>c.path==='/stats').map(c=>JSON.parse(c.params.timeRange).since);assert(ranges.includes(dates.since));assert(ranges.includes(dates.previousSince));
+});
+
+test('Canonical group identity is exact; unresolved raw name retained',async()=>{
+ const {ctx}=naverHarness();const a=await ctx.fetchNaverWeeklyEnrichment(dates.since,dates.until);assert.equal(a.adgroups.rows[0].canonicalBrandName,'BRAND A');assert.equal(a.adgroups.rows[0].statsSource.adgroupId,'grp');
+ const {ctx:other}=naverHarness();other.readBrandRegistry=async()=>({brands:[],aliases:[]});const b=await other.fetchNaverWeeklyEnrichment(dates.since,dates.until);assert.equal(b.adgroups.rows[0].canonicalBrandName,null);assert.equal(b.adgroups.rows[0].name,'BRAND A');
+});
+test('Incomplete batch preserves returned groups and continues remaining batches',async()=>{
+ const {ctx,calls}=naverHarness();ctx.fetchNaverAdgroupIndex=async()=>({ok:true,adgroups:Array.from({length:101},(_,i)=>({id:'group-'+i,name:'RAW '+i,campaignId:'cmp'}))});
+ ctx.fetch=async(url)=>{calls.push({path:url.pathname});const id=url.searchParams.get('ids').split(',')[0];return new Response(JSON.stringify({data:[{id,impCnt:100,clkCnt:10,salesAmt:id==='group-0'?10:20,ccnt:1,convAmt:100}]}));};
+ const data=await ctx.fetchNaverWeeklyEnrichment(dates.since,dates.until);assert.equal(data.adgroups.rows.length,101);assert.equal(data.adgroups.rows[0].spend,10);assert.equal(data.adgroups.rows[1].spend,null);assert.equal(data.adgroups.rows[100].spend,20);assert.equal(data.adgroups.rows[1].name,'RAW 1');assert.equal(calls.filter(c=>c.path==='/stats').length,2);
+});
+test('Group spend invariant: partial coverage explained; greater than campaign fails',()=>{
+ const row={id:'a',campaignId:'c',name:'A',impressions:100,clicks:10,spend:30,conversions:1,conversionValue:100,statsAvailable:true};
+ const partial=reconcileAdgroupCoverage({available:true,rows:[row,{id:'b',campaignId:'c',name:'B',spend:null,statsAvailable:false}]},[{campaignId:'c',spend:100}]);assert.equal(partial.coverage.knownSpend,30);assert.equal(partial.coverage.difference,70);assert.equal(partial.coverage.successful,1);assert.equal(partial.coverage.unavailable,1);
+ assert.throws(()=>reconcileAdgroupCoverage({available:true,rows:[{...row,spend:101}]},[{campaignId:'c',spend:100}]),/exceeds_campaign/);
+ assert.throws(()=>reconcileAdgroupCoverage({available:true,rows:[row,row]},[{campaignId:'c',spend:100}]),/duplicate_adgroup/);
+});
+test('No campaign totals copied into unavailable group rows; placeholder workbook forbidden',async()=>{
+ const model=buildWeeklyReportModel({...dates,current:{ok:true,summary,campaigns:[{campaignId:'c',...summary}],adgroups:{available:true,rows:[{id:'a',campaignId:'c',name:'REAL ADGROUP',statsAvailable:false,spend:null,impressions:null,clicks:null,conversions:null,conversionValue:null}]}},previous:{ok:true,summary,campaigns:[]}});
+ const w=await buildWeeklyReportWorkbook(model),s=w.getWorksheet('REPORT');assert.equal(s.getCell('A34').value,'REAL ADGROUP');for(const col of [2,3,4,5,6,7,8,9,10,11])assert.equal(s.getCell(34,col).value,'N/A');assert.equal(s.getCell('L34').value,'데이터 부족');assert.equal(s.getCell('A6').value,100);
+ model.adgroups.rows[0].name='FIXTURE BRAND 1';await assert.rejects(buildWeeklyReportWorkbook(model),/placeholder_forbidden/);
+});
+test('Failed current keyword query cannot reuse a successful cached current-week snapshot',async()=>{
+ const {ctx,store}=naverHarness({demand:true});ctx.buildSearchDemand=buildSearchDemand;
+ store.snapshots.push({keyword:'BRAND A',source:'naver-searchad-keywordstool',collectedAt:new Date().toISOString(),rows:[{keyword:'BRAND A',monthlyPcQueryCount:999,monthlyMobileQueryCount:999}]});
+ ctx.fetchNaverKeywordSearch=async()=>({ok:false,rows:[]});
+ const result=await ctx.collectWeeklySearchDemand({adgroups:[]},{});
+ assert.equal(result.top10.length,0);assert(result.unavailable.includes('BRAND A'));assert.equal(result.coverage.querySuccessful,0);assert.equal(result.coverage.exactSuccessful,0);assert.equal(store.snapshots.length,1);
 });

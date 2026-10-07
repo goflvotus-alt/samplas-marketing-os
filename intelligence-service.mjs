@@ -2535,7 +2535,14 @@ async function collectWeeklySearchDemand(index, credentials) {
       if (!findRecentDuplicateSnapshot(store.snapshots, snapshot)) store.snapshots.push(snapshot);
     }
     if (fetched.length) { store.updatedAt = now; await writeNaverSnapshotsStore(store); clearMissionCache(); }
-    return buildSearchDemand(candidates, store.snapshots, now);
+    // Current values must come from this collection, never an older cached success
+    // after today's API failure. Historical snapshots are retained only for comparison.
+    const day = new Date(Date.parse(now) + 9 * 3600000);
+    day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
+    const weekStart = Date.parse(day.toISOString().slice(0, 10) + 'T00:00:00+09:00');
+    const result = buildSearchDemand(candidates, [...store.snapshots.filter(s => Date.parse(s.collectedAt) < weekStart), ...fetched], now);
+    return { ...result, coverage: { candidates: candidates.length, querySuccessful: fetched.length,
+      exactSuccessful: candidates.length - result.unavailable.length } };
   });
 }
 export async function fetchNaverWeeklyEnrichment(since, until) {
@@ -2543,26 +2550,46 @@ export async function fetchNaverWeeklyEnrichment(since, until) {
   const index = await fetchNaverAdgroupIndex();
   const fallback = { available: false, reason: '광고그룹 통계 조회 실패 또는 불완전 응답', rows: [] };
   if (!credentials.ok || !index.ok) return { adgroups: fallback, searchDemand: { available: false, top10: [], rising5: [], reason: 'Naver 연결 또는 광고그룹 조회 실패' } };
-  let adgroups = fallback;
+  let registry = { brands: [], aliases: [] };
+  try { registry = await readBrandRegistry(); } catch { /* Retain raw group names. */ }
+  const namedGroups = index.adgroups.map(group => {
+    const brand = resolveBrandFromEngine(group.name, registry);
+    return { ...group, canonicalBrandId: brand?.brandId || null, canonicalBrandName: brand?.name || null };
+  });
+  const metrics = ['impressions','clicks','spend','conversions','conversionValue','ctr','cpc','conversionRate','cpa','roas'];
+  const emptyMetrics = Object.fromEntries(metrics.map(key => [key,null]));
+  const stats = new Map();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), naverAdsTimeoutMs);
+  let issue = '';
   try {
     const period = naverAdsPerformancePeriod(new URL(`http://internal/?since=${since}&until=${until}`));
     if (!period.ok || index.adgroups.some(g => !g.id) || new Set(index.adgroups.map(g => g.id)).size !== index.adgroups.length) throw new Error('Invalid ad group period/index');
-    const stats = new Map();
     for (let offset = 0; offset < index.adgroups.length; offset += 100) {
       const batch = index.adgroups.slice(offset, offset + 100), ids = new Set(batch.map(g => g.id));
-      const payload = await fetchNaverAdsReadOnly('/stats', { ids: [...ids].join(','), fields: JSON.stringify(['impCnt','clkCnt','salesAmt','ccnt','convAmt']), timeRange: JSON.stringify({ since, until }), timeIncrement: 'allDays' }, credentials, controller.signal);
-      if (!Array.isArray(payload?.data)) throw new Error('Invalid stats');
-      for (const row of payload.data) {
-        if (!ids.has(row.id) || stats.has(row.id)) throw new Error('Invalid stats identifier');
-        stats.set(row.id, naverAdsMetrics(row));
-      }
-      if (batch.some(g => !stats.has(g.id))) throw new Error('Incomplete stats');
+      try {
+        const payload = await fetchNaverAdsReadOnly('/stats', { ids: [...ids].join(','), fields: JSON.stringify(['impCnt','clkCnt','salesAmt','ccnt','convAmt']), timeRange: JSON.stringify({ since, until }), timeIncrement: 'allDays' }, credentials, controller.signal);
+        if (!Array.isArray(payload?.data)) throw new Error('Invalid stats');
+        const batchStats = new Map();
+        for (const row of payload.data) {
+          if (!ids.has(row.id) || batchStats.has(row.id)) throw new Error('Invalid stats identifier');
+          batchStats.set(row.id, naverAdsMetrics(row));
+        }
+        for (const [id,value] of batchStats) stats.set(id,value);
+        if (batchStats.size !== ids.size) issue = '일부 광고그룹은 /stats에서 반환되지 않음 · N/A 처리';
+      } catch { issue = '일부 광고그룹 /stats 조회 실패 · N/A 처리'; }
     }
-    adgroups = { available: true, since, until, source: 'naver-searchad-stats-adgroup', rows: index.adgroups.map(g => ({ ...g, ...stats.get(g.id) })) };
-  } catch { /* Campaign fallback; never make missing groups into zero. */ }
+  } catch { issue = '광고그룹 기간 또는 ID 검증 실패 · N/A 처리'; }
   finally { clearTimeout(timeout); }
+  const rows = namedGroups.map(group => {
+    const value = stats.get(group.id);
+    const complete = !!value && ['impressions','clicks','spend','conversions','conversionValue'].every(k => typeof value[k] === 'number');
+    return { ...group, ...(value || emptyMetrics), statsAvailable: complete,
+      statsSource: value ? { source: 'naver-searchad-stats-adgroup', adgroupId: group.id, since, until } : null,
+      unavailableReason: complete ? '' : value ? '필수 지표 일부 미제공' : '해당 광고그룹 통계 미반환 또는 조회 실패' };
+  });
+  const adgroups = { available: true, complete: rows.every(r => r.statsAvailable), since, until,
+    source: 'naver-searchad-stats-adgroup', reason: issue, rows };
   if (!weeklyDemandCache || Date.now() - weeklyDemandCache.at > 60000) {
     weeklyDemandCache = { at: Date.now(), promise: collectWeeklySearchDemand(index, credentials).catch(() => ({ available: false, top10: [], rising5: [], reason: '브랜드 검색 수요 또는 Snapshot 저장 실패' })) };
   }

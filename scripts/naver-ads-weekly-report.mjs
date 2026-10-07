@@ -1,3 +1,4 @@
+import { reconcileAdgroupCoverage, assertNoReportPlaceholders } from "./naver-weekly-adgroup-integrity.mjs";
 // Naver Search Ads Weekly Report generator.
 //
 // Data collection is NOT reimplemented here: this module only ever consumes an
@@ -157,7 +158,7 @@ export function buildWeeklyReportModel({ current, previous, since, until, previo
     wow,
     campaigns,
     // Weekly detail is optional. Campaign totals retain the original source semantics.
-    adgroups: current?.adgroups || { available: false, reason: "주간 광고그룹 상세가 제공되지 않았습니다." },
+    adgroups: reconcileAdgroupCoverage(current?.adgroups, campaigns) || { available: false, reason: "주간 광고그룹 상세가 제공되지 않았습니다." },
     keywords: { available: false, reason: "Naver Ads Phase 1 client only fetches campaign-level data (/ncc/campaigns + /stats); keyword level (/ncc/keywords) is not implemented." },
     previousAdgroups: previous?.adgroups || null,
     searchDemand: current?.searchDemand || { available: false, top10: [], rising5: [], reason: "검색 수요 Snapshot 미제공" },
@@ -326,6 +327,7 @@ export async function buildWeeklyReportWorkbook(model) {
   workbook.creator = "SAMPLAS Marketing OS";
   workbook.created = new Date();
   naverOnePage(workbook, model);
+  assertNoReportPlaceholders(workbook);
   return workbook;
 }
 
