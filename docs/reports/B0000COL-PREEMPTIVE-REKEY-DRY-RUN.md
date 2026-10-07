@@ -213,3 +213,54 @@ One gate remains before execution: a direct archive reproduction on Production f
   - execute COMPLETE. 2026-09 B0000COL went 2,798,000 → 0 and SPL 0 → 2,798,000; totals were unchanged.
   - A reused token returned 403 SPLIT_TOKEN_USED. Re-planning returned ALREADY_REKEYED.
   - The split-restore of the backup returned all 8 files to their original bytes.
+
+## Deploy of 664876c and second Production dry-run (2026-10-07)
+
+- **Push:** `79a9c39..664876c` pushed to main; origin/main had not moved, so no rebase was needed.
+- **Deploy:** new boot 2026-10-07T06:08:09.776Z. `/healthz` 200.
+  - Without auth, both `/api/brands/rekey/dry-run` and `/api/brands/rekey/execute` return 401.
+- **MCP:** at the deployed commit it has 10 tools, all `get_*`. The upstream allowlist has no rekey path, and it blocks POST.
+- **Dry-run:** 06:08:50Z, HTTP 200, `PLANNED`, version `6c5627a5c14935ff`.
+  - Identical to the 05:41Z dry-run on preconditions, identity, diff (Brand Master, policy, registry, compatibility, sourcing), every month and the archive results.
+  - `sources` differs only by the new `pendingCounts` field (APPROVED 8 / PENDING 20).
+  - 2026-08: 1,612,800 → SPL. Archive reproduction OK. Totals 287,916,120 / offline 253,583,500 unchanged.
+  - 2026-09: 2,798,000 → SPL. Archive reproduction OK. Totals 232,440,953 / offline 201,473,160 unchanged.
+  - Preserved and balanced in every month; other brands unchanged.
+  - Policy: no explicit row; MCP shows SOURCING_DEFAULT 20%, WHOLESALE. Sourcing: 9 products / 66 lines.
+  - `eligible: true`, `writeEnabled: true`. A new 48-character token expires at 06:18:59Z. It was redacted and not used.
+- **Writes:** none. Pending, Brand Master and policy responses are identical before and after, and Brand Master entries match the 05:41 snapshot.
+- **Regression:** the three split pairs resolve unchanged, and their explicit-policy counts are unchanged (old side 1, new side 0).
+- **Verdict:** B0000COL PREEMPTIVE REKEY — PRODUCTION EXECUTE READY. Execute was not called.
+
+## Production re-key executed (2026-10-07)
+
+1. **Fresh dry-run (06:12:12Z).**
+   - Every approved condition held, and the result was identical to the 06:08:50Z dry-run:
+     - version `6c5627a5c14935ff`, target `SPL_92ce8d7290`
+     - archive 08/09 OK, preserved, balanced, other brands unchanged
+     - no explicit policy row, WHOLESALE, 9 products / 66 lines, the expected amounts
+     - eligible, writeEnabled
+   - Only its new token was used. It was never printed.
+2. **Execute (06:12:20Z, HTTP 200).**
+   - `COMPLETE`. Steps: token → revalidate → rekey → verify → archive (2026-08, 2026-09) → final.
+   - No rollback.
+   - Backup: `2026-10-07T06-12-29-153Z-rekey-B0000COL`.
+   - Archives (server read-back from disk):
+     - 2026-08: B0000COL 0, SPL 1,612,800. Totals 287,916,120 / offline 253,583,500 / online 34,332,620 unchanged.
+     - 2026-09: B0000COL 0, SPL 2,798,000. Totals 232,440,953 / offline 201,473,160 / online 30,967,793 unchanged.
+3. **Read-back (external).**
+   - Brand Master: 305 entries before and after. `B0000COL` is gone and `SPL_92ce8d7290` is present with:
+     - the same name, aliases, active false, confirmed and WHOLESALE
+     - `externalCodes.cafe24: null`
+     - `formerCodes [{B0000COL, MARKETING_OS_MINTED, until null}]`
+     - All 304 other entries are identical.
+   - Resolver:
+     - `MEANTIME X SUNDAYOFFCLUB`, `SOC X MEANTIME` and `선데이오프클럽 X 민타임` now resolve to SPL_92ce8d7290.
+     - `B0000COL` resolves to nothing.
+     - MEANTIME (B00000HM) and SUNDAY OFF CLUB (B00000HD) are unchanged.
+   - MCP: `get_brand` returns SPL_92ce8d7290 / WHOLESALE. `get_commercial_policy` returns SOURCING_DEFAULT 20%, coverage 9 products / 66 lines.
+   - Policy: 134 rows, byte-identical. Pending: 20 PENDING / 8 APPROVED, unchanged.
+   - The three split pairs have identical Brand Master entries, unchanged MCP results and unchanged policy status.
+   - `/healthz` 200. The boot marker (06:08:09.776Z) is unchanged, so there was no restart.
+
+Verdict: B0000COL PREEMPTIVE REKEY — PRODUCTION COMPLETE.
