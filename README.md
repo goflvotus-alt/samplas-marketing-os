@@ -236,7 +236,7 @@ CAFE24_REFRESH_TOKEN=
 CAFE24_ACCESS_TOKEN_EXPIRES_AT=
 CAFE24_REDIRECT_URI=https://samplas-marketing-os.onrender.com/api/cafe24/oauth/callback
 CAFE24_SCOPES=
-CAFE24_PROXY_SECRET=
+# Internal Production API auth (Basic username:password). CAFE24_PROXY_SECRET is deprecated and ignored.
 CAFE24_PROXY_BASIC_AUTH=
 # Production ECOUNT operator login 전용. Cafe24 proxy 인증과 공유하지 않습니다.
 # 형식: username:password

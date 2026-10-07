@@ -50,8 +50,10 @@ function refundAmount(order = {}) {
   ]);
 }
 
+// AI audit has its own secret only; it never falls back to the Cafe24 proxy credentials.
+// Without AI_AUDIT_SECRET every /api/ai-audit/* request is unauthorized (401).
 export function resolveAiAuditSecret(env = {}) {
-  return env.AI_AUDIT_SECRET || env.CAFE24_PROXY_SECRET || "";
+  return env.AI_AUDIT_SECRET || "";
 }
 
 export function isAiAuditAuthorized(req, env = {}) {

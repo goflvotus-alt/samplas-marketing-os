@@ -76,9 +76,6 @@ function apiVersion(env) {
 
 function cafe24ProxyHeaders(env) {
   const headers = {};
-  if (env.CAFE24_PROXY_SECRET) {
-    headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
-  }
   if (env.CAFE24_PROXY_BASIC_AUTH) {
     headers.Authorization =
       `Basic ${Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64")}`;

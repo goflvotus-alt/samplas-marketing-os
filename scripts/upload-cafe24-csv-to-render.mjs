@@ -14,10 +14,6 @@ const baseUrl = (env.RENDER_DASHBOARD_URL || "https://samplas-marketing-os.onren
 const csvText = await readFile(csvPath, "utf8");
 const headers = { "content-type": "application/json" };
 
-if (env.CAFE24_PROXY_SECRET) {
-  headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
-}
-
 if (env.CAFE24_PROXY_BASIC_AUTH) {
   headers.authorization = `Basic ${Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64")}`;
 }

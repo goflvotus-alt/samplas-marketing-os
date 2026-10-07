@@ -9,7 +9,7 @@
 //   shape every other script in this project already uses.
 // - The existing Cafe24 proxy routes (/api/cafe24/products/:no,
 //   /api/cafe24/products/:no/discountprice) via the local Marketing OS server —
-//   same auth headers (CAFE24_PROXY_SECRET / CAFE24_PROXY_BASIC_AUTH) and the same
+//   same auth header (CAFE24_PROXY_BASIC_AUTH Basic auth) and the same
 //   price-resolution formula intelligence-service.mjs's resolveCommercialPolicyOnlinePrice
 //   already uses (pc_discount_price ?? mobile_discount_price ?? price ?? retail_price).
 // - ECOUNT CURRENT product master price (work/ecount-inventory/latest.json .salesPrice),
@@ -74,7 +74,6 @@ async function loadEnv() {
 
 function proxyHeaders(env) {
   const headers = { Accept: "application/json" };
-  if (env.CAFE24_PROXY_SECRET) headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
   if (env.CAFE24_PROXY_BASIC_AUTH) headers.Authorization = `Basic ${Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64")}`;
   return headers;
 }

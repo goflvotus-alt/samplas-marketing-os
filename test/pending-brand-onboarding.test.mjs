@@ -176,7 +176,7 @@ test("supersession is explicit, unique and period-bound; active owners still win
 
 function http(port, path, method = "GET", authorized = false, payload = {}) {
   return new Promise((resolve, reject) => {
-    const req = request({ host: "127.0.0.1", port, path, method, headers: { host: "production.example", ...(authorized ? { "x-samplas-internal-token": "test-only" } : {}) } }, res => {
+    const req = request({ host: "127.0.0.1", port, path, method, headers: { host: "production.example", ...(authorized ? { authorization: `Basic ${Buffer.from("test:only").toString("base64")}` } : {}) } }, res => {
       let text = ""; res.on("data", c => text += c); res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(text) }));
     });
     req.on("error", reject); req.end(method === "POST" ? JSON.stringify(payload) : undefined);
@@ -205,7 +205,7 @@ test("authenticated HTTP bulk refresh onboards NEW only; reassignment needs expl
     await writeFile(join(dir, "cafe24-product-catalog.json"), JSON.stringify({ products: sources.products }));
     for (const [name, value] of Object.entries({ "brand-commercial-policy.json": { policies: [] }, "brand-sourcing-master.json": { brands: [] }, "product-registry-review-queue.json": { entries: [] } })) await writeFile(join(dir, name), JSON.stringify(value));
     child = spawn(process.execPath, [fileURLToPath(new URL("../server.mjs", import.meta.url))], { cwd: dir,
-      env: { ...process.env, WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, CAFE24_PROXY_SECRET: "test-only", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" }, stdio: ["ignore", "pipe", "pipe"] });
+      env: { ...process.env, WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, CAFE24_PROXY_BASIC_AUTH: "test:only", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" }, stdio: ["ignore", "pipe", "pipe"] });
     child.stderr.resume();
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error("server timeout")), 15000);

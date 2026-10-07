@@ -52,7 +52,6 @@ async function loadEnv() {
 
 function proxyHeaders(env) {
   const headers = {};
-  if (env.CAFE24_PROXY_SECRET) headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
   if (env.CAFE24_PROXY_BASIC_AUTH) headers.Authorization = `Basic ${Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64")}`;
   return headers;
 }
@@ -61,7 +60,6 @@ function safeProxyEnvironment(env) {
   return {
     proxyBaseUrlPresent: Boolean(env.CAFE24_PROXY_BASE_URL),
     proxyBaseUrlHost: env.CAFE24_PROXY_BASE_URL ? new URL(env.CAFE24_PROXY_BASE_URL).hostname : null,
-    hasProxySecret: Boolean(env.CAFE24_PROXY_SECRET),
     hasProxyBasicAuth: Boolean(env.CAFE24_PROXY_BASIC_AUTH),
     tokenValuesLogged: false
   };

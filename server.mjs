@@ -1310,8 +1310,7 @@ function safeErrorMessage(error) {
     .replaceAll(env.CAFE24_ACCESS_TOKEN || "__NO_CAFE24_ACCESS__", "[CAFE24_ACCESS_TOKEN]")
     .replaceAll(env.CAFE24_REFRESH_TOKEN || "__NO_CAFE24_REFRESH__", "[CAFE24_REFRESH_TOKEN]")
     .replaceAll(env.CAFE24_CLIENT_SECRET || "__NO_CAFE24_SECRET__", "[CAFE24_CLIENT_SECRET]")
-    .replaceAll(env.CAFE24_PROXY_BASIC_AUTH || "__NO_PROXY_AUTH__", "[CAFE24_PROXY_BASIC_AUTH]")
-    .replaceAll(env.CAFE24_PROXY_SECRET || "__NO_PROXY_SECRET__", "[CAFE24_PROXY_SECRET]");
+    .replaceAll(env.CAFE24_PROXY_BASIC_AUTH || "__NO_PROXY_AUTH__", "[CAFE24_PROXY_BASIC_AUTH]");
 }
 
 function apiErrorPayload(error) {
@@ -2382,9 +2381,10 @@ async function ensureCafe24AccessToken() {
   return env.CAFE24_ACCESS_TOKEN;
 }
 
+// Internal Production API auth is CAFE24_PROXY_BASIC_AUTH only (2026-10-07 auth audit). The legacy
+// CAFE24_PROXY_SECRET token is ignored even if still set; AI audit (AI_AUDIT_SECRET) and MCP (OAuth) are separate.
 function isAuthorizedInternalRequest(req) {
-  if (!env.CAFE24_PROXY_SECRET && !env.CAFE24_PROXY_BASIC_AUTH) return host === "127.0.0.1" || host === "localhost";
-  if (env.CAFE24_PROXY_SECRET && req.headers["x-samplas-internal-token"] === env.CAFE24_PROXY_SECRET) return true;
+  if (!env.CAFE24_PROXY_BASIC_AUTH) return host === "127.0.0.1" || host === "localhost";
   const auth = req.headers.authorization || "";
   if (env.CAFE24_PROXY_BASIC_AUTH && auth.startsWith("Basic ")) {
     return auth.slice("Basic ".length) === Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64");
@@ -2443,7 +2443,6 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
     hasRefreshToken: Boolean(env.CAFE24_REFRESH_TOKEN),
     accessTokenExpiresAt: env.CAFE24_ACCESS_TOKEN_EXPIRES_AT || null,
     hasProxyBaseUrl: Boolean(env.CAFE24_PROXY_BASE_URL),
-    hasProxySecret: Boolean(env.CAFE24_PROXY_SECRET),
     hasProxyBasicAuth: Boolean(env.CAFE24_PROXY_BASIC_AUTH)
   });
   if (pastMonth) {
@@ -2584,12 +2583,7 @@ async function fetchCafe24OrdersFromProxy(startDate, endDate, options = {}) {
   url.searchParams.set("end_date", endDate);
   if (!url.searchParams.has("limit")) url.searchParams.set("limit", options.limit || env.CAFE24_PROXY_ORDER_LIMIT || "10");
   if (options.inflowPath) url.searchParams.set("inflow_path", options.inflowPath);
-  const headers = {};
-  if (env.CAFE24_PROXY_SECRET) headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
-  if (env.CAFE24_PROXY_BASIC_AUTH) {
-    headers.Authorization = `Basic ${Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64")}`;
-  }
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { headers: cafe24ProxyHeaders() });
   const text = await response.text();
   let body;
   try {
@@ -2605,7 +2599,6 @@ async function fetchCafe24OrdersFromProxy(startDate, endDate, options = {}) {
       statusCode: response.status,
       ok: response.ok,
       responseBody: compactCafe24Body(body),
-      hasProxySecret: Boolean(env.CAFE24_PROXY_SECRET),
       hasProxyBasicAuth: Boolean(env.CAFE24_PROXY_BASIC_AUTH)
     });
     throw new Error(body.error || body.message || `Cafe24 proxy error ${response.status}`);
@@ -2617,7 +2610,6 @@ async function fetchCafe24OrdersFromProxy(startDate, endDate, options = {}) {
     statusCode: response.status,
     ok: response.ok,
     responseBody: compactCafe24Body(body),
-    hasProxySecret: Boolean(env.CAFE24_PROXY_SECRET),
     hasProxyBasicAuth: Boolean(env.CAFE24_PROXY_BASIC_AUTH)
   });
   const orders = body.orders || body.data || [];
@@ -6465,7 +6457,6 @@ async function checkCafe24Health() {
 
 function cafe24ProxyHeaders() {
   const headers = {};
-  if (env.CAFE24_PROXY_SECRET) headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
   if (env.CAFE24_PROXY_BASIC_AUTH) {
     headers.Authorization = `Basic ${Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64")}`;
   }

@@ -127,7 +127,7 @@ test("saved historical close returns an explicit HTTP conflict before parsing or
   }
 });
 
-test("Cafe24 proxy credentials never authorize an operator session but retain internal auth", async () => {
+test("Cafe24 proxy Basic auth is the internal credential; it never authorizes an operator session and the legacy token is ignored", async () => {
   await withServer({
     SAMPLAS_OPERATOR_BASIC_AUTH: undefined,
     CAFE24_PROXY_BASIC_AUTH: "proxy:correct",
@@ -147,8 +147,24 @@ test("Cafe24 proxy credentials never authorize an operator session but retain in
   }, async (port) => {
     const secretOnly = await httpCall(port, "/api/operator/session", { headers: { "x-samplas-internal-token": "proxy-secret" } });
     assert.equal(secretOnly.status, 401);
-    const existingInternal = await httpCall(port, "/api/cafe24/csv/import", { headers: { "x-samplas-internal-token": "proxy-secret" } });
-    assert.notEqual(existingInternal.status, 401);
+    // CAFE24_PROXY_SECRET is deprecated (2026-10-07): a token-only request is no longer internal.
+    const tokenOnly = await httpCall(port, "/api/cafe24/csv/import", { headers: { "x-samplas-internal-token": "proxy-secret" } });
+    assert.equal(tokenOnly.status, 401);
+  });
+});
+
+test("auth domains are separate: Basic for internal routes, AI_AUDIT_SECRET for AI audit, no cross-acceptance", async () => {
+  await withServer({ SAMPLAS_OPERATOR_BASIC_AUTH: undefined, CAFE24_PROXY_BASIC_AUTH: "proxy:correct", CAFE24_PROXY_SECRET: "legacy-secret", AI_AUDIT_SECRET: "audit-secret" }, async (port) => {
+    const internal = (headers) => httpCall(port, "/api/cafe24/csv/import", { headers }).then((r) => r.status);
+    const aiAudit = (headers) => httpCall(port, "/api/ai-audit/health", { headers }).then((r) => r.status);
+    assert.notEqual(await internal({ Authorization: basic("proxy:correct") }), 401);
+    assert.equal(await internal({}), 401);
+    assert.equal(await internal({ Authorization: basic("proxy:wrong") }), 401);
+    assert.equal(await internal({ "x-samplas-internal-token": "legacy-secret" }), 401, "legacy token ignored");
+    assert.equal(await internal({ "x-samplas-internal-token": "audit-secret" }), 401, "AI audit secret is not internal auth");
+    assert.notEqual(await aiAudit({ "x-samplas-internal-token": "audit-secret" }), 401);
+    assert.equal(await aiAudit({ Authorization: basic("proxy:correct") }), 401, "Basic is not AI audit auth");
+    assert.equal(await aiAudit({ "x-samplas-internal-token": "legacy-secret" }), 401, "no proxy-secret fallback");
   });
 });
 

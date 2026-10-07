@@ -70,9 +70,9 @@ Cafe24 OAuth 재인증
   CAFE24_PROXY_BASE_URL=https://samplas-meta-dashboard.onrender.com
   CAFE24_PROXY_ORDERS_PATH=/api/cafe24/orders
 - 이 경우 로컬 /api/cafe24/orders는 Render의 /api/cafe24/orders를 호출합니다.
-- Render 쪽에 보호 토큰을 걸었다면 로컬 .env에 CAFE24_PROXY_SECRET도 같은 값으로 넣으세요.
-- 현재 Render 앱이 Basic Auth로 보호되어 있으면 로컬 .env에 아래도 넣으세요.
+- Render 내부 API 인증은 Basic Auth 하나입니다. 로컬 .env에 Render와 같은 값을 넣으세요.
   CAFE24_PROXY_BASIC_AUTH=아이디:비밀번호
+- CAFE24_PROXY_SECRET은 더 이상 사용하지 않습니다(2026-10-07 폐기).
 
 운영 원칙
 - Meta 광고 매출은 참고 지표로만 사용합니다.

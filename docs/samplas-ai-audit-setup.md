@@ -24,7 +24,7 @@ Custom GPT
 
 Render 서비스에 `AI_AUDIT_SECRET` 환경변수를 등록한다. 값은 충분히 긴 임의 문자열을 사용하며 저장소 파일에 기록하지 않는다.
 
-서버는 `AI_AUDIT_SECRET`을 우선 사용하고, 값이 없을 때만 기존 `CAFE24_PROXY_SECRET`을 fallback으로 사용한다.
+서버는 `AI_AUDIT_SECRET`만 사용한다(2026-10-07부터 `CAFE24_PROXY_SECRET` fallback 없음). 값이 없으면 모든 `/api/ai-audit/*` 요청은 401이다. Basic auth(`CAFE24_PROXY_BASIC_AUTH`)는 AI audit에서 받지 않는다.
 
 ## Custom GPT Action 설정
 

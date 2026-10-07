@@ -73,7 +73,6 @@ export const renderBaseUrl = (env) => (env.RENDER_DASHBOARD_URL || "https://samp
 
 export function renderAuthHeaders(env) {
   const headers = { "content-type": "application/json" };
-  if (env.CAFE24_PROXY_SECRET) headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
   if (env.CAFE24_PROXY_BASIC_AUTH) headers.authorization = `Basic ${Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString("base64")}`;
   return headers;
 }

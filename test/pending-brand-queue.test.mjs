@@ -394,7 +394,7 @@ test("queue persistence, concurrent refresh, dry-run and failure preserve canoni
 
 function http(port, path, { method = "GET", token, payload } = {}) {
   return new Promise((resolve, reject) => {
-    const req = request({ host: "127.0.0.1", port, path, method, headers: { host: "production.example", ...(token ? { "x-samplas-internal-token": token } : {}) } }, res => {
+    const req = request({ host: "127.0.0.1", port, path, method, headers: { host: "production.example", ...(token ? { authorization: `Basic ${Buffer.from(token).toString("base64")}` } : {}) } }, res => {
       let body = "";
       res.on("data", chunk => body += chunk);
       res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(body) }));
@@ -415,7 +415,7 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     for (const name of ["product-registry.json", "product-registry-review-queue.json", "brand-commercial-policy.json", "brand-sourcing-master.json"]) await writeFile(join(dir, name), JSON.stringify({ entries: [], brands: [] }));
     await writeFile(join(dir, "brand-master.json"), JSON.stringify(canonical));
     await writeFile(join(dir, "cafe24-product-catalog.json"), JSON.stringify({ products: [{ ...newBrand, product_no: 1, product_name: "[New Brand] item" }] }));
-    child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: dir, env: { ...process.env, WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, CAFE24_PROXY_SECRET: "test-only", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" }, stdio: ["ignore", "pipe", "pipe"] });
+    child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: dir, env: { ...process.env, WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, CAFE24_PROXY_BASIC_AUTH: "test:only", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" }, stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
     child.stderr.on("data", c => stderr += c);
     await new Promise((resolve, reject) => {
@@ -431,10 +431,10 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     assert.equal((await http(port, "/api/pending-brands")).body.candidates.length, 0);
     assert.equal((await http(port, "/api/pending-brands/refresh", { method: "POST" })).status, 401);
     assert.equal((await http(port, "/api/pending-brands/refresh")).status, 405);
-    const dry = await http(port, "/api/pending-brands/refresh?dryRun=1", { method: "POST", token: "test-only" });
+    const dry = await http(port, "/api/pending-brands/refresh?dryRun=1", { method: "POST", token: "test:only" });
     assert.equal(dry.status, 200); assert.equal(dry.body.candidates.length, 1);
     assert.equal((await http(port, "/api/pending-brands")).body.candidates.length, 0);
-    const refresh = await http(port, "/api/pending-brands/refresh", { method: "POST", token: "test-only" });
+    const refresh = await http(port, "/api/pending-brands/refresh", { method: "POST", token: "test:only" });
     assert.equal(refresh.status, 200); assert.equal(refresh.body.candidates.length, 1);
     assert.equal((await http(port, "/api/pending-brands")).body.candidates.length, 1);
     for (const path of ["/api/diagnostics/brand-sales?since=2026-09-01&until=2026-09-02", "/api/promotion/1/summary?since=2026-09-01&until=2026-09-02"]) {
@@ -447,21 +447,21 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     for (const action of ["NEW", "LINK", "IGNORE", "CONFIRM_EXISTING"]) {
       assert.equal((await http(port, "/api/pending-brands/review", { method: "POST", payload: { id, action } })).status, 401);
     }
-    const approved = await http(port, "/api/pending-brands/review", { method: "POST", token: "test-only", payload: { id, action: "NEW", brandName: "Human Approved" } });
+    const approved = await http(port, "/api/pending-brands/review", { method: "POST", token: "test:only", payload: { id, action: "NEW", brandName: "Human Approved" } });
     assert.equal(approved.status, 200, JSON.stringify(approved.body));
     assert.equal(approved.body.candidate.status, "APPROVED");
     const master = (await http(port, "/api/brand-master")).body;
     assert.equal(master.brands.length, 2);
     assert.deepEqual(master.brands.find(b => b.brand_code === "B1"), read.body.brands[0]);
     assert.equal(master.brands.find(b => b.brand_code === "B2").nameSource, "confirmed");
-    assert.notEqual((await http(port, "/api/pending-brands/review", { method: "POST", token: "test-only", payload: { id, action: "NEW", brandName: "Again" } })).status, 200);
-    const afterRefresh = await http(port, "/api/pending-brands/refresh", { method: "POST", token: "test-only" });
+    assert.notEqual((await http(port, "/api/pending-brands/review", { method: "POST", token: "test:only", payload: { id, action: "NEW", brandName: "Again" } })).status, 200);
+    const afterRefresh = await http(port, "/api/pending-brands/refresh", { method: "POST", token: "test:only" });
     assert.equal(afterRefresh.body.candidates[0].status, "APPROVED");
     const approvedCanonical = JSON.parse(await readFile(join(dir, "brand-master.json"), "utf8"));
     const extraQueue = detectPendingBrands({ canonical: approvedCanonical, previous: afterRefresh.body, cafe24Brands: [{ brand_code: "B3", brand_name: "Known alternate" }, { brand_code: "B4", brand_name: "Not a brand" }] });
     await writeFile(join(dir, "pending-brand-queue.json"), JSON.stringify(extraQueue));
     for (const [code, action] of [["B3", "LINK"], ["B4", "IGNORE"]]) {
-      const response = await http(port, "/api/pending-brands/review", { method: "POST", token: "test-only", payload: {
+      const response = await http(port, "/api/pending-brands/review", { method: "POST", token: "test:only", payload: {
         id: extraQueue.candidates.find(c => c.sourceBrandCode === code).id, action, canonicalBrandCode: "B1", note: "human decision"
       } });
       assert.equal(response.status, 200, JSON.stringify(response.body));
@@ -473,9 +473,9 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     const finalMaster = (await http(port, "/api/brand-master")).body.brands;
     assert.equal(finalMaster.length, 2);
     assert.deepEqual(finalMaster.find(b => b.brand_code === "B1").sourceCafe24Codes, ["B3"]);
-    const badRecent = await http(port, "/api/pending-brands/refresh", { method: "POST", token: "test-only", payload: { recentReview: { codes: ["B1"] } } });
+    const badRecent = await http(port, "/api/pending-brands/refresh", { method: "POST", token: "test:only", payload: { recentReview: { codes: ["B1"] } } });
     assert.equal(badRecent.status, 400);
-    const recent = await http(port, "/api/pending-brands/refresh?dryRun=1", { method: "POST", token: "test-only", payload: { recentReview: {
+    const recent = await http(port, "/api/pending-brands/refresh?dryRun=1", { method: "POST", token: "test:only", payload: { recentReview: {
       codes: ["B1"], since: "2026-07-01", through: "2026-09-13", evidence: "fixture audit"
     } } });
     assert.equal(recent.status, 200);
@@ -486,13 +486,13 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     const confirmCandidate = fixture.queue.candidates[0];
     const confirmInput = { id: confirmCandidate.id, action: "CONFIRM_EXISTING", canonicalBrandCode: confirmCandidate.sourceBrandCode };
     assert.equal((await http(port, "/api/pending-brands")).body.candidates[0].confirmExistingBrandCode, confirmInput.canonicalBrandCode);
-    const confirmed = await http(port, "/api/pending-brands/review", { method: "POST", token: "test-only", payload: confirmInput });
+    const confirmed = await http(port, "/api/pending-brands/review", { method: "POST", token: "test:only", payload: confirmInput });
     assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
     assert.equal(confirmed.body.candidate.approvalAction, "CONFIRM_EXISTING");
     assert.equal(confirmed.body.candidate.status, "APPROVED");
     assert.equal(await readFile(join(dir, "brand-master.json"), "utf8"), JSON.stringify(fixture.master));
-    assert.equal((await http(port, "/api/pending-brands/review", { method: "POST", token: "test-only", payload: confirmInput })).status, 400);
-    assert.equal((await http(port, "/api/pending-brands/review", { method: "POST", token: "test-only", payload: { ...confirmInput, id: "missing" } })).status, 400);
+    assert.equal((await http(port, "/api/pending-brands/review", { method: "POST", token: "test:only", payload: confirmInput })).status, 400);
+    assert.equal((await http(port, "/api/pending-brands/review", { method: "POST", token: "test:only", payload: { ...confirmInput, id: "missing" } })).status, 400);
     await rm(join(dir, "brand-master.json"));
     assert.equal((await http(port, "/api/brand-master")).body.brands.length, 0);
     await assert.rejects(readFile(join(dir, "brand-master.json")), { code: "ENOENT" });

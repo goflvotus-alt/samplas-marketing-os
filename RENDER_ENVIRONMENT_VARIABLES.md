@@ -170,14 +170,13 @@ CAFE24_REDIRECT_URI=https://samplas-marketing-os.onrender.com/api/cafe24/oauth/c
 CAFE24_SCOPES=mall.read_order
 ```
 
-Recommended protection for CSV import:
+Internal API protection (CSV import, pending refresh, snapshot upload, Cafe24 proxy):
 
 ```txt
-CAFE24_PROXY_SECRET=
 CAFE24_PROXY_BASIC_AUTH=
 ```
 
-Use at least one of these before uploading Cafe24 CSV to Render.
+This Basic `username:password` is the only internal credential; set the same value locally. AI audit uses its own `AI_AUDIT_SECRET`, and MCP uses OAuth. `CAFE24_PROXY_SECRET` is deprecated and ignored.
 
 `/api/status` becomes:
 

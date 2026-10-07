@@ -81,9 +81,11 @@ function allKeys(value, keys = []) {
   return keys;
 }
 
-test("AI audit authentication requires the configured internal token", () => {
+test("AI audit authentication requires AI_AUDIT_SECRET only, never the Cafe24 proxy credentials", () => {
   assert.equal(resolveAiAuditSecret({ AI_AUDIT_SECRET: "audit", CAFE24_PROXY_SECRET: "proxy" }), "audit");
-  assert.equal(resolveAiAuditSecret({ CAFE24_PROXY_SECRET: "proxy" }), "proxy");
+  assert.equal(resolveAiAuditSecret({ CAFE24_PROXY_SECRET: "proxy", CAFE24_PROXY_BASIC_AUTH: "u:p" }), "");
+  assert.equal(isAiAuditAuthorized({ headers: { "x-samplas-internal-token": "proxy" } }, { CAFE24_PROXY_SECRET: "proxy" }), false);
+  assert.equal(isAiAuditAuthorized({ headers: { authorization: `Basic ${Buffer.from("u:p").toString("base64")}` } }, { AI_AUDIT_SECRET: "audit", CAFE24_PROXY_BASIC_AUTH: "u:p" }), false);
   assert.equal(isAiAuditAuthorized({ headers: {} }, { AI_AUDIT_SECRET: "audit" }), false);
   assert.equal(isAiAuditAuthorized({ headers: { "x-samplas-internal-token": "wrong" } }, { AI_AUDIT_SECRET: "audit" }), false);
   assert.equal(isAiAuditAuthorized({ headers: { "x-samplas-internal-token": "audit" } }, { AI_AUDIT_SECRET: "audit" }), true);

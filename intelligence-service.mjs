@@ -589,10 +589,6 @@ async function resolveCommercialPolicyOnlinePrice(brandId, productName) {
       Accept: "application/json"
     };
 
-    if (env.CAFE24_PROXY_SECRET) {
-      headers["x-samplas-internal-token"] = env.CAFE24_PROXY_SECRET;
-    }
-
     if (env.CAFE24_PROXY_BASIC_AUTH) {
       headers.Authorization =
         "Basic " +
