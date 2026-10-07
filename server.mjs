@@ -4,7 +4,7 @@ import { readFile, writeFile, mkdir, readdir as fsReaddir, rename, link, unlink,
 import { existsSync } from "node:fs";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { URL, fileURLToPath } from "node:url";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { KNOWN_STORE_CODES, readEcountOfflineSalesSnapshot } from "./scripts/read-ecount-offline-sales-snapshot.mjs";
 import { RENDER_SNAPSHOT_MONTHLY_PATTERN, isAllowedRenderSnapshotPath } from "./scripts/render-snapshot-manifest.mjs";
 import { PRODUCT_MASTER_FILE, productMasterProblem } from "./scripts/ecount-product-master.mjs";
@@ -78,10 +78,10 @@ import {
   trustedCafe24OrderDate
 } from "./scripts/cafe24-order-amount.mjs";
 import { normalizeBrandCode, normalizeBrandName, parseBrandAliases } from "./scripts/brand-engine.mjs";
-import { readPendingBrands, refreshPendingBrands, refreshPendingBrandsUnattended, loadPendingBrandSources, reviewPendingBrand, withPendingBrandWrite, approvedCafe24BrandCode, splitCodeIdentity, SPLIT_ACTION, readIdentitySplitBackup, restoreIdentitySplitBackup } from "./scripts/pending-brand-queue.mjs";
+import { readPendingBrands, refreshPendingBrands, refreshPendingBrandsUnattended, loadPendingBrandSources, reviewPendingBrand, withPendingBrandWrite, approvedCafe24BrandCode, splitCodeIdentity, rekeyInternalIdentity, SPLIT_ACTION, readIdentitySplitBackup, restoreIdentitySplitBackup } from "./scripts/pending-brand-queue.mjs";
 import { rebuildArchiveBrandSales } from "./scripts/archive-brand-attribution.mjs";
 import { createIdentitySplitRunner, checkSplitReadBack, createSplitTokenRegistry } from "./scripts/code-identity-split-runner.mjs";
-import { planInternalRekey, previewInternalRekey } from "./scripts/identity-rekey.mjs";
+import { planInternalRekey, previewInternalRekey, createIdentityRekeyRunner } from "./scripts/identity-rekey.mjs";
 import { refreshBrandSourcingMaster } from "./scripts/build-brand-sourcing-master.mjs";
 import { syncEcountInventory, REQUIRED_ENV_KEYS as ECOUNT_REQUIRED_ENV_KEYS } from "./scripts/sync-ecount-inventory.mjs";
 import { createEcountAutoSync } from "./scripts/ecount-auto-sync.mjs";
@@ -550,15 +550,26 @@ const server = isMainModule ? createServer(async (req, res) => {
     }
     // Identity-split maintenance: byte-exact restore of a split backup, and brand-attribution-only
     // rebuild of a saved archive. Internal auth plus the global CODE_IDENTITY_SPLIT_WRITE kill switch.
-    // REKEY_INTERNAL_IDENTITY dry-run (read-only): plan, attribution and archive reproduction for a minted
-    // Cafe24-format code that Cafe24 has not issued yet. Issues a single-use token only when every gate passes;
-    // there is no execute route yet.
+    // REKEY_INTERNAL_IDENTITY: dry-run (read-only) plans, previews attribution and reproduces archives for a
+    // minted Cafe24-format code Cafe24 has not issued yet, and issues a single-use token when every gate
+    // passes; execute consumes it (kill switch, backup, read-back, archive rebuild, byte-exact rollback).
     if (url.pathname === "/api/brands/rekey/dry-run") {
       if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
       if (!isAuthorizedOperatorAction(req)) return json(res, { ok: false, error: "Unauthorized" }, 401);
       const input = await readJsonBody(req);
       try {
-        return json(res, await rekeyInternalIdentityDryRun(String(input?.code || "")));
+        return json(res, await identityRekeyRunner.dryRun(String(input?.code || "")));
+      } catch (error) {
+        return json(res, { ok: false, error: error.code || "REKEY_FAILED", message: safeErrorMessage(error) }, Number(error.status) >= 400 ? Number(error.status) : 500);
+      }
+    }
+    if (url.pathname === "/api/brands/rekey/execute") {
+      if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
+      if (!isAuthorizedOperatorAction(req)) return json(res, { ok: false, error: "Unauthorized" }, 401);
+      const input = await readJsonBody(req);
+      try {
+        const result = await identityRekeyRunner.execute(String(input?.code || ""), input?.token);
+        return json(res, result, result.ok ? 200 : result.httpStatus);
       } catch (error) {
         return json(res, { ok: false, error: error.code || "REKEY_FAILED", message: safeErrorMessage(error) }, Number(error.status) >= 400 ? Number(error.status) : 500);
       }
@@ -5078,6 +5089,7 @@ async function verifyIdentitySplit(dry) {
 
 const identitySplitRunner = createIdentitySplitRunner({
   enabled: () => env.CODE_IDENTITY_SPLIT_WRITE === "on",
+  busy: () => identityRekeyRunner.isRunning(),
   planDryRun: async (id) => splitCodeIdentity(workDir, { id, action: SPLIT_ACTION }, buildIntelligenceBrandRegistry, { sources: await loadCurrentPendingBrandSources(), dryRun: true, preview: buildSplitAttributionPreview }),
   readCandidate: async (id) => (await readPendingBrands(workDir)).candidates.find((c) => c.id === id) || null,
   archiveCheck: (month) => rebuildArchiveBrandAttribution(month, null, { dryRun: true }),
@@ -5088,16 +5100,16 @@ const identitySplitRunner = createIdentitySplitRunner({
   restore: (backupId) => restoreIdentitySplitBackup(workDir, backupId)
 });
 
-const rekeyTokens = createSplitTokenRegistry();
-
-// Read-only: nothing here writes. Months start at the first saved archive that carries the code.
-async function rekeyInternalIdentityDryRun(code) {
+// Read-only plan for REKEY_INTERNAL_IDENTITY: nothing here writes. Months start at the first saved
+// archive that carries the code. `resolver` records every Brand Master name -> code so the read-back can
+// prove only the re-keyed identity moved.
+async function planRekeyDryRun(code) {
   const canonical = JSON.parse(await readFile(join(workDir, "brand-master.json"), "utf8"));
   const policies = JSON.parse(await readFile(join(workDir, "brand-commercial-policy.json"), "utf8").catch(() => '{"policies":[]}'));
   const productRegistry = JSON.parse(await readFile(join(workDir, "product-registry.json"), "utf8").catch(() => '{"entries":[]}'));
   const pending = await readPendingBrands(workDir);
   const plan = planInternalRekey({ canonical, policies, productRegistry, cafe24Brands: await fetchCafe24BrandList(), pendingCandidates: pending.candidates || [], input: { code } });
-  if (plan.status !== "PLANNED") return { ok: true, dryRun: true, ...plan };
+  if (plan.status !== "PLANNED") return plan;
   const archiveMonths = (await fsReaddir(join(workDir, "monthly")).catch(() => [])).map((f) => f.match(/^(\d{4}-\d{2})\.json$/)?.[1]).filter(Boolean).sort();
   let fromMonth = currentMonth();
   for (const month of archiveMonths) {
@@ -5110,23 +5122,59 @@ async function rekeyInternalIdentityDryRun(code) {
   const aliasesBefore = JSON.parse(await readFile(join(workDir, "intelligence/brand-aliases.json"), "utf8").catch(() => "[]"));
   const compatibility = { before: { brands: compatBefore.filter((b) => ids.has(b.id)), aliases: aliasesBefore.filter((a) => ids.has(a.brandId)) },
     after: { brands: derived.brands.filter((b) => ids.has(b.id)), aliases: derived.aliases.filter((a) => ids.has(a.brandId)) } };
-  const reasons = [];
-  for (const m of preview.months) {
-    if (!m.monthOfflineTotal.preserved) reasons.push(`${m.month}:OFFLINE_TOTAL_NOT_PRESERVED`);
-    if (!m.balanced) reasons.push(`${m.month}:NOT_BALANCED`);
-    if (!m.otherBrandsUnchanged) reasons.push(`${m.month}:OTHER_BRANDS_CHANGED`);
-    if (m.archive.reproduction === "FAILED") reasons.push(`${m.month}:ARCHIVE_SOURCE_MISMATCH`);
-  }
-  if (preview.sourcing?.error || preview.sourcing?.before?.sourcing_type !== preview.sourcing?.after?.sourcing_type) reasons.push("SOURCING_CHANGED");
   const sources = { brandMasterUpdatedAt: canonical.updatedAt ?? null, pendingUpdatedAt: pending.updatedAt ?? null,
+    pendingCounts: (pending.candidates || []).reduce((counts, c) => ({ ...counts, [c.status]: (counts[c.status] || 0) + 1 }), {}),
     ecountImportedAt: Object.fromEntries(await Promise.all(preview.months.map(async (m) => [m.month, (await readEcountOfflineSalesSnapshot(m.month, { workDir }))?.importedAt ?? null]))) };
-  const resultHash = createHash("sha256").update(JSON.stringify({ version: plan.version, diff: plan.diff, months: preview.months, sources })).digest("hex");
-  const eligible = reasons.length === 0;
-  const issued = eligible ? rekeyTokens.issue({ candidateId: code, version: plan.version, resultHash }) : null;
-  return { ok: true, dryRun: true, status: plan.status, version: plan.version, preconditions: plan.preconditions, identity: plan.identity,
-    diff: { ...plan.diff, compatibility, sourcing: preview.sourcing }, months: preview.months, sources,
-    execution: { eligible, reasons, writeEnabled: env.CODE_IDENTITY_SPLIT_WRITE === "on", executeRoute: null, ...(issued || {}) } };
+  return { status: plan.status, version: plan.version, preconditions: plan.preconditions, identity: plan.identity,
+    diff: { ...plan.diff, compatibility, sourcing: preview.sourcing }, months: preview.months, sources, resolver: await resolverSnapshot() };
 }
+
+async function resolverSnapshot() {
+  const context = await loadResolverContext({ workDir });
+  const names = [...new Set(context.brandMaster.brands.flatMap((b) => [b.brand_name, ...parseBrandAliases(b.name_aliases)]).filter(Boolean))].sort();
+  return Object.fromEntries(names.map((name) => [name, resolveIdentity({ productName: `${name} / rekey probe` }, context).brand?.brandCode ?? null]));
+}
+
+// Read-back after a re-key, against the files on disk, the live resolver and the commercial-policy service.
+async function verifyInternalRekey(dry) {
+  const fail = (message) => { throw Object.assign(new Error(message), { code: "READ_BACK_MISMATCH", status: 409 }); };
+  const from = dry.preconditions.code;
+  const to = dry.identity.brand_code;
+  const brands = JSON.parse(await readFile(join(workDir, "brand-master.json"), "utf8")).brands || [];
+  const entries = brands.filter((b) => b.brand_code === to);
+  if (entries.length !== 1 || JSON.stringify(entries[0]) !== JSON.stringify(dry.identity)) fail(`Brand Master entry ${to} is not the planned identity`);
+  if (brands.some((b) => b.brand_code === from)) fail(`${from} still owns a Brand Master entry`);
+  const policies = JSON.parse(await readFile(join(workDir, "brand-commercial-policy.json"), "utf8")).policies || [];
+  if (policies.some((p) => p.brand_code === from)) fail(`policy rows left on ${from}`);
+  const compat = JSON.parse(await readFile(join(workDir, "intelligence/brand-master-list.json"), "utf8"));
+  if (compat.some((b) => b.id === from) || !compat.some((b) => b.id === to)) fail("compatibility list not re-keyed");
+  const sourcing = (JSON.parse(await readFile(join(workDir, "brand-sourcing-master.json"), "utf8")).brands || []);
+  const row = sourcing.find((b) => b.brand_code === to);
+  if (sourcing.some((b) => b.brand_code === from) || !row || row.sourcing_type !== dry.diff.sourcing.before.sourcing_type ||
+      JSON.stringify(row.coverage) !== JSON.stringify(dry.diff.sourcing.before.coverage)) fail("sourcing master not carried over");
+  const capture = capturingResponse();
+  await handleIntelligenceRequest({ method: "GET", url: `/api/intelligence/commercial-policy?brand_code=${encodeURIComponent(to)}`, headers: { host: "internal" } }, capture);
+  if (capture.body?.policy_status !== "SOURCING_DEFAULT" || capture.body?.fallback?.sourcing_type !== dry.diff.sourcing.before.sourcing_type) fail(`effective policy for ${to} is ${capture.body?.policy_status}`);
+  const after = await resolverSnapshot();
+  for (const [name, code] of Object.entries(dry.resolver)) {
+    const expected = code === from ? to : code;
+    if (after[name] !== expected) fail(`resolver maps ${name} to ${after[name] ?? "nothing"}, expected ${expected}`);
+  }
+  const pending = await readPendingBrands(workDir);
+  const counts = (pending.candidates || []).reduce((acc, c) => ({ ...acc, [c.status]: (acc[c.status] || 0) + 1 }), {});
+  if (JSON.stringify(counts) !== JSON.stringify(dry.sources.pendingCounts)) fail("pending counts changed");
+}
+
+const identityRekeyRunner = createIdentityRekeyRunner({
+  enabled: () => env.CODE_IDENTITY_SPLIT_WRITE === "on",
+  busy: () => identitySplitRunner.isRunning(),
+  plan: planRekeyDryRun,
+  write: async (code, version, archiveMonths) => rekeyInternalIdentity(workDir, { code, expectedVersion: version }, buildIntelligenceBrandRegistry, { cafe24Brands: await fetchCafe24BrandList(), archiveMonths }),
+  verify: verifyInternalRekey,
+  rebuild: (month, backupId, dryRun) => rebuildArchiveBrandAttribution(month, backupId, { dryRun }),
+  archiveRows: async (month) => (await readMonthlyArchive(month))?.commerce?.brandSales || [],
+  restore: (backupId) => restoreIdentitySplitBackup(workDir, backupId)
+}, { registry: createSplitTokenRegistry() });
 
 // Recompute only commerce.brandSales of a saved archive after an identity split. `before` uses the
 // Brand Master / Product Registry captured in the split backup, `after` the current files; both go

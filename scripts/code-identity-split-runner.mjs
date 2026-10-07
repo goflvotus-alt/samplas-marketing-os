@@ -131,7 +131,7 @@ export function createIdentitySplitRunner(deps, { registry = createSplitTokenReg
 
   async function execute(id, token) {
     if (deps.enabled() !== true) throw runnerError("SPLIT_WRITE_DISABLED", "Identity-split writes are disabled by the global kill switch", 403);
-    if (running) throw runnerError("SPLIT_BUSY", "Another identity split is running", 409);
+    if (running || deps.busy?.()) throw runnerError("SPLIT_BUSY", "Another identity split is running", 409);
     running = true;
     const steps = [];
     let stage = "token";

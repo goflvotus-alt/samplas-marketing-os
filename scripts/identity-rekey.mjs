@@ -160,3 +160,136 @@ export async function previewInternalRekey(plan, beforeCanonical, { workDir, fro
   }
   return { months, sourcing };
 }
+
+// One-click scope: an identity with explicit policy rows still needs a reviewed plan for those rows.
+// ponytail: blocks any re-key that would move policy rows; lift when such a case is reviewed.
+export function rekeyReasons(dry) {
+  if (dry.status !== "PLANNED") return [dry.status || "NOT_PLANNED"];
+  const reasons = [];
+  const months = dry.months || [];
+  if (!months.length) reasons.push("NO_ATTRIBUTION_PREVIEW");
+  for (const m of months) {
+    if (m.monthOfflineTotal?.preserved !== true) reasons.push(`${m.month}:OFFLINE_TOTAL_NOT_PRESERVED`);
+    if (m.balanced !== true) reasons.push(`${m.month}:NOT_BALANCED`);
+    if (m.otherBrandsUnchanged !== true) reasons.push(`${m.month}:OTHER_BRANDS_CHANGED`);
+    if (m.archive?.reproduction === "FAILED") reasons.push(`${m.month}:ARCHIVE_SOURCE_MISMATCH`);
+  }
+  if ((dry.diff?.commercialPolicy?.before || []).length) reasons.push("EXPLICIT_POLICY_PRESENT");
+  const sourcing = dry.diff?.sourcing;
+  if (!sourcing || sourcing.error || !sourcing.before || sourcing.before.sourcing_type !== sourcing.after?.sourcing_type ||
+      JSON.stringify(sourcing.before.coverage) !== JSON.stringify(sourcing.after?.coverage)) reasons.push("SOURCING_CHANGED");
+  return reasons;
+}
+
+// Everything the operator reviewed; any change between dry-run and execute invalidates the token.
+export function rekeyResultHash(dry) {
+  return createHash("sha256").update(JSON.stringify({ version: dry.version, preconditions: dry.preconditions, identity: dry.identity, diff: dry.diff,
+    months: dry.months, sources: dry.sources, resolver: dry.resolver })).digest("hex");
+}
+
+const rekeyFailure = (code, message, status = 409) => rekeyError(code, message, status);
+
+/**
+ * Same safety model as createIdentitySplitRunner: dry-run issues a single-use token bound to the code,
+ * version and result hash; execute re-validates, writes with a backup, verifies, rebuilds the affected
+ * archives (dry-run, write, compare with the preview to the exact won), verifies again, and restores the
+ * backup byte for byte on any failure. deps: enabled, busy, plan, write, verify, rebuild, archiveRows, restore.
+ */
+export function createIdentityRekeyRunner(deps, { registry }) {
+  let running = false;
+  const bindingOf = (dry) => ({ candidateId: dry.preconditions.code, version: dry.version, resultHash: rekeyResultHash(dry) });
+  const archiveMonthsOf = (dry) => (dry.months || []).filter((m) => m.archive?.reproduction === "OK");
+
+  async function dryRun(code) {
+    const dry = await deps.plan(code);
+    if (dry.status !== "PLANNED") return { ok: true, dryRun: true, ...dry, execution: { eligible: false, reasons: rekeyReasons(dry) } };
+    const reasons = rekeyReasons(dry);
+    const eligible = reasons.length === 0;
+    const issued = eligible ? registry.issue(bindingOf(dry)) : null;
+    return { ok: true, dryRun: true, ...dry, execution: { eligible, reasons, writeEnabled: deps.enabled() === true, ...(issued || {}) } };
+  }
+
+  async function execute(code, token) {
+    if (deps.enabled() !== true) throw rekeyFailure("SPLIT_WRITE_DISABLED", "Identity writes are disabled by the global kill switch", 403);
+    if (running || deps.busy?.()) throw rekeyFailure("REKEY_BUSY", "Another identity change is running");
+    running = true;
+    const steps = [];
+    let stage = "token";
+    let backupId = null;
+    try {
+      const binding = registry.consume(token, code);
+      steps.push({ stage });
+
+      stage = "revalidate";
+      const dry = await deps.plan(code);
+      const reasons = rekeyReasons(dry);
+      if (reasons.length) throw rekeyFailure("PREFLIGHT_FAILED", reasons.join(","));
+      const fresh = bindingOf(dry);
+      if (fresh.version !== binding.version) throw rekeyFailure("VERSION_CONFLICT", "State changed since the dry-run");
+      if (fresh.resultHash !== binding.resultHash) throw rekeyFailure("DRY_RUN_CHANGED", "Dry-run result changed");
+      steps.push({ stage, version: dry.version });
+
+      stage = "rekey";
+      const months = archiveMonthsOf(dry);
+      let result;
+      try {
+        result = await deps.write(code, dry.version, months.map((m) => m.month));
+      } catch (error) {
+        backupId = error.backup?.backupId || null;
+        throw error;
+      }
+      backupId = result.backup?.backupId || null;
+      if (!backupId) throw rekeyFailure("BACKUP_MISSING", "Re-key returned without a backup");
+      if (result.sourcingRefresh?.ok !== true) throw rekeyFailure("SOURCING_REFRESH_FAILED", result.sourcingRefresh?.error || "sourcing rebuild failed");
+      steps.push({ stage, backupId });
+
+      stage = "verify";
+      await deps.verify(dry);
+      steps.push({ stage });
+
+      stage = "archive";
+      const archives = [];
+      for (const m of months) {
+        const preview = await deps.rebuild(m.month, backupId, true);
+        if (!preview.ok) throw rekeyFailure("ARCHIVE_REBUILD_FAILED", `${m.month} dry-run failed`);
+        const written = await deps.rebuild(m.month, backupId, false);
+        if (!written.ok) throw rekeyFailure("ARCHIVE_REBUILD_FAILED", `${m.month} write failed`);
+        // Every row the reviewed preview changed must land on exactly the previewed amounts, and the
+        // archive totals must equal the previewed totals.
+        const rows = await deps.archiveRows(m.month);
+        const amount = (c) => rows.filter((r) => r.brand_code === c).reduce((s, r) => s + Number(r.salesAmount || 0), 0);
+        for (const change of m.archive.changes || []) {
+          if (amount(change.brand_code) !== change.after.salesAmount) {
+            throw rekeyFailure("ARCHIVE_ATTRIBUTION_MISMATCH", `${m.month} ${change.brand_code} expected ${change.after.salesAmount}, got ${amount(change.brand_code)}`);
+          }
+        }
+        if (JSON.stringify(written.totals) !== JSON.stringify(m.archive.totals)) throw rekeyFailure("ARCHIVE_TOTAL_MISMATCH", `${m.month} totals differ from the preview`);
+        archives.push({ month: m.month, totals: written.totals, [dry.preconditions.code]: amount(dry.preconditions.code), [dry.identity.brand_code]: amount(dry.identity.brand_code) });
+      }
+      steps.push({ stage, months: archives.map((a) => a.month) });
+
+      stage = "final";
+      await deps.verify(dry);
+      steps.push({ stage });
+      return { ok: true, status: "COMPLETE", action: REKEY_ACTION, code, brandCode: dry.identity.brand_code, brandName: dry.identity.brand_name, backupId, version: dry.version, archives, steps };
+    } catch (error) {
+      const failure = { ok: false, status: "FAILED", stage, error: error.code || "REKEY_FAILED", message: error.message, code, backupId, rolledBack: false, steps };
+      if (backupId) {
+        try {
+          await deps.restore(backupId);
+          failure.rolledBack = true;
+        } catch (restoreError) {
+          failure.error = "ROLLBACK_FAILED";
+          failure.rollbackError = restoreError.code || restoreError.message;
+        }
+      }
+      const status = Number(error.status);
+      failure.httpStatus = failure.rolledBack ? 409 : !backupId && status >= 400 && status < 500 ? status : 500;
+      return failure;
+    } finally {
+      running = false;
+    }
+  }
+
+  return { dryRun, execute, isRunning: () => running };
+}

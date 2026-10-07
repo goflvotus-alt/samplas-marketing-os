@@ -147,3 +147,69 @@ Detector link, for later:
 B0000COL PREEMPTIVE REKEY — DRY RUN READY.
 
 One gate remains before execution: a direct archive reproduction on Production for 2026-08 and 2026-09. It runs inside the Production dry-run route, which needs a deploy. The operator also needs to decide on the DEV/Production policy drift (CONSIGNMENT 10% vs SOURCING_DEFAULT 20%).
+
+## Production dry-run (2026-10-07, after deploy of 79a9c39)
+
+- **Deploy:** origin/main is `79a9c39`. The deployed `server.mjs` and `scripts/identity-rekey.mjs` are byte-identical to the locally tested versions.
+  - Boot marker 2026-10-07T05:40:26.884Z. `/healthz` 200.
+  - Without auth, `POST /api/brands/rekey/dry-run` returns 401. `/api/brands/rekey/execute` returns 404, as designed.
+- **Request:** `POST /api/brands/rekey/dry-run {code: B0000COL}` with internal auth at 05:41:18Z. HTTP 200, `status: PLANNED`, `version 6c5627a5c14935ff` (same as the scratch dry-run).
+- **Preconditions:**
+  - MEANTIME X SUNDAYOFFCLUB, 2 aliases, inactive, confirmed.
+  - `cafe24MaxCode B0000BEI`; target `SPL_92ce8d7290`.
+  - No pending candidate on the code.
+- **Sources:**
+  - Brand Master `updatedAt` 2026-10-06T08:44:56.727Z
+  - pending `updatedAt` 2026-10-07T02:38:07.752Z
+  - ECOUNT importedAt: 2026-08 = 2026-09-02T05:51:01Z, 2026-09 = 2026-09-29T04:27:01Z, 2026-10 = none
+
+| Month | B0000COL → SPL_92ce8d7290 | Month offline before = after | Balanced | Other brands | Archive reproduction | Archive totals (sales / offline / online) unchanged |
+|---|---|---|---|---|---|---|
+| 2026-08 | 1,612,800 → 1,612,800 | 253,583,500 | yes | unchanged | **OK** | 287,916,120 / 253,583,500 / 34,332,620 |
+| 2026-09 | 2,798,000 → 2,798,000 | 201,473,160 | yes | unchanged | **OK** | 232,440,953 / 201,473,160 / 30,967,793 |
+| 2026-10 | 0 → 0 | 0 | yes | unchanged | n/a (no saved archive) | — |
+
+- Archive changes would be exactly two rows per month: B0000COL goes to 0, and a new SPL_92ce8d7290 row carries the same amount.
+- **Policy:** no explicit row; nothing moves. SOURCING_DEFAULT 20% stays. The DEV-only CONSIGNMENT 10% row is not involved.
+- **Registry:** 0 entries move.
+- **Compatibility:** the id and the 2 name aliases move to the SPL code, and the code alias `B0000COL` is replaced by `SPL_92ce8d7290`.
+- **Sourcing:** WHOLESALE, 9 products / 66 lines, identical before and after.
+- **Execution block:**
+  - `eligible: true`, `reasons: []`, `writeEnabled: true`, `executeRoute: null`.
+  - A 48-character token was issued and expires at 05:51:26.677Z (10 minutes). Its value was redacted and never used. It cannot be used, because there is no execute route.
+- **Mutation check:** pending, Brand Master and commercial-policy responses are byte-identical before and after the dry-run.
+  - Compared with the earlier audit, the Brand Master response differs only in the derived `brandCodeCoverage` (product catalog cache rebuilt after the restart). All 305 entries are identical.
+- **Regression:** the resolver and Brand Master for PERSONSOUL B0000BDG / BORC SPL_00b4a2e6cc, UNDER THE SIGN B0000BDJ / GKL SPL_e4af36d3ce, and PRAYING B0000BDM / LAMASKARADE SPL_4e0baa7a30 are unchanged.
+  - Each SPL side still has 1 explicit policy row; each new side has 0.
+  - All three pending candidates are still APPROVED.
+- **Verdict:** B0000COL PREEMPTIVE REKEY — PRODUCTION DRY RUN PASS. Nothing was executed.
+
+## Execute path — implemented, not deployed, not run on Production (2026-10-07)
+
+- **Route:** `POST /api/brands/rekey/execute {code, token}`.
+  - Operator session or internal auth.
+  - Behind the global kill switch `CODE_IDENTITY_SPLIT_WRITE`.
+- **Runner:** `createIdentityRekeyRunner` in `scripts/identity-rekey.mjs`. It mirrors the split runner. Execute runs these stages in order:
+  1. token: consume the single-use token. Missing, wrong, expired, reused or other-code tokens are rejected.
+  2. revalidate: re-plan and recompute every gate; the version and result hash must match the dry-run.
+  3. rekey: `rekeyInternalIdentity` re-plans under the write lock with `expectedVersion`. It backs up 7 files plus each affected `monthly/*.json`, using the identity-split manifest with sha256. It then writes Brand Master, policy, registry and compatibility atomically and rebuilds sourcing.
+  4. verify: Brand Master read-back, policy, compatibility and sourcing checks, the resolver snapshot, effective policy SOURCING_DEFAULT, and pending counts.
+  5. archive: for each month with reproduction OK, rebuild as a dry-run, then write. Every previewed row must match to the won, and the totals must equal the preview.
+  6. final: verify again, then COMPLETE.
+- **Rollback:** any failure after the backup triggers a byte-exact `restoreIdentitySplitBackup`.
+- **Concurrency:** the split and re-key runners refuse to run while the other is running (`busy`).
+- **Gates (`rekeyReasons`):** every month must be preserved and balanced with other brands unchanged, and archive reproduction must not fail. The re-key is also refused when there is an explicit policy row to move (one-click scope) or when sourcing type or coverage would change.
+- **Read-back:** the planned identity entry exactly; nothing left on the old code; no policy rows on the old code; compatibility re-keyed; sourcing carried over; and every Brand Master name or alias resolving as before except the re-keyed identity.
+- **UI:** not added. This is a one-off operator action through the API.
+- **Tests:** `test/identity-rekey-runner.test.mjs` (7 tests).
+  - Happy path, plus token safety: kill switch, missing, wrong, other-code, expired and reused tokens.
+  - Revalidation: version change, dry-run result change, new Cafe24 ownership.
+  - Gates: archive reproduction, preserved, balanced, other brands, explicit policy, sourcing.
+  - Rollback: write failure, archive rebuild failure, archive amount off by 1 won. Each restores byte for byte.
+  - Concurrency, route auth source check, and the MCP allowlist.
+  - Full suite: 1390/1391. The only failure is `mcp-route.test.mjs`, which cannot load `jose` locally (pre-existing).
+- **Local end-to-end** on a scratch copy of DEV data, aligned to Production (no DEV-only COL policy row, drifted DEV 2026-08 archive removed), running real server code:
+  - dry-run PLANNED, version 6c5627a5c14935ff, eligible.
+  - execute COMPLETE. 2026-09 B0000COL went 2,798,000 → 0 and SPL 0 → 2,798,000; totals were unchanged.
+  - A reused token returned 403 SPLIT_TOKEN_USED. Re-planning returned ALREADY_REKEYED.
+  - The split-restore of the backup returned all 8 files to their original bytes.

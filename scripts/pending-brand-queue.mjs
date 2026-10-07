@@ -11,6 +11,7 @@ import { refreshBrandSourcingMaster, stripConsignmentPrefix } from "./build-bran
 import { readEcountProductMaster } from "./ecount-product-master.mjs";
 import { CODE_REUSE_REVIEW_REASON, auditUnconfirmedCafe24Codes, classifyCodeReuse } from "./cafe24-code-reuse.mjs";
 import { SPLIT_ACTION, planCodeIdentitySplit } from "./code-identity-split.mjs";
+import { planInternalRekey } from "./identity-rekey.mjs";
 import { buildBrandSourcingMaster, loadInputs as loadSourcingInputs } from "./build-brand-sourcing-master.mjs";
 
 async function readJson(file, fallback) {
@@ -604,6 +605,41 @@ export function splitCodeIdentity(workDir, input, buildCompatibility, { replace 
       sourcingRefresh = { ok: false, error: error.message };
     }
     return { ok: true, dryRun: false, ...summary, sourcingRefresh, backup };
+  });
+}
+
+// REKEY_INTERNAL_IDENTITY executor. Re-plans under the write lock with the dry-run version, backs up
+// (same manifest/restore as identity splits) Brand Master, policy, registry, compatibility, sourcing and
+// the archives that will be rebuilt, then writes the four identity files atomically and rebuilds sourcing.
+export function rekeyInternalIdentity(workDir, input, buildCompatibility, { cafe24Brands = [], archiveMonths = [], replace = rename } = {}) {
+  return withPendingBrandWrite(async () => {
+    if (input?.expectedVersion === undefined) throw Object.assign(new Error("expectedVersion from the dry-run is required"), { code: "VERSION_REQUIRED", status: 409 });
+    const files = {
+      canonical: join(workDir, "brand-master.json"),
+      policies: join(workDir, "brand-commercial-policy.json"),
+      productRegistry: join(workDir, "product-registry.json"),
+      compatibility: join(workDir, "intelligence/brand-master-list.json"),
+      aliases: join(workDir, "intelligence/brand-aliases.json")
+    };
+    const plan = planInternalRekey({ canonical: await readJson(files.canonical, null), policies: await readJson(files.policies, { policies: [] }),
+      productRegistry: await readJson(files.productRegistry, { entries: [] }), cafe24Brands, pendingCandidates: (await readPendingBrands(workDir)).candidates, input });
+    if (plan.status !== "PLANNED") throw Object.assign(new Error(`Nothing to re-key (${plan.status})`), { code: plan.status, status: 409 });
+    const derived = buildCompatibility(Array.isArray(plan.canonical) ? plan.canonical : plan.canonical.brands);
+    const backup = await backupWorkFiles(workDir, [...SPLIT_BACKUP_FILES, ...archiveMonths.map(month => `monthly/${month}.json`)], `rekey-${plan.preconditions.code}`);
+    try {
+      await writeFilesAtomically([[files.canonical, plan.canonical], [files.policies, plan.policies], [files.productRegistry, plan.productRegistry],
+        [files.compatibility, derived.brands], [files.aliases, derived.aliases]], { replace });
+    } catch (error) {
+      throw Object.assign(error, { backup });
+    }
+    let sourcingRefresh;
+    try {
+      const sourcing = await refreshBrandSourcingMaster(workDir);
+      sourcingRefresh = { ok: true, brands: sourcing.brands.length, generatedAt: sourcing.generatedAt };
+    } catch (error) {
+      sourcingRefresh = { ok: false, error: error.message };
+    }
+    return { ok: true, version: plan.version, identity: plan.identity, sourcingRefresh, backup };
   });
 }
 
