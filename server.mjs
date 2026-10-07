@@ -1160,7 +1160,7 @@ const server = isMainModule ? createServer(async (req, res) => {
     }
     if (url.pathname === "/api/intelligence/clients") {
       const since = url.searchParams.get("since") || `${currentMonth()}-01`;
-      const until = url.searchParams.get("until") || todayKey();
+      let until = url.searchParams.get("until") || todayKey();
       if (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) {
         return json(res, { ok: false, error: "Bad Request", message: "since and until must be YYYY-MM-DD" }, 400);
       }
@@ -1175,6 +1175,11 @@ const server = isMainModule ? createServer(async (req, res) => {
       // view=summary: same canonical aggregates without per-client records (MCP read tools).
       const summaryView = url.searchParams.get("view") === "summary";
       try {
+        // coverage=current-month (the UI's "this month" preset): end at the date online and offline are
+        // both known, exactly like Monthly. Explicit ranges keep the partial-coverage policy (nulls).
+        const requestedUntil = until;
+        const asOf = url.searchParams.get("coverage") === "current-month" && since === `${currentMonth()}-01` ? await currentMonthAsOf(currentMonth()) : null;
+        if (asOf && asOf.asOfDate < until) until = asOf.asOfDate;
         const cafe24 = await fetchCafe24Orders(since, until, { limit: 500 });
         const overview = await buildClientsOverview({ since, until, cafe24Orders: cafe24.orders, storeCode, details: !summaryView });
         const coverage = await buildClientsSourceCoverage(since, until, storeCode, !cafe24.error);
@@ -1197,7 +1202,8 @@ const server = isMainModule ? createServer(async (req, res) => {
             ({ summary, accounting } = reconcileHistoricalClientsSummary(summary, overview.summary, archive));
           }
         }
-        const payload = { ok: true, ...overview, summary, coverage, storeCoverage: coverage.offline, ...(accounting ? { accounting } : {}) };
+        const payload = { ok: true, ...overview, summary, coverage, storeCoverage: coverage.offline, ...(accounting ? { accounting } : {}),
+          ...(asOf ? { requestedPeriod: { since, until: requestedUntil }, asOf } : {}) };
         return json(res, summaryView ? toClientsSummaryView(payload) : payload);
       } catch (error) {
         return json(res, { ok: false, error: "Internal Server Error", message: safeErrorMessage(error) }, 500);
@@ -4860,6 +4866,20 @@ export function currentMonthSalesCutoff(monthEnd, today, snapshotThrough) {
   return [monthEnd, today, snapshotThrough].sort()[0];
 }
 
+// Current month only: the last date both online and offline are known (ECOUNT covers the month from
+// its first day). Monthly and the Clients "this month" view share this one rule.
+async function currentMonthAsOf(month) {
+  if (month !== currentMonth()) return null;
+  const monthStart = `${month}-01`;
+  const monthEnd = monthEndKey(month);
+  const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
+  const snapshotThrough = String(snapshot?.periodEnd || "");
+  if (!(String(snapshot?.periodStart || "") <= monthStart && snapshotThrough >= monthStart)) return null;
+  const today = todayKey();
+  const asOfDate = currentMonthSalesCutoff(monthEnd, today, snapshotThrough);
+  return { asOfDate, offlineThrough: snapshotThrough, currentMonthInProgress: asOfDate < monthEnd, uncollectedThroughToday: asOfDate < today };
+}
+
 export async function buildMonthlyArchive(month) {
   if (!isValidMonthKey(month)) {
     throw new Error("month는 YYYY-MM 형식이어야 합니다.");
@@ -4894,16 +4914,10 @@ export async function buildMonthlyArchive(month) {
 
   // Current month: align online/offline sales to the last available ECOUNT date.
   // Historical monthly archives retain their existing coverage policy.
-  if (month === currentMonth()) {
-    const snapshot = await readEcountOfflineSalesSnapshot(month, { workDir });
-    const today = todayKey();
-    const snapshotThrough = String(snapshot?.periodEnd || "");
-
-    if (
-      String(snapshot?.periodStart || "") <= monthStart &&
-      snapshotThrough >= monthStart
-    ) {
-      const asOfDate = currentMonthSalesCutoff(monthEnd, today, snapshotThrough);
+  {
+    const asOf = await currentMonthAsOf(month);
+    if (asOf) {
+      const { asOfDate } = asOf;
       const bounded = await buildCanonicalTotalSales({
         since: monthStart,
         until: asOfDate
@@ -4925,8 +4939,8 @@ export async function buildMonthlyArchive(month) {
         coverage: {
           ...bounded.coverage,
           asOfDate,
-          currentMonthInProgress: asOfDate < monthEnd,
-          uncollectedThroughToday: asOfDate < today
+          currentMonthInProgress: asOf.currentMonthInProgress,
+          uncollectedThroughToday: asOf.uncollectedThroughToday
         },
         provenance: {
           ...sales.provenance,

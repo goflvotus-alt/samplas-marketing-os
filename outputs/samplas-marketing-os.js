@@ -12488,14 +12488,17 @@ async function refreshClientsView() {
   }
   const range = operationsDateRange();
   // STORE-BATCH-D: Clients도 공유 storeFilterState를 사용한다(화면별 별도 selector 없음).
-  const query = `?since=${encodeURIComponent(range.since)}&until=${encodeURIComponent(range.until)}${storeFilterState !== "ALL" ? `&store=${storeFilterState}` : ""}`;
+  // "이번 달" asks the server to end at the date online and offline are both known (Monthly's asOfDate);
+  // explicit ranges are sent as chosen and keep the partial-coverage policy.
+  const coverageParam = range.label === "이번 달" ? "&coverage=current-month" : "";
+  const query = `?since=${encodeURIComponent(range.since)}&until=${encodeURIComponent(range.until)}${storeFilterState !== "ALL" ? `&store=${storeFilterState}` : ""}${coverageParam}`;
   // STEP48: ECOUNT 동기화 시각 표시용. 새 API를 만들지 않고, Monthly/Today가 이미 쓰는
   // /api/ecount-sales/monthly를 재사용해 importedAt만 함께 읽는다(계산에는 쓰지 않음).
   const ecountFreshnessMonth = String(range.until || "").slice(0, 7);
   const [data, ecountFreshnessSnapshot] = await Promise.all([
     getClientsOverviewJson(
       intelligenceUrl(`/api/intelligence/clients${query}`),
-      `${range.since}|${range.until}|${storeFilterState}`
+      `${range.since}|${range.until}|${storeFilterState}|${coverageParam}`
     ),
     /^\d{4}-\d{2}$/.test(ecountFreshnessMonth) ? getJson(`/api/ecount-sales/monthly?month=${ecountFreshnessMonth}`, 6000) : Promise.resolve(null)
   ]);
@@ -12511,7 +12514,8 @@ async function refreshClientsView() {
     return;
   }
   statusTarget.className = "ad-status-banner good";
-  statusTarget.innerHTML = `<span class="status-dot"></span><strong>고객 데이터 연결됨</strong><span class="note">${esc(range.label)} · ${esc(data.periodStart || range.since)} ~ ${esc(data.periodEnd || range.until)}</span>`;
+  const asOfNote = data.asOf ? ` · 오프라인 최신 ${esc(String(data.asOf.offlineThrough).slice(5))}` : "";
+  statusTarget.innerHTML = `<span class="status-dot"></span><strong>고객 데이터 연결됨</strong><span class="note">${esc(range.label)} · 데이터 기준 ${esc(data.periodStart || range.since)} ~ ${esc(data.periodEnd || range.until)}${asOfNote}</span>`;
   clientsOverviewState = data;
   renderClientsSummaryCards(data.summary || {}, (data.typeBreakdown || []).find((row) => row.type === "ff") || {}, data.storeCode || null, data.storeCoverage || null, data.accounting || null);
   renderClientsTypeBreakdown(data.typeBreakdown || [], data.summary || {});
