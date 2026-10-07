@@ -5011,7 +5011,11 @@ async function renderMonthlyArchiveReport(month, renderSeq) {
   // archive.content/marketing 필드 자체와 계산 로직은 그대로 두고(서버/API 변경 없음),
   // Monthly의 요약 문장 렌더링에서만 제외한다.
   const monthlySummary = archive.sales?.coverage?.complete === true
-    ? monthlyReportDirectionText("온라인 실제 매출은", commerce.paidAmount, summaryPreviousCommerce.paidAmount, { formatter: apiWon })
+    // Same online figure as the KPI card: canonical sales online (the server's historical view), archive commerce as fallback.
+    ? monthlyReportDirectionText("온라인 실제 매출은",
+      hasApiValue(archive.sales?.onlineSales?.paidAmount) ? archive.sales.onlineSales.paidAmount : commerce.paidAmount,
+      hasMonthlySummaryPrevious && hasApiValue(previousArchive.sales?.onlineSales?.paidAmount) ? previousArchive.sales.onlineSales.paidAmount : summaryPreviousCommerce.paidAmount,
+      { formatter: apiWon })
     : "현재 월은 부분 집계 중이며 완결월과의 증감 비교를 표시하지 않습니다";
   const liveDraftNotice = archive.archiveStatus === "live"
     ? "현재 화면은 Live Draft 기준입니다."

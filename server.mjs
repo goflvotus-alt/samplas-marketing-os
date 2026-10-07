@@ -875,7 +875,8 @@ const server = isMainModule ? createServer(async (req, res) => {
             await logApiError("monthly_archive_freshness_repair_save", error, { month });
           }
         }
-        return json(res, { ...enriched, archiveStatus: "saved" });
+        // Display only: the stored archive above is never rewritten with these values.
+        return json(res, { ...enriched, sales: await historicalMonthlySalesView(month, enriched.sales), archiveStatus: "saved" });
       }
       const archive = await buildMonthlyArchive(month);
       return json(res, { ...archive, archiveStatus: "draft" });
@@ -5405,6 +5406,38 @@ export function reconcileHistoricalClientsSummary(summary, detailSummary, archiv
       unassignedRevenue: totalSalesAmount === null ? null : totalSalesAmount - attributedRevenue
     }
   };
+}
+
+// Closed-month Monthly view: the same rule as Clients (resolveHistoricalClientsSales). A complete archive
+// shows the live canonical online + the saved archive offline; a null archive offline shows the canonical
+// known amounts with partial coverage. The saved archive is immutable; its online stays as audit metadata
+// in sales.reconciliation. Without a canonical result the archive amounts are shown unchanged.
+export function resolveHistoricalMonthlySales({ sales, canonical, offlineThrough, since, until }) {
+  const archiveOnlineAmount = finiteOrNull(sales?.onlineSales?.paidAmount);
+  const archiveOfflineAmount = finiteOrNull(sales?.offlineSales?.offlineSalesAmount);
+  if (!canonical) {
+    return { ...sales, reconciliation: { basis: "saved_monthly_archive", onlineBasis: "saved_monthly_archive", canonicalOnlineAmount: null,
+      archiveOnlineAmount, onlineDeltaFromArchive: null, offlineBasis: "saved_monthly_archive", archiveOfflineAmount } };
+  }
+  const resolved = resolveHistoricalClientsSales({ summary: {}, detailSummary: {}, archive: { sales }, canonical, offlineThrough, since, until });
+  const { attributedRevenue, unassignedRevenue, ...accounting } = resolved.accounting;
+  return {
+    ...sales,
+    onlineSales: { ...sales?.onlineSales, paidAmount: resolved.summary.onlineSalesAmount },
+    offlineSales: { ...sales?.offlineSales, offlineSalesAmount: resolved.summary.offlineSalesAmount },
+    totalSales: { ...sales?.totalSales, amount: resolved.summary.totalSalesAmount },
+    reconciliation: resolved.asOf
+      ? { ...accounting, canonicalOnlineAmount: finiteOrNull(canonical?.onlineSales?.paidAmount), archiveOnlineAmount, archiveOfflineAmount, asOf: resolved.asOf }
+      : accounting
+  };
+}
+
+async function historicalMonthlySalesView(month, sales) {
+  const since = `${month}-01`;
+  const until = monthEndKey(month);
+  const canonical = await buildCanonicalTotalSales({ since, until }).catch(() => null);
+  const snapshot = finiteOrNull(sales?.offlineSales?.offlineSalesAmount) === null ? await readEcountOfflineSalesSnapshot(month, { workDir }) : null;
+  return resolveHistoricalMonthlySales({ sales, canonical, offlineThrough: snapshot?.periodEnd || null, since, until });
 }
 
 // Closed month, saved archive. A complete archive keeps the saved reconciliation. An archive whose total
