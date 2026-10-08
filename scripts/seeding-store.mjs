@@ -32,7 +32,7 @@ export function validatePayload(body){
   const allowed=op.type==='update_project'?['type','patch']:op.type==='remove_seeding'?['type','instagramId']:['type','instagramId','patch'];
   if(Object.keys(op).some(k=>!allowed.includes(k)))throw error('invalid_operation_field');
   if(op.type!=='update_project'&&!/^[a-z0-9._]{1,30}$/.test(normalizeId(op.instagramId)))throw error('invalid_instagramId');
-  if(op.type==='update_project')validatePatch(op.patch,PROJECT_FIELDS);
+  if(op.type==='update_project'){validatePatch(op.patch,PROJECT_FIELDS);if(own(op.patch,'name')&&(!op.patch.name.trim()||op.patch.name.length>200))throw error('invalid project name');}
   else if(op.type==='update_creator')validatePatch(op.patch,['memo']);
   else if(op.type==='update_seeding')validatePatch(op.patch,RECORD_FIELDS);
   else if(op.type!=='remove_seeding'&&op.patch!==undefined)validatePatch(op.patch,RECORD_FIELDS);
@@ -40,13 +40,17 @@ export function validatePayload(body){
  return body;
 }
 function applyPatch(r,patch){
- const oldTracking=r.trackingNumber;
+ const oldTracking=r.trackingNumber,oldShipping=r.shipping;
  for(const [k,v] of Object.entries(patch))r[aliases[k]||k]=v;
  if(own(patch,'formStatus'))r.formStatus=r.response;
- if(own(patch,'trackingNumber')&&r.trackingNumber){r.shipping='출고 완료';if(!r.shippedAt)r.shippedAt=today();if(!oldTracking&&(!r.deliveryStatus||r.deliveryStatus==='tracking_missing'))r.deliveryStatus='registered';}
- if(r.deliveredAt)r.deliveryStatus='delivered';
- const basis=r.deliveredAt||r.shippedAt;if(basis)r.deadline=plus7(basis);r.uploadDeadline=r.deadline||'';
- if(r.shippedAt&&r.deliveredAt&&r.shippedAt>r.deliveredAt)throw error('deliveredAt precedes shippedAt');
+ const shippingTouched=['trackingNumber','shippedAt','deliveredAt','deliveryStatus','shippingStatus','uploadDeadline'].some(k=>own(patch,k));
+ if(shippingTouched){
+  if(own(patch,'trackingNumber')&&r.trackingNumber){r.shipping='출고 완료';if(!r.shippedAt)r.shippedAt=today();if(!oldTracking&&(!r.deliveryStatus||r.deliveryStatus==='tracking_missing'))r.deliveryStatus='registered';}
+  if(patch.shippingStatus==='출고 완료'&&oldShipping!=='출고 완료'&&!r.shippedAt)r.shippedAt=today();
+  if(r.deliveredAt)r.deliveryStatus='delivered';
+  const basis=r.deliveredAt||r.shippedAt;if(basis)r.deadline=plus7(basis);r.uploadDeadline=r.deadline||'';
+  if(r.shippedAt&&r.deliveredAt&&r.shippedAt>r.deliveredAt)throw error('deliveredAt precedes shippedAt');
+ }
  if(own(patch,'postUrl')&&r.postUrl){r.uploadStatus='completed';r.uploadStatusMode='manual';r.uploadVerifiedBy='manual';r.uploadedAt||=today();r.uploadCheckedAt=new Date().toISOString();}
  if(own(patch,'uploadStatus')&&!own(patch,'uploadStatusMode')){r.uploadStatusMode='manual';r.uploadVerifiedBy='manual';r.uploadCheckedAt=new Date().toISOString();if(r.uploadStatus==='completed')r.uploadedAt||=today();}
 }
@@ -58,7 +62,7 @@ export function effectiveStatus(r){
 export function recordView(r,c){const result={id:r.id,creatorId:r.creatorId,instagramId:c.instagram};for(const k of RECORD_FIELDS)result[k]=r[aliases[k]||k]??(['followup'].includes(k)?false:k==='trackingHistory'?[]:'');result.formStatus=r.formStatus||r.response;result.uploadStatus=effectiveStatus(r);return result;}
 export function projectView(p){return {...p,productName:p.product||'',startDate:p.start||'',endDate:p.end||''};}
 export function summary(rs){const active=rs.filter(r=>r.contact!=='제외');return {total:rs.length,contacted:active.filter(r=>['DM 완료','무응답'].includes(r.contact)).length,responded:active.filter(r=>r.response==='응답 완료').length,shipped:active.filter(r=>r.shipping==='출고 완료').length,uploadCompleted:active.filter(r=>effectiveStatus(r)==='completed').length,uploadWaiting:active.filter(r=>r.shipping==='출고 완료'&&effectiveStatus(r)!=='completed').length,overdue:active.filter(r=>effectiveStatus(r)==='overdue').length,followUpNeeded:active.filter(r=>r.followup||r.contact==='무응답'&&!r.followupContactedAt).length};}
-export function detail(doc,p){const rs=doc.seedings.filter(r=>r.projectId===p.id),ids=new Set(rs.map(r=>r.creatorId));return {ok:true,project:projectView(p),seedings:rs.map(r=>recordView(r,doc.creators.find(c=>c.id===r.creatorId))),creators:doc.creators.filter(c=>ids.has(c.id)).map(c=>{const all=doc.seedings.filter(r=>r.creatorId===c.id);return {...c,instagramId:c.instagram,projectHistory:all.map(r=>({projectName:doc.projects.find(p=>p.id===r.projectId)?.name,product:r.product,shippedAt:r.shippedAt,postUrl:r.postUrl})),shipmentCount:all.filter(r=>r.shipping==='출고 완료').length,uploadCompletedCount:all.filter(r=>effectiveStatus(r)==='completed').length,latestSeedingDate:all.map(r=>r.shippedAt).filter(Boolean).sort().at(-1)||''};}),summary:summary(rs)};}
+export function detail(doc,p){const rs=doc.seedings.filter(r=>r.projectId===p.id);return {ok:true,project:projectView(p),seedings:rs.map(r=>recordView(r,doc.creators.find(c=>c.id===r.creatorId))),creators:doc.creators.map(c=>{const all=doc.seedings.filter(r=>r.creatorId===c.id);return {...c,instagramId:c.instagram,projectHistory:all.map(r=>({projectName:doc.projects.find(p=>p.id===r.projectId)?.name,product:r.product,shippedAt:r.shippedAt,postUrl:r.postUrl})),shipmentCount:all.filter(r=>r.shipping==='출고 완료').length,uploadCompletedCount:all.filter(r=>effectiveStatus(r)==='completed').length,latestSeedingDate:all.map(r=>r.shippedAt).filter(Boolean).sort().at(-1)||''};}),summary:summary(rs)};}
 export function applyOperations(doc,p,operations){
  const next=structuredClone(doc),project=next.projects.find(x=>x.id===p.id);
  for(const op of operations){

@@ -6,7 +6,7 @@ All three routes require existing `AI_AUDIT_SECRET` in `x-samplas-internal-token
 GETs never write. PUT validates the whole batch before modifying a clone and uploads once with Dropbox `mode:update` and the read `rev`. Project version and `updatedAt` are server-controlled.
 `version` is required; mismatch or concurrent Dropbox revision change returns 409 with currentVersion. Malformed/unknown operations and disallowed fields return 400; absent project returns 404. No full-document HTTP replacement is supported.
 Operations: update_seeding, add_seeding, remove_seeding, update_project, add_creator_to_project; update_creator permits Creator memo only to preserve existing UI.
-Handles: trim, remove leading @, lowercase; duplicate project members rejected. Removed records do not delete reusable creators. Project rename checks uniqueness.
+Handles: trim, remove leading @, lowercase; duplicate project members rejected. Removed records do not delete reusable creators; authenticated detail includes the reusable Creator database, including creators without a current project. Project rename checks uniqueness.
 Tracking registration marks shipped and fills only an absent shippedAt. deliveredAt takes deadline priority (+7); shipping and upload fields are never changed by a form-only patch. Explicit postUrl/completion is manual confirmation. Automatic upload statuses use Seoul dates; manual states are retained.
 List responses contain counts only, no recipient phone/address. Detail is authenticated and contains recipient information. Responses use Cache-Control:no-store; detail/PUT ETag is the project version, while Dropbox rev is the stronger storage CAS guard.
 ## Migration / rollback
