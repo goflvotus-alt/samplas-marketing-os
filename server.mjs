@@ -1,3 +1,4 @@
+import { SEEDING_MCP_PATH, serveSeedingMcp, createSeedingRestClient } from './scripts/seeding-mcp.mjs';
 import { handleSeeding } from './scripts/seeding-store.mjs';
 import { createServer } from "node:http";
 import { collectWeeklyAccount, captureWeeklyFollowers } from "./scripts/weekly-account-demand.mjs";
@@ -657,6 +658,11 @@ const server = isMainModule ? createServer(async (req, res) => {
     }
     if (url.pathname.startsWith("/api/ai-audit/") && !isAiAuditAuthorized(req, env)) {
       return json(res, { error: "Unauthorized" }, 401);
+    }
+    if (url.pathname === SEEDING_MCP_PATH) {
+      return serveSeedingMcp(req, res, createSeedingRestClient({
+        baseUrl: `http://127.0.0.1:${port}`, token: env.AI_AUDIT_SECRET
+      }));
     }
     if (url.pathname === "/api/ai-audit/health") {
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
