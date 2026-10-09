@@ -51,7 +51,15 @@ function applyPatch(r,patch){
   const basis=r.deliveredAt||r.shippedAt;if(basis)r.deadline=plus7(basis);r.uploadDeadline=r.deadline||'';
   if(r.shippedAt&&r.deliveredAt&&r.shippedAt>r.deliveredAt)throw error('deliveredAt precedes shippedAt');
  }
- if(own(patch,'postUrl')&&r.postUrl){r.uploadStatus='completed';r.uploadStatusMode='manual';r.uploadVerifiedBy='manual';r.uploadedAt||=today();r.uploadCheckedAt=new Date().toISOString();}
+ if(own(patch,'postUrl')&&r.postUrl){
+  const verifiedBy=patch.uploadVerifiedBy;
+  const apiVerified=patch.uploadStatusMode==='auto'&&['api','external_check'].includes(verifiedBy);
+  r.uploadStatus='completed';
+  r.uploadStatusMode=apiVerified?'auto':'manual';
+  r.uploadVerifiedBy=apiVerified?verifiedBy:'manual';
+  r.uploadedAt||=today();
+  r.uploadCheckedAt=patch.uploadCheckedAt||new Date().toISOString();
+ }
  if(own(patch,'uploadStatus')&&!own(patch,'uploadStatusMode')){r.uploadStatusMode='manual';r.uploadVerifiedBy='manual';r.uploadCheckedAt=new Date().toISOString();if(r.uploadStatus==='completed')r.uploadedAt||=today();}
 }
 export function effectiveStatus(r){

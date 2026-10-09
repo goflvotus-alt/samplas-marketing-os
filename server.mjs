@@ -1,5 +1,6 @@
 import { SEEDING_MCP_PATH, serveSeedingMcp, createSeedingRestClient } from './scripts/seeding-mcp.mjs';
 import { handleSeeding } from './scripts/seeding-store.mjs';
+import { buildTaggedUploadPlans } from './scripts/seeding-tagged-upload-matcher.mjs';
 import { createServer } from "node:http";
 import { collectWeeklyAccount, captureWeeklyFollowers } from "./scripts/weekly-account-demand.mjs";
 import { readFile, writeFile, mkdir, readdir as fsReaddir, rename, link, unlink, rm } from "node:fs/promises";
@@ -212,6 +213,13 @@ const server = isMainModule ? createServer(async (req, res) => {
           lastSuccessAt: instagramSyncScheduler.lastSuccessAt,
           lastError: instagramSyncScheduler.lastError,
           intervalMs: instagramSyncScheduler.intervalMs
+        },
+        seedingTaggedUploadSync: {
+          lastAttemptAt: seedingTaggedUploadScheduler.lastAttemptAt,
+          lastSuccessAt: seedingTaggedUploadScheduler.lastSuccessAt,
+          lastError: seedingTaggedUploadScheduler.lastError,
+          lastMatched: seedingTaggedUploadScheduler.lastMatched,
+          intervalMs: seedingTaggedUploadScheduler.intervalMs
         },
         ecountInventorySync: await ecountAutoSyncStatus(),
         // Additive only — never exposes the Dropbox path's credential (app secret /
@@ -1291,6 +1299,10 @@ const server = isMainModule ? createServer(async (req, res) => {
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
   setInterval(runInstagramBackgroundSync, instagramSyncScheduler.intervalMs);
+  // Seeding tagged-media sync: official Instagram Graph API only.
+  // Exact creator handle + shipped record + post timestamp are required.
+  runSeedingTaggedUploadSync();
+  setInterval(runSeedingTaggedUploadSync, seedingTaggedUploadScheduler.intervalMs);
   // Naver Search Ads Weekly Report: polls every 15 minutes (see naverWeeklyReportScheduler
   // above); runNaverWeeklyReportCheck() itself is a no-op outside Tuesday 10:00-10:59 KST
   // or once this week's report already ran, so this is safe to call immediately at boot
@@ -8264,6 +8276,57 @@ function isStaleCurrentMonthCache(cached) {
 // catch 분기가 라이브 호출 실패 시 기존 캐시로 폴백하고 절대 파일을 지우지 않기
 // 때문이다. 이 객체는 마지막 시도/성공/에러만 기록하며 /api/status에서 노출된다
 // (에러 메시지는 safeErrorMessage()로 토큰/시크릿을 마스킹한 뒤에만 저장한다).
+const seedingTaggedUploadScheduler = {
+  intervalMs: 15 * 60 * 1000,
+  running: false,
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastError: null,
+  lastMatched: 0
+};
+
+async function fetchSeedingTaggedMedia() {
+  const record = await readMetaTokenRecord();
+  const igId = record?.instagramBusinessAccountId || env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
+  if (!igId) throw new Error("INSTAGRAM_BUSINESS_ACCOUNT_ID가 없습니다.");
+  return graphGetAllPages(`${igId}/tags`, {
+    fields: "id,username,permalink,timestamp,media_type",
+    limit: 100
+  }, { maxPages: 5 });
+}
+
+async function runSeedingTaggedUploadSync() {
+  if (seedingTaggedUploadScheduler.running) return;
+  seedingTaggedUploadScheduler.running = true;
+  seedingTaggedUploadScheduler.lastAttemptAt = new Date().toISOString();
+  try {
+    const list = await handleSeeding("GET", "/api/ai-audit/seeding/projects", null, undefined, { env });
+    const details = [];
+    for (const project of list.body?.projects || []) {
+      const result = await handleSeeding("GET", "/api/ai-audit/seeding/project", project.name, undefined, { env });
+      if (result.status === 200) details.push(result.body);
+    }
+    const taggedMedia = await fetchSeedingTaggedMedia();
+    const checkedAt = new Date().toISOString();
+    const plans = buildTaggedUploadPlans(details, taggedMedia, checkedAt);
+    let matched = 0;
+    for (const plan of plans) {
+      const result = await handleSeeding("PUT", "/api/ai-audit/seeding/project", plan.name, { version: plan.version, operations: plan.operations }, { env });
+      if (result.status === 409) continue;
+      if (result.status !== 200) throw new Error(`seeding tagged sync failed: ${result.status}`);
+      matched += plan.operations.length;
+    }
+    seedingTaggedUploadScheduler.lastMatched = matched;
+    seedingTaggedUploadScheduler.lastSuccessAt = checkedAt;
+    seedingTaggedUploadScheduler.lastError = null;
+  } catch (error) {
+    seedingTaggedUploadScheduler.lastError = safeErrorMessage(error);
+    await logApiError("seeding_tagged_upload_sync", error, {});
+  } finally {
+    seedingTaggedUploadScheduler.running = false;
+  }
+}
+
 const instagramSyncScheduler = {
   intervalMs: 6 * 60 * 60 * 1000, // 6시간
   running: false,
