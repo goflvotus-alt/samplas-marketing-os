@@ -215,11 +215,9 @@ const server = isMainModule ? createServer(async (req, res) => {
           intervalMs: instagramSyncScheduler.intervalMs
         },
         seedingTaggedUploadSync: {
-          lastAttemptAt: seedingTaggedUploadScheduler.lastAttemptAt,
-          lastSuccessAt: seedingTaggedUploadScheduler.lastSuccessAt,
-          lastError: seedingTaggedUploadScheduler.lastError,
-          lastMatched: seedingTaggedUploadScheduler.lastMatched,
-          intervalMs: seedingTaggedUploadScheduler.intervalMs
+          enabled: false,
+          mode: "manual_post_url_only",
+          reason: "meta_permission_not_reviewed"
         },
         ecountInventorySync: await ecountAutoSyncStatus(),
         // Additive only — never exposes the Dropbox path's credential (app secret /
@@ -1299,10 +1297,9 @@ const server = isMainModule ? createServer(async (req, res) => {
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
   setInterval(runInstagramBackgroundSync, instagramSyncScheduler.intervalMs);
-  // Seeding tagged-media sync: official Instagram Graph API only.
-  // Exact creator handle + shipped record + post timestamp are required.
-  runSeedingTaggedUploadSync();
-  setInterval(runSeedingTaggedUploadSync, seedingTaggedUploadScheduler.intervalMs);
+  // Seeding upload verification is manual-only.
+  // Tagged-media auto sync remains implemented but intentionally disabled because
+  // the current Meta app does not have the required reviewed permission.
   // Naver Search Ads Weekly Report: polls every 15 minutes (see naverWeeklyReportScheduler
   // above); runNaverWeeklyReportCheck() itself is a no-op outside Tuesday 10:00-10:59 KST
   // or once this week's report already ran, so this is safe to call immediately at boot
