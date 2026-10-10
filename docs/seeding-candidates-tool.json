@@ -1,0 +1,62 @@
+{
+  "name": "registerSeedingCandidates",
+  "description": "Register user-requested, externally researched Instagram candidates, not seeding recipients. Read latest project first. Submit exact production contract. No automatic retry after network failures. On 409 GET latest state and return conflict. After 201 GET readback and verify handles. Image lookup failure does not reject registration; user approval remains required.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "name",
+      "version",
+      "candidates"
+    ],
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Latest version from getSeedingProject."
+      },
+      "candidates": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 10,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instagramId",
+            "profileUrl",
+            "recommendationReason",
+            "source"
+          ],
+          "properties": {
+            "instagramId": {
+              "type": "string",
+              "description": "Actual Instagram handle; leading @ is accepted."
+            },
+            "profileUrl": {
+              "type": "string",
+              "format": "uri",
+              "description": "HTTPS instagram.com profile URL matching the handle."
+            },
+            "recommendationReason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "description": "Discovery source URL or source description. Never fetched automatically."
+            }
+          }
+        }
+      }
+    }
+  }
+}

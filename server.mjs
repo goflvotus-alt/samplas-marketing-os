@@ -1,5 +1,6 @@
 import { SEEDING_MCP_PATH, serveSeedingMcp, createSeedingRestClient } from './scripts/seeding-mcp.mjs';
-import { handleSeeding } from './scripts/seeding-store.mjs';
+import { runCandidateResearch, discoverAccount, candidateScheduleDue, registerCandidates } from './scripts/seeding-candidates.mjs';
+import { handleSeeding, mutateSeedingCandidates } from './scripts/seeding-store.mjs';
 import { buildTaggedUploadPlans } from './scripts/seeding-tagged-upload-matcher.mjs';
 import { createServer } from "node:http";
 import { collectWeeklyAccount, captureWeeklyFollowers } from "./scripts/weekly-account-demand.mjs";
@@ -780,6 +781,28 @@ const server = isMainModule ? createServer(async (req, res) => {
         isCanceledItem: isCafe24CanceledItem
       }));
     }
+    if (url.pathname === "/api/ai-audit/seeding/candidates") {
+      res.setHeader("Cache-Control", "no-store");
+      if(req.method!=="POST")return json(res,{ok:false,error:"Method Not Allowed"},405);
+      let payload;try{payload=await readJsonBody(req);}catch{return json(res,{ok:false,error:"malformed_json"},400);}
+      try{
+        const record=await readMetaTokenRecord().catch(()=>null);
+        const result=await registerCandidates(payload,{token:record?.accessToken||env.META_ACCESS_TOKEN,igId:record?.instagramBusinessAccountId||env.INSTAGRAM_BUSINESS_ACCOUNT_ID,graphVersion:env.GRAPH_VERSION||"v25.0",load:async name=>(await handleSeeding("GET","/api/ai-audit/seeding/project",name,undefined,{env})).body,mutate:(name,version,fn)=>mutateSeedingCandidates(name,version,fn,{env})});
+        res.setHeader("ETag",`"seeding-${result.project.version}"`);return json(res,result,201);
+      }catch(error){return json(res,{ok:false,error:[400,404,409].includes(error.status)?error.message:"CANDIDATE_REGISTRATION_FAILED_READ_BEFORE_RETRY"},error.status||502);}
+    }
+    if (["/api/ai-audit/seeding/candidates/research", "/api/ai-audit/seeding/candidates/media"].includes(url.pathname)) {
+      res.setHeader("Cache-Control", "no-store");
+      const media = url.pathname.endsWith("/media");
+      if (req.method !== (media ? "GET" : "POST")) return json(res, {ok:false,error:"Method Not Allowed"},405);
+      try {
+        const name=url.searchParams.get("name"), detail=await handleSeeding("GET","/api/ai-audit/seeding/project",name,undefined,{env});
+        const record=await readMetaTokenRecord(), options={env,token:record?.accessToken||env.META_ACCESS_TOKEN,igId:record?.instagramBusinessAccountId||env.INSTAGRAM_BUSINESS_ACCOUNT_ID,graphVersion:env.GRAPH_VERSION||"v25.0"};
+        if(media){const candidate=detail.body.project.aiCandidates?.items?.find(c=>c.id===url.searchParams.get("id"));if(!candidate)return json(res,{ok:false,error:"candidate_not_found"},404);return json(res,{ok:true,media:await discoverAccount(candidate.instagramId,options)});}
+        const result=await runCandidateResearch(name,{...options,load:async name=>(await handleSeeding("GET","/api/ai-audit/seeding/project",name,undefined,{env})).body,mutate:(name,version,fn)=>mutateSeedingCandidates(name,version,fn,{env})});
+        return json(res,result);
+      }catch(error){return json(res,{ok:false,error:[400,404,409,503].includes(error.status)?error.message:"CANDIDATE_RESEARCH_FAILED"},error.status||502);}
+    }
     if (["/api/ai-audit/seeding/projects", "/api/ai-audit/seeding/project"].includes(url.pathname)) {
       res.setHeader("Cache-Control", "no-store");
       let payload;
@@ -1297,6 +1320,7 @@ const server = isMainModule ? createServer(async (req, res) => {
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
   setInterval(runInstagramBackgroundSync, instagramSyncScheduler.intervalMs);
+  if (env.SEEDING_CANDIDATES_ENABLED === "true") setInterval(runSeedingCandidateCheck, 60000);
   // Seeding upload verification is manual-only.
   // Tagged-media auto sync remains implemented but intentionally disabled because
   // the current Meta app does not have the required reviewed permission.
@@ -8290,6 +8314,19 @@ async function fetchSeedingTaggedMedia() {
     fields: "id,username,permalink,timestamp,media_type",
     limit: 100
   }, { maxPages: 5 });
+}
+
+async function runSeedingCandidateCheck() {
+  if (env.SEEDING_CANDIDATES_ENABLED !== "true") return;
+  try {
+    const list=await handleSeeding("GET","/api/ai-audit/seeding/projects",null,undefined,{env});
+    for(const summary of list.body.projects){
+      const current=await handleSeeding("GET","/api/ai-audit/seeding/project",summary.name,undefined,{env});
+      if(!candidateScheduleDue(current.body.project))continue;
+      const record=await readMetaTokenRecord();
+      try { await runCandidateResearch(summary.name,{env,token:record?.accessToken||env.META_ACCESS_TOKEN,igId:record?.instagramBusinessAccountId||env.INSTAGRAM_BUSINESS_ACCOUNT_ID,graphVersion:env.GRAPH_VERSION||"v25.0",load:async name=>(await handleSeeding("GET","/api/ai-audit/seeding/project",name,undefined,{env})).body,mutate:(name,version,fn)=>mutateSeedingCandidates(name,version,fn,{env})}); }catch{ /* Stored run remains authoritative; no automatic retry. */ }
+    }
+  }catch{ /* No tokens, search responses or personal data in scheduler logs. */ }
 }
 
 async function runSeedingTaggedUploadSync() {

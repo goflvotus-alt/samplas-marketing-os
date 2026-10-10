@@ -1,0 +1,168 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SAMPLAS Seeding Candidate Registration — unpublished contract",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://samplas-marketing-os.onrender.com"
+    }
+  ],
+  "security": [
+    {
+      "InternalToken": []
+    }
+  ],
+  "paths": {
+    "/api/ai-audit/seeding/candidates": {
+      "post": {
+        "operationId": "registerSeedingCandidates",
+        "summary": "Register 1–10 researched candidates without approving recipients",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "version",
+                  "candidates"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Latest version from getSeedingProject."
+                  },
+                  "candidates": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "instagramId",
+                        "profileUrl",
+                        "recommendationReason",
+                        "source"
+                      ],
+                      "properties": {
+                        "instagramId": {
+                          "type": "string",
+                          "description": "Actual Instagram handle; leading @ is accepted."
+                        },
+                        "profileUrl": {
+                          "type": "string",
+                          "format": "uri",
+                          "description": "HTTPS instagram.com profile URL matching the handle."
+                        },
+                        "recommendationReason": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4000
+                        },
+                        "source": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4000,
+                          "description": "Discovery source URL or source description. Never fetched automatically."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved project detail. GET project readback required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed payload or invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "project_not_found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "version_conflict, duplicate_candidate, candidate_excluded, candidate_already_approved, creator_already_exists, seeding_already_exists. Batch is not saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Uncertain write outcome: GET before any retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "InternalToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-samplas-internal-token",
+        "description": "Sites runtime forwards its existing SAMPLAS_INTERNAL_TOKEN. Never include the token in the tool input or schema."
+      }
+    }
+  }
+}

@@ -49,7 +49,9 @@ export function createProjectDocument(doc,input){
 export function validatePayload(body){
  if(!object(body)||Object.keys(body).some(k=>!['version','operations'].includes(k))||!Number.isInteger(body.version)||body.version<1||!Array.isArray(body.operations)||!body.operations.length||body.operations.length>500)throw error('malformed_payload');
  for(const op of body.operations){
-  if(!object(op)||!['update_seeding','add_seeding','remove_seeding','update_project','add_creator_to_project','update_creator'].includes(op.type))throw error('invalid_operation');
+  if(!object(op)||!['update_seeding','add_seeding','remove_seeding','update_project','add_creator_to_project','update_creator','review_candidate','configure_candidates'].includes(op.type))throw error('invalid_operation');
+  if(op.type==='configure_candidates'){if(Object.keys(op).some(k=>!['type','enabled'].includes(k))||typeof op.enabled!=='boolean')throw error('invalid_operation');continue;}
+  if(op.type==='review_candidate'){if(Object.keys(op).some(k=>!['type','candidateId','status'].includes(k))||typeof op.candidateId!=='string'||!/^candidate-[a-f0-9]{20}$/.test(op.candidateId)||!['approved','held','excluded'].includes(op.status))throw error('invalid_candidate_review');continue;}
   const allowed=op.type==='update_project'?['type','patch']:op.type==='remove_seeding'?['type','instagramId']:['type','instagramId','patch'];
   if(Object.keys(op).some(k=>!allowed.includes(k)))throw error('invalid_operation_field');
   if(op.type!=='update_project'&&!/^[a-z0-9._]{1,30}$/.test(normalizeId(op.instagramId)))throw error('invalid_instagramId');
@@ -97,6 +99,21 @@ export function detail(doc,p){const rs=doc.seedings.filter(r=>r.projectId===p.id
 export function applyOperations(doc,p,operations){
  const next=structuredClone(doc),project=next.projects.find(x=>x.id===p.id);
  for(const op of operations){
+  if(op.type==='configure_candidates'){project.aiCandidates||={items:[],runs:{}};project.aiCandidates.enabled=op.enabled;continue;}
+  if(op.type==='review_candidate'){
+   const candidate=project.aiCandidates?.items?.find(c=>c.id===op.candidateId);
+   if(!candidate||!(candidate.verifiedAt||candidate.origin==='chatgpt-research'&&candidate.registeredAt))throw error('candidate_not_found',404);
+   if(candidate.status==='excluded'&&op.status!=='excluded')throw error('candidate_excluded',409);
+   if(candidate.status==='approved'&&op.status!=='approved')throw error('approved_candidate_cannot_be_removed',409);
+   if(op.status==='approved'){
+    const handle=normalizeId(candidate.instagramId);
+    if(next.creators.some(c=>normalizeId(c.instagram)===handle))throw error('duplicate_instagramId',409);
+    // Recursively reuse the canonical add-seeding initializer; only outer save bumps version.
+    const added=applyOperations(next,project,[{type:'add_seeding',instagramId:handle}]);
+    next.creators=added.creators;next.seedings=added.seedings;
+   }
+   candidate.status=op.status;candidate.reviewedAt=new Date().toISOString();continue;
+  }
   if(op.type==='update_project'){if(op.patch.name&&next.projects.some(x=>x.id!==p.id&&x.name.normalize('NFC')===op.patch.name.normalize('NFC')))throw error('duplicate_project_name');for(const [k,v] of Object.entries(op.patch))project[({productName:'product',startDate:'start',endDate:'end'})[k]||k]=v;continue;}
   const handle=normalizeId(op.instagramId);let c=next.creators.find(x=>normalizeId(x.instagram)===handle),r=c&&next.seedings.find(x=>x.projectId===p.id&&x.creatorId===c.id);
   if(op.type==='update_creator'){if(!c)throw error('creator_not_found');Object.assign(c,op.patch);continue;}
@@ -136,4 +153,17 @@ export async function handleSeeding(method,path,name,payload,{env=process.env,fe
  const next=applyOperations(doc,p,payload.operations),res=await fetchImpl('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/octet-stream','Dropbox-API-Arg':asciiSafeJson({path:STORE_PATH,mode:{'.tag':'update',update:rev},autorename:false,mute:true})},body:JSON.stringify(next),signal:AbortSignal.timeout(20000)});
  if(res.status===409){const latest=await read({env,fetchImpl});return {status:409,body:{ok:false,error:'version_conflict',currentVersion:latest.doc?.projects.find(x=>x.id===p.id)?.version??p.version}};}
  if(!res.ok)throw error('seeding_write_failed',502);const np=next.projects.find(x=>x.id===p.id);return {status:200,body:detail(next,np),etag:`"seeding-${np.version}"`};
+}
+
+// Internal-only mutation seam. Not exposed as an arbitrary project patch API.
+export async function mutateSeedingCandidates(name,version,mutate,{env=process.env,fetchImpl=fetch}={}){
+ const {doc,rev,token}=await read({env,fetchImpl}),p=doc?.projects.find(p=>p.name===name);
+ if(!p)throw error('project_not_found',404);
+ if(p.version!==version)throw error('version_conflict',409);
+ const next=structuredClone(doc),np=next.projects.find(x=>x.id===p.id);
+ mutate(np,next);np.version=p.version+1;np.updatedAt=new Date().toISOString();
+ let response;try{response=await fetchImpl('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/octet-stream','Dropbox-API-Arg':asciiSafeJson({path:STORE_PATH,mode:{'.tag':'update',update:rev},autorename:false,mute:true})},body:JSON.stringify(next),signal:AbortSignal.timeout(20000)});}catch{throw error('write_outcome_unknown_read_before_retry',502);}
+ if(response.status===409)throw error('version_conflict',409);
+ if(!response.ok)throw error('seeding_write_failed',502);
+ return detail(next,np);
 }

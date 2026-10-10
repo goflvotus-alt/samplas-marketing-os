@@ -1,5 +1,6 @@
 // Separate stateless MCP bridge. REST owns validation, storage, versions and Dropbox rev CAS.
 // Authentication is enforced by server.mjs's existing /api/ai-audit/* guard.
+import { validateCandidateRegistration } from './seeding-candidates.mjs';
 import { validatePayload, validateCreate, CREATE_FIELDS, PROJECT_FIELDS, RECORD_FIELDS } from './seeding-store.mjs';
 export const SEEDING_MCP_PATH='/api/ai-audit/seeding/mcp';
 const protocols=['2025-11-25','2025-06-18','2025-03-26','2024-11-05'];
@@ -15,11 +16,12 @@ export const SEEDING_TOOLS=[
  {name:'updateSeedingProject',description:'Apply user-requested changes using the exact production update contract and latest project version. On 409, read the project again and return the conflict. Never blindly retry. PUT body is {version, operations}; name is a query parameter. Use update_seeding patches: contactStatus="DM 완료", shippingStatus="출고 완료", trackingNumber (string), deliveredAt (YYYY-MM-DD), uploadStatus="completed", postUrl, memo. Read back after every successful write; ambiguous failures require a fresh get before retrying.',inputSchema:{type:'object',properties:{name,version:{type:'integer',minimum:1},operations:{type:'array',minItems:1,maxItems:500,items:operationSchema}},required:['name','version','operations'],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:false}}
  ,{name:'createSeedingProject',description:'Create a new empty seeding project. Never retry an ambiguous creation without reading by name first. No recipients are copied.',inputSchema:{type:'object',additionalProperties:false,required:['name','brand','productName','publicFormUrl','responseSheetUrl','responseSheetName','startDate'],properties:{...Object.fromEntries(CREATE_FIELDS.map(k=>[k,{type:['targetCount','responseSheetGid'].includes(k)?'integer':'string'}]))}},annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false}}
 ];
+SEEDING_TOOLS.push({"name": "registerSeedingCandidates", "description": "Register user-requested, externally researched Instagram candidates, not seeding recipients. Read latest project first. Submit exact production contract. No automatic retry after network failures. On 409 GET latest state and return conflict. After 201 GET readback and verify handles. Image lookup failure does not reject registration; user approval remains required.", "inputSchema": {"type": "object", "additionalProperties": false, "required": ["name", "version", "candidates"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 200}, "version": {"type": "integer", "minimum": 1, "description": "Latest version from getSeedingProject."}, "candidates": {"type": "array", "minItems": 1, "maxItems": 10, "items": {"type": "object", "additionalProperties": false, "required": ["instagramId", "profileUrl", "recommendationReason", "source"], "properties": {"instagramId": {"type": "string", "description": "Actual Instagram handle; leading @ is accepted."}, "profileUrl": {"type": "string", "format": "uri", "description": "HTTPS instagram.com profile URL matching the handle."}, "recommendationReason": {"type": "string", "minLength": 1, "maxLength": 4000}, "source": {"type": "string", "minLength": 1, "maxLength": 4000, "description": "Discovery source URL or source description. Never fetched automatically."}}}}}}, "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}});
 const fail=(status,error)=>({status,body:{ok:false,error}});
 export function createSeedingRestClient({baseUrl,token,fetchImpl=fetch}){
  const base=new URL(baseUrl);if(!['http:','https:'].includes(base.protocol)||base.username||base.password)throw Error('Invalid fixed upstream');
  return async function request(method,path,projectName,body){
-  if(!['GET','PUT','POST'].includes(method)||!['projects','project'].includes(path)||method==='PUT'&&path!=='project'||method==='POST'&&path!=='projects')return fail(400,'invalid_upstream_request');
+  if(!['GET','PUT','POST'].includes(method)||!['projects','project','candidates'].includes(path)||method==='PUT'&&path!=='project'||method==='POST'&&!['projects','candidates'].includes(path)||path==='candidates'&&method!=='POST')return fail(400,'invalid_upstream_request');
   const url=new URL('/api/ai-audit/seeding/'+path,base);if(projectName!==undefined)url.searchParams.set('name',projectName);
   try{
    const response=await fetchImpl(url,{method,redirect:'manual',headers:{Accept:'application/json','Content-Type':'application/json','x-samplas-internal-token':token},...(method!=='GET'?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(45000)});
@@ -33,7 +35,7 @@ export function createSeedingRestClient({baseUrl,token,fetchImpl=fetch}){
 export async function callSeedingTool(tool,args={},request){
  if(!SEEDING_TOOLS.some(t=>t.name===tool))return fail(400,'unknown_tool');
  if(!object(args))return fail(400,'invalid_arguments');
- const allowed=tool==='createSeedingProject'?CREATE_FIELDS:tool==='listSeedingProjects'?[]:tool==='getSeedingProject'?['name']:['name','version','operations'];
+ const allowed=tool==='registerSeedingCandidates'?['name','version','candidates']:tool==='createSeedingProject'?CREATE_FIELDS:tool==='listSeedingProjects'?[]:tool==='getSeedingProject'?['name']:['name','version','operations'];
  if(Object.keys(args).some(k=>!allowed.includes(k)))return fail(400,'invalid_arguments');
  if(tool==='listSeedingProjects'){
   const result=await request('GET','projects');
@@ -42,6 +44,20 @@ export async function callSeedingTool(tool,args={},request){
   return result;
  }
  if(typeof args.name!=='string'||!args.name.trim())return fail(400,'name_required');
+ if(tool==='registerSeedingCandidates'){
+  let input;try{input=validateCandidateRegistration(args)}catch(error){return fail(error.status||400,error.message)}
+  const latest=await request('GET','project',input.name);
+  if(latest.status!==200||!latest.body.ok)return latest;
+  if(latest.body.project?.version!==input.version)return {status:409,body:{ok:false,error:'version_conflict',currentVersion:latest.body.project?.version}};
+  const registered=await request('POST','candidates',undefined,args);
+  if(registered.status===409){const current=await request('GET','project',input.name);return {status:409,body:{...registered.body,...(current.status===200?{currentVersion:current.body.project?.version}:{readbackError:current.body.error})}};}
+  if(registered.status!==201||!registered.body.ok)return registered;
+  const readback=await request('GET','project',input.name);
+  if(readback.status!==200||!readback.body.ok)return fail(502,'registration_succeeded_readback_failed');
+  const items=readback.body.project?.aiCandidates?.items||[];
+  if(readback.body.project?.id!==registered.body.project?.id||readback.body.project?.version!==registered.body.project?.version||input.candidates.some(c=>items.filter(x=>x.instagramId===c.instagramId&&x.status==='pending').length!==1))return fail(409,'registration_readback_changed');
+  return {status:201,body:{...readback.body,verified:true}};
+ }
  if(tool==='createSeedingProject'){
   let input;try{input=validateCreate(args)}catch{return fail(400,'malformed_payload')}
   const created=await request('POST','projects',undefined,args);

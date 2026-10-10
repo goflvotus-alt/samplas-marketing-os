@@ -8,7 +8,7 @@ import {isAiAuditAuthorized} from '../scripts/ai-audit.mjs';
 const detail=version=>({ok:true,project:{name:'민타임 / MEANTIME',version},seedings:[{instagramId:'test',memo:'keep'}],creators:[],summary:{total:1}});
 const update={name:'민타임 / MEANTIME',version:5,operations:[{type:'update_seeding',instagramId:'@test',patch:{memo:'requested'}}]};
 test('existing three tools plus creation and schemas, list does not disclose detail',async()=>{
- assert.deepEqual(SEEDING_TOOLS.map(t=>t.name),['listSeedingProjects','getSeedingProject','updateSeedingProject','createSeedingProject']);
+ assert.deepEqual(SEEDING_TOOLS.map(t=>t.name),['listSeedingProjects','getSeedingProject','updateSeedingProject','createSeedingProject','registerSeedingCandidates']);
  assert.deepEqual(SEEDING_TOOLS[2].inputSchema.required,['name','version','operations']);
  let calls=[];const result=await callSeedingTool('listSeedingProjects',{},async(...a)=>{calls.push(a);return {status:200,body:{ok:true,projects:[{name:'MEANTIME',version:5,counts:{total:1}}]}}});
  assert.equal(result.status,200);assert.deepEqual(calls,[['GET','projects']]);
@@ -52,8 +52,10 @@ test('real external MCP SDK initialize/list/get/write over HTTP; auth denies, GE
  try{
   assert.equal((await fetch(url,{method:'POST',body:'{}'})).status,401);
   assert.equal((await fetch(url,{headers:{'x-samplas-internal-token':'fixture-only'}})).status,405);
-  await client.connect(transport);assert.equal((await client.listTools()).tools.length,4);
+  await client.connect(transport);assert.equal((await client.listTools()).tools.length,5);
   assert.equal((await client.callTool({name:'getSeedingProject',arguments:{name:update.name}})).structuredContent.project.version,5);
   assert.equal((await client.callTool({name:'updateSeedingProject',arguments:update})).structuredContent.verified,true);assert.equal(puts,1);
  }finally{await client.close();server.closeAllConnections();await new Promise(r=>server.close(r))}
 });
+test('candidate tool GET → exact POST → readback, no search dependency',async()=>{const input={name:'TEST',version:1,candidates:[{instagramId:'@research_handle',profileUrl:'https://instagram.com/research_handle/',recommendationReason:'isolated',source:'isolated'}]},calls=[];const state={ok:true,project:{id:'p',name:'TEST',version:1,aiCandidates:{items:[]}}};const request=async(method,path,name,payload)=>{calls.push({method,path,name,payload});if(method==='POST'){state.project.version=2;state.project.aiCandidates.items.push({instagramId:'research_handle',status:'pending',imageStatus:'unavailable'});}return {status:method==='POST'?201:200,body:structuredClone(state)};};const result=await callSeedingTool('registerSeedingCandidates',input,request);assert.equal(result.body.verified,true);assert.deepEqual(calls.map(c=>c.method),['GET','POST','GET']);assert.deepEqual(calls[1],{method:'POST',path:'candidates',name:undefined,payload:input});});
+test('candidate tool malformed, stale, excluded and network failure never retry',async()=>{const input={name:'TEST',version:1,candidates:[{instagramId:'research_handle',profileUrl:'https://instagram.com/research_handle/',recommendationReason:'isolated',source:'isolated'}]};assert.equal((await callSeedingTool('registerSeedingCandidates',{...input,candidates:[]},()=>assert.fail())).status,400);for(const problem of ['version_conflict','candidate_excluded','network']){const calls=[];const result=await callSeedingTool('registerSeedingCandidates',input,async(method)=>{calls.push(method);if(method==='POST')return {status:problem==='network'?502:409,body:{ok:false,error:problem}};return {status:200,body:{ok:true,project:{version:problem==='version_conflict'?2:1}}};});assert.equal(result.status,problem==='network'?502:409);assert.ok(calls.filter(m=>m==='POST').length<=1);assert.equal(calls.filter(m=>m==='PUT').length,0);}});
