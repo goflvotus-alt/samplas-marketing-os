@@ -783,7 +783,7 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (["/api/ai-audit/seeding/projects", "/api/ai-audit/seeding/project"].includes(url.pathname)) {
       res.setHeader("Cache-Control", "no-store");
       let payload;
-      if (req.method === "PUT") {
+      if (["PUT", "POST"].includes(req.method)) {
         try { payload = await readJsonBody(req); }
         catch { return json(res, { ok: false, error: "malformed_json" }, 400); }
       }
@@ -792,7 +792,7 @@ const server = isMainModule ? createServer(async (req, res) => {
         if (result.etag) res.setHeader("ETag", result.etag);
         return json(res, result.body, result.status);
       } catch (error) {
-        return json(res, { ok: false, error: error.status === 400 ? error.message : error.status === 404 ? "project_not_found" : "seeding_request_failed" }, error.status || 502);
+        return json(res, { ok: false, error: [400, 409, 503].includes(error.status) ? error.message : error.status === 404 ? "project_not_found" : "seeding_request_failed" }, error.status || 502);
       }
     }
     if (url.pathname === "/api/ai-audit/popup/projects") {

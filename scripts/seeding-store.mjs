@@ -4,19 +4,21 @@ export const STORE_PATH='/SAMPLAS WORK/병구 작업/시딩 관련 자동화/SEE
 export const normalizeId=v=>String(v||'').trim().replace(/^@+/,'').toLowerCase();
 const own=(v,k)=>Object.prototype.hasOwnProperty.call(v,k), object=v=>v&&typeof v==='object'&&!Array.isArray(v);
 const aliases={contactStatus:'contact',formStatus:'response',shippingStatus:'shipping',uploadDeadline:'deadline'};
-export const PROJECT_FIELDS=['name','brand','productName','publicFormUrl','editFormUrl','responseSheetUrl','responseSheetId','responseSheetName','dmMessage','shortMessage','followupMessage','startDate','endDate','storyCountsAsComplete','responseSync'];
-export const RECORD_FIELDS=['product','contactStatus','formStatus','shippingStatus','size','name','phone','address','responseAt','uploadWithin7Days','repostConsent','carrier','trackingNumber','shippedAt','deliveryStatus','deliveredAt','uploadDeadline','uploadStatus','uploadedAt','postUrl','postType','memo','followup','followupContactedAt','uploadStatusMode','uploadVerifiedBy','uploadCheckedAt','trackingCheckedAt','trackingSource','trackingError','trackingHistory','responseSource','responseRow','sourceTimestamp','shippedRecordedAt','uploadedRecordedAt','uploadCheckSuggestion'];
-const enums={contactStatus:['미연락','DM 완료','무응답','제외'],formStatus:['미응답','응답 완료'],shippingStatus:['미출고','출고 완료'],deliveryStatus:['tracking_missing','registered','picked_up','in_transit','out_for_delivery','delivered','exception','unknown'],uploadStatus:['waiting','check_required','completed','overdue','unavailable'],postType:['feed','reel','story','unknown'],uploadStatusMode:['auto','manual'],uploadVerifiedBy:['','manual','external_check','api']};
+export const PROJECT_FIELDS=['name','brand','productName','publicFormUrl','editFormUrl','responseSheetUrl','responseSheetId','responseSheetName','responseSheetGid','targetCount','dmMessage','shortMessage','followupMessage','startDate','endDate','storyCountsAsComplete','responseSync'];
+export const RECORD_FIELDS=['fulfillmentMethod','pickedUpAt','product','contactStatus','formStatus','shippingStatus','size','name','phone','address','responseAt','uploadWithin7Days','repostConsent','carrier','trackingNumber','shippedAt','deliveryStatus','deliveredAt','uploadDeadline','uploadStatus','uploadedAt','postUrl','postType','memo','followup','followupContactedAt','uploadStatusMode','uploadVerifiedBy','uploadCheckedAt','trackingCheckedAt','trackingSource','trackingError','trackingHistory','responseSource','responseRow','sourceTimestamp','shippedRecordedAt','uploadedRecordedAt','uploadCheckSuggestion'];
+const enums={fulfillmentMethod:['parcel','pickup'],contactStatus:['미연락','DM 완료','무응답','제외'],formStatus:['미응답','응답 완료'],shippingStatus:['미출고','출고 완료'],deliveryStatus:['tracking_missing','registered','picked_up','in_transit','out_for_delivery','delivered','exception','unknown'],uploadStatus:['waiting','check_required','completed','overdue','unavailable'],postType:['feed','reel','story','unknown'],uploadStatusMode:['auto','manual'],uploadVerifiedBy:['','manual','external_check','api']};
 const error=(message,status=400)=>Object.assign(new Error(message),{status});
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const plus7=v=>{const d=new Date(v+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+7);return d.toISOString().slice(0,10)};
-const dateFields=['shippedAt','deliveredAt','uploadDeadline','uploadedAt','startDate','endDate'];
+const dateFields=['pickedUpAt','shippedAt','deliveredAt','uploadDeadline','uploadedAt','startDate','endDate'];
 export function validatePatch(patch,fields){
  if(!object(patch)||!Object.keys(patch).length)throw error('patch must be a non-empty object');
  for(const [k,v] of Object.entries(patch)){
   if(!fields.includes(k))throw error('field_not_allowed: '+k);
   if(enums[k]&&!enums[k].includes(v))throw error('invalid '+k);
   if(['followup','storyCountsAsComplete'].includes(k)){if(typeof v!=='boolean')throw error('invalid '+k);}
+  else if(k==='targetCount'){if(!Number.isInteger(v)||v<1||v>100000)throw error('invalid targetCount');}
+  else if(k==='responseSheetGid'){if(!Number.isSafeInteger(v)||v<0)throw error('invalid responseSheetGid');}
   else if(k==='responseRow'){if(!Number.isInteger(v)||v<1)throw error('invalid responseRow');}
   else if(k==='trackingHistory'){if(!Array.isArray(v)||v.length>200)throw error('invalid trackingHistory');}
   else if(['responseSync','uploadCheckSuggestion'].includes(k)){if(!object(v))throw error('invalid '+k);}
@@ -24,6 +26,25 @@ export function validatePatch(patch,fields){
   if(dateFields.includes(k)&&v){const d=new Date(v+'T12:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(v)||Number.isNaN(d.getTime())||d.toISOString().slice(0,10)!==v)throw error('invalid '+k);}
   if(/Url$/.test(k)&&v){try{if(!['http:','https:'].includes(new URL(v).protocol))throw 0;}catch{throw error('invalid '+k);}}
  }
+}
+export const CREATE_FIELDS=['name','brand','productName','publicFormUrl','editFormUrl','responseSheetUrl','responseSheetName','responseSheetGid','startDate','endDate','targetCount'];
+const projectKey=name=>name.trim().normalize('NFC').toLowerCase();
+export function validateCreate(body){
+ validatePatch(body,CREATE_FIELDS);
+ for(const k of ['name','brand','productName','publicFormUrl','responseSheetUrl','responseSheetName','startDate'])if(typeof body[k]!=='string'||!body[k].trim()||body[k].length>2000)throw error('invalid '+k);
+ if(body.name.trim().length>200)throw error('invalid name');
+ const sheet=new URL(body.responseSheetUrl),match=sheet.pathname.match(/^\/spreadsheets\/d\/([A-Za-z0-9_-]{10,200})(?:\/|$)/);
+ if(sheet.protocol!=='https:'||sheet.hostname!=='docs.google.com'||sheet.username||sheet.password||!match)throw error('invalid responseSheetUrl');
+ for(const k of ['publicFormUrl','editFormUrl'])if(body[k]){const u=new URL(body[k]);if(u.protocol!=='https:'||u.username||u.password||!(u.hostname==='docs.google.com'&&u.pathname.startsWith('/forms/')||k==='publicFormUrl'&&u.hostname==='forms.gle'))throw error('invalid '+k);}
+ if(body.endDate&&body.endDate<body.startDate)throw error('invalid date range');
+ return {...body,name:body.name.trim().normalize('NFC'),brand:body.brand.trim(),productName:body.productName.trim(),responseSheetName:body.responseSheetName.trim(),responseSheetId:match[1]};
+}
+export function createProjectDocument(doc,input){
+ if(doc.projects.some(p=>projectKey(p.name)===projectKey(input.name)))throw error('duplicate_project_name',409);
+ const next=structuredClone(doc),now=new Date().toISOString();
+ const {productName,startDate,endDate,...fields}=input;
+ const project={...fields,id:randomUUID(),product:productName,start:startDate,end:endDate||'',version:1,createdAt:now,updatedAt:now};
+ next.projects.push(project);return {next,project};
 }
 export function validatePayload(body){
  if(!object(body)||Object.keys(body).some(k=>!['version','operations'].includes(k))||!Number.isInteger(body.version)||body.version<1||!Array.isArray(body.operations)||!body.operations.length||body.operations.length>500)throw error('malformed_payload');
@@ -42,6 +63,8 @@ export function validatePayload(body){
 function applyPatch(r,patch){
  const oldTracking=r.trackingNumber,oldShipping=r.shipping;
  for(const [k,v] of Object.entries(patch))r[aliases[k]||k]=v;
+ if(r.fulfillmentMethod==='pickup'){if(r.trackingNumber||r.shippedAt||r.deliveredAt||patch.shippingStatus==='출고 완료')throw error('pickup cannot contain parcel shipping fields');r.deadline=r.pickedUpAt?plus7(r.pickedUpAt):'';r.uploadDeadline=r.deadline;}
+ if(r.pickedUpAt&&r.fulfillmentMethod!=='pickup')throw error('pickedUpAt requires pickup');
  if(own(patch,'formStatus'))r.formStatus=r.response;
  const shippingTouched=['trackingNumber','shippedAt','deliveredAt','deliveryStatus','shippingStatus','uploadDeadline'].some(k=>own(patch,k));
  if(shippingTouched){
@@ -64,7 +87,7 @@ function applyPatch(r,patch){
 }
 export function effectiveStatus(r){
  if(r.uploadStatusMode==='manual'||r.uploadStatus==='completed'||r.uploadStatus==='unavailable')return r.uploadStatus;
- if(r.postUrl)return 'completed';const deadline=r.deliveredAt?plus7(r.deliveredAt):r.shippedAt?plus7(r.shippedAt):r.deadline;
+ if(r.postUrl)return 'completed';const deadline=r.fulfillmentMethod==='pickup'&&r.pickedUpAt?plus7(r.pickedUpAt):r.deliveredAt?plus7(r.deliveredAt):r.shippedAt?plus7(r.shippedAt):r.deadline;
  if(!deadline)return r.shipping==='출고 완료'?'check_required':'waiting';if(deadline<today())return 'overdue';return (new Date(deadline+'T12:00:00Z')-new Date(today()+'T12:00:00Z'))/86400000<=1?'check_required':'waiting';
 }
 export function recordView(r,c){const result={id:r.id,creatorId:r.creatorId,instagramId:c.instagram};for(const k of RECORD_FIELDS)result[k]=r[aliases[k]||k]??(['followup'].includes(k)?false:k==='trackingHistory'?[]:'');result.formStatus=r.formStatus||r.response;result.uploadStatus=effectiveStatus(r);return result;}
@@ -95,8 +118,18 @@ async function read({env,fetchImpl}){
 }
 export async function handleSeeding(method,path,name,payload,{env=process.env,fetchImpl=fetch}={}){
  if(method==='PUT')validatePayload(payload);
+ const creation=method==='POST'&&path.endsWith('/projects')?validateCreate(payload):null;
+ if(!['GET','PUT'].includes(method)&&!creation)throw error('Method Not Allowed',405);
  const {doc,rev,token}=await read({env,fetchImpl});
- if(path.endsWith('/projects')){if(method!=='GET')throw error('Method Not Allowed',405);return {status:200,body:{ok:true,projects:(doc?.projects||[]).map(p=>({name:p.name,brand:p.brand,product:p.product,version:p.version,updatedAt:p.updatedAt,counts:summary(doc.seedings.filter(r=>r.projectId===p.id))}))}};}
+ if(creation){
+  if(!doc)throw error('seeding_store_unavailable',503);
+  const {next,project}=createProjectDocument(doc,creation);
+  let res;try{res=await fetchImpl('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/octet-stream','Dropbox-API-Arg':asciiSafeJson({path:STORE_PATH,mode:{'.tag':'update',update:rev},autorename:false,mute:true})},body:JSON.stringify(next),signal:AbortSignal.timeout(20000)});}catch{throw error('create_outcome_unknown_read_before_retry',502);}
+  if(res.status===409){const latest=await read({env,fetchImpl});return {status:409,body:{ok:false,error:latest.doc?.projects.some(p=>projectKey(p.name)===projectKey(creation.name))?'duplicate_project_name':'version_conflict'}};}
+  if(!res.ok)throw error('create_outcome_unknown_read_before_retry',502);
+  return {status:201,body:detail(next,project),etag:'"seeding-1"'};
+ }
+ if(path.endsWith('/projects')){if(method!=='GET')throw error('Method Not Allowed',405);return {status:200,body:{ok:true,projects:(doc?.projects||[]).map(p=>({name:p.name,brand:p.brand,product:p.product,version:p.version,updatedAt:p.updatedAt,...(p.targetCount!==undefined?{targetCount:p.targetCount}:{}),counts:summary(doc.seedings.filter(r=>r.projectId===p.id))}))}};}
  if(!name?.trim())throw error('name is required');const p=doc?.projects.find(p=>p.name.normalize('NFC')===name.normalize('NFC'));
  if(!p)throw error('project_not_found',404);if(method==='GET')return {status:200,body:detail(doc,p),etag:`"seeding-${p.version}"`};if(method!=='PUT')throw error('Method Not Allowed',405);
  if(payload.version!==p.version)return {status:409,body:{ok:false,error:'version_conflict',currentVersion:p.version}};

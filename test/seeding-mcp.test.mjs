@@ -7,8 +7,8 @@ import {SEEDING_TOOLS,callSeedingTool,createSeedingRestClient,seedingRpc,serveSe
 import {isAiAuditAuthorized} from '../scripts/ai-audit.mjs';
 const detail=version=>({ok:true,project:{name:'민타임 / MEANTIME',version},seedings:[{instagramId:'test',memo:'keep'}],creators:[],summary:{total:1}});
 const update={name:'민타임 / MEANTIME',version:5,operations:[{type:'update_seeding',instagramId:'@test',patch:{memo:'requested'}}]};
-test('exact three tools and schemas, list does not disclose detail',async()=>{
- assert.deepEqual(SEEDING_TOOLS.map(t=>t.name),['listSeedingProjects','getSeedingProject','updateSeedingProject']);
+test('existing three tools plus creation and schemas, list does not disclose detail',async()=>{
+ assert.deepEqual(SEEDING_TOOLS.map(t=>t.name),['listSeedingProjects','getSeedingProject','updateSeedingProject','createSeedingProject']);
  assert.deepEqual(SEEDING_TOOLS[2].inputSchema.required,['name','version','operations']);
  let calls=[];const result=await callSeedingTool('listSeedingProjects',{},async(...a)=>{calls.push(a);return {status:200,body:{ok:true,projects:[{name:'MEANTIME',version:5,counts:{total:1}}]}}});
  assert.equal(result.status,200);assert.deepEqual(calls,[['GET','projects']]);
@@ -52,7 +52,7 @@ test('real external MCP SDK initialize/list/get/write over HTTP; auth denies, GE
  try{
   assert.equal((await fetch(url,{method:'POST',body:'{}'})).status,401);
   assert.equal((await fetch(url,{headers:{'x-samplas-internal-token':'fixture-only'}})).status,405);
-  await client.connect(transport);assert.equal((await client.listTools()).tools.length,3);
+  await client.connect(transport);assert.equal((await client.listTools()).tools.length,4);
   assert.equal((await client.callTool({name:'getSeedingProject',arguments:{name:update.name}})).structuredContent.project.version,5);
   assert.equal((await client.callTool({name:'updateSeedingProject',arguments:update})).structuredContent.verified,true);assert.equal(puts,1);
  }finally{await client.close();server.closeAllConnections();await new Promise(r=>server.close(r))}

@@ -1,6 +1,6 @@
 // Separate stateless MCP bridge. REST owns validation, storage, versions and Dropbox rev CAS.
 // Authentication is enforced by server.mjs's existing /api/ai-audit/* guard.
-import { validatePayload, PROJECT_FIELDS, RECORD_FIELDS } from './seeding-store.mjs';
+import { validatePayload, validateCreate, CREATE_FIELDS, PROJECT_FIELDS, RECORD_FIELDS } from './seeding-store.mjs';
 export const SEEDING_MCP_PATH='/api/ai-audit/seeding/mcp';
 const protocols=['2025-11-25','2025-06-18','2025-03-26','2024-11-05'];
 const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
@@ -13,34 +13,43 @@ export const SEEDING_TOOLS=[
  {name:'listSeedingProjects',description:'List SAMPLAS seeding projects.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}},
  {name:'getSeedingProject',description:'Read a seeding project and its latest version before editing. Detail contains private recipient information; call only when needed.',inputSchema:{type:'object',properties:{name},required:['name'],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}},
  {name:'updateSeedingProject',description:'Apply user-requested changes using the exact production update contract and latest project version. On 409, read the project again and return the conflict. Never blindly retry. PUT body is {version, operations}; name is a query parameter. Use update_seeding patches: contactStatus="DM 완료", shippingStatus="출고 완료", trackingNumber (string), deliveredAt (YYYY-MM-DD), uploadStatus="completed", postUrl, memo. Read back after every successful write; ambiguous failures require a fresh get before retrying.',inputSchema:{type:'object',properties:{name,version:{type:'integer',minimum:1},operations:{type:'array',minItems:1,maxItems:500,items:operationSchema}},required:['name','version','operations'],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:false}}
+ ,{name:'createSeedingProject',description:'Create a new empty seeding project. Never retry an ambiguous creation without reading by name first. No recipients are copied.',inputSchema:{type:'object',additionalProperties:false,required:['name','brand','productName','publicFormUrl','responseSheetUrl','responseSheetName','startDate'],properties:{...Object.fromEntries(CREATE_FIELDS.map(k=>[k,{type:['targetCount','responseSheetGid'].includes(k)?'integer':'string'}]))}},annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false}}
 ];
 const fail=(status,error)=>({status,body:{ok:false,error}});
 export function createSeedingRestClient({baseUrl,token,fetchImpl=fetch}){
  const base=new URL(baseUrl);if(!['http:','https:'].includes(base.protocol)||base.username||base.password)throw Error('Invalid fixed upstream');
  return async function request(method,path,projectName,body){
-  if(!['GET','PUT'].includes(method)||!['projects','project'].includes(path)||method==='PUT'&&path!=='project')return fail(400,'invalid_upstream_request');
+  if(!['GET','PUT','POST'].includes(method)||!['projects','project'].includes(path)||method==='PUT'&&path!=='project'||method==='POST'&&path!=='projects')return fail(400,'invalid_upstream_request');
   const url=new URL('/api/ai-audit/seeding/'+path,base);if(projectName!==undefined)url.searchParams.set('name',projectName);
   try{
-   const response=await fetchImpl(url,{method,redirect:'manual',headers:{Accept:'application/json','Content-Type':'application/json','x-samplas-internal-token':token},...(method==='PUT'?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(45000)});
+   const response=await fetchImpl(url,{method,redirect:'manual',headers:{Accept:'application/json','Content-Type':'application/json','x-samplas-internal-token':token},...(method!=='GET'?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(45000)});
    if(response.status>=300&&response.status<400)return fail(502,'production_redirect_rejected');
    let result;try{result=await response.json()}catch{return fail(502,'production_invalid_response')}
    if(!object(result))return fail(502,'production_invalid_response');
    return {status:response.status,body:result};
-  }catch{return fail(502,method==='PUT'?'write_outcome_unknown_read_before_retry':'production_unreachable')}
+  }catch{return fail(502,method!=='GET'?'write_outcome_unknown_read_before_retry':'production_unreachable')}
  };
 }
 export async function callSeedingTool(tool,args={},request){
  if(!SEEDING_TOOLS.some(t=>t.name===tool))return fail(400,'unknown_tool');
  if(!object(args))return fail(400,'invalid_arguments');
- const allowed=tool==='listSeedingProjects'?[]:tool==='getSeedingProject'?['name']:['name','version','operations'];
+ const allowed=tool==='createSeedingProject'?CREATE_FIELDS:tool==='listSeedingProjects'?[]:tool==='getSeedingProject'?['name']:['name','version','operations'];
  if(Object.keys(args).some(k=>!allowed.includes(k)))return fail(400,'invalid_arguments');
  if(tool==='listSeedingProjects'){
   const result=await request('GET','projects');
   // Fail closed rather than allowing accidental REST list/detail schema drift to disclose PII.
-  if(result.status===200&&(!Array.isArray(result.body.projects)||result.body.projects.some(p=>!object(p)||Object.keys(p).some(k=>!['name','brand','product','version','updatedAt','counts'].includes(k)))))return fail(502,'invalid_project_list');
+  if(result.status===200&&(!Array.isArray(result.body.projects)||result.body.projects.some(p=>!object(p)||Object.keys(p).some(k=>!['name','brand','product','version','updatedAt','targetCount','counts'].includes(k)))))return fail(502,'invalid_project_list');
   return result;
  }
  if(typeof args.name!=='string'||!args.name.trim())return fail(400,'name_required');
+ if(tool==='createSeedingProject'){
+  let input;try{input=validateCreate(args)}catch{return fail(400,'malformed_payload')}
+  const created=await request('POST','projects',undefined,args);
+  if(created.status!==201||!created.body.ok)return created;
+  const readback=await request('GET','project',input.name);
+  if(readback.status!==200||readback.body.project?.id!==created.body.project?.id||JSON.stringify(readback.body.project)!==JSON.stringify(created.body.project))return fail(502,'create_succeeded_readback_failed');
+  return {status:201,body:{...readback.body,verified:true}};
+ }
  if(tool==='getSeedingProject')return request('GET','project',args.name);
  const payload={version:args.version,operations:args.operations};
  try{validatePayload(payload)}catch{return fail(400,'malformed_payload')}
@@ -68,7 +77,7 @@ export async function seedingRpc(message,request){
  else if(message.method==='tools/list')result={tools:SEEDING_TOOLS};
  else if(message.method==='tools/call'){
   const outcome=await callSeedingTool(params.name,params.arguments??{},request),structuredContent={...outcome.body,httpStatus:outcome.status};
-  result={content:[{type:'text',text:JSON.stringify(structuredContent)}],structuredContent,isError:outcome.status!==200||!outcome.body.ok};
+  result={content:[{type:'text',text:JSON.stringify(structuredContent)}],structuredContent,isError:![200,201].includes(outcome.status)||!outcome.body.ok};
  }else return error(-32601,'Method not found');
  return {status:200,body:{jsonrpc:'2.0',id,result}};
 }

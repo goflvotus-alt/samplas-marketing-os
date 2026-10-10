@@ -30,9 +30,44 @@ paths:
                         product: {type: string}
                         version: {type: integer}
                         updatedAt: {type: string, format: date-time}
+                        targetCount: {type: integer}
                         counts: {$ref: '#/components/schemas/Summary'}
         '401': {description: Missing or invalid internal token}
         '502': {description: Storage unavailable; no data modified}
+    post:
+      operationId: createSeedingProject
+      summary: Create an empty project atomically; never blindly retry ambiguous responses
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, brand, productName, publicFormUrl, responseSheetUrl, responseSheetName, startDate]
+              properties:
+                name: {type: string, maxLength: 200}
+                brand: {type: string}
+                productName: {type: string}
+                publicFormUrl: {type: string, format: uri}
+                editFormUrl: {type: string, format: uri}
+                responseSheetUrl: {type: string, format: uri}
+                responseSheetName: {type: string}
+                responseSheetGid: {type: integer, minimum: 0}
+                startDate: {type: string, format: date}
+                endDate: {type: string}
+                targetCount: {type: integer, minimum: 1, maximum: 100000}
+      responses:
+        '201':
+          description: Created version 1; GET by name to verify before editing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Detail'}
+        '400': {description: Invalid input; nothing written}
+        '401': {description: Missing or invalid token}
+        '409': {description: duplicate_project_name or version_conflict; GET before any retry}
+        '502': {description: Outcome uncertain; GET by name before any retry}
+        '503': {description: Existing canonical store unavailable; never initialize over it}
   /api/ai-audit/seeding/project:
     parameters:
       - in: query
@@ -91,6 +126,10 @@ paths:
                           responseSheetUrl: {type: string}
                           responseSheetId: {type: string}
                           responseSheetName: {type: string}
+                          responseSheetGid: {type: integer, minimum: 0}
+                          targetCount: {type: integer, minimum: 1, maximum: 100000}
+                          fulfillmentMethod: {type: string, enum: [parcel, pickup]}
+                          pickedUpAt: {type: string, format: date}
                           dmMessage: {type: string}
                           shortMessage: {type: string}
                           followupMessage: {type: string}
@@ -109,7 +148,9 @@ paths:
                           repostConsent: {type: string}
                           carrier: {type: string}
                           trackingNumber: {type: string}
-                          shippedAt: {type: string}
+                          fulfillmentMethod: {type: string, enum: [parcel, pickup]}
+              pickedUpAt: {type: string, format: date}
+              shippedAt: {type: string}
                           deliveryStatus: {type: string, enum: [tracking_missing, registered, picked_up, in_transit, out_for_delivery, delivered, exception, unknown]}
                           deliveredAt: {type: string}
                           uploadDeadline: {type: string}
@@ -170,6 +211,8 @@ components:
             name: {type: string}
             brand: {type: string}
             productName: {type: string}
+            targetCount: {type: integer}
+            responseSheetGid: {type: integer}
             version: {type: integer}
             updatedAt: {type: string, format: date-time}
             publicFormUrl: {type: string}
@@ -195,6 +238,8 @@ components:
               repostConsent: {type: string}
               carrier: {type: string}
               trackingNumber: {type: string}
+              fulfillmentMethod: {type: string, enum: [parcel, pickup]}
+              pickedUpAt: {type: string, format: date}
               shippedAt: {type: string}
               deliveryStatus: {type: string}
               deliveredAt: {type: string}
