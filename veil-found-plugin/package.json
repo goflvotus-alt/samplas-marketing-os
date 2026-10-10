@@ -1,0 +1,1 @@
+{"name":"samplas-veil-found-private","private":true,"type":"module","scripts":{"check":"node --check worker/index.mjs","build":"node scripts/build.mjs","validate":"node scripts/validate-artifact.mjs"}}

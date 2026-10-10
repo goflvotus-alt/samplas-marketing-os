@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { getDropboxAccessToken, isDropboxConfigured } from "./dropbox-report-uploader.mjs";
@@ -51,8 +51,8 @@ export function extractFeedNumbersFromCaption(caption) {
   return out;
 }
 
-function isImageName(name) {
-  return /\.(?:jpe?g)$/i.test(String(name || ""));
+export function isImageName(name) {
+  return /\.(?:jpe?g|png)$/i.test(String(name || ""));
 }
 
 function formatNumber(number) {
@@ -78,7 +78,7 @@ async function dropboxJson(endpoint, body, { accessToken, fetchImpl = fetch } = 
   }
 }
 
-async function listDropboxFolder(path, { accessToken, fetchImpl = fetch } = {}) {
+export async function listDropboxFolder(path, { accessToken, fetchImpl = fetch } = {}) {
   const entries = [];
   let body = await dropboxJson(
     DROPBOX_LIST_FOLDER_URL,
@@ -159,7 +159,7 @@ async function graphGet(path, params, { config, fetchImpl = fetch } = {}) {
   return parsed;
 }
 
-async function fetchInstagramFeed({ config, fetchImpl = fetch, maxPages = 10 } = {}) {
+export async function fetchInstagramFeed({ config, fetchImpl = fetch, maxPages = 10 } = {}) {
   const items = [];
   let nextUrl = null;
   let page = 0;
@@ -189,6 +189,7 @@ async function fetchInstagramFeed({ config, fetchImpl = fetch, maxPages = 10 } =
     page += 1;
   } while (nextUrl && page < maxPages);
 
+  if(nextUrl) throw new Error("Instagram feed coverage incomplete; refusing duplicate check.");
   return items;
 }
 
@@ -261,10 +262,12 @@ async function readState(workDir) {
 
 async function writeState(workDir, state) {
   await mkdir(workDir, { recursive: true });
-  await writeFile(stateFilePath(workDir), `${JSON.stringify(state, null, 2)}\n`);
+  const file=stateFilePath(workDir),temp=file+".tmp";
+  await writeFile(temp, `${JSON.stringify(state, null, 2)}\n`,{mode:0o600});
+  await rename(temp,file);
 }
 
-function queueItems(entries) {
+export function queueItems(entries) {
   return entries
     .filter((entry) => entry?.[".tag"] === "file" && isImageName(entry.name))
     .map((entry) => {
@@ -366,6 +369,8 @@ export async function runVeilFoundPublisher(
     workDir,
     now = new Date(),
     force = false,
+    approvedPosts,
+    onEvent = async () => {},
     fetchImpl = fetch,
     sleepImpl
   } = {}
@@ -386,6 +391,7 @@ export async function runVeilFoundPublisher(
 
     let entries = await listDropboxFolder(config.readyDir, { accessToken, fetchImpl });
     let readyItems = queueItems(entries);
+    if(approvedPosts) readyItems=readyItems.filter(item=>approvedPosts.some(p=>p.number===item.number));
 
     let feed = await fetchInstagramFeed({ config, fetchImpl });
     let publishedNumbers = feedNumberSet(feed);
@@ -400,6 +406,7 @@ export async function runVeilFoundPublisher(
     if (reconciledNumbers.length) {
       entries = await listDropboxFolder(config.readyDir, { accessToken, fetchImpl });
       readyItems = queueItems(entries);
+      if(approvedPosts) readyItems=readyItems.filter(item=>approvedPosts.some(p=>p.number===item.number));
     }
 
     let missingItems = readyItems.filter((item) => !publishedNumbers.has(item.number));
@@ -413,7 +420,8 @@ export async function runVeilFoundPublisher(
       };
     }
 
-    let state = await readState(workDir);
+    const stateDir=force ? join(workDir,"veil-found-manual") : workDir;
+    let state = await readState(stateDir);
     if (state.slotKey !== slot.key) {
       state = {
         version: 5,
@@ -422,7 +430,7 @@ export async function runVeilFoundPublisher(
         postedNumbers: [],
         lastPublishedAt: state.lastPublishedAt || null
       };
-      await writeState(workDir, state);
+      await writeState(stateDir, state);
     }
 
     const remainingAllowance = Math.max(0, Number(state.slotLimit || 0) - state.postedNumbers.length);
@@ -437,7 +445,17 @@ export async function runVeilFoundPublisher(
       };
     }
 
+    if(approvedPosts) missingItems = missingItems.filter(item => approvedPosts.some(p => p.number === item.number));
     const toPublish = missingItems.slice(0, remainingAllowance);
+    // Resolve every caption before any Instagram write.
+    for(const item of toPublish){
+      const resolved=await resolveVeilCaption(item, config, {accessToken,fetchImpl});
+      Object.assign(item,resolved);
+      if(approvedPosts){
+        const approved=approvedPosts.find(p=>p.number===item.number);
+        if(!approved || approved.revision!==item.image.rev || approved.caption!==item.caption || approved.path!==(item.image.path_lower||item.image.path_display))throw new Error('approved_post_changed');
+      }
+    }
     const publishedNow = [];
 
     for (const item of toPublish) {
@@ -455,24 +473,33 @@ export async function runVeilFoundPublisher(
         continue;
       }
 
+      const fresh=queueItems(await listDropboxFolder(config.readyDir,{accessToken,fetchImpl})).filter(p=>p.number===item.number);
+      if(fresh.length!==1||fresh[0].image.rev!==item.image.rev)throw new Error('source_image_changed');
+      const currentCaption=await resolveVeilCaption(item,config,{accessToken,fetchImpl});
+      if(currentCaption.caption!==item.caption)throw new Error('source_caption_changed');
       const imageUrl = await getDropboxTemporaryLink(
         item.image.path_lower || item.image.path_display,
         { accessToken, fetchImpl }
       );
 
+      await onEvent({status:"publishing",number:item.number});
       const published = await publishSingleImage({
         imageUrl,
-        caption: formatNumber(item.number),
+        caption: item.caption,
         config,
         fetchImpl,
         sleepImpl
       });
 
+      await onEvent({status:"published",number:item.number,mediaId:published.mediaId});
       // Persist the weekly count immediately after each successful Instagram post.
       state.postedNumbers = [...state.postedNumbers, item.number];
       state.lastPublishedAt = new Date().toISOString();
-      await writeState(workDir, state);
+      await writeState(stateDir, state);
 
+      // A file replaced while Meta was publishing is not the successfully published original.
+      const afterPublish=queueItems(await listDropboxFolder(config.readyDir,{accessToken,fetchImpl})).filter(p=>p.number===item.number);
+      if(afterPublish.length!==1||afterPublish[0].image.rev!==item.image.rev)throw new Error('published_source_changed_not_moved');
       // Only move the source after Instagram confirmed a media id.
       await moveDropboxFile(
         item.image.path_lower || item.image.path_display,
@@ -500,4 +527,35 @@ export async function runVeilFoundPublisher(
   } finally {
     publisherRunning = false;
   }
+}
+
+export function validateVeilCaption(text,number){
+ const lines=String(text).replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').trim().split('\n');
+ if(lines.length!==4 || lines.some(l=>!l.trim()) || !new RegExp('^VEIL FOUND #0*'+number+'$').test(lines[0].trim()) || !/^(?:[\d,]+(?:\.\d+)?\s*(?:KRW|원)|SOLD OUT)$/i.test(lines[3].trim()) || lines.join('\n').length>2200)throw new Error('invalid_four_line_caption');
+ return lines.join('\n');
+}
+export async function resolveVeilCaption(item,config,{accessToken,fetchImpl=fetch}){
+ const number=item.number, folder=String(number).padStart(3,'0');
+ const roots=await listDropboxFolder(config.readyDir,{accessToken,fetchImpl});
+ const candidates=[];
+ if(roots.some(e=>e['.tag']==='folder'&&e.name===folder)) candidates.push(`${config.readyDir}/${folder}/caption.txt`);
+ for(const e of roots){const m=e.name?.match(/^VEIL_FOUND_(\d+)-(\d+)$/);if(e['.tag']==='folder'&&m&&number>=Number(m[1])&&number<=Number(m[2]))candidates.push(`${config.readyDir}/${e.name}/${folder}/caption.txt`);}
+ if(candidates.length!==1)throw new Error('caption_path_missing_or_ambiguous');
+ const response=await fetchImpl('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Dropbox-API-Arg':JSON.stringify({path:candidates[0]}).replace(/[\u007f-\uffff]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'))}});
+ if(!response.ok)throw new Error('caption_read_failed');
+ return {caption:validateVeilCaption(await response.text(),number),captionPath:candidates[0]};
+}
+export async function previewVeilPosts({env=process.env,fetchImpl=fetch}={}){
+ if(!isVeilFoundConfigured(env))throw new Error('not_configured');
+ const config=veilFoundConfig(env),accessToken=await getDropboxAccessToken({env,fetchImpl});
+ const entries=await listDropboxFolder(config.readyDir,{accessToken,fetchImpl}),feed=await fetchInstagramFeed({config,fetchImpl}),numbers=feedNumberSet(feed),items=queueItems(entries),seen=new Set();
+ const posts=[];
+ for(const item of items){
+  const post={number:item.number,path:item.image.path_lower||item.image.path_display,revision:item.image.rev,fileName:item.image.name,duplicate:numbers.has(item.number),valid:true};
+  try{if(!post.revision||seen.has(item.number))throw new Error('image_number_ambiguous_or_revision_missing');Object.assign(post,await resolveVeilCaption(item,config,{accessToken,fetchImpl}));}catch(error){post.valid=false;post.error=error.message;}
+  seen.add(item.number);posts.push(post);
+ }
+ // Reject both sides of duplicate file numbers, rather than picking one.
+ for(const post of posts)if(items.filter(i=>i.number===post.number).length!==1){post.valid=false;post.error='image_number_ambiguous';}
+ return {ok:true,posts,warnings:posts.some(p=>/\.png$/i.test(p.fileName))?['PNG originals are passed unchanged; Meta acceptance has not been live-verified.']:[]};
 }

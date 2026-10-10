@@ -1,3 +1,4 @@
+import {createVeilControl,serveVeilRpc} from './scripts/veil-found-control.mjs';
 import { SEEDING_MCP_PATH, serveSeedingMcp, createSeedingRestClient } from './scripts/seeding-mcp.mjs';
 import { runCandidateResearch, discoverAccount, candidateScheduleDue, registerCandidates } from './scripts/seeding-candidates.mjs';
 import { handleSeeding, mutateSeedingCandidates } from './scripts/seeding-store.mjs';
@@ -145,6 +146,7 @@ const mimeTypes = {
   ".txt": "text/plain; charset=utf-8"
 };
 
+const veilControl=createVeilControl({env,workDir});
 const veilFoundPublisherScheduler = {
   intervalMs: 5 * 60 * 1000,
   running: false,
@@ -159,7 +161,7 @@ async function runVeilFoundScheduledCheck() {
   veilFoundPublisherScheduler.running = true;
   veilFoundPublisherScheduler.lastAttemptAt = new Date().toISOString();
   try {
-    const result = await runVeilFoundPublisher({ env, workDir });
+    const result = await runVeilFoundPublisher({ env, workDir, onEvent:event=>veilControl.record({...event,source:"weekly-friday"}) });
     veilFoundPublisherScheduler.lastResult = result;
     if (result?.ok && !result?.skipped) {
       veilFoundPublisherScheduler.lastSuccessAt = new Date().toISOString();
@@ -168,6 +170,7 @@ async function runVeilFoundScheduledCheck() {
     }
   } catch (error) {
     veilFoundPublisherScheduler.lastError = safeErrorMessage(error);
+    await veilControl.record({source:"weekly-friday",status:"failed_or_unknown",errorCode:typeof error.code==="number"?error.code:null});
     await logApiError("veil_found_publisher", error, {});
   } finally {
     veilFoundPublisherScheduler.running = false;
@@ -666,6 +669,7 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/ai-audit/") && !isAiAuditAuthorized(req, env)) {
       return json(res, { error: "Unauthorized" }, 401);
     }
+    if (url.pathname === '/api/ai-audit/veil-found/mcp') return serveVeilRpc(req,res,veilControl);
     if (url.pathname === SEEDING_MCP_PATH) {
       return serveSeedingMcp(req, res, createSeedingRestClient({
         baseUrl: `http://127.0.0.1:${port}`, token: env.AI_AUDIT_SECRET
@@ -1347,6 +1351,8 @@ const server = isMainModule ? createServer(async (req, res) => {
   // Poll every five minutes; durable slot state prevents duplicate publication.
   runVeilFoundScheduledCheck();
   setInterval(runVeilFoundScheduledCheck, veilFoundPublisherScheduler.intervalMs);
+  // One-time uploads are separately opt-in; existing Friday automation is unchanged.
+  if(env.VEIL_FOUND_ONCE_ENABLED === "true") setInterval(()=>veilControl.tick().catch(()=>console.error("[VEIL_FOUND_ONCE] check failed; inspect history")),60000);
 }) : null;
 
 server?.on("error", (error) => {
