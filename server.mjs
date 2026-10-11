@@ -1,7 +1,7 @@
 import {createVeilControl,serveVeilRpc} from './scripts/veil-found-control.mjs';
 import { SEEDING_MCP_PATH, serveSeedingMcp, createSeedingRestClient } from './scripts/seeding-mcp.mjs';
 import { runCandidateResearch, discoverAccount, candidateScheduleDue, registerCandidates } from './scripts/seeding-candidates.mjs';
-import { handleSeeding, mutateSeedingCandidates } from './scripts/seeding-store.mjs';
+import { handleSeeding, handlePool, mutateSeedingCandidates } from './scripts/seeding-store.mjs';
 import { buildTaggedUploadPlans } from './scripts/seeding-tagged-upload-matcher.mjs';
 import { createServer } from "node:http";
 import { collectWeeklyAccount, captureWeeklyFollowers } from "./scripts/weekly-account-demand.mjs";
@@ -790,6 +790,20 @@ const server = isMainModule ? createServer(async (req, res) => {
         shippingFee: cafe24ShippingFee,
         isCanceledItem: isCafe24CanceledItem
       }));
+    }
+    if (["/api/ai-audit/seeding/pool", "/api/ai-audit/seeding/pool/candidates", "/api/ai-audit/seeding/pool/migrate", "/api/ai-audit/seeding/pool/media"].includes(url.pathname)) {
+      // SAMPLAS-wide Creator pool. Same internal-token guard and Dropbox rev CAS as project writes.
+      res.setHeader("Cache-Control", "no-store");
+      let payload;
+      if (["PUT", "POST"].includes(req.method)) { try { payload = await readJsonBody(req); } catch { return json(res, { ok: false, error: "malformed_json" }, 400); } }
+      if (url.pathname.endsWith("/media")) payload = { id: url.searchParams.get("id") };
+      try {
+        const result = await handlePool(req.method, url.pathname, payload, { env, discover: async handle => { const record = await readMetaTokenRecord().catch(() => null); return discoverAccount(handle, { token: record?.accessToken || env.META_ACCESS_TOKEN, igId: record?.instagramBusinessAccountId || env.INSTAGRAM_BUSINESS_ACCOUNT_ID, graphVersion: env.GRAPH_VERSION || "v25.0" }); } });
+        if (result.etag) res.setHeader("ETag", result.etag);
+        return json(res, result.body, result.status);
+      } catch (error) {
+        return json(res, { ok: false, error: [400, 404, 405, 409, 503].includes(error.status) ? error.message : "creator_pool_request_failed_read_before_retry" }, error.status || 502);
+      }
     }
     if (url.pathname === "/api/ai-audit/seeding/candidates") {
       res.setHeader("Cache-Control", "no-store");

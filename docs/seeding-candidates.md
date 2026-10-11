@@ -27,3 +27,20 @@ Accepts 1–10 candidates. GET latest version first. Normalizes handles; rejects
 Response 201 is existing project detail with new version/ETag. Mandatory caller workflow: GET latest → POST once → GET readback; check that all submitted handles exist once with pending status. On 409 read current project and return conflict; on network ambiguity GET before any user-authorized retry. Do not retry automatically. Registration rechecks the whole current Creator DB inside the existing atomic Dropbox rev-CAS seam; existing seeding data and other projects are preserved.
 
 Unpublished Private Plugin tool definition: `seeding-candidates-tool.json`; exact OpenAPI: `seeding-candidates-openapi.json`. Proposed tool `registerSeedingCandidates`; existing four tools remain unchanged. Sites must forward its existing `SAMPLAS_INTERNAL_TOKEN` server-side; no client secret input. These are contracts only: no Plugin publication or deployment performed. The optional Tavily/Brave research module and disabled scheduler remain available but are not prerequisites for this POST or review actions.
+
+## SAMPLAS Creator Pool (after `POST /api/ai-audit/seeding/pool/migrate`)
+
+Candidates move from `projects[].aiCandidates` to a SAMPLAS-wide pool. The design is in `docs/creator-pool-design.md`.
+
+- **`GET /api/ai-audit/seeding/pool`:** pool version, candidates with `priority` (followers 5,000–29,999), a Creator DB summary and counts.
+- **`PUT /api/ai-audit/seeding/pool`** `{version, operations}`:
+  - `review_pool_candidate` (pending / interested / held / excluded)
+  - `undo_pool_review`
+  - `update_pool_candidate`: `purposes` + `purposeSource`, `styles`, `memo`, `samplasEvidence` (verified facts only)
+- **`POST /api/ai-audit/seeding/pool/candidates`** `{version, candidates}`: registration without a project. Same validation as project registration, plus optional user-stated `purposes`.
+- **`GET /api/ai-audit/seeding/pool/media?id=`:** read-only image refresh.
+- **Project `PUT`:**
+  - `seed_pool_candidate {candidateId}` is the only way a pool candidate becomes a seeding.
+  - `exclude_pool_candidate {candidateId}` records a project-only exclusion.
+- **After migration:** project-level `review_candidate`, `undo_candidate_review`, `configure_candidates`, project registration and research return 409 `candidates_moved_to_pool`.
+- **MCP:** `getCreatorPool`, `registerPoolCandidates` (GET → POST → readback). Classification and seeding stay in the Director UI.

@@ -1,4 +1,5 @@
 import {validateCreatorPatch,mergeMetaObservation} from './creator-db.mjs';
+import {validatePoolPayload,applyPoolOperations,poolView,requirePool,buildPoolMigration,validatePoolRegistration,assertPoolRegistrationAllowed,poolCandidateRecord,poolProjectCandidate} from './creator-pool.mjs';
 import { randomUUID } from 'node:crypto';
 import { getDropboxAccessToken, asciiSafeJson } from './dropbox-report-uploader.mjs';
 export const STORE_PATH='/SAMPLAS WORK/병구 작업/시딩 관련 자동화/SEEDING_DIRECTOR_LITE/seeding.json';
@@ -50,7 +51,8 @@ export function createProjectDocument(doc,input){
 export function validatePayload(body){
  if(!object(body)||Object.keys(body).some(k=>!['version','operations'].includes(k))||!Number.isInteger(body.version)||body.version<1||!Array.isArray(body.operations)||!body.operations.length||body.operations.length>500)throw error('malformed_payload');
  for(const op of body.operations){
-  if(!object(op)||!['update_seeding','add_seeding','remove_seeding','update_project','add_creator_to_project','update_creator','review_candidate','undo_candidate_review','configure_candidates','refresh_creator_meta'].includes(op.type))throw error('invalid_operation');
+  if(!object(op)||!['update_seeding','add_seeding','remove_seeding','update_project','add_creator_to_project','update_creator','review_candidate','undo_candidate_review','configure_candidates','refresh_creator_meta','seed_pool_candidate','exclude_pool_candidate'].includes(op.type))throw error('invalid_operation');
+  if(['seed_pool_candidate','exclude_pool_candidate'].includes(op.type)){if(Object.keys(op).some(k=>!['type','candidateId'].includes(k))||typeof op.candidateId!=='string'||!/^candidate-[a-f0-9]{20}$/.test(op.candidateId))throw error('invalid_operation');continue;}
   if(op.type==='configure_candidates'){if(Object.keys(op).some(k=>!['type','enabled'].includes(k))||typeof op.enabled!=='boolean')throw error('invalid_operation');continue;}
   if(op.type==='undo_candidate_review'){if(Object.keys(op).some(k=>!['type','candidateId','reviewedAt'].includes(k))||typeof op.candidateId!=='string'||!/^candidate-[a-f0-9]{20}$/.test(op.candidateId)||typeof op.reviewedAt!=='string'||!Number.isFinite(Date.parse(op.reviewedAt)))throw error('invalid_candidate_undo');continue;}
   if(op.type==='review_candidate'){if(Object.keys(op).some(k=>!['type','candidateId','status'].includes(k))||typeof op.candidateId!=='string'||!/^candidate-[a-f0-9]{20}$/.test(op.candidateId)||!['approved','held','excluded','interested'].includes(op.status))throw error('invalid_candidate_review');continue;}
@@ -100,8 +102,19 @@ export function projectView(p){return {...p,productName:p.product||'',startDate:
 export function summary(rs){const active=rs.filter(r=>r.contact!=='제외');return {total:rs.length,contacted:active.filter(r=>['DM 완료','무응답'].includes(r.contact)).length,responded:active.filter(r=>r.response==='응답 완료').length,shipped:active.filter(r=>r.shipping==='출고 완료').length,uploadCompleted:active.filter(r=>effectiveStatus(r)==='completed').length,uploadWaiting:active.filter(r=>r.shipping==='출고 완료'&&effectiveStatus(r)!=='completed').length,overdue:active.filter(r=>effectiveStatus(r)==='overdue').length,followUpNeeded:active.filter(r=>r.followup||r.contact==='무응답'&&!r.followupContactedAt).length};}
 export function detail(doc,p){const rs=doc.seedings.filter(r=>r.projectId===p.id);return {ok:true,project:projectView(p),seedings:rs.map(r=>recordView(r,doc.creators.find(c=>c.id===r.creatorId))),creators:doc.creators.map(c=>{const all=doc.seedings.filter(r=>r.creatorId===c.id);return {...c,creatorVersion:c.creatorVersion||0,candidateHistory:doc.projects.flatMap(p=>(p.aiCandidates?.items||[]).filter(a=>normalizeId(a.instagramId)===normalizeId(c.instagram)).map(a=>({projectName:p.name,candidateId:a.id,status:a.status}))),instagramId:c.instagram,projectHistory:all.map(r=>({projectName:doc.projects.find(p=>p.id===r.projectId)?.name,product:r.product,shippedAt:r.shippedAt,postUrl:r.postUrl})),shipmentCount:all.filter(r=>r.shipping==='출고 완료').length,uploadCompletedCount:all.filter(r=>effectiveStatus(r)==='completed').length,latestSeedingDate:all.map(r=>r.shippedAt).filter(Boolean).sort().at(-1)||''};}),summary:summary(rs)};}
 export function applyOperations(doc,p,operations){
- const next=structuredClone(doc),project=next.projects.find(x=>x.id===p.id);
+ const next=structuredClone(doc),project=next.projects.find(x=>x.id===p.id);let poolTouched=false;
  for(const op of operations){
+  // After the pool migration the project copy of candidates is read-only history.
+  if(next.creatorPool&&['review_candidate','undo_candidate_review','configure_candidates'].includes(op.type))throw error('candidates_moved_to_pool',409);
+  if(op.type==='exclude_pool_candidate'){const {c}=poolProjectCandidate(next,op.candidateId,project);if(c.projectReviews.some(r=>r.projectId===project.id&&r.status==='seeded'))throw error('candidate_already_seeded',409);c.projectReviews.push({projectId:project.id,projectName:project.name,status:'excluded',at:new Date().toISOString()});poolTouched=true;continue;}
+  if(op.type==='seed_pool_candidate'){
+   // Explicit, per project. Interest alone never creates a seeding.
+   const {c}=poolProjectCandidate(next,op.candidateId,project),handle=normalizeId(c.instagramId),existing=next.creators.find(x=>normalizeId(x.instagram)===handle);
+   const added=applyOperations(next,project,[{type:existing?'add_creator_to_project':'add_seeding',instagramId:handle}]);
+   next.creators=added.creators;next.seedings=added.seedings;
+   const creator=next.creators.find(x=>normalizeId(x.instagram)===handle),pc=next.creatorPool.candidates.find(x=>x.id===c.id);
+   pc.creatorId=creator.id;pc.projectReviews.push({projectId:project.id,projectName:project.name,status:'seeded',at:new Date().toISOString()});poolTouched=true;continue;
+  }
   if(op.type==='configure_candidates'){project.aiCandidates||={items:[],runs:{}};project.aiCandidates.enabled=op.enabled;continue;}
   if(op.type==='undo_candidate_review'){
    const last=project.aiCandidates?.lastClassification,c=project.aiCandidates?.items?.find(c=>c.id===op.candidateId);
@@ -137,7 +150,10 @@ export function applyOperations(doc,p,operations){
    r={id:randomUUID(),projectId:p.id,creatorId:c.id,product:project.product||'',contact:'미연락',response:'미응답',formStatus:'미응답',shipping:'미출고',uploadStatus:'waiting',uploadStatusMode:'auto',deliveryStatus:'tracking_missing',shippedAt:'',deliveredAt:'',trackingNumber:'',postUrl:'',memo:'',size:'',carrier:'',deadline:'',followup:false};applyPatch(r,op.patch||{});next.seedings.push(r);
   }
  }
- project.version=p.version+1;project.updatedAt=new Date().toISOString();return next;
+ project.version=p.version+1;project.updatedAt=new Date().toISOString();if(poolTouched){next.creatorPool.version+=1;next.creatorPool.updatedAt=project.updatedAt;}return next;
+}
+async function upload(doc,rev,token,fetchImpl){
+ return fetchImpl('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/octet-stream','Dropbox-API-Arg':asciiSafeJson({path:STORE_PATH,mode:{'.tag':'update',update:rev},autorename:false,mute:true})},body:JSON.stringify(doc),signal:AbortSignal.timeout(20000)});
 }
 async function read({env,fetchImpl}){
  const token=await getDropboxAccessToken({env,fetchImpl});const res=await fetchImpl('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Dropbox-API-Arg':asciiSafeJson({path:STORE_PATH})},signal:AbortSignal.timeout(20000)});
@@ -172,6 +188,7 @@ export async function handleSeeding(method,path,name,payload,{env=process.env,fe
 export async function mutateSeedingCandidates(name,version,mutate,{env=process.env,fetchImpl=fetch}={}){
  const {doc,rev,token}=await read({env,fetchImpl}),p=doc?.projects.find(p=>p.name===name);
  if(!p)throw error('project_not_found',404);
+ if(doc.creatorPool)throw error('candidates_moved_to_pool',409);
  if(p.version!==version)throw error('version_conflict',409);
  const next=structuredClone(doc),np=next.projects.find(x=>x.id===p.id);
  mutate(np,next);np.version=p.version+1;np.updatedAt=new Date().toISOString();
@@ -179,4 +196,44 @@ export async function mutateSeedingCandidates(name,version,mutate,{env=process.e
  if(response.status===409)throw error('version_conflict',409);
  if(!response.ok)throw error('seeding_write_failed',502);
  return detail(next,np);
+}
+
+// SAMPLAS-wide Creator pool. Same Dropbox rev CAS; the pool has its own version counter.
+// discover(handle) -> Business Discovery profile (optional; failures register image-unavailable).
+export async function handlePool(method,path,payload,{env=process.env,fetchImpl=fetch,discover}={}){
+ const route=path.replace(/^\/api\/ai-audit\/seeding\/pool/,'')||'/';
+ if(!(method==='GET'&&['/','/media'].includes(route)||method==='PUT'&&route==='/'||method==='POST'&&['/candidates','/migrate'].includes(route)))throw error('Method Not Allowed',405);
+ let input=null;
+ if(method==='PUT')validatePoolPayload(payload);
+ if(route==='/candidates')input=validatePoolRegistration(payload);
+ if(route==='/migrate'&&(!payload||typeof payload!=='object'||Object.keys(payload).some(k=>!['dryRun','sourceRev','assignments'].includes(k))||typeof payload.dryRun!=='boolean'))throw error('malformed_payload');
+ const {doc,rev,token}=await read({env,fetchImpl});if(!doc)throw error('seeding_store_unavailable',503);
+ if(method==='GET'&&route==='/media'){
+  // Read-only image refresh for one pool candidate; no arbitrary handle or URL input.
+  const c=requirePool(doc).candidates.find(x=>x.id===payload?.id);if(!c)throw error('candidate_not_found',404);
+  if(!discover)throw error('META_DISCOVERY_NOT_CONFIGURED',503);
+  return {status:200,body:{ok:true,media:await discover(c.instagramId)}};
+ }
+ if(method==='GET')return {status:200,body:poolView(doc),etag:`"pool-${requirePool(doc).version}"`};
+ let next;
+ if(route==='/migrate'){
+  const sourceRev=payload.dryRun?rev:payload.sourceRev;
+  if(!payload.dryRun&&payload.sourceRev!==rev)return {status:409,body:{ok:false,error:'source_rev_changed',currentRev:rev}};
+  const built=buildPoolMigration(doc,{sourceRev,assignments:payload.assignments||{}});
+  if(payload.dryRun)return {status:200,body:{ok:true,dryRun:true,plan:built.plan}};
+  next=built.next;
+ }else{
+  const pool=requirePool(doc);
+  if(payload.version!==pool.version)return {status:409,body:{ok:false,error:'version_conflict',currentVersion:pool.version}};
+  if(route==='/candidates'){
+   assertPoolRegistrationAllowed(doc,input.candidates);
+   const records=await Promise.all(input.candidates.map(async c=>{let profile=null;try{if(discover)profile=await discover(c.instagramId);}catch{}return poolCandidateRecord(c,profile);}));
+   next=structuredClone(doc);next.creatorPool.candidates.push(...records);next.creatorPool.version+=1;next.creatorPool.updatedAt=new Date().toISOString();
+  }else next=applyPoolOperations(doc,payload.operations);
+ }
+ let res;try{res=await upload(next,rev,token,fetchImpl);}catch{throw error('write_outcome_unknown_read_before_retry',502);}
+ if(res.status===409){const latest=await read({env,fetchImpl});return {status:409,body:{ok:false,error:'version_conflict',currentVersion:latest.doc?.creatorPool?.version??null}};}
+ if(!res.ok)throw error('seeding_write_failed',502);
+ if(route==='/migrate')return {status:201,body:{ok:true,migrated:true,version:next.creatorPool.version,candidates:next.creatorPool.candidates.length}};
+ return {status:route==='/candidates'?201:200,body:poolView(next),etag:`"pool-${next.creatorPool.version}"`};
 }
