@@ -50,9 +50,10 @@ export function createProjectDocument(doc,input){
 export function validatePayload(body){
  if(!object(body)||Object.keys(body).some(k=>!['version','operations'].includes(k))||!Number.isInteger(body.version)||body.version<1||!Array.isArray(body.operations)||!body.operations.length||body.operations.length>500)throw error('malformed_payload');
  for(const op of body.operations){
-  if(!object(op)||!['update_seeding','add_seeding','remove_seeding','update_project','add_creator_to_project','update_creator','review_candidate','configure_candidates','refresh_creator_meta'].includes(op.type))throw error('invalid_operation');
+  if(!object(op)||!['update_seeding','add_seeding','remove_seeding','update_project','add_creator_to_project','update_creator','review_candidate','undo_candidate_review','configure_candidates','refresh_creator_meta'].includes(op.type))throw error('invalid_operation');
   if(op.type==='configure_candidates'){if(Object.keys(op).some(k=>!['type','enabled'].includes(k))||typeof op.enabled!=='boolean')throw error('invalid_operation');continue;}
-  if(op.type==='review_candidate'){if(Object.keys(op).some(k=>!['type','candidateId','status'].includes(k))||typeof op.candidateId!=='string'||!/^candidate-[a-f0-9]{20}$/.test(op.candidateId)||!['approved','held','excluded'].includes(op.status))throw error('invalid_candidate_review');continue;}
+  if(op.type==='undo_candidate_review'){if(Object.keys(op).some(k=>!['type','candidateId','reviewedAt'].includes(k))||typeof op.candidateId!=='string'||!/^candidate-[a-f0-9]{20}$/.test(op.candidateId)||typeof op.reviewedAt!=='string'||!Number.isFinite(Date.parse(op.reviewedAt)))throw error('invalid_candidate_undo');continue;}
+  if(op.type==='review_candidate'){if(Object.keys(op).some(k=>!['type','candidateId','status'].includes(k))||typeof op.candidateId!=='string'||!/^candidate-[a-f0-9]{20}$/.test(op.candidateId)||!['approved','held','excluded','interested'].includes(op.status))throw error('invalid_candidate_review');continue;}
   if(op.type==='refresh_creator_meta'){if(Object.keys(op).some(k=>!['type','instagramId','creatorVersion'].includes(k))||typeof op.instagramId!=='string'||!/^[a-z0-9._]{1,30}$/.test(normalizeId(op.instagramId))||!Number.isInteger(op.creatorVersion)||op.creatorVersion<0)throw error('invalid_operation');continue;}
   const allowed=op.type==='update_project'?['type','patch']:op.type==='remove_seeding'?['type','instagramId']:['type','instagramId','patch',...(op.type==='update_creator'?['creatorVersion']:[])];
   if(Object.keys(op).some(k=>!allowed.includes(k)))throw error('invalid_operation_field');
@@ -102,6 +103,12 @@ export function applyOperations(doc,p,operations){
  const next=structuredClone(doc),project=next.projects.find(x=>x.id===p.id);
  for(const op of operations){
   if(op.type==='configure_candidates'){project.aiCandidates||={items:[],runs:{}};project.aiCandidates.enabled=op.enabled;continue;}
+  if(op.type==='undo_candidate_review'){
+   const last=project.aiCandidates?.lastClassification,c=project.aiCandidates?.items?.find(c=>c.id===op.candidateId);
+   if(!last||!c||last.candidateId!==op.candidateId||last.reviewedAt!==op.reviewedAt||c.reviewedAt!==last.reviewedAt||c.status!==last.status||c.status==='approved')throw error('candidate_undo_conflict',409);
+   c.status=last.previousStatus;if(last.previousReviewedAt)c.reviewedAt=last.previousReviewedAt;else delete c.reviewedAt;
+   delete project.aiCandidates.lastClassification;continue;
+  }
   if(op.type==='review_candidate'){
    const candidate=project.aiCandidates?.items?.find(c=>c.id===op.candidateId);
    if(!candidate||!(candidate.verifiedAt||candidate.origin==='chatgpt-research'&&candidate.registeredAt))throw error('candidate_not_found',404);
@@ -114,7 +121,10 @@ export function applyOperations(doc,p,operations){
     const added=applyOperations(next,project,[{type:'add_seeding',instagramId:handle}]);
     next.creators=added.creators;next.seedings=added.seedings;
    }
-   candidate.status=op.status;candidate.reviewedAt=new Date().toISOString();continue;
+   const previousStatus=candidate.status,previousReviewedAt=candidate.reviewedAt;
+   candidate.status=op.status;candidate.reviewedAt=new Date().toISOString();
+   if(op.status==='approved')delete project.aiCandidates.lastClassification;
+   else project.aiCandidates.lastClassification={candidateId:candidate.id,previousStatus,previousReviewedAt:previousReviewedAt||null,status:op.status,reviewedAt:candidate.reviewedAt};continue;
   }
   if(op.type==='update_project'){if(op.patch.name&&next.projects.some(x=>x.id!==p.id&&x.name.normalize('NFC')===op.patch.name.normalize('NFC')))throw error('duplicate_project_name');for(const [k,v] of Object.entries(op.patch))project[({productName:'product',startDate:'start',endDate:'end'})[k]||k]=v;continue;}
   const handle=normalizeId(op.instagramId);let c=next.creators.find(x=>normalizeId(x.instagram)===handle),r=c&&next.seedings.find(x=>x.projectId===p.id&&x.creatorId===c.id);
