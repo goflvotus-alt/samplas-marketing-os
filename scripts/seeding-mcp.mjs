@@ -1,5 +1,6 @@
 // Separate stateless MCP bridge. REST owns validation, storage, versions and Dropbox rev CAS.
 // Authentication is enforced by server.mjs's existing /api/ai-audit/* guard.
+import { CREATOR_FIELDS } from './creator-db.mjs';
 import { validateCandidateRegistration } from './seeding-candidates.mjs';
 import { validatePayload, validateCreate, CREATE_FIELDS, PROJECT_FIELDS, RECORD_FIELDS } from './seeding-store.mjs';
 export const SEEDING_MCP_PATH='/api/ai-audit/seeding/mcp';
@@ -8,7 +9,7 @@ const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const fields=keys=>Object.fromEntries(keys.map(k=>[k,{}]));
 const patch=keys=>({type:'object',minProperties:1,additionalProperties:false,properties:fields(keys)});
 const operation=(type,keys,required=['type','instagramId'])=>({type:'object',additionalProperties:false,required,properties:{type:{const:type},...(type==='update_project'?{}:{instagramId:{type:'string'}}),...(keys?{patch:patch(keys)}:{})}});
-const operationSchema={oneOf:[operation('update_project',PROJECT_FIELDS,['type','patch']),operation('update_creator',['memo'],['type','instagramId','patch']),operation('update_seeding',RECORD_FIELDS,['type','instagramId','patch']),operation('add_seeding',RECORD_FIELDS),operation('add_creator_to_project',RECORD_FIELDS),operation('remove_seeding')]};
+const operationSchema={oneOf:[operation('update_project',PROJECT_FIELDS,['type','patch']),{...operation('update_creator',CREATOR_FIELDS,['type','instagramId','patch']),properties:{...operation('update_creator',CREATOR_FIELDS).properties,creatorVersion:{type:'integer',minimum:0}}},operation('update_seeding',RECORD_FIELDS,['type','instagramId','patch']),operation('add_seeding',RECORD_FIELDS),operation('add_creator_to_project',RECORD_FIELDS),operation('remove_seeding')]};
 const name={type:'string',minLength:1,description:'Exact project name from listSeedingProjects; URL encoded internally.'};
 export const SEEDING_TOOLS=[
  {name:'listSeedingProjects',description:'List SAMPLAS seeding projects.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}},

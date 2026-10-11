@@ -1,3 +1,4 @@
+import {validateCreatorPatch,mergeMetaObservation} from './creator-db.mjs';
 import { randomUUID } from 'node:crypto';
 import { getDropboxAccessToken, asciiSafeJson } from './dropbox-report-uploader.mjs';
 export const STORE_PATH='/SAMPLAS WORK/병구 작업/시딩 관련 자동화/SEEDING_DIRECTOR_LITE/seeding.json';
@@ -49,14 +50,15 @@ export function createProjectDocument(doc,input){
 export function validatePayload(body){
  if(!object(body)||Object.keys(body).some(k=>!['version','operations'].includes(k))||!Number.isInteger(body.version)||body.version<1||!Array.isArray(body.operations)||!body.operations.length||body.operations.length>500)throw error('malformed_payload');
  for(const op of body.operations){
-  if(!object(op)||!['update_seeding','add_seeding','remove_seeding','update_project','add_creator_to_project','update_creator','review_candidate','configure_candidates'].includes(op.type))throw error('invalid_operation');
+  if(!object(op)||!['update_seeding','add_seeding','remove_seeding','update_project','add_creator_to_project','update_creator','review_candidate','configure_candidates','refresh_creator_meta'].includes(op.type))throw error('invalid_operation');
   if(op.type==='configure_candidates'){if(Object.keys(op).some(k=>!['type','enabled'].includes(k))||typeof op.enabled!=='boolean')throw error('invalid_operation');continue;}
   if(op.type==='review_candidate'){if(Object.keys(op).some(k=>!['type','candidateId','status'].includes(k))||typeof op.candidateId!=='string'||!/^candidate-[a-f0-9]{20}$/.test(op.candidateId)||!['approved','held','excluded'].includes(op.status))throw error('invalid_candidate_review');continue;}
-  const allowed=op.type==='update_project'?['type','patch']:op.type==='remove_seeding'?['type','instagramId']:['type','instagramId','patch'];
+  if(op.type==='refresh_creator_meta'){if(Object.keys(op).some(k=>!['type','instagramId','creatorVersion'].includes(k))||typeof op.instagramId!=='string'||!/^[a-z0-9._]{1,30}$/.test(normalizeId(op.instagramId))||!Number.isInteger(op.creatorVersion)||op.creatorVersion<0)throw error('invalid_operation');continue;}
+  const allowed=op.type==='update_project'?['type','patch']:op.type==='remove_seeding'?['type','instagramId']:['type','instagramId','patch',...(op.type==='update_creator'?['creatorVersion']:[])];
   if(Object.keys(op).some(k=>!allowed.includes(k)))throw error('invalid_operation_field');
   if(op.type!=='update_project'&&!/^[a-z0-9._]{1,30}$/.test(normalizeId(op.instagramId)))throw error('invalid_instagramId');
   if(op.type==='update_project'){validatePatch(op.patch,PROJECT_FIELDS);if(own(op.patch,'name')&&(!op.patch.name.trim()||op.patch.name.length>200))throw error('invalid project name');}
-  else if(op.type==='update_creator')validatePatch(op.patch,['memo']);
+  else if(op.type==='update_creator'){validateCreatorPatch(op.patch);if(op.creatorVersion!==undefined&&(!Number.isInteger(op.creatorVersion)||op.creatorVersion<0))throw error('invalid_creator_version');}
   else if(op.type==='update_seeding')validatePatch(op.patch,RECORD_FIELDS);
   else if(op.type!=='remove_seeding'&&op.patch!==undefined)validatePatch(op.patch,RECORD_FIELDS);
  }
@@ -95,7 +97,7 @@ export function effectiveStatus(r){
 export function recordView(r,c){const result={id:r.id,creatorId:r.creatorId,instagramId:c.instagram};for(const k of RECORD_FIELDS)result[k]=r[aliases[k]||k]??(['followup'].includes(k)?false:k==='trackingHistory'?[]:'');result.formStatus=r.formStatus||r.response;result.uploadStatus=effectiveStatus(r);return result;}
 export function projectView(p){return {...p,productName:p.product||'',startDate:p.start||'',endDate:p.end||''};}
 export function summary(rs){const active=rs.filter(r=>r.contact!=='제외');return {total:rs.length,contacted:active.filter(r=>['DM 완료','무응답'].includes(r.contact)).length,responded:active.filter(r=>r.response==='응답 완료').length,shipped:active.filter(r=>r.shipping==='출고 완료').length,uploadCompleted:active.filter(r=>effectiveStatus(r)==='completed').length,uploadWaiting:active.filter(r=>r.shipping==='출고 완료'&&effectiveStatus(r)!=='completed').length,overdue:active.filter(r=>effectiveStatus(r)==='overdue').length,followUpNeeded:active.filter(r=>r.followup||r.contact==='무응답'&&!r.followupContactedAt).length};}
-export function detail(doc,p){const rs=doc.seedings.filter(r=>r.projectId===p.id);return {ok:true,project:projectView(p),seedings:rs.map(r=>recordView(r,doc.creators.find(c=>c.id===r.creatorId))),creators:doc.creators.map(c=>{const all=doc.seedings.filter(r=>r.creatorId===c.id);return {...c,instagramId:c.instagram,projectHistory:all.map(r=>({projectName:doc.projects.find(p=>p.id===r.projectId)?.name,product:r.product,shippedAt:r.shippedAt,postUrl:r.postUrl})),shipmentCount:all.filter(r=>r.shipping==='출고 완료').length,uploadCompletedCount:all.filter(r=>effectiveStatus(r)==='completed').length,latestSeedingDate:all.map(r=>r.shippedAt).filter(Boolean).sort().at(-1)||''};}),summary:summary(rs)};}
+export function detail(doc,p){const rs=doc.seedings.filter(r=>r.projectId===p.id);return {ok:true,project:projectView(p),seedings:rs.map(r=>recordView(r,doc.creators.find(c=>c.id===r.creatorId))),creators:doc.creators.map(c=>{const all=doc.seedings.filter(r=>r.creatorId===c.id);return {...c,creatorVersion:c.creatorVersion||0,candidateHistory:doc.projects.flatMap(p=>(p.aiCandidates?.items||[]).filter(a=>normalizeId(a.instagramId)===normalizeId(c.instagram)).map(a=>({projectName:p.name,candidateId:a.id,status:a.status}))),instagramId:c.instagram,projectHistory:all.map(r=>({projectName:doc.projects.find(p=>p.id===r.projectId)?.name,product:r.product,shippedAt:r.shippedAt,postUrl:r.postUrl})),shipmentCount:all.filter(r=>r.shipping==='출고 완료').length,uploadCompletedCount:all.filter(r=>effectiveStatus(r)==='completed').length,latestSeedingDate:all.map(r=>r.shippedAt).filter(Boolean).sort().at(-1)||''};}),summary:summary(rs)};}
 export function applyOperations(doc,p,operations){
  const next=structuredClone(doc),project=next.projects.find(x=>x.id===p.id);
  for(const op of operations){
@@ -116,7 +118,7 @@ export function applyOperations(doc,p,operations){
   }
   if(op.type==='update_project'){if(op.patch.name&&next.projects.some(x=>x.id!==p.id&&x.name.normalize('NFC')===op.patch.name.normalize('NFC')))throw error('duplicate_project_name');for(const [k,v] of Object.entries(op.patch))project[({productName:'product',startDate:'start',endDate:'end'})[k]||k]=v;continue;}
   const handle=normalizeId(op.instagramId);let c=next.creators.find(x=>normalizeId(x.instagram)===handle),r=c&&next.seedings.find(x=>x.projectId===p.id&&x.creatorId===c.id);
-  if(op.type==='update_creator'){if(!c)throw error('creator_not_found');Object.assign(c,op.patch);continue;}
+  if(op.type==='update_creator'||op.type==='refresh_creator_meta'){if(!c)throw error('creator_not_found',404);if(op.creatorVersion!==undefined&&op.creatorVersion!==(c.creatorVersion||0))throw error('creator_version_conflict',409);Object.assign(c,op.patch||{}, {creatorVersion:(c.creatorVersion||0)+1});continue;}
   if(op.type==='update_seeding'){if(!r)throw error('seeding_not_found');applyPatch(r,op.patch);}
   else if(op.type==='remove_seeding'){if(!r)throw error('seeding_not_found');next.seedings=next.seedings.filter(x=>x.id!==r.id);}
   else {
@@ -133,7 +135,7 @@ async function read({env,fetchImpl}){
  const doc=await res.json();const rev=JSON.parse(res.headers.get('dropbox-api-result')||'{}').rev;
  if(!rev||doc.schemaVersion!==1||!['projects','seedings','creators'].every(k=>Array.isArray(doc[k])))throw error('invalid_seeding_store',502);return {doc,rev,token};
 }
-export async function handleSeeding(method,path,name,payload,{env=process.env,fetchImpl=fetch}={}){
+export async function handleSeeding(method,path,name,payload,{env=process.env,fetchImpl=fetch,observeCreator}={}){
  if(method==='PUT')validatePayload(payload);
  const creation=method==='POST'&&path.endsWith('/projects')?validateCreate(payload):null;
  if(!['GET','PUT'].includes(method)&&!creation)throw error('Method Not Allowed',405);
@@ -150,7 +152,8 @@ export async function handleSeeding(method,path,name,payload,{env=process.env,fe
  if(!name?.trim())throw error('name is required');const p=doc?.projects.find(p=>p.name.normalize('NFC')===name.normalize('NFC'));
  if(!p)throw error('project_not_found',404);if(method==='GET')return {status:200,body:detail(doc,p),etag:`"seeding-${p.version}"`};if(method!=='PUT')throw error('Method Not Allowed',405);
  if(payload.version!==p.version)return {status:409,body:{ok:false,error:'version_conflict',currentVersion:p.version}};
- const next=applyOperations(doc,p,payload.operations),res=await fetchImpl('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/octet-stream','Dropbox-API-Arg':asciiSafeJson({path:STORE_PATH,mode:{'.tag':'update',update:rev},autorename:false,mute:true})},body:JSON.stringify(next),signal:AbortSignal.timeout(20000)});
+ const operations=[];for(const op of payload.operations){if(op.type!=='refresh_creator_meta'){operations.push(op);continue;}const c=doc.creators.find(c=>normalizeId(c.instagram)===normalizeId(op.instagramId));if(!c)throw error('creator_not_found',404);if(op.creatorVersion!==(c.creatorVersion||0))throw error('creator_version_conflict',409);let account=null;try{if(observeCreator)account=await observeCreator(c.instagram);}catch{}operations.push({...op,patch:{metaObservation:mergeMetaObservation(c.metaObservation,account)}});}
+ const next=applyOperations(doc,p,operations),res=await fetchImpl('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/octet-stream','Dropbox-API-Arg':asciiSafeJson({path:STORE_PATH,mode:{'.tag':'update',update:rev},autorename:false,mute:true})},body:JSON.stringify(next),signal:AbortSignal.timeout(20000)});
  if(res.status===409){const latest=await read({env,fetchImpl});return {status:409,body:{ok:false,error:'version_conflict',currentVersion:latest.doc?.projects.find(x=>x.id===p.id)?.version??p.version}};}
  if(!res.ok)throw error('seeding_write_failed',502);const np=next.projects.find(x=>x.id===p.id);return {status:200,body:detail(next,np),etag:`"seeding-${np.version}"`};
 }

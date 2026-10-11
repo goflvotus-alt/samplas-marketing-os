@@ -821,7 +821,7 @@ const server = isMainModule ? createServer(async (req, res) => {
         catch { return json(res, { ok: false, error: "malformed_json" }, 400); }
       }
       try {
-        const result = await handleSeeding(req.method, url.pathname, url.searchParams.get("name"), payload, { env });
+        const result = await handleSeeding(req.method, url.pathname, url.searchParams.get("name"), payload, { env, observeCreator:async handle=>{const record=await readMetaTokenRecord().catch(()=>null);const v=env.GRAPH_VERSION||'v25.0';const account=await discoverAccount(handle,{token:record?.accessToken||env.META_ACCESS_TOKEN,igId:record?.instagramBusinessAccountId||env.INSTAGRAM_BUSINESS_ACCOUNT_ID,graphVersion:v});return {...account,graphVersion:v};} });
         if (result.etag) res.setHeader("ETag", result.etag);
         return json(res, result.body, result.status);
       } catch (error) {
