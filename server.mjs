@@ -43,7 +43,8 @@ import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mj
 import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs";
 import { runWeeklyReportPreview, handleWeeklyReportPreview } from "./scripts/weekly-report-manual.mjs";
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
-import { getVeilFoundStatus, runVeilFoundPublisher } from "./scripts/veil-found-publisher.mjs";
+import { getVeilFoundStatus, runVeilFoundPublisher, fetchInstagramFeed, veilFoundConfig } from "./scripts/veil-found-publisher.mjs";
+import { runVeilSoldOutAudit } from "./scripts/veil-found-soldout-audit.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
 import { attachCafe24OrderItemsWithRetry } from "./scripts/cafe24-order-item-fetch.mjs";
 import {
@@ -146,7 +147,12 @@ const mimeTypes = {
   ".txt": "text/plain; charset=utf-8"
 };
 
-const veilControl=createVeilControl({env,workDir});
+// Sold-out caption audit: read-only Instagram feed + Brand Master + Cafe24 product/variant GETs.
+const veilControl=createVeilControl({env,workDir,soldOutAudit:({number})=>{
+  const config=veilFoundConfig(env);
+  if(!config.token)throw Object.assign(new Error("not_configured"),{status:503});
+  return runVeilSoldOutAudit({number,fetchFeed:()=>fetchInstagramFeed({config}),loadBrandMaster:readBrandMasterFile,listBrandProducts:fetchCafe24BrandProducts,listVariants:fetchCafe24ProductVariantsWithInventory});
+}});
 const veilFoundPublisherScheduler = {
   intervalMs: 5 * 60 * 1000,
   running: false,
@@ -8481,7 +8487,7 @@ async function fetchCafe24BrandProducts(brandCode) {
       url.searchParams.set("offset", String(offset));
       const body = await cafe24FetchJson(url);
       if (body.error) throw body.error;
-      const page = (body.products || []).map((p) => ({ product_no: p.product_no, brand_code: p.brand_code, display: p.display, selling: p.selling, sold_out: p.sold_out }));
+      const page = (body.products || []).map((p) => ({ product_no: p.product_no, brand_code: p.brand_code, product_name: p.product_name, display: p.display, selling: p.selling, sold_out: p.sold_out }));
       products.push(...page);
       if (page.length < 100) break;
     }

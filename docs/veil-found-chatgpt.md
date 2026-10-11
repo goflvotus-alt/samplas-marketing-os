@@ -13,3 +13,14 @@ Private Site source: veil-found-plugin/. Build with npm run build and npm run va
 Investigation 2026-10-10: actual local READY has ten PNGs and matching four-line captions. Old production source selects JPG/JPEG only and generates numeric-only captions. These PNGs are therefore excluded; this alone does not prove a failed Graph call on October 9. Render application logs filtered by veil_found_publisher over two days: no matching logs. Stored samplas-api-errors.ndjson: zero VEIL errors dated 2026-10-09 UTC. Direct historical failure cause remains unconfirmed. No credentials or production data were changed.
 
 Isolated tests exercise exact matching, duplicates, full caption, original URL, success-before-move, API errors, stale approval, Friday slots, explicit approval, idempotency, failed-write no-retry, durable schedules, disabled scheduler and Site auth/forwarding. Broader API auth test gate decision fails identically on original HEAD and changed tree (local host/basic fallback); left untouched as unrelated.
+
+## Sold-out caption audit (read only, 2026-10-11)
+
+Two more tools on the same endpoint: `auditSoldOutCaptions` ({view?: "issues" | "all"}) and `checkSoldOutPost` ({number}). Both only read: Instagram feed captions (GET), Brand Master, Cafe24 product list and variants with inventories (GET). No Instagram, Cafe24, Dropbox or WORK_DIR write; no cache file.
+
+- Every "VEIL FOUND #NNN / brand / product / price KRW | SOLD OUT" block of every caption is one item (carousel captions hold several).
+- The brand resolves through Brand Master (exact name/alias). A split identity (SPL_...) has no Cafe24 brand code and is UNCERTAIN_MATCH without a lookup.
+- The product must match exactly one Cafe24 product name of that brand (case, spacing, punctuation and a leading [BRAND] folded). Similar names are listed as candidates only.
+- Stock: product display/selling, each option's display/selling, use_inventory (F = unlimited, sellable), quantity and display_soldout, cross-checked with the product sold_out flag. Anything unclear is STOCK_UNCERTAIN.
+- Verdicts: SOLD_OUT_BUT_PRICED, SELLING_BUT_MARKED_SOLD_OUT, OK, UNCERTAIN_MATCH, STOCK_UNCERTAIN, CAPTION_UNPARSED, LOOKUP_FAILED.
+- Any Cafe24 lookup failure makes the result ok:false / auditStatus INCOMPLETE with notChecked and failures (stage, errorCode). It is never reported as a clean audit.
