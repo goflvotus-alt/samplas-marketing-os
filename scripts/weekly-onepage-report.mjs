@@ -83,7 +83,7 @@ export function metaOnePage(workbook,model) {
  detail(s,['광고 ID','캠페인','광고명','광고비','구매','귀속매출','ROAS','CPA','CTR','CPC','확인주문'],[...(model.ads||[])].sort((a,b)=>(b.spend||0)-(a.spend||0)).map(row=>[String(row.adId||''),String(row.campaignName||''),String(row.adName||''),measured(row.spend,'원'),measured(row.purchases,'건'),measured(row.purchaseValue,'원'),measured(row.roas,'x'),measured(row.cpa,'원'),measured(row.ctr,'%'),measured(row.cpc,'원'),commerce?new Set((actual.rows||[]).filter(r=>r.tracking_source==='META_PAID'&&r.content_id===row.adId).map(r=>r.order_id)).size:'N/A']));
  for(let row=34;row<=41;row++){s.getRow(row).height=60;s.getRow(row).eachCell(cell=>{cell.font={...cell.font,size:8};});}
  actions(s,[{priority:'P1',action:'Analytics ig/paid와 Admin order_id 일치 주문을 지속 검증',success:'추적 누락·미매칭 분리'},{priority:'P1',action:'기존 ghost_mall_id 필터와 Analytics 유료 주문을 중복 없이 비교',success:'동일 주문 결제 1회 집계'},{priority:'P2',action:'광고 판단은 Meta 성과와 확인된 실제 주문 근거를 별도 확인',success:'귀속 매출 혼합 금지'}]);
- notes(s,['Meta Marketing API Insights · source-metric 그대로 사용','Cafe24 Analytics: 유입 근거만 사용 / Admin Orders: 상품 및 실결제 근거','동일 주문번호 결제 1회 · canonical 취소/환불 및 부분취소 규칙 유지','기존 공통 REPORT 1페이지 레이아웃 재사용 · 상세 시트 별도 유지','현재/비교 기간은 요청한 KST 날짜 범위 · 자동 스케줄러의 기본 주간은 변경 없음','확인된 주문만 표시 · 미추적 주문을 광고 주문으로 추정하지 않음']);
+ notes(s,['Meta Marketing API Insights · source-metric 그대로 사용','Cafe24 Analytics: 유입 근거만 사용 / Admin Orders: 상품 및 실결제 근거','동일 주문번호 결제 1회 · canonical 취소/환불 및 부분취소 규칙 유지','기존 공통 REPORT 1페이지 레이아웃 재사용 · 상세 시트 별도 유지','현재/비교 기간은 KST 날짜 범위 · 자동 리포트는 완료된 화~월 7일과 직전 7일 비교','확인된 주문만 표시 · 미추적 주문을 광고 주문으로 추정하지 않음']);
  return s;
 }
 export function instagramDecision(post,posts) {

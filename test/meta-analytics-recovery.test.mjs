@@ -37,3 +37,27 @@ test('explicit Tuesday-Monday period preserves comparison and opts into Analytic
  await generateWeeklyMetaAdsReport({period,onePage:true,fetchByLevel:async(s,u)=>{calls.push([s,u]);return level;},fetchActualOrders:async(s,u,options)=>{assert.equal(options.includeAnalyticsOrders,true);return data;},fetchActualAnalytics:async()=>analytics,saveReport:async w=>{captured=w;return {filePath:'fixture'};}});
  assert(calls.some(([s,u])=>s==='2026-09-29'&&u==='2026-10-05'));assert(captured.getWorksheet('REPORT'));assert(captured.getWorksheet('ACTUAL_PRODUCTS_SOLD'));assert.equal(captured.getWorksheet('REPORT').pageSetup.fitToHeight,1);
 });
+
+test('strict automated report refuses missing performance or actual coverage before saving',async()=>{
+ for (const failure of ['ad','actual','previousActual']) {
+  let saved=false;
+  const result=await generateWeeklyMetaAdsReport({period,requireCompleteData:true,
+   fetchByLevel:async(s,u,level)=>failure==='ad'&&level==='ad'?{ok:false}:{rows:[],totals:{}},
+   fetchActualOrders:async(s)=>failure==='actual'||failure==='previousActual'&&s==='2026-09-29'?{ok:false}:data,
+   fetchActualAnalytics:async()=>analytics,
+   saveReport:async()=>{saved=true;return {filePath:'fixture'};}});
+  assert.equal(result.ok,false);assert.equal(saved,false);assert.equal(result.filePath,null);
+ }
+});
+
+test('strict report verifies both actual periods and exports confirmed quantities',async()=>{
+ const ranges=[];let workbook;
+ const result=await generateWeeklyMetaAdsReport({period,onePage:true,requireCompleteData:true,
+ fetchByLevel:async()=>({rows:[],totals:{purchaseValue:1720000}}),
+ fetchActualOrders:async(s,u)=>{ranges.push([s,u]);return {...data,analyticsOrders:[{...order,order_date:s}]};},
+ fetchActualAnalytics:async()=>analytics,
+ saveReport:async w=>{workbook=w;return {filePath:'fixture'};}});
+ assert.equal(result.ok,true);assert.deepEqual(ranges,[['2026-10-06','2026-10-12'],['2026-09-29','2026-10-05']]);
+ assert.equal(workbook.getWorksheet('ACTUAL_PRODUCTS_SOLD').getRow(2).getCell('quantity').value,1);
+ assert.equal(workbook.getWorksheet('ACTUAL_PRODUCTS_SOLD').getRow(2).getCell('actual_paid_amount').value,198000);
+});

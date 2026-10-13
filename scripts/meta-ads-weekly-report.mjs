@@ -321,7 +321,7 @@ export async function writeMetaWeeklyReportFile(workbook, { since, until, output
 // Orchestrator
 // ---------------------------------------------------------------------------
 
-export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, onePage = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, outputDir, env = process.env, saveReport } = {}) {
+export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, onePage = false, requireCompleteData = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, outputDir, env = process.env, saveReport } = {}) {
   if (typeof fetchByLevel !== "function") throw new Error("generateWeeklyMetaAdsReport requires fetchByLevel(since, until, level)");
   // Explicit report periods do not change the established scheduler's default week.
   if (period && (!/^\d{4}-\d{2}-\d{2}$/.test(period.since || '') || !/^\d{4}-\d{2}-\d{2}$/.test(period.until || '') || Date.parse(period.until) - Date.parse(period.since) !== 6 * 86400000 || [period.since,period.until].some(d => !Number.isFinite(Date.parse(d)) || new Date(d).toISOString().slice(0,10) !== d))) throw new Error('Explicit Meta report period must be seven valid consecutive dates.');
@@ -366,6 +366,19 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, on
   });
   if (!model.ok) {
     return { ok: false, since, until, error: model.error, filePath: null };
+  }
+
+  if (requireCompleteData) {
+    if (![current, previous].every(levels => LEVELS.every(level => levelOk(levels[level]))) || !model.actualProducts.available) {
+      return { ok: false, since, until, error: "Incomplete Meta performance or Cafe24 actual attribution data; report was not saved.", filePath: null };
+    }
+    let previousOrders, previousAnalytics;
+    try {
+      previousOrders = await fetchActualOrders(previousSince, previousUntil, { includeAnalyticsOrders: true });
+      previousAnalytics = await fetchActualAnalytics(previousSince, previousUntil);
+    } catch { /* Explicitly fail below rather than save an incomplete report. */ }
+    model.previousActualProducts = buildActualProductsSold({ data: previousOrders, analytics: previousAnalytics, metaAds: previous.ad.rows, since: previousSince, until: previousUntil });
+    if (!model.previousActualProducts.available) return { ok: false, since, until, error: "Previous Cafe24 actual attribution data unavailable; report was not saved.", filePath: null };
   }
 
   const workbook = await buildWeeklyMetaReportWorkbook(model, { onePage });

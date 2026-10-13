@@ -30,6 +30,7 @@ import {
 import {
   generateWeeklyNaverAdsReport,
   isWeeklyNaverReportDue,
+  previousTuesdayToMondayRange,
   seoulDateKey
 } from "./scripts/naver-ads-weekly-report.mjs";
 import {
@@ -8619,7 +8620,7 @@ async function runNaverWeeklyReportCheck() {
 // ---------------------------------------------------------------------------
 
 const metaWeeklyReportScheduler = {
-  intervalMs: 15 * 60 * 1000,
+  intervalMs: 60 * 1000,
   running: false,
   lastAttemptAt: null,
   lastSuccessAt: null,
@@ -8696,6 +8697,9 @@ async function runMetaWeeklyReportCheck() {
     }
     const result = await generateWeeklyMetaAdsReport({
       referenceDateKey: seoulDateKey(),
+      period: previousTuesdayToMondayRange(seoulDateKey()),
+      onePage: true,
+      requireCompleteData: true,
       fetchByLevel: buildMetaAdsSummaryForWeeklyReport,
       fetchActualOrders: fetchCafe24ActualOrdersForWeeklyReport,
       fetchActualAnalytics: fetchCafe24AnalyticsForWeeklyReport,

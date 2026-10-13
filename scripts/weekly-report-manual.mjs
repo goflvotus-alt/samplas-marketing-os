@@ -3,7 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { generateWeeklyNaverAdsReport, resolveWeeklyReportOutputDir, weeklyReportFileName, seoulDateKey } from './naver-ads-weekly-report.mjs';
+import { generateWeeklyNaverAdsReport, resolveWeeklyReportOutputDir, weeklyReportFileName, seoulDateKey, previousTuesdayToMondayRange } from './naver-ads-weekly-report.mjs';
 import { generateWeeklyInstagramReport, resolveInstagramWeeklyReportOutputDir, instagramWeeklyReportFileName } from './instagram-weekly-report.mjs';
 import { generateWeeklyMetaAdsReport, resolveMetaWeeklyReportOutputDir, metaWeeklyReportFileName } from './meta-ads-weekly-report.mjs';
 import { resolveWeeklyReportDestination, resolvePlatformDropboxDestination, dropboxWeeklyReportDir, saveWeeklyReportToDropboxAtPath } from './dropbox-report-uploader.mjs';
@@ -25,7 +25,7 @@ export async function runWeeklyReportPreview(body,{env={},fetchers,hasPersistent
   const config={
     naver:{generate:generateWeeklyNaverAdsReport,fileName:weeklyReportFileName,outputDir:resolveWeeklyReportOutputDir,options:{fetchPerformance:fetchers?.naver},destination:()=>({...resolveWeeklyReportDestination(env),dir:dropboxWeeklyReportDir(env)})},
     instagram:{generate:generateWeeklyInstagramReport,fileName:instagramWeeklyReportFileName,outputDir:resolveInstagramWeeklyReportOutputDir,options:{fetchRange:fetchers?.instagram},destination:()=>resolvePlatformDropboxDestination(env,{dirEnvKey:'DROPBOX_INSTAGRAM_WEEKLY_REPORT_DIR',defaultDir:'/SAMPLAS WORK/병구 작업/인스타그램 리포트'})},
-    meta:{generate:generateWeeklyMetaAdsReport,fileName:metaWeeklyReportFileName,outputDir:resolveMetaWeeklyReportOutputDir,options:{fetchByLevel:fetchers?.meta,fetchActualOrders:fetchers?.actualOrders,fetchActualAnalytics:fetchers?.actualAnalytics},destination:()=>resolvePlatformDropboxDestination(env,{dirEnvKey:'DROPBOX_META_WEEKLY_REPORT_DIR',defaultDir:'/SAMPLAS WORK/병구 작업/메타 광고/리포트'})}
+    meta:{generate:generateWeeklyMetaAdsReport,fileName:metaWeeklyReportFileName,outputDir:resolveMetaWeeklyReportOutputDir,options:{period:previousTuesdayToMondayRange(referenceDate),onePage:true,requireCompleteData:true,fetchByLevel:fetchers?.meta,fetchActualOrders:fetchers?.actualOrders,fetchActualAnalytics:fetchers?.actualAnalytics},destination:()=>resolvePlatformDropboxDestination(env,{dirEnvKey:'DROPBOX_META_WEEKLY_REPORT_DIR',defaultDir:'/SAMPLAS WORK/병구 작업/메타 광고/리포트'})}
   }[platform];
   const destination=config.destination();
   if(destination.mode==='misconfigured')throw requestError('dropbox_partially_configured',503);

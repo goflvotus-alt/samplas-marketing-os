@@ -47,6 +47,7 @@ function freshMetaContext(overrides = {}) {
     fetchCafe24AnalyticsForWeeklyReport: () => {},
     safeErrorMessage: (error) => String(error?.message || error),
     logApiError: async () => {},
+    previousTuesdayToMondayRange: () => ({since:"2026-09-22",until:"2026-09-28"}),
     seoulDateKey: () => "2026-09-29",
     ...overrides
   };
@@ -258,3 +259,14 @@ test("isolation: a Meta scheduler exception does not touch the Instagram schedul
   assert.equal(instagramCtx.__getInstagramSchedulerState().lastRunSinceKey, "2026-09-22");
   assert.equal(instagramCtx.__getInstagramSchedulerState().lastError, null);
 });
+
+ test("Meta scheduler requests completed Tue-Mon week, one-page template and fail-closed data", async () => {
+  const ctx = freshMetaContext({generateWeeklyMetaAdsReport: async options => {
+    assert.deepEqual(JSON.parse(JSON.stringify(options.period)), {since:"2026-09-22",until:"2026-09-28"});
+    assert.equal(options.onePage,true); assert.equal(options.requireCompleteData,true);
+    return {ok:false,error:"Incomplete attribution"};
+  }});
+  await ctx.runMetaWeeklyReportCheck();
+  assert.equal(ctx.__getMetaSchedulerState().lastRunSinceKey,null);
+  assert.equal(ctx.__getMetaSchedulerState().intervalMs,60000);
+ });

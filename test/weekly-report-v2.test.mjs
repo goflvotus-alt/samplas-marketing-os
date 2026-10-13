@@ -49,9 +49,9 @@ for(const platform of ['instagram','naver','meta'])test(`Manual ${platform}: sam
  const state={lastRunSinceKey:'unchanged',lastSuccessAt:'unchanged',running:false},snapshot=JSON.stringify(state),paths=[];
  const env={...fakeEnv};const options={env,fetchers:f,hasPersistentMetaConnection:async()=>true,upload:async(w,{targetPath,env:passed})=>{assert.equal(passed,env);assert(targetPath.includes('_PREVIEW_'));assert(targetPath.endsWith('.xlsx'));paths.push(targetPath);const loaded=new ExcelJS.Workbook();await loaded.xlsx.load(await w.xlsx.writeBuffer());return {filePath:targetPath};}};
  const r=await runWeeklyReportPreview({platform,referenceDate:'2026-10-06',mode:'preview'},options);await runWeeklyReportPreview({platform,referenceDate:'2026-10-06',mode:'preview'},options);
- assert.equal(r.ok,true);assert.equal(r.until,platform==='meta'?'2026-10-04':'2026-10-05');assert.equal(r.mode,'preview');assert.notEqual(paths[0],paths[1]);assert.equal(JSON.stringify(state),snapshot);
+ assert.equal(r.ok,true);assert.equal(r.until,'2026-10-05');assert.equal(r.mode,'preview');assert.notEqual(paths[0],paths[1]);assert.equal(JSON.stringify(state),snapshot);
  const folder={instagram:'/SAMPLAS WORK/병구 작업/인스타그램 리포트/',naver:'/SAMPLAS WORK/병구 작업/네이버 광고 리포트/',meta:'/SAMPLAS WORK/병구 작업/메타 광고/리포트/'}[platform];assert(paths.every(p=>p.startsWith(folder)));
- assert.equal(calls.filter(c=>c[0]===platform).length,platform==='meta'?12:4);if(platform==='meta'){assert.equal(calls.filter(c=>c[0]==='actualOrders').length,2);assert.equal(calls.filter(c=>c[0]==='actualAnalytics').length,2);}
+ assert.equal(calls.filter(c=>c[0]===platform).length,platform==='meta'?12:4);if(platform==='meta'){assert.equal(calls.filter(c=>c[0]==='actualOrders').length,4);assert.equal(calls.filter(c=>c[0]==='actualAnalytics').length,4);}
 });
 test('Manual: date/platform/mode validation before any upstream call',()=>{
  for(const body of [{platform:'popup',mode:'preview'},{platform:'naver',mode:'official'},{platform:'naver',mode:'preview',referenceDate:'2026-02-30'},{platform:'naver',mode:'preview',referenceDate:'../x'}])assert.throws(()=>validateWeeklyPreviewRequest(body));
