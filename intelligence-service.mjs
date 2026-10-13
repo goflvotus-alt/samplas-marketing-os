@@ -1,4 +1,5 @@
 import { demandCandidates, buildSearchDemand } from "./scripts/weekly-account-demand.mjs";
+import { buildActualProductsSold } from "./scripts/meta-actual-products-sold.mjs";
 import { createServer } from "node:http";
 import { withPendingBrandWrite } from "./scripts/pending-brand-queue.mjs";
 import { pathToFileURL } from "node:url";
@@ -2439,7 +2440,7 @@ export function capturingResponse() {
 // Phase 3: combines the existing Meta full-report and Naver Phase 1 performance
 // responses through the Phase 2 canonical adapter (fromMetaAds/fromNaverAds).
 // No new ad-metric math here — every number in `channels` is produced by those
-// adapters. Cafe24 actual commerce is not connected in this Phase.
+// adapters. Actual commerce reuses the weekly report's exact-order Analytics join.
 async function handleAdvertisingOverviewRoute(url, res) {
   const period = naverAdsPerformancePeriod(url); // channel-agnostic since/until validator
   if (!period.ok) return json(res, { ok: false, error: period.error }, 400);
@@ -2465,7 +2466,24 @@ async function handleAdvertisingOverviewRoute(url, res) {
     naverChannel = fromNaverAds({ ok: false }, options);
   }
 
-  return json(res, { ok: true, since, until, channels: [metaChannel, naverChannel], actualCommerce: null, notes: [] });
+  let actualCommerce = { available: false, rows: [], reason: "Cafe24 actual orders or Analytics unavailable; no Meta revenue substitution." };
+  try {
+    const query = `start_date=${encodeURIComponent(since)}&end_date=${encodeURIComponent(until)}`;
+    const [orders, analytics] = await Promise.all([
+      fetchMarketingOsJson(`/api/cafe24/orders?${query}&limit=500`),
+      fetchMarketingOsJson(`/api/diagnostics/cafe24-analytics-orderdetails?${query}`)
+    ]);
+    const details = analytics.data?.data?.orderdetails;
+    if (orders.ok && analytics.ok && orders.data?.source === "cafe24_admin_api" && Array.isArray(orders.data.orders) && orders.data.orders.length < 500 && analytics.data?.ok === true && Array.isArray(details) && details.length < 100) {
+      const ids = new Set(orders.data.orders.map(order => String(order.order_id)));
+      const paid = details.filter(row => String(row.ad || '').toLowerCase() === 'ig' && String(row.medium || '').toLowerCase() === 'paid');
+      if (paid.every(row => row.order_id && ids.has(String(row.order_id)))) {
+        actualCommerce = buildActualProductsSold({ data: orders.data, analytics: analytics.data, since, until });
+        if (actualCommerce.missingItems || actualCommerce.missingDates || actualCommerce.possibleLimitReached) actualCommerce = { available: false, rows: [], reason: "Cafe24 actual item/date coverage incomplete; no Meta revenue substitution." };
+      }
+    }
+  } catch { /* Actual-data failures never overwrite either platform's metrics. */ }
+  return json(res, { ok: true, since, until, channels: [metaChannel, naverChannel], actualCommerce, notes: [] });
 }
 
 function naverAdsCredentials() {

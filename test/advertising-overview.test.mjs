@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
+import { buildActualProductsSold } from "../scripts/meta-actual-products-sold.mjs";
 import { fromMetaAds, fromNaverAds } from "../scripts/advertising-canonical.mjs";
 
 // Execute the real handler source (period validator + the new overview handler)
@@ -27,7 +28,7 @@ const naverOk = { ok: true, ...period, summary: { spend: 50, impressions: 500, c
 function harness({ meta, naver } = {}) {
   const metaCalls = [], naverCalls = [];
   const context = {
-    fromMetaAds, fromNaverAds,
+    fromMetaAds, fromNaverAds, buildActualProductsSold,
     json: (res, payload, status = 200) => { res.writeHead(status); res.end(JSON.stringify(payload)); },
     fetchMarketingOsJson: async (path) => { metaCalls.push(path); return typeof meta === "function" ? meta(path) : meta; },
     handleNaverAdsReadOnlyRoute: async (kind, url, res) => {
@@ -64,7 +65,7 @@ test("Meta and Naver both healthy: canonical adapter actually computes both chan
   assert.equal(meta.platformConversions, 2); assert.equal(meta.platformConversionValue, 400);
   assert.equal(naver.channel, "naver"); assert.equal(naver.status, "available");
   assert.equal(naver.platformConversions, 1);
-  assert.equal(body.actualCommerce, null);
+  assert.equal(body.actualCommerce.available, false);
   assert.deepEqual(body.notes, []);
 });
 
@@ -73,7 +74,7 @@ test("Meta fails, Naver stays available", async () => {
   const { body } = await h.request("?since=2026-09-01&until=2026-09-07");
   assert.equal(body.channels[0].channel, "meta"); assert.equal(body.channels[0].status, "unavailable");
   assert.equal(body.channels[1].channel, "naver"); assert.equal(body.channels[1].status, "available");
-  assert.equal(body.actualCommerce, null);
+  assert.equal(body.actualCommerce.available, false);
 });
 
 test("Naver fails (thrown), Meta stays available", async () => {
@@ -82,7 +83,7 @@ test("Naver fails (thrown), Meta stays available", async () => {
   assert.equal(body.channels[0].channel, "meta"); assert.equal(body.channels[0].status, "available");
   assert.equal(body.channels[1].channel, "naver"); assert.equal(body.channels[1].status, "unavailable");
   assert.ok(!JSON.stringify(body).includes("secret-token-abc123"), "thrown error text must never reach the response");
-  assert.equal(body.actualCommerce, null);
+  assert.equal(body.actualCommerce.available, false);
 });
 
 test("both channels fail: overview still returns 200 with two unavailable channels", async () => {
@@ -91,22 +92,22 @@ test("both channels fail: overview still returns 200 with two unavailable channe
   assert.equal(status, 200);
   assert.equal(body.channels[0].status, "unavailable");
   assert.equal(body.channels[1].status, "unavailable");
-  assert.equal(body.actualCommerce, null);
+  assert.equal(body.actualCommerce.available, false);
 });
 
 test("Meta and Naver receive the identical since/until", async () => {
   const h = harness({ meta: { ok: true, data: metaOk }, naver: naverOk });
   await h.request("?since=2026-09-01&until=2026-09-07");
-  assert.equal(h.metaCalls.length, 1);
+  assert.equal(h.metaCalls.length, 3);
   assert.ok(h.metaCalls[0].includes("since=2026-09-01") && h.metaCalls[0].includes("until=2026-09-07"));
   assert.equal(h.naverCalls.length, 1);
   assert.equal(h.naverCalls[0].since, "2026-09-01"); assert.equal(h.naverCalls[0].until, "2026-09-07");
 });
 
-test("Cafe24 actual commerce is not connected in this Phase", async () => {
+test("Cafe24 actual commerce remains unavailable without order evidence", async () => {
   const h = harness({ meta: { ok: true, data: metaOk }, naver: naverOk });
   const { body } = await h.request("?since=2026-09-01&until=2026-09-07");
-  assert.equal(body.actualCommerce, null);
+  assert.equal(body.actualCommerce.available, false);
   assert.ok(!("cafe24" in body));
 });
 
@@ -115,6 +116,13 @@ test("invalid period is rejected before either channel is called", async () => {
   const { status, body } = await h.request("?since=bad&until=2026-09-07");
   assert.equal(status, 400); assert.equal(body.ok, false);
   assert.equal(h.metaCalls.length, 0); assert.equal(h.naverCalls.length, 0);
+});
+
+test('actual commerce reuses Analytics exact order join and never replaces platform values',async()=>{
+  const order={order_id:'verified',order_date:'2026-09-03',payment_amount:198000,items:[{product_name:'Real jeans',quantity:1,product_price:198000}]};
+  const h=harness({meta:path=>({ok:true,data:path.includes('/api/cafe24/orders')?{source:'cafe24_admin_api',orders:[order]}:path.includes('analytics-orderdetails')?{ok:true,data:{orderdetails:[{order_id:'verified',ad:'ig',medium:'paid',content:'exact-ad'}]}}:metaOk}),naver:naverOk});
+  const {body}=await h.request('?since=2026-09-01&until=2026-09-07');
+  assert.equal(body.actualCommerce.available,true);assert.equal(body.actualCommerce.summary.metaPaidRevenue,198000);assert.equal(body.actualCommerce.rows[0].order_id,'verified');assert.equal(body.channels[0].platformConversionValue,400);
 });
 
 test("route dispatch is GET-only and the handler itself takes no request body", () => {

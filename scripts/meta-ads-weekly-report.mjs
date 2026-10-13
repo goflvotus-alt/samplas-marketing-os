@@ -25,6 +25,7 @@ import ExcelJS from "exceljs";
 import { seoulDateKey, previousMondayToSundayRange, previousWeekRange, wowChange } from "./naver-ads-weekly-report.mjs";
 
 import { buildActualProductsSold } from "./meta-actual-products-sold.mjs";
+import { metaOnePage } from "./weekly-onepage-report.mjs";
 import { analyzeMetaLevels, writeDecisionSheet, addExecutiveRead, addWowFormatting, addPerformanceFormatting } from "./weekly-report-analysis.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -110,7 +111,7 @@ export function buildWeeklyMetaReportModel({ current, previous, since, until, pr
 
 const NUM_FMT = "#,##0";
 const WON_FMT = "#,##0\"원\"";
-const PCT1_FMT = "0.0\"%\"";
+const PCT1_FMT = "0.00%";
 const PCT1_SIGNED_FMT = "+0.0\"%\";-0.0\"%\";0.0\"%\"";
 const MULTIPLE_FMT = "0.00\"x\"";
 
@@ -224,10 +225,11 @@ function buildRawSheet(workbook, model) {
   return sheet;
 }
 
-export async function buildWeeklyMetaReportWorkbook(model) {
+export async function buildWeeklyMetaReportWorkbook(model, { onePage = false } = {}) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "SAMPLAS Marketing OS";
   workbook.created = new Date();
+  if (onePage) metaOnePage(workbook, model);
   buildSummarySheet(workbook, model);
   buildLevelSheet(workbook, "CAMPAIGN", model.campaigns, model, { labelHeader: "Campaign Name", idHeader: "Campaign ID", idField: "campaignId", nameField: "campaignName" });
   buildLevelSheet(workbook, "AD SET", model.adsets, model, { labelHeader: "Adset Name", idHeader: "Adset ID", idField: "adsetId", nameField: "adsetName" });
@@ -319,9 +321,11 @@ export async function writeMetaWeeklyReportFile(workbook, { since, until, output
 // Orchestrator
 // ---------------------------------------------------------------------------
 
-export async function generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLevel, fetchActualOrders, fetchActualAnalytics, outputDir, env = process.env, saveReport } = {}) {
+export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, onePage = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, outputDir, env = process.env, saveReport } = {}) {
   if (typeof fetchByLevel !== "function") throw new Error("generateWeeklyMetaAdsReport requires fetchByLevel(since, until, level)");
-  const { since, until } = previousMondayToSundayRange(referenceDateKey);
+  // Explicit report periods do not change the established scheduler's default week.
+  if (period && (!/^\d{4}-\d{2}-\d{2}$/.test(period.since || '') || !/^\d{4}-\d{2}-\d{2}$/.test(period.until || '') || Date.parse(period.until) - Date.parse(period.since) !== 6 * 86400000 || [period.since,period.until].some(d => !Number.isFinite(Date.parse(d)) || new Date(d).toISOString().slice(0,10) !== d))) throw new Error('Explicit Meta report period must be seven valid consecutive dates.');
+  const { since, until } = period || previousMondayToSundayRange(referenceDateKey);
   const { since: previousSince, until: previousUntil } = previousWeekRange({ since, until });
 
   const [current, previous] = await Promise.all([
@@ -335,7 +339,7 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLev
   if (levelOk(current.campaign)) {
     if (fetchActualOrders) {
       try {
-        actualOrders = await fetchActualOrders(since, until);
+        actualOrders = await fetchActualOrders(since, until, { includeAnalyticsOrders: true });
       } catch {
         actualOrders = { ok: false };
       }
@@ -364,7 +368,7 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, fetchByLev
     return { ok: false, since, until, error: model.error, filePath: null };
   }
 
-  const workbook = await buildWeeklyMetaReportWorkbook(model);
+  const workbook = await buildWeeklyMetaReportWorkbook(model, { onePage });
 
   if (saveReport) {
     const saved = await saveReport(workbook, { since, until, env });

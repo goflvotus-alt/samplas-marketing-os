@@ -42,7 +42,7 @@ function dedupeActiveItems(items = []) {
     if (isHistoricalClaimItem(item)) continue;
     if (isPrivatePaymentItem(item)) continue;
 
-    const key = [
+    const key = text(item.order_item_code) || text(item.item_no) || [
       text(item.variant_code) ||
         text(item.sku) ||
         text(item.product_code) ||
@@ -150,10 +150,8 @@ function classifyAttribution(analyticsRow, metaIndexes, order) {
   const contentId = String(analyticsRow.content || "").trim();
 
   if (ad.toLowerCase() === "ig" && medium.toLowerCase() === "paid") {
-    const meta =
-      metaIndexes.byAdId.get(contentId) ||
-      metaIndexes.byCampaignId.get(campaignId) ||
-      null;
+    // A campaign can contain several ads; never assign its first ad to an unknown content ID.
+    const meta = metaIndexes.byAdId.get(contentId) || null;
 
     const adName =
       text(meta?.adName || meta?.ad_name || meta?.name) ||
@@ -305,6 +303,17 @@ export function buildActualProductsSold({
   );
 
   const metaIndexes = buildMetaIndexes(metaAds);
+  let candidateOrders = data.orders;
+  if (queryMode && Object.hasOwn(data, "analyticsOrders")) {
+    const acquisition = analyticsRows(analytics);
+    if (!data.analyticsOrdersComplete || !Array.isArray(data.analyticsOrders) || !analytics || analytics.ok === false || (!Array.isArray(analytics.orderdetails) && !Array.isArray(analytics.data?.orderdetails)) || acquisition.length >= 100) return {
+      available: false, rows: [], reason: "Cafe24 Analytics or actual order coverage incomplete; no Meta revenue substitution."
+    };
+    const paidIds = new Set(acquisition.filter(row => String(row.ad || '').toLowerCase() === 'ig' && String(row.medium || '').toLowerCase() === 'paid').map(row => text(row.order_id)).filter(Boolean));
+    const actualIds = new Set(data.analyticsOrders.map(order => text(order?.order_id) || text(order?.orderId)));
+    if ([...paidIds].some(id => !actualIds.has(id))) return { available: false, rows: [], reason: "Analytics paid order has no matching Admin order; actual sales unavailable." };
+    candidateOrders = [...data.orders, ...data.analyticsOrders.filter(order => paidIds.has(text(order?.order_id) || text(order?.orderId)))];
+  }
 
   const rows = [];
   const seenOrders = new Set();
@@ -313,7 +322,7 @@ export function buildActualProductsSold({
 
   const orderSummary = new Map();
 
-  for (const order of data.orders) {
+  for (const order of candidateOrders) {
     const date = trustedCafe24OrderDate(order);
 
     if (!date) {
@@ -343,7 +352,7 @@ export function buildActualProductsSold({
       ? analyticsByOrderId.get(orderId)
       : undefined;
 
-    const attribution = queryMode
+    const attribution = queryMode && codesByOrder.has(orderId)
       ? inflowQueryAttribution(order, codesByOrder.get(orderId), analyticsRow, metaIndexes)
       : classifyAttribution(analyticsRow, metaIndexes, order);
 
@@ -407,7 +416,7 @@ export function buildActualProductsSold({
     });
   }
 
-  if (queryMode && (missingItems || missingDates || data.orders.some(order => order.itemFetchError))) return {
+  if (queryMode && (missingItems || missingDates || candidateOrders.some(order => order.itemFetchError))) return {
     available: false, rows: [], missingItems, missingDates,
     reason: "Incomplete Cafe24 order items or dates; no Meta revenue substitution."
   };

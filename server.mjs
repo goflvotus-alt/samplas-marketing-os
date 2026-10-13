@@ -8643,7 +8643,7 @@ export async function buildMetaAdsSummaryForWeeklyReport(since, until, level) {
 
 // Query provenance is internal metadata; never fabricate Cafe24 response fields.
 const META_WEEKLY_TRACKING_CODES = ['meta_meantime_look', 'meta_ssage', 'meta_adv_catalog', 'meta_adv_image', 'meta_adv_video'];
-export async function fetchCafe24ActualOrdersForWeeklyReport(since, until) {
+export async function fetchCafe24ActualOrdersForWeeklyReport(since, until, { includeAnalyticsOrders = false } = {}) {
   const orders = [], trackingQueries = [];
   for (const code of META_WEEKLY_TRACKING_CODES) {
     try {
@@ -8657,7 +8657,22 @@ export async function fetchCafe24ActualOrdersForWeeklyReport(since, until) {
       trackingQueries.push({ code, ok: false, complete: false });
     }
   }
-  return { source: 'cafe24_inflow_queries', orders, trackingQueries };
+  const result = { source: 'cafe24_inflow_queries', orders, trackingQueries };
+  if (includeAnalyticsOrders) {
+    result.analyticsOrders = [];
+    result.analyticsOrdersComplete = false;
+    try {
+      if (!trackingQueries.every(query => query.ok && query.complete)) throw new Error('Incomplete weekly tracking coverage.');
+      // Reuse the direct Orders reader for the same bounded period, without a ghost filter.
+      // The weekly guard above has already validated the period. Never use a cached fallback.
+      const body = await cafe24GetOrders(since, until, { limit: 500, strictOrders: true });
+      if (Array.isArray(body?.orders) && !body.error && body.orders.length < 500) {
+        result.analyticsOrders = body.orders;
+        result.analyticsOrdersComplete = true;
+      }
+    } catch { /* Coverage remains explicitly unavailable. */ }
+  }
+  return result;
 }
 
 // Preserve Analytics acquisition context through the existing reader; it never
