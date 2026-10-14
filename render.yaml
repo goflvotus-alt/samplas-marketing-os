@@ -64,3 +64,19 @@ services:
         sync: false
       - key: NAVER_ADS_BASE_URL
         value: https://api.searchad.naver.com
+      # SAMPLAS SESSION DIRECTOR (/api/session-director/*). Values are set in the Render dashboard, never here.
+      # The web secret must equal SESSION_WEB_SECRET on the Vercel web app; the MCP secret must differ from it.
+      - key: SESSION_WEB_SECRET
+        sync: false
+      - key: SESSION_MCP_SECRET
+        sync: false
+      # Direct Vercel URL access, no Google OAuth; fixed signed actor web@session.local.
+      # Configure SESSION_OPERATOR_EMAILS=web@session.local in the dashboard.
+      - key: SESSION_OPERATOR_EMAILS
+        sync: false
+      # Leave unset by default: answer correction approval is disabled.
+      - key: SESSION_APPROVER_EMAILS
+        sync: false
+      # off (default) | test-only (test-session-* only) | on
+      - key: SESSION_MCP_WRITES
+        value: "off"

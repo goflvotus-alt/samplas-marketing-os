@@ -1,0 +1,14 @@
+{
+  "sessionNumber": 0,
+  "note": "Fictional example of a session-specific layout for planLayoutOperations (scripts/session-docx-import.mjs). Real session layouts are kept outside this repository.",
+  "sections": [
+    { "key": "OPENING", "title": "OPENING", "start": "10:00", "end": "10:10", "questions": [] },
+    { "key": "PART_1", "title": "PART 1", "start": "10:10", "end": "10:40", "questions": ["Q1", "Q2"] },
+    { "key": "PART_2", "title": "PART 2", "start": "10:40", "end": "11:10", "questions": ["Q3"] },
+    { "key": "BREAK", "title": "BREAK", "start": "11:10", "end": "11:20", "questions": [] },
+    { "key": "PART_3", "title": "PART 3", "start": "11:20", "end": "11:50", "questions": [] },
+    { "key": "OPEN_TALK", "title": "OPEN TALK", "start": "11:50", "end": "12:10", "questions": [] },
+    { "key": "CLOSING", "title": "CLOSING", "start": "12:10", "end": "12:20", "questions": ["LAST"] }
+  ],
+  "durationOverrides": { "LAST": 5 }
+}

@@ -1,5 +1,7 @@
 import {createVeilControl,serveVeilRpc} from './scripts/veil-found-control.mjs';
 import { SEEDING_MCP_PATH, serveSeedingMcp, createSeedingRestClient } from './scripts/seeding-mcp.mjs';
+import { SESSION_API_PREFIX, handleSessionDirectorRequest } from "./scripts/session-director-api.mjs";
+import { serveSessionMcp } from "./scripts/session-mcp.mjs";
 import { runCandidateResearch, discoverAccount, candidateScheduleDue, registerCandidates } from './scripts/seeding-candidates.mjs';
 import { handleSeeding, handlePool, mutateSeedingCandidates } from './scripts/seeding-store.mjs';
 import { buildTaggedUploadPlans } from './scripts/seeding-tagged-upload-matcher.mjs';
@@ -197,6 +199,8 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (mcpEnabled && (url.pathname === "/mcp" || url.pathname.startsWith("/.well-known/oauth-protected-resource"))) {
       if (await (await loadMcpRoute())(req, res, url)) return;
     }
+    // SAMPLAS SESSION DIRECTOR has its own credentials and never accepts the generic /api ones below.
+    if (url.pathname.startsWith(SESSION_API_PREFIX)) return handleSessionDirectorRequest(req, res, url, { env, mcp: serveSessionMcp });
     // Default deny for every /api/ route (2026-10-07): business data is private. Every /api request needs a
     // loopback request, internal Basic auth or an operator session; route-level checks still apply.
     if (url.pathname.startsWith("/api/") && !isApiRequestAllowed(req, url.pathname)) {
