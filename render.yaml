@@ -80,3 +80,15 @@ services:
       # off (default) | test-only (test-session-* only) | on
       - key: SESSION_MCP_WRITES
         value: "off"
+      # ASSETS: read-only view of the design team's Dropbox folder (one "SESSION 00N" folder per session).
+      - key: SESSION_ASSETS_ROOT
+        sync: false
+      # PARTICIPANTS: real applications are synced only when all three are set and the switch is "on".
+      # The HMAC key (32+ random characters) finds duplicate phones/e-mails without storing them.
+      # The service account is SESSION-only, scope spreadsheets.readonly; share each response sheet with it as viewer.
+      - key: SESSION_PARTICIPANTS_SYNC
+        value: "off"
+      - key: SESSION_PARTICIPANT_HMAC_KEY
+        sync: false
+      - key: SESSION_GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
