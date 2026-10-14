@@ -7,11 +7,14 @@
 // Reuses the existing Dropbox refresh-token flow (dropbox-report-uploader.mjs).
 import { asciiSafeJson, getDropboxAccessToken } from "./dropbox-report-uploader.mjs";
 import { applyOperations, assertSessionDocument, sessionSummary, SessionError, SESSION_ID_PATTERN } from "./session-store.mjs";
+import { assertParticipants, emptyParticipants } from "./session-participants.mjs";
 
 export const SESSION_ROOTS = { live: "/SAMPLAS WORK/SAMPLAS SESSION/_DIRECTOR", test: "/SAMPLAS WORK/SAMPLAS SESSION/_DIRECTOR_TEST" };
 const API = "https://api.dropboxapi.com/2/files/list_folder";
 const DOWNLOAD = "https://content.dropboxapi.com/2/files/download";
 const UPLOAD = "https://content.dropboxapi.com/2/files/upload";
+const THUMBNAIL = "https://content.dropboxapi.com/2/files/get_thumbnail_v2";
+const TEMPORARY_LINK = "https://api.dropboxapi.com/2/files/get_temporary_link";
 
 export function sessionPath(id, file = "session.json") {
   if (!SESSION_ID_PATTERN.test(String(id))) throw new SessionError(400, "invalid_session_id");
@@ -56,9 +59,9 @@ export function createSessionDropboxStore({ env = process.env, fetchImpl = fetch
     return transport(context, url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } });
   }
 
-  async function listFolder(root) {
+  async function listFolder(root, { recursive = false } = {}) {
     const entries = [];
-    let { response, text } = await request("list_folder", API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root }) });
+    let { response, text } = await request("list_folder", API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, recursive }) });
     for (;;) {
       if (notFound(response.status, text)) return [];
       if (!response.ok) throw failed("list_folder", response.status);
@@ -69,7 +72,7 @@ export function createSessionDropboxStore({ env = process.env, fetchImpl = fetch
     }
   }
 
-  async function download(path) {
+  async function download(path, check = assertSessionDocument) {
     const { response, text } = await request("download", DOWNLOAD, { method: "POST", headers: { "Dropbox-API-Arg": asciiSafeJson({ path }) } });
     if (notFound(response.status, text)) return null;
     if (!response.ok) throw failed("download", response.status);
@@ -77,7 +80,22 @@ export function createSessionDropboxStore({ env = process.env, fetchImpl = fetch
     try { doc = JSON.parse(text); } catch { throw new SessionError(500, "invalid_session_document", "stored session is not JSON"); }
     const rev = JSON.parse(response.headers.get("dropbox-api-result") || "{}").rev || null;
     if (!rev) throw new SessionError(502, "dropbox_failed", "Dropbox download returned no rev");
-    return { doc: assertSessionDocument(doc), rev };
+    return { doc: check(doc), rev };
+  }
+
+  // Binary calls for the read-only asset view (session-assets.mjs). They never write, copy, move or share.
+  // transport() reads bodies as text, so these go to fetch directly with the same per-request token.
+  async function binary(context, url, arg, extraHeaders = {}) {
+    let token;
+    try { token = await getToken({ env, fetchImpl }); } catch { throw new SessionError(502, "dropbox_auth_failed", "Dropbox token unavailable"); }
+    let response;
+    try {
+      response = await fetchImpl(url, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Dropbox-API-Arg": asciiSafeJson(arg), ...extraHeaders } });
+    } catch { throw new SessionError(502, "dropbox_network_failed", `Dropbox ${context} transport failed`); }
+    if ([401, 403].includes(response.status)) throw new SessionError(502, "dropbox_auth_failed", `Dropbox ${context} authentication failed (HTTP ${response.status})`);
+    if (response.status === 409) return null;
+    if (!response.ok && response.status !== 206) throw failed(context, response.status);
+    return { bytes: Buffer.from(await response.arrayBuffer()), type: response.headers.get("content-type") || "application/octet-stream" };
   }
 
   // mode: { ".tag": "add" } never overwrites; { ".tag": "update", update: rev } only replaces that rev.
@@ -103,6 +121,29 @@ export function createSessionDropboxStore({ env = process.env, fetchImpl = fetch
       // ponytail: one download per session; add a summary cache when the list passes ~100 sessions.
       const docs = await Promise.all(ids.map(async (id) => (await download(sessionPath(id)))?.doc));
       return docs.filter(Boolean).map(sessionSummary).sort((a, b) => a.number - b.number || a.id.localeCompare(b.id));
+    },
+
+    // --- read-only Dropbox access for ASSETS (paths are checked by session-assets.mjs) ---
+    listFolder,
+    headBytes: (path, length = 65536) => binary("download", DOWNLOAD, { path }, { Range: `bytes=0-${length - 1}` }),
+    thumbnail: (path) => binary("thumbnail", THUMBNAIL, { resource: { ".tag": "path", path }, format: "jpeg", size: "w640h480", mode: "fitone_bestfit" }),
+    async temporaryLink(path) {
+      const { response, text } = await request("temporary_link", TEMPORARY_LINK, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
+      if (notFound(response.status, text)) return null;
+      if (!response.ok) throw failed("temporary_link", response.status);
+      return JSON.parse(text).link;
+    },
+
+    // --- participants.json next to session.json (same add / update-rev rules, never overwritten blindly) ---
+    async readParticipants(id) {
+      await this.read(id);
+      const found = await download(sessionPath(id, "participants.json"), assertParticipants);
+      return found || { doc: emptyParticipants(id), rev: null };
+    },
+    async writeParticipants(id, doc, rev) {
+      const result = await upload(sessionPath(id, "participants.json"), doc, rev ? { ".tag": "update", update: rev } : { ".tag": "add" });
+      if (result.conflict) throw new SessionError(409, "version_conflict", "participants changed since they were read", { currentVersion: (await this.readParticipants(id)).doc.version });
+      return { doc, rev: result.rev };
     },
 
     async read(id) {

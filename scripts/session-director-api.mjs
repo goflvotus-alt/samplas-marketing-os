@@ -9,6 +9,9 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { createSessionDropboxStore } from "./session-dropbox.mjs";
 import { createLocalDropboxFetch, localStoreAllowed } from "./session-local-dropbox.mjs";
 import { createSessionDocument, cueSheetView, SessionError, sessionProjectView } from "./session-store.mjs";
+import { createAssetService } from "./session-assets.mjs";
+import { applyParticipantOperations, hmacKeyReady, mergeSync, parseSheetRows, participantsView } from "./session-participants.mjs";
+import { readSheetRows, sheetsConfigured } from "./session-sheets.mjs";
 
 export const SESSION_API_PREFIX = "/api/session-director/";
 export const ACTOR_MAX_LIFETIME_SECONDS = 300;
@@ -57,7 +60,17 @@ export function authenticateWeb(req, env, { now } = {}) {
 }
 
 // Shared by REST and MCP: the same validation, version check and read-back.
-export function createSessionService(store) {
+export function createSessionService(store, { env = process.env, fetchImpl = fetch, readRows = readSheetRows } = {}) {
+  const assets = createAssetService(store, { env });
+  // Real participant data is synced only when every guard is in place (SESSION_PARTICIPANTS_SYNC=on is the switch).
+  const syncAvailable = () => env.SESSION_PARTICIPANTS_SYNC === "on" && hmacKeyReady(env) && sheetsConfigured(env);
+  const allowFormLink = (id) => Number(String(id).split("-").pop()) >= 3; // SESSION 001/002 never publish an application link
+  async function participantsVerified(id, expected) {
+    const { doc } = await store.readParticipants(id);
+    if (JSON.stringify(doc) !== JSON.stringify(expected)) throw new SessionError(502, "write_unverified", "participants did not read back as written", { currentVersion: doc.version });
+    return doc;
+  }
+  const participantsOut = (id, doc) => ({ ...participantsView(doc), syncAvailable: syncAvailable(), formLinkAllowed: allowFormLink(id) });
   async function verified(id, expected) {
     const { doc } = await store.read(id);
     if (doc.version !== expected.version || JSON.stringify(doc) !== JSON.stringify(expected)) {
@@ -78,6 +91,42 @@ export function createSessionService(store) {
       const result = await store.update(id, version, operations, { actor });
       const doc = result.unchanged ? result.doc : await verified(id, result.doc);
       return { doc, changed: result.changed, unchanged: result.unchanged };
+    },
+    assets: (id) => assets.list(id),
+    assetThumbnail: (id, path) => assets.thumbnail(id, path),
+    assetLink: (id, path) => assets.link(id, path),
+    async participants(id) { return participantsOut(id, (await store.readParticipants(id)).doc); },
+    async updateParticipants(id, version, operations, actor) {
+      const { doc, rev } = await store.readParticipants(id);
+      if (doc.version !== version) throw new SessionError(409, "version_conflict", "participants changed since they were read", { currentVersion: doc.version });
+      const next = applyParticipantOperations(doc, operations, { actor, allowFormLink: allowFormLink(id) });
+      await store.writeParticipants(id, next, rev);
+      return participantsOut(id, await participantsVerified(id, next));
+    },
+    // Reads the response sheet (read-only) and merges it. A failed read is recorded without touching people.
+    async syncParticipants(id, version, actor) {
+      if (!syncAvailable()) throw new SessionError(503, "participants_sync_disabled", "participant sync is off until operator sign-in, the HMAC key and the SESSION service account are set");
+      const { doc, rev } = await store.readParticipants(id);
+      if (doc.version !== version) throw new SessionError(409, "version_conflict", "participants changed since they were read", { currentVersion: doc.version });
+      if (!doc.form.sheetId) throw new SessionError(409, "sheet_not_set", "set the response sheet first");
+      const next = structuredClone(doc);
+      const at = new Date().toISOString();
+      let result;
+      try {
+        result = mergeSync(next, parseSheetRows(await readRows({ env, sheetId: doc.form.sheetId, range: doc.form.sheetRange, fetchImpl }), env), { now: at });
+      } catch (error) {
+        if (!(error instanceof SessionError)) throw error;
+        next.sync = { ...next.sync, lastAttemptAt: at, lastError: { code: error.code, at, ...(error.details?.missing ? { missing: error.details.missing, extra: error.details.extra } : {}) } };
+        next.version += 1;
+        next.updatedAt = at;
+        await store.writeParticipants(id, next, rev);
+        throw error;
+      }
+      next.version += 1;
+      next.updatedAt = at;
+      next.log = [...next.log, { v: next.version, at, actor: actor.id, op: "sync_participants", participantId: null, added: result.added, updated: result.updated, removed: result.removed }].slice(-500);
+      await store.writeParticipants(id, next, rev);
+      return { ...participantsOut(id, await participantsVerified(id, next)), result };
     }
   };
 }
@@ -105,7 +154,7 @@ export function defaultSessionService(env) {
   const store = localStoreAllowed(env)
     ? createSessionDropboxStore({ env, fetchImpl: createLocalDropboxFetch(env.SESSION_LOCAL_STORE_DIR), getToken: async () => "local" })
     : createSessionDropboxStore({ env });
-  return (defaultService = createSessionService(store));
+  return (defaultService = createSessionService(store, { env }));
 }
 
 // options: { env, service, mcp } (service/mcp are injected by tests; mcp is the T4 handler)
@@ -119,7 +168,8 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
     const actor = authenticateWeb(req, env, { now });
     service ||= defaultSessionService(env);
     const id = url.searchParams.get("id");
-    const methods = { projects: ["GET", "POST"], project: ["GET", "PUT"], cuesheet: ["GET"] }[route];
+    const methods = { projects: ["GET", "POST"], project: ["GET", "PUT"], cuesheet: ["GET"], assets: ["GET"], "asset-thumbnail": ["GET"], "asset-link": ["GET"],
+      participants: ["GET", "PUT"], "participants-sync": ["POST"] }[route];
     if (!methods) throw new SessionError(404, "not_found");
     if (!methods.includes(req.method)) {
       res.setHeader("Allow", methods.join(", "));
@@ -129,6 +179,23 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
     if (route === "projects") {
       const body = await readBody(req);
       return send(res, 201, { ok: true, project: sessionProjectView(await service.create(body?.session, actor)) });
+    }
+    if (route === "assets") return send(res, 200, { ok: true, ...(await service.assets(id)) });
+    if (route === "asset-link") return send(res, 200, { ok: true, ...(await service.assetLink(id, url.searchParams.get("path"))) });
+    if (route === "asset-thumbnail") {
+      const { bytes, type } = await service.assetThumbnail(id, url.searchParams.get("path"));
+      res.writeHead(200, { "Content-Type": /^image\//.test(type) ? type : "image/jpeg", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+      return res.end(bytes);
+    }
+    if (route === "participants" && req.method === "GET") return send(res, 200, { ok: true, participants: await service.participants(id) });
+    if (route === "participants") {
+      const body = await readBody(req);
+      return send(res, 200, { ok: true, participants: await service.updateParticipants(id, body?.version, body?.operations, actor) });
+    }
+    if (route === "participants-sync") {
+      const body = await readBody(req);
+      const { result, ...participants } = await service.syncParticipants(id, body?.version, actor);
+      return send(res, 200, { ok: true, participants, result });
     }
     if (route === "cuesheet") return send(res, 200, { ok: true, cueSheet: await service.cueSheet(id, { includeAnswers: url.searchParams.get("includeAnswers") === "1" }) });
     if (req.method === "GET") return send(res, 200, { ok: true, project: await service.project(id) });
