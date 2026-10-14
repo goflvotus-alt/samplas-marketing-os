@@ -48,6 +48,9 @@ function fixture() {
   put(`${ASSETS}/SESSION 001/릴스/Adobe Premiere Pro Auto-Save/a.mp4`, Buffer.from("x"));
   put(`${ASSETS}/SESSION 001/팜플렛/odd.png`, png(1000, 1500));
   put(`${ASSETS}/SESSION 001/릴스/Premiere Composer Files/Audio/swoosh.wav`, Buffer.from("x"));
+  put(`${ASSETS}/SESSION 001/릴스/클립/IMG_1203.MOV`, Buffer.from("x"));
+  put(`${ASSETS}/SESSION 001/릴스/C0797.MP4`, Buffer.from("x"));
+  put(`${ASSETS}/SESSION 001/릴스/Adobe Premiere Pro Audio Previews/S.PRV/x.cfa`, Buffer.from("x"));
   mkdirSync(join(root, ASSETS, "SESSION 002"), { recursive: true });
   put(`${ASSETS}/SESSION 004/기획초안.pdf`, Buffer.from("%PDF-1.4 mock"));
   const sheets = join(root, "sheets.json");
@@ -105,14 +108,15 @@ test("ASSETS: session folder by number, categories, specs, carousel order, editi
     assert.equal(by["세션 스케치 영상.mp4"].category, "sketch");
     assert.equal(by["편집중.mp4"].category, "reels");
     assert.equal(by["odd.png"].category, "other");
-    assert.ok(!by["project.prproj"] && !by["a.mp4"], "project files and auto-saves are not assets");
+    assert.deepEqual([by["project.prproj"].category, by["a.mp4"].category, by["swoosh.wav"].category], ["work", "work", "work"], "Premiere files are work files");
+    assert.deepEqual([by["IMG_1203.MOV"].category, by["C0797.MP4"].category], ["raw", "raw"], "camera originals are raw");
+    assert.ok(!by["x.cfa"], "render caches are never listed");
     assert.equal(r.body.counts.carousel, 2);
     const empty = await call(api.port, "GET", "/api/session-director/assets?id=session-002");
     assert.deepEqual([empty.body.assets.length, Boolean(empty.body.folder)], [0, true]);
     assert.equal((await call(api.port, "GET", "/api/session-director/assets?id=session-003")).body.folder, null);
     const plan = (await call(api.port, "GET", "/api/session-director/assets?id=session-004")).body.assets;
     assert.deepEqual(plan.map((a) => [a.name, a.category, a.thumbnail]), [["기획초안.pdf", "document", false]], "a planning PDF is a document, no thumbnail");
-    assert.ok(!r.body.assets.some((a) => a.name === "swoosh.wav"), "Premiere Composer Files skipped");
     assert.equal(by["편집중.mp4"].thumbnail, false, "no thumbnail request for videos");
   } finally { await api.close(); }
 });

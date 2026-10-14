@@ -6,15 +6,23 @@
 // Every path a browser sends is checked to sit inside that session's folder before Dropbox is asked.
 import { SessionError, SESSION_ID_PATTERN } from "./session-store.mjs";
 
-export const CATEGORIES = ["feed", "story", "carousel", "reels", "recruit", "photo", "sketch", "document", "other"];
+export const CATEGORIES = ["feed", "story", "carousel", "reels", "recruit", "photo", "sketch", "document", "other", "raw", "work"];
+// Not finished content: camera originals and editing project files. Listed, but outside the default content view.
+export const SOURCE_CATEGORIES = ["raw", "work"];
 export const SPECS = { feed: { width: 1080, height: 1350 }, story: { width: 1080, height: 1920 } };
 
 const IMAGE = /\.(png|jpe?g|webp|gif|heic)$/i;
 const VIDEO = /\.(mp4|mov|m4v|webm)$/i;
 const DOCUMENT = /\.(pdf|docx?|pptx?|key|hwp|txt)$/i;
-// Editing leftovers, not assets: project files, caches, previews, OS files.
-const SKIP_FILE = /(^\.|\.(prproj|prin|prv|pek|cfa|aep|ds_store|tmp|lnk)$)/i;
-const SKIP_FOLDER = /(^|\/)(adobe premiere pro (auto-save|audio previews|video previews)|premiere composer files|__macosx)(\/|$)/i;
+// Never listed: OS files and render caches (audio/video previews).
+const SKIP_FILE = /(^\.|\.(prv|pek|cfa|ds_store|tmp|lnk)$)/i;
+const SKIP_FOLDER = /(^|\/)(adobe premiere pro (audio previews|video previews)|__macosx)(\/|$)/i;
+// Editing work files: projects, auto-saves, layered sources, Premiere Composer media.
+const WORK_FILE = /\.(prproj|prin|aep|psd|ai|indd)$/i;
+const WORK_FOLDER = /(^|\/)(adobe premiere pro auto-save|premiere composer files)(\/|$)/i;
+// Camera originals: a clips/originals folder, or camera file names (IMG_1234.MOV, C0797.MP4, DJI_0001.MP4).
+const RAW_FOLDER = /(^|\/)(클립|원본|촬영\s*원본|clips?|raw|footage)(\/|$)/i;
+const RAW_NAME = /^(img_\d+|c\d{4}|dji_\d+|mvi_\d+|dsc_?\d+|gopr\d+)\.(mov|mp4|m4v)$/i;
 
 const sessionNumber = (id) => (SESSION_ID_PATTERN.test(String(id)) && !id.startsWith("test-") ? Number(id.split("-").pop()) : null);
 const folderNumber = (name) => { const m = /^session\s*0*(\d{1,4})(\D|$)/i.exec(name.trim()); return m ? Number(m[1]) : null; };
@@ -39,6 +47,9 @@ export function imageSize(bytes) {
 // Folder and file names decide the category first; pixel ratio decides feed vs story for the rest.
 export function classify({ path, kind, size }) {
   const p = path.toLowerCase();
+  const name = p.split("/").pop();
+  if (WORK_FILE.test(name) || WORK_FOLDER.test(p)) return "work";
+  if (kind === "video" && (RAW_FOLDER.test(p.slice(0, -name.length)) || RAW_NAME.test(name))) return "raw";
   if (/스케치|sketch/.test(p)) return "sketch";
   if (/모집|참가\s*신청|신청\s*안내|recruit/.test(p)) return "recruit";
   if (/캐러셀|carousel/.test(p)) return "carousel";
@@ -106,7 +117,7 @@ export function createAssetService(store, { env = process.env } = {}) {
         assets.push({ path, name: e.name, folder: path.slice(folder.length + 1, -e.name.length - 1) || "", kind, category,
           width: size?.width ?? null, height: size?.height ?? null, spec: specFor(category, size), bytes: e.size ?? null, modifiedAt: e.server_modified || null,
           // Dropbox makes thumbnails for images only; videos and documents show an icon instead.
-          thumbnail: kind === "image" });
+          thumbnail: kind === "image" && category !== "work" });
       }
       // Carousel slides keep their file-name order (01, 02, ...); everything else newest first.
       const natural = new Intl.Collator("ko", { numeric: true });
