@@ -184,7 +184,7 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
     if (route === "asset-link") return send(res, 200, { ok: true, ...(await service.assetLink(id, url.searchParams.get("path"))) });
     if (route === "asset-thumbnail") {
       const { bytes, type } = await service.assetThumbnail(id, url.searchParams.get("path"));
-      res.writeHead(200, { "Content-Type": /^image\//.test(type) ? type : "image/jpeg", "Cache-Control": "private, max-age=600", "X-Content-Type-Options": "nosniff" });
+      res.writeHead(200, { "Content-Type": /^image\//.test(type) ? type : "image/jpeg", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
       return res.end(bytes);
     }
     if (route === "participants" && req.method === "GET") return send(res, 200, { ok: true, participants: await service.participants(id) });

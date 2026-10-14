@@ -6,7 +6,7 @@
 // Every path a browser sends is checked to sit inside that session's folder before Dropbox is asked.
 import { SessionError, SESSION_ID_PATTERN } from "./session-store.mjs";
 
-export const CATEGORIES = ["feed", "story", "carousel", "reels", "recruit", "photo", "sketch", "other"];
+export const CATEGORIES = ["feed", "story", "carousel", "reels", "recruit", "photo", "sketch", "document", "other"];
 export const SPECS = { feed: { width: 1080, height: 1350 }, story: { width: 1080, height: 1920 } };
 
 const IMAGE = /\.(png|jpe?g|webp|gif|heic)$/i;
@@ -42,6 +42,7 @@ export function classify({ path, kind, size }) {
   if (/스케치|sketch/.test(p)) return "sketch";
   if (/모집|참가\s*신청|신청\s*안내|recruit/.test(p)) return "recruit";
   if (/캐러셀|carousel/.test(p)) return "carousel";
+  if (kind === "document") return "document"; // planning drafts, cue sheets, guides (shown as 기타 · 기획 문서)
   if (kind === "video") return "reels";
   if (/현장|사진|photo/.test(p) && kind === "image") return "photo";
   if (kind === "image") {
@@ -104,7 +105,8 @@ export function createAssetService(store, { env = process.env } = {}) {
         const category = classify({ path: path.slice(folder.length), kind, size });
         assets.push({ path, name: e.name, folder: path.slice(folder.length + 1, -e.name.length - 1) || "", kind, category,
           width: size?.width ?? null, height: size?.height ?? null, spec: specFor(category, size), bytes: e.size ?? null, modifiedAt: e.server_modified || null,
-          thumbnail: kind === "image" || kind === "video" });
+          // Dropbox makes thumbnails for images only; videos and documents show an icon instead.
+          thumbnail: kind === "image" });
       }
       // Carousel slides keep their file-name order (01, 02, ...); everything else newest first.
       const natural = new Intl.Collator("ko", { numeric: true });
