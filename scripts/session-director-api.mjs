@@ -113,7 +113,7 @@ export function createSessionService(store, { env = process.env, fetchImpl = fet
       const at = new Date().toISOString();
       let result;
       try {
-        result = mergeSync(next, parseSheetRows(await readRows({ env, sheetId: doc.form.sheetId, range: doc.form.sheetRange, fetchImpl }), env), { now: at });
+        result = mergeSync(next, parseSheetRows(await readRows({ env, sheetId: doc.form.sheetId, range: doc.form.sheetRange, fetchImpl }), env, { sessionId: id }), { now: at });
       } catch (error) {
         if (!(error instanceof SessionError)) throw error;
         next.sync = { ...next.sync, lastAttemptAt: at, lastError: { code: error.code, at, ...(error.details?.missing ? { missing: error.details.missing, extra: error.details.extra } : {}) } };

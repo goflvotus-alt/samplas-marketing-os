@@ -6,10 +6,12 @@
 // Privacy rules:
 //   - Phone numbers and e-mail addresses stay in the Google Sheet. Only a masked form and a keyed
 //     HMAC (SESSION_PARTICIPANT_HMAC_KEY) are stored; the HMAC finds duplicates without the original.
-//   - Rows without privacy consent are not stored at all (only counted).
+//   - The standard template refuses rows without privacy consent. Historical 001 keeps consent null;
+//     its filming/interview answers never become privacy consent.
 //   - The response part of a person (`response`) is replaced on every sync; the operating part
 //     (`ops`) is never touched by a sync, so re-syncing never resets statuses or check-ins.
-//   - Duplicates are only flagged; nothing is deleted. A person missing from the sheet is flagged too.
+//   - Historical 001 coalesces an exact phone+Instagram identity, retaining additional responses.
+//     Other duplicates and people missing from the sheet are flagged; source rows are never deleted.
 //   - The log records operation, person id and time only, never names or contents.
 import { createHmac, randomUUID } from "node:crypto";
 import { SessionError } from "./session-store.mjs";
@@ -27,6 +29,55 @@ const MIN_HMAC_KEY = 32;
 export const FORM_HEADERS = ["타임스탬프", "이름", "연락처", "Instagram ID", "이메일", "신청 동기", "게스트에게 하고 싶은 질문", "개인정보 수집·이용 동의"];
 const FIELD_OF = { "타임스탬프": "submittedAt", "이름": "name", "연락처": "phone", "Instagram ID": "instagram", "이메일": "email",
   "신청 동기": "motivation", "게스트에게 하고 싶은 질문": "guestQuestion", "개인정보 수집·이용 동의": "consent" };
+
+
+// The historical 001 form has no privacy-consent question. Preserve that absence;
+// filming/interview answers are separate and never treated as privacy consent.
+const SESSION001_HEADERS = [
+  "타임스탬프",
+  "이름 / 닉네임",
+  "연락처",
+  "인스타 아이디",
+  "2026년 9월 6일(일) 13:00–15:00 SESSION에 참석 가능하신가요?",
+  "SAMPLAS를 알게 된 지 얼마나 되었나요?",
+  "이번 SESSION에서 가장 궁금한 이야기는 무엇인가요?",
+  "위 내용 외에도 SESSION에서 꼭 함께 이야기해보고 싶은 것이 있다면 남겨주세요.\n(SAMPLAS, 브랜드, 편집샵 운영, 패션 업계, VEIL 등\n어떤 내용이든 자유롭게 남겨주세요.)",
+  "촬영 및 콘텐츠 활용 동의\nSAMPLAS SESSION 001에서는 행사 기록 및 이후 SESSION 관련 콘텐츠 제작을 위해 사진 및 영상 촬영이 진행될 예정입니다.\n촬영된 사진 및 영상에는 참가자의 얼굴, 모습, 음성 등이 포함될 수 있으며, 일부 결과물은 SAMPLAS 공식 Instagram 및 기타 SAMPLAS 관련 콘텐츠에 활용될 수 있습니다.\n아래 내용을 확인해 주세요.\nSESSION 진행 중 사진 및 영상 촬영이 진행될 수 있습니다.촬영된 사진 및 영상은 SESSION 기록 및 SAMPLAS SNS 콘텐츠 제작에 활용될 수 있습니다.콘텐츠는 편집 및 재가공되어 게시될 수 있습니다.촬영 및 콘텐츠 활용이 어려운 경우 SESSION 시작 전 스태프에게 말씀해 주세요.촬영 및 콘텐츠 활용에 동의하시나요?",
+  "SESSION 종료 후 인터뷰 안내\nSESSION 종료 후 참가자 중 일부를 대상으로 약 1~2분 정도의 짧은 인터뷰를 진행할 예정입니다.\n인터뷰에서는 SESSION에 대한 간단한 소감과 다음 SESSION에서 듣고 싶은 이야기 등을 질문할 예정이며, 촬영된 인터뷰 영상은 SAMPLAS SESSION 기록 및 추후 SNS 콘텐츠에 활용될 수 있습니다.\n인터뷰 참여 여부는 SESSION 참가 여부와 관계가 없으며, 현장에서 다시 한번 참여 의사를 확인한 후 진행합니다.\n종료 후 인터뷰 참여 의향이 있으신가요?"
+];
+const SESSION001_FIELDS = ["submittedAt", "name", "phone", "instagram", "attendanceAvailability", "familiarity", "guestQuestion", "otherTopics", "recordingConsent", "interviewInterest"];
+
+function parseSession001Rows(rows, env) {
+  const header = rows[0].map(h => String(h ?? "").trim());
+  const col = Object.fromEntries(SESSION001_HEADERS.map((h, i) => [SESSION001_FIELDS[i], header.indexOf(h)]));
+  const people = [], byIdentity = new Map();
+  let skippedInvalid = 0, responseCount = 0, duplicateResponses = 0;
+  for (const [i, row] of rows.slice(1).entries()) {
+    if (!row.some(cell => String(cell ?? "").trim())) continue;
+    const get = field => String(row[col[field]] ?? "");
+    const digits = phoneDigits(get("phone")), instagram = normalizeInstagram(get("instagram"));
+    if (!get("name").trim() || digits.length < 9 || !get("submittedAt").trim()) { skippedInvalid++; continue; }
+    responseCount++;
+    const responseKey = keyed(env, "session001-response", digits + "|" + instagram);
+    const existing = byIdentity.get(responseKey);
+    const person = {
+      responseKey, phoneKey: keyed(env, "phone", digits), emailKey: null,
+      response: { submittedAt: get("submittedAt"), name: get("name"), phoneMasked: maskPhone(digits), emailMasked: "",
+        instagram, motivation: "", guestQuestion: get("guestQuestion"), consent: null, sourceProfile: "session-001",
+        attendanceAvailability: get("attendanceAvailability"), familiarity: get("familiarity"),
+        otherTopics: get("otherTopics"), recordingConsent: get("recordingConsent"), interviewInterest: get("interviewInterest"),
+        sourceRows: [i + 2], additionalResponses: [] }
+    };
+    if (existing) {
+      const { additionalResponses, ...response } = person.response;
+      existing.response.sourceRows.push(i + 2);
+      existing.response.additionalResponses.push(response);
+      duplicateResponses++; continue;
+    }
+    byIdentity.set(responseKey, person); people.push(person);
+  }
+  return { people, skippedNoConsent: 0, skippedInvalid, responseCount, duplicateResponses };
+}
 
 const bad = (message) => new SessionError(400, "invalid_operation", message);
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -69,10 +120,12 @@ export const consented = (value) => /동의|^예|yes|agree/i.test(value) && !/�
 // --- sheet rows to people ----------------------------------------------------------------------
 // rows: the sheet values (first row = header). Returns { people, header, skippedNoConsent, skippedInvalid } or
 // throws 409 header_changed with header names only (never cell contents).
-export function parseSheetRows(rows, env) {
+export function parseSheetRows(rows, env, { sessionId } = {}) {
   if (!hmacKeyReady(env)) throw new SessionError(503, "participants_sync_disabled", "SESSION_PARTICIPANT_HMAC_KEY is not set");
   if (!Array.isArray(rows) || !rows.length) return { people: [], skippedNoConsent: 0, skippedInvalid: 0 };
   const header = rows[0].map((h) => String(h ?? "").trim());
+  if (sessionId === "session-001" && header.length === SESSION001_HEADERS.length &&
+      new Set(header).size === header.length && SESSION001_HEADERS.every(h => header.includes(h))) return parseSession001Rows(rows, env);
   const missing = FORM_HEADERS.filter((h) => !header.includes(h));
   const extra = header.filter((h) => h && !FORM_HEADERS.includes(h));
   if (missing.length || extra.length) throw new SessionError(409, "header_changed", "the response sheet header does not match the SESSION form template", { missing, extra });
@@ -120,7 +173,8 @@ export function mergeSync(doc, parsed, { now = new Date().toISOString() } = {}) 
   let removed = 0;
   for (const p of doc.people) if (!seen.has(p.responseKey) && !p.removedFromSheet) { p.removedFromSheet = true; removed++; }
   flagDuplicates(doc.people);
-  doc.sync = { ...doc.sync, lastSuccessAt: now, lastAttemptAt: now, lastError: null, rowCount: parsed.people.length,
+  doc.sync = { ...doc.sync, lastSuccessAt: now, lastAttemptAt: now, lastError: null, rowCount: parsed.responseCount ?? parsed.people.length,
+    ...(parsed.duplicateResponses === undefined ? {} : { duplicateResponses: parsed.duplicateResponses }),
     skippedNoConsent: parsed.skippedNoConsent, skippedInvalid: parsed.skippedInvalid };
   return { added, updated, removed };
 }
