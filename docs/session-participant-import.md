@@ -15,7 +15,7 @@ Check `GET /api/session-director/participants-import-status` through the existin
 - `SESSION_PARTICIPANTS_SYNC=on` enables preview/commit only when both checks above pass. This PR does not enable it or change any Secret.
 - Existing `SESSION_WEB_SECRET`, signed short-lived operator actor, operator allowlist, Dropbox refresh flow, Site ID, plugin ID and `SESSION_MCP_WRITES` remain unchanged. Generic API, Basic or MCP credentials do not open the import REST routes. No import MCP tool is added.
 
-The public Vercel proxy refuses every participant route itself. Operator REST (`GET`/`PUT /participants`, web secret plus signed actor) returns the list with full phone numbers so signed-in operators and staff can confirm, notify and check in; HMAC matching keys are never returned. The owner-only ChatGPT MCP (`getSessionParticipants`, `updateSessionParticipants`) gets the same list and may change status, notice, memo and check-in (writes follow `SESSION_MCP_WRITES`). Import routes return aggregate counts only.
+The public Vercel proxy refuses every participant route itself. Operator REST (`GET`/`PUT /participants`, web secret plus signed actor) returns the list with full phone numbers so signed-in operators and staff can confirm, notify and check in; HMAC matching keys are never returned. The owner-only ChatGPT MCP (`getSessionParticipants`, `updateSessionParticipants`) gets the same list with the masked number only (no full phone) and may change status, notice, memo and check-in (writes follow `SESSION_MCP_WRITES`). Import routes return aggregate counts only.
 
 ## Preview then explicit commit
 

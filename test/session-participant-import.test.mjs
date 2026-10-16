@@ -79,12 +79,12 @@ test('ChatGPT (owner-only MCP) reads the operator list with masked contacts and 
  const f=fixture();await commit(f,await preview(f));const service=createSessionService(f.store,{env:ENV,readRows:f.readRows});const actor={kind:'mcp',id:'chatgpt:fixture'};
  const r=await callSessionTool('getSessionParticipants',{id:ID},{env:ENV,service,actor});
  assert.equal(SESSION_TOOLS.length,9);assert.equal(r.body.participants.people.length,18);assert.equal(r.body.participants.people[0].response.phoneMasked,'010-****-0001');
- assert.equal(r.body.participants.people[0].response.phone,'010-7000-0001','full number for running the session');assert(!JSON.stringify(r).includes('phoneKey'),'no matching keys');
+ assert.equal(r.body.participants.people[0].response.phone,undefined,'ChatGPT gets the masked number only');assert(!JSON.stringify(r).includes('010-7000-0001'));assert(!JSON.stringify(r).includes('phoneKey'),'no matching keys');
  const p=r.body.participants.people[0],v=r.body.participants.version;
  await assert.rejects(callSessionTool('updateSessionParticipants',{id:ID,version:v,operations:[{type:'check_in',participantId:p.id}]},{env:ENV,service,actor}),e=>e.code==='mcp_writes_disabled');
  const on={...ENV,SESSION_MCP_WRITES:'test-only'};
  const confirmed=await callSessionTool('updateSessionParticipants',{id:ID,version:v,operations:[{type:'update_participant',participantId:p.id,patch:{status:'confirmed'}},{type:'check_in',participantId:p.id}]},{env:on,service,actor});
- const after=confirmed.body.participants.people.find(x=>x.id===p.id);assert.deepEqual([after.ops.status,Boolean(after.ops.checkedInAt)],['confirmed',true]);
+ const after=confirmed.body.participants.people.find(x=>x.id===p.id);assert.equal(after.response.phone,undefined,'write replies are masked too');assert.deepEqual([after.ops.status,Boolean(after.ops.checkedInAt)],['confirmed',true]);
  for(const op of [{type:'set_capacity',capacity:1},{type:'set_participant_form',form:{}}]) await assert.rejects(callSessionTool('updateSessionParticipants',{id:ID,version:v+1,operations:[op]},{env:on,service,actor}),e=>e.code==='invalid_operation',op.type);
  await assert.rejects(callSessionTool('updateSessionParticipants',{id:ID,version:v,operations:[{type:'undo_check_in',participantId:p.id}]},{env:on,service,actor}),e=>e.code==='version_conflict');
 });
