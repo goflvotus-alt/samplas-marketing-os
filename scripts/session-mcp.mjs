@@ -27,7 +27,7 @@ export const SESSION_TOOLS = [
     inputSchema: strict({ id, includeAnswers: { type: "boolean", default: false } }, ["id"]), annotations: READ },
   { name: "listSessionAssets", description: "Read existing Dropbox asset metadata for a session; does not create, move or delete files.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
-  { name: "getSessionParticipants", description: "Private operator view of one session's participants: name, Instagram, phone number, application answers, status, notice, memo and check-in, plus counts and version. Personal data: use only for running the session; never share it publicly.",
+  { name: "getSessionParticipants", description: "Private operator view of one session's participants: name, Instagram, masked phone (010-****-1234), application answers, status, notice, memo and check-in, plus counts and version. Personal data: use only for running the session; never share it publicly.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
   { name: "updateSessionParticipants", description: `Change participants by id from getSessionParticipants: update_participant {participantId, patch: {status applied|confirmed|waitlisted|cancelled|no_show, notice none|sent|replied, memo}}, check_in {participantId}, undo_check_in {participantId}. Capacity is enforced on the server. ${RULES}`,
     inputSchema: strict({ id, version: { type: "integer", minimum: 0, description: "Participants version from getSessionParticipants" },
@@ -44,6 +44,8 @@ export const SESSION_TOOLS = [
     annotations: WRITE }
 ];
 
+// The full number is for the web operations screen; ChatGPT gets the masked copy only.
+const withoutPhone = (view) => ({ ...view, people: view.people.map(({ response: { phone: _phone, ...response }, ...person }) => ({ ...person, response })) });
 const WRITE_TOOLS = new Set(["createSessionProject", "updateSessionProject", "updateSessionCueSheet", "updateSessionParticipants"]);
 
 function assertWritable(env, tool, args) {
@@ -67,12 +69,12 @@ export async function callSessionTool(name, args, { env, service, actor }) {
     case "getSessionProject": return { status: 200, body: { ok: true, project: await service.project(args.id) } };
     case "getSessionCueSheet": return { status: 200, body: { ok: true, cueSheet: await service.cueSheet(args.id, { includeAnswers: args.includeAnswers === true }) } };
     case "listSessionAssets": return { status: 200, body: { ok: true, ...(await service.assets(args.id)) } };
-    case "getSessionParticipants": return { status: 200, body: { ok: true, participants: await service.participants(args.id) } };
+    case "getSessionParticipants": return { status: 200, body: { ok: true, participants: withoutPhone(await service.participants(args.id)) } };
     case "updateSessionParticipants": {
       if (!Array.isArray(args.operations) || !args.operations.length || args.operations.some((op) => !PARTICIPANT_STATUS_OPERATIONS.includes(op?.type))) {
         throw new SessionError(400, "invalid_operation", `operations must be ${PARTICIPANT_STATUS_OPERATIONS.join(", ")}`);
       }
-      return { status: 200, body: { ok: true, verified: true, participants: await service.updateParticipants(args.id, args.version, args.operations, actor) } };
+      return { status: 200, body: { ok: true, verified: true, participants: withoutPhone(await service.updateParticipants(args.id, args.version, args.operations, actor)) } };
     }
     case "createSessionProject": return { status: 201, body: { ok: true, verified: true, project: sessionProjectView(await service.create(args, actor)) } };
     case "updateSessionProject":
