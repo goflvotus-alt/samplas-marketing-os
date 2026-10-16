@@ -15,7 +15,7 @@ Check `GET /api/session-director/participants-import-status` through the existin
 - `SESSION_PARTICIPANTS_SYNC=on` enables preview/commit only when both checks above pass. This PR does not enable it or change any Secret.
 - Existing `SESSION_WEB_SECRET`, signed short-lived operator actor, operator allowlist, Dropbox refresh flow, Site ID, plugin ID and `SESSION_MCP_WRITES` remain unchanged. Generic API, Basic or MCP credentials do not open the import REST routes. No import MCP tool is added.
 
-The public Vercel proxy refuses every participant route itself. Operator REST (`GET`/`PUT /participants`, web secret plus signed actor) returns the masked list so the operator's Mac can confirm, notify and check in; contacts stay masked and HMAC matching keys are never returned. The owner-only ChatGPT MCP (`getSessionParticipants`, `updateSessionParticipants`) gets the same masked list and may change status, notice, memo and check-in (writes follow `SESSION_MCP_WRITES`). Import routes return aggregate counts only.
+The public Vercel proxy refuses every participant route itself. Operator REST (`GET`/`PUT /participants`, web secret plus signed actor) returns the list with full phone numbers so signed-in operators and staff can confirm, notify and check in; HMAC matching keys are never returned. The owner-only ChatGPT MCP (`getSessionParticipants`, `updateSessionParticipants`) gets the same list and may change status, notice, memo and check-in (writes follow `SESSION_MCP_WRITES`). Import routes return aggregate counts only.
 
 ## Preview then explicit commit
 
@@ -36,7 +36,7 @@ For other sessions, source must match the configured sheet, standard profile and
 - Historical 001 uses exact phone + normalized Instagram identity; additional responses and source row references remain in the private document. Same phone with a different Instagram identity follows existing duplicate flags. No response row is deleted from Google.
 - All new people are `applied`, notices `none`, check-in null. Attendance/filming/interview answers do not confirm attendance or invent privacy consent. Capacity is preserved (15 for 001); importing 18 applications does not fill/confirm 15 seats automatically.
 - Resync replaces response content while preserving IDs, confirmed/waitlisted/cancelled states, notice, memo and check-in. Missing rows are flagged by existing mergeSync, never deleted. Empty imports are rejected.
-- Raw phone/email columns are read only into server memory: the existing parser persists masked contact + keyed matching fields only. Other application details live only in the existing private Dropbox participant file, not session.json, its snapshots, logs, browser output or MCP responses. Free-text answers are private records and must not be published.
+- Phone numbers are stored in the private Dropbox participants file (formatted, plus a masked copy and keyed matching fields) for check-in by signed-in staff; e-mail is stored masked only. Numbers never go to session.json, logs, error messages, MCP counts or GitHub. Re-importing fills in numbers for people imported before and keeps status, notice and check-in.
 - Preview/commit errors use controlled codes and omit Google response bodies, dynamic header text and application content. New code does not log request bodies, sheet data, tokens or imported records. Infrastructure/proxy request-body logging must also remain disabled.
 
 ## Verification

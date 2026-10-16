@@ -27,7 +27,7 @@ export const SESSION_TOOLS = [
     inputSchema: strict({ id, includeAnswers: { type: "boolean", default: false } }, ["id"]), annotations: READ },
   { name: "listSessionAssets", description: "Read existing Dropbox asset metadata for a session; does not create, move or delete files.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
-  { name: "getSessionParticipants", description: "Private operator view of one session's participants: name, Instagram, masked contact, application answers, status, notice, memo and check-in, plus counts and version. Personal data: use only for running the session; never share it publicly.",
+  { name: "getSessionParticipants", description: "Private operator view of one session's participants: name, Instagram, phone number, application answers, status, notice, memo and check-in, plus counts and version. Personal data: use only for running the session; never share it publicly.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
   { name: "updateSessionParticipants", description: `Change participants by id from getSessionParticipants: update_participant {participantId, patch: {status applied|confirmed|waitlisted|cancelled|no_show, notice none|sent|replied, memo}}, check_in {participantId}, undo_check_in {participantId}. Capacity is enforced on the server. ${RULES}`,
     inputSchema: strict({ id, version: { type: "integer", minimum: 0, description: "Participants version from getSessionParticipants" },

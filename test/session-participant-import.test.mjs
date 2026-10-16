@@ -34,7 +34,7 @@ test('18 fixture responses preview without writes and import as applied at capac
  const result=await commit(f,p);assert.equal(result.verified,true);assert.equal(result.version,1);assert.equal(result.summary.applied,18);assert.equal(result.summary.confirmed,0);assert.equal(result.summary.capacity,15);
  assert(!JSON.stringify(result).includes('Synthetic Person'));assert(!JSON.stringify(result).includes('0107000'));
  const saved=f.fake.json(sessionPath(ID,'participants.json'));assert.equal(saved.people.length,18);assert.equal(saved.form.linkVisible,false);
- assert(!JSON.stringify(saved).includes('01070000001'));assert(!JSON.stringify(saved.log).includes('Synthetic Person'));
+ assert.equal(saved.people[0].response.phone,'010-7000-0001');assert(!JSON.stringify(saved.log).includes('010-7000'));assert(!JSON.stringify(saved.log).includes('Synthetic Person'));
  assert(f.uploads().every(c=>c.arg.path.startsWith(SESSION_ROOTS.test+'/')));
  assert.equal(f.fake.files.get(sessionPath(ID)).text,before[0][1].text);
 });
@@ -79,7 +79,7 @@ test('ChatGPT (owner-only MCP) reads the operator list with masked contacts and 
  const f=fixture();await commit(f,await preview(f));const service=createSessionService(f.store,{env:ENV,readRows:f.readRows});const actor={kind:'mcp',id:'chatgpt:fixture'};
  const r=await callSessionTool('getSessionParticipants',{id:ID},{env:ENV,service,actor});
  assert.equal(SESSION_TOOLS.length,9);assert.equal(r.body.participants.people.length,18);assert.equal(r.body.participants.people[0].response.phoneMasked,'010-****-0001');
- assert(!JSON.stringify(r).includes('01070000001'),'no original contact');assert(!JSON.stringify(r).includes('phoneKey'),'no matching keys');
+ assert.equal(r.body.participants.people[0].response.phone,'010-7000-0001','full number for running the session');assert(!JSON.stringify(r).includes('phoneKey'),'no matching keys');
  const p=r.body.participants.people[0],v=r.body.participants.version;
  await assert.rejects(callSessionTool('updateSessionParticipants',{id:ID,version:v,operations:[{type:'check_in',participantId:p.id}]},{env:ENV,service,actor}),e=>e.code==='mcp_writes_disabled');
  const on={...ENV,SESSION_MCP_WRITES:'test-only'};
@@ -97,7 +97,7 @@ test('private REST readiness/preview/commit routes keep authentication; import r
  assert.equal((await route('participants-sync',{version:0})).status,400,'old sync cannot bypass preview');
  const c=await route('participants-import',{version:0,source:SOURCE,previewToken:p.out.preview.previewToken});assert.equal(c.status,200);assert.equal(c.out.verified,true);assert(!JSON.stringify(c).includes('Synthetic Person'));
  const view=await route('participants',{});assert.equal(view.out.participants.summary.total,18);assert.equal(view.out.participants.people.length,18,'operator can confirm and check in');
- assert.equal(view.out.participants.people[0].response.phoneMasked,'010-****-0001');assert(!JSON.stringify(view).includes('01070000001'),'no original contact');assert(!JSON.stringify(view).includes('phoneKey'));
+ assert.equal(view.out.participants.people[0].response.phoneMasked,'010-****-0001');assert.equal(view.out.participants.people[0].response.phone,'010-7000-0001','operator and staff see the full number');assert(!JSON.stringify(view).includes('phoneKey'));
 });
 
 test('historical profile refuses even otherwise valid standard headers and excessive rows',async()=>{
@@ -120,4 +120,15 @@ test('SESSION 001 sheet id comes only from SESSION001_SHEET_ID; missing or diffe
  const set=createParticipantImportService(f.store,{env:{...ENV,SESSION001_SHEET_ID:'synthetic_pinned_sheet_0123456789'},readRows:f.readRows});
  await assert.rejects(set.preview('session-001',{version:0,source:SOURCE},ACTOR),e=>e.code==='import_source_not_allowed');
  assert.equal(f.reads(),0);assert.equal(f.uploads().length,0);
+});
+
+test('re-import fills the full number for people imported before and keeps status, notice and check-in',async()=>{
+ const f=fixture();await commit(f,await preview(f));
+ const path=sessionPath(ID,'participants.json');f.fake.touch(path,d=>{for(const p of d.people)delete p.response.phone;Object.assign(d.people[0].ops,{status:'confirmed',notice:'sent',checkedInAt:'2026-09-06T04:00:00.000Z'});});
+ const before=f.fake.json(path);const p=await f.service.preview(ID,{version:before.version,source:SOURCE},ACTOR);
+ const result=await f.service.commit(ID,{version:p.version,source:SOURCE,previewToken:p.previewToken},ACTOR);
+ assert.deepEqual([result.result.added,result.result.updated,result.result.removed],[0,18,0]);
+ const after=f.fake.json(path),first=after.people.find(x=>x.id===before.people[0].id);
+ assert.deepEqual([first.response.phone,first.ops.status,first.ops.notice,first.ops.checkedInAt],['010-7000-0001','confirmed','sent','2026-09-06T04:00:00.000Z']);
+ assert.equal(after.people.length,18);assert.deepEqual(after.people.map(x=>x.id),before.people.map(x=>x.id),'same people, same ids');
 });
