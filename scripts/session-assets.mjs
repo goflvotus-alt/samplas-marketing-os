@@ -4,6 +4,7 @@
 // Nothing here writes, copies, moves, deletes or shares: listing, a thumbnail, the first bytes of an image
 // (for its pixel size) and Dropbox's 4-hour temporary link for "open original". No shared links are made.
 // Every path a browser sends is checked to sit inside that session's folder before Dropbox is asked.
+import { SESSION_ROOTS } from "./session-dropbox.mjs";
 import { SessionError, SESSION_ID_PATTERN } from "./session-store.mjs";
 
 export const CATEGORIES = ["feed", "story", "carousel", "reels", "recruit", "photo", "sketch", "document", "other", "raw", "work"];
@@ -80,6 +81,7 @@ export function createAssetService(store, { env = process.env } = {}) {
   const sizes = new Map(); // content_hash -> {width, height} | null  (ponytail: per-process cache; files rarely change)
 
   async function sessionFolder(id) {
+    if (SESSION_ID_PATTERN.test(String(id)) && String(id).startsWith("test-")) return `${SESSION_ROOTS.test}/${id}/files`;
     const number = sessionNumber(id);
     if (number === null) throw new SessionError(400, "invalid_session_id");
     if (!root.startsWith("/")) throw new SessionError(503, "assets_not_configured", "SESSION_ASSETS_ROOT is not set");
