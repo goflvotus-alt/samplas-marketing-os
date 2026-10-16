@@ -33,7 +33,7 @@ const FIELD_OF = { "타임스탬프": "submittedAt", "이름": "name", "연락�
 
 // The historical 001 form has no privacy-consent question. Preserve that absence;
 // filming/interview answers are separate and never treated as privacy consent.
-const SESSION001_HEADERS = [
+export const SESSION001_HEADERS = [
   "타임스탬프",
   "이름 / 닉네임",
   "연락처",

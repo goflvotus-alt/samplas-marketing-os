@@ -10,8 +10,10 @@ import { createSessionDropboxStore } from "./session-dropbox.mjs";
 import { createLocalDropboxFetch, localStoreAllowed } from "./session-local-dropbox.mjs";
 import { createSessionDocument, cueSheetView, SessionError, sessionProjectView } from "./session-store.mjs";
 import { createAssetService } from "./session-assets.mjs";
-import { applyParticipantOperations, hmacKeyReady, mergeSync, parseSheetRows, participantsView } from "./session-participants.mjs";
+import { applyParticipantOperations, hmacKeyReady, mergeSync, parseSheetRows, participantSummary, participantsView } from "./session-participants.mjs";
 import { readSheetRows, sheetsConfigured } from "./session-sheets.mjs";
+
+import { createParticipantImportService } from "./session-participant-import.mjs";
 
 export const SESSION_API_PREFIX = "/api/session-director/";
 export const ACTOR_MAX_LIFETIME_SECONDS = 300;
@@ -62,6 +64,7 @@ export function authenticateWeb(req, env, { now } = {}) {
 // Shared by REST and MCP: the same validation, version check and read-back.
 export function createSessionService(store, { env = process.env, fetchImpl = fetch, readRows = readSheetRows } = {}) {
   const assets = createAssetService(store, { env });
+  const participantImport = createParticipantImportService(store, { env, fetchImpl, readRows });
   // Real participant data is synced only when every guard is in place (SESSION_PARTICIPANTS_SYNC=on is the switch).
   const syncAvailable = () => env.SESSION_PARTICIPANTS_SYNC === "on" && hmacKeyReady(env) && sheetsConfigured(env);
   const allowFormLink = (id) => Number(String(id).split("-").pop()) >= 3; // SESSION 001/002 never publish an application link
@@ -95,6 +98,14 @@ export function createSessionService(store, { env = process.env, fetchImpl = fet
     assets: (id) => assets.list(id),
     assetThumbnail: (id, path) => assets.thumbnail(id, path),
     assetLink: (id, path) => assets.link(id, path),
+    participantImportReadiness: () => participantImport.readiness(),
+    previewParticipantImport: (id, input, actor) => participantImport.preview(id, input, actor),
+    importParticipants: (id, input, actor) => participantImport.commit(id, input, actor),
+    async participantCounts(id) {
+      const { doc } = await store.readParticipants(id);
+      const { syncError, ...summary } = participantSummary(doc);
+      return { sessionId: id, version: doc.version, capacity: doc.capacity, people: [], summary, syncAvailable: syncAvailable(), formLinkAllowed: allowFormLink(id), detailsWithheld: true };
+    },
     async participants(id) { return participantsOut(id, (await store.readParticipants(id)).doc); },
     async updateParticipants(id, version, operations, actor) {
       const { doc, rev } = await store.readParticipants(id);
@@ -169,7 +180,8 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
     service ||= defaultSessionService(env);
     const id = url.searchParams.get("id");
     const methods = { projects: ["GET", "POST"], project: ["GET", "PUT"], cuesheet: ["GET"], assets: ["GET"], "asset-thumbnail": ["GET"], "asset-link": ["GET"],
-      participants: ["GET", "PUT"], "participants-sync": ["POST"] }[route];
+      participants: ["GET", "PUT"], "participants-sync": ["POST"],
+      "participants-import-status": ["GET"], "participants-import-preview": ["POST"], "participants-import": ["POST"] }[route];
     if (!methods) throw new SessionError(404, "not_found");
     if (!methods.includes(req.method)) {
       res.setHeader("Allow", methods.join(", "));
@@ -187,15 +199,19 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
       res.writeHead(200, { "Content-Type": /^image\//.test(type) ? type : "image/jpeg", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
       return res.end(bytes);
     }
-    if (route === "participants" && req.method === "GET") return send(res, 200, { ok: true, participants: await service.participants(id) });
+    if (route === "participants-import-status") return send(res, 200, { ok: true, readiness: service.participantImportReadiness() });
+    if (route === "participants-import-preview") return send(res, 200, { ok: true, preview: await service.previewParticipantImport(id, await readBody(req), actor) });
+    if (route === "participants-import") return send(res, 200, { ok: true, ...(await service.importParticipants(id, await readBody(req), actor)) });
+    if (route === "participants" && req.method === "GET") return send(res, 200, { ok: true, participants: await service.participantCounts(id) });
     if (route === "participants") {
       const body = await readBody(req);
-      return send(res, 200, { ok: true, participants: await service.updateParticipants(id, body?.version, body?.operations, actor) });
+      await service.updateParticipants(id, body?.version, body?.operations, actor);
+      return send(res, 200, { ok: true, participants: await service.participantCounts(id) });
     }
     if (route === "participants-sync") {
       const body = await readBody(req);
-      const { result, ...participants } = await service.syncParticipants(id, body?.version, actor);
-      return send(res, 200, { ok: true, participants, result });
+      // Legacy URL uses the same preview token, source checks, CAS and readback; no bypass.
+      return send(res, 200, { ok: true, ...(await service.importParticipants(id, body, actor)) });
     }
     if (route === "cuesheet") return send(res, 200, { ok: true, cueSheet: await service.cueSheet(id, { includeAnswers: url.searchParams.get("includeAnswers") === "1" }) });
     if (req.method === "GET") return send(res, 200, { ok: true, project: await service.project(id) });

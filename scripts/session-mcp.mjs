@@ -24,7 +24,7 @@ export const SESSION_TOOLS = [
     inputSchema: strict({ id, includeAnswers: { type: "boolean", default: false } }, ["id"]), annotations: READ },
   { name: "listSessionAssets", description: "Read existing Dropbox asset metadata for a session; does not create, move or delete files.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
-  { name: "getSessionParticipants", description: "Private operator view of participant applications, statuses and check-ins. Includes personal data: do not share publicly. Read only.",
+  { name: "getSessionParticipants", description: "Read participant counts and version only. Application details and personal data stay in the authenticated operator view. Read only.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
   { name: "createSessionProject", description: `Create a new session from the default template (structure only; no answers are copied). ${RULES}`,
     inputSchema: strict({ number: { type: "integer", minimum: 1, maximum: 9999 }, title: { type: "string", minLength: 1, maxLength: 200 }, theme: { type: "string", maxLength: 1000 },
@@ -60,7 +60,7 @@ export async function callSessionTool(name, args, { env, service, actor }) {
     case "getSessionProject": return { status: 200, body: { ok: true, project: await service.project(args.id) } };
     case "getSessionCueSheet": return { status: 200, body: { ok: true, cueSheet: await service.cueSheet(args.id, { includeAnswers: args.includeAnswers === true }) } };
     case "listSessionAssets": return { status: 200, body: { ok: true, ...(await service.assets(args.id)) } };
-    case "getSessionParticipants": return { status: 200, body: { ok: true, participants: await service.participants(args.id) } };
+    case "getSessionParticipants": return { status: 200, body: { ok: true, participants: await service.participantCounts(args.id) } };
     case "createSessionProject": return { status: 201, body: { ok: true, verified: true, project: sessionProjectView(await service.create(args, actor)) } };
     case "updateSessionProject":
     case "updateSessionCueSheet": {
