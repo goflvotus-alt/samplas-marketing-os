@@ -140,13 +140,14 @@ test("ASSETS: thumbnails and temporary links only for paths inside that session'
   } finally { await api.close(); }
 });
 
-test("sheet rows: header check, consent, masking, keyed HMAC duplicates; originals never stored", () => {
+test("sheet rows: header check, consent, full phone for staff, masked e-mail, keyed HMAC duplicates", () => {
   const parsed = parseSheetRows(ROWS, ENV);
   assert.deepEqual([parsed.people.length, parsed.skippedNoConsent, parsed.skippedInvalid], [3, 1, 1]);
   const doc = emptyParticipants("session-003");
   mergeSync(doc, parsed, { now: "2026-10-02T00:00:00.000Z" });
   const json = JSON.stringify(doc);
-  for (const original of ["010-1111-2222", "01011112222", "1111-2222", "one@example.test", "other@example.test", "010-5555-6666", "동의 안 함"]) assert.ok(!json.includes(original), original);
+  for (const original of ["one@example.test", "other@example.test", "010-5555-6666", "동의 안 함"]) assert.ok(!json.includes(original), original);
+  assert.deepEqual([doc.people[0].response.phone, doc.people[0].response.phoneMasked], ["010-1111-2222", "010-****-2222"], "operators and staff see the full number");
   assert.equal(maskPhone("010-1111-2222"), "010-****-2222");
   assert.equal(maskEmail("one@example.test"), "on***@example.test");
   const [one, two, again] = doc.people;
@@ -221,7 +222,7 @@ test("participants API: off until every guard is set; then sync, ops with versio
     assert.deepEqual([full.status, full.body.error], [409, "capacity_full"]);
     const stored = JSON.parse(readFileSync(join(api.root, "/SAMPLAS WORK/SAMPLAS SESSION/_DIRECTOR/session-003/participants.json"), "utf8"));
     assert.equal(stored.version, 4);
-    assert.ok(!JSON.stringify(stored).includes("010-1111-2222"));
+    assert.ok(JSON.stringify(stored.people).includes("010-1111-2222") && !JSON.stringify(stored.log).includes("010-1111-2222"), "number in people only, never in the log");
     const session = readFileSync(join(api.root, "/SAMPLAS WORK/SAMPLAS SESSION/_DIRECTOR/session-003/session.json"), "utf8");
     assert.ok(!session.includes("테스트 하나"), "session.json never gets participants");
   } finally { await api.close(); }

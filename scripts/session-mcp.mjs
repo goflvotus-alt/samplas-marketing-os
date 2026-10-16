@@ -14,6 +14,8 @@ const version = { type: "integer", minimum: 1, description: "Latest version from
 const strict = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, required });
 const RULES = "Only after the user explicitly approves this exact change. Read the latest version first. On 409 read again and report the conflict; never retry automatically. The result is read back before it is reported as saved.";
 export const TASK_OPERATIONS = ["add_task", "update_task"];
+// Same as on-site staff in the web app: status and check-in, never capacity, form or import.
+export const PARTICIPANT_STATUS_OPERATIONS = ["update_participant", "check_in", "undo_check_in"];
 export const CUE_OPERATIONS = ["update_section", "update_question", "update_question_mc", "move_question", "add_question", "propose_answer_correction"];
 
 export const SESSION_TOOLS = [
@@ -25,8 +27,11 @@ export const SESSION_TOOLS = [
     inputSchema: strict({ id, includeAnswers: { type: "boolean", default: false } }, ["id"]), annotations: READ },
   { name: "listSessionAssets", description: "Read existing Dropbox asset metadata for a session; does not create, move or delete files.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
-  { name: "getSessionParticipants", description: "Read participant counts and version only. Application details and personal data stay in the authenticated operator view. Read only.",
+  { name: "getSessionParticipants", description: "Private operator view of one session's participants: name, Instagram, phone number, application answers, status, notice, memo and check-in, plus counts and version. Personal data: use only for running the session; never share it publicly.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
+  { name: "updateSessionParticipants", description: `Change participants by id from getSessionParticipants: update_participant {participantId, patch: {status applied|confirmed|waitlisted|cancelled|no_show, notice none|sent|replied, memo}}, check_in {participantId}, undo_check_in {participantId}. Capacity is enforced on the server. ${RULES}`,
+    inputSchema: strict({ id, version: { type: "integer", minimum: 0, description: "Participants version from getSessionParticipants" },
+      operations: { type: "array", minItems: 1, maxItems: 20, items: { type: "object", required: ["type"], properties: { type: { enum: PARTICIPANT_STATUS_OPERATIONS } } } } }, ["id", "version", "operations"]), annotations: WRITE },
   { name: "createSessionProject", description: `Create a new session from the default template (structure only; no answers are copied). ${RULES}`,
     inputSchema: strict({ number: { type: "integer", minimum: 1, maximum: 9999 }, title: { type: "string", minLength: 1, maxLength: 200 }, theme: { type: "string", maxLength: 1000 },
       date: { type: ["string", "null"], description: "YYYY-MM-DD or null when undecided" }, guest: strict({ name: { type: "string" }, handle: { type: "string" }, bio: { type: "string" } }),
@@ -39,7 +44,7 @@ export const SESSION_TOOLS = [
     annotations: WRITE }
 ];
 
-const WRITE_TOOLS = new Set(["createSessionProject", "updateSessionProject", "updateSessionCueSheet"]);
+const WRITE_TOOLS = new Set(["createSessionProject", "updateSessionProject", "updateSessionCueSheet", "updateSessionParticipants"]);
 
 function assertWritable(env, tool, args) {
   const mode = env.SESSION_MCP_WRITES || "off";
@@ -62,7 +67,13 @@ export async function callSessionTool(name, args, { env, service, actor }) {
     case "getSessionProject": return { status: 200, body: { ok: true, project: await service.project(args.id) } };
     case "getSessionCueSheet": return { status: 200, body: { ok: true, cueSheet: await service.cueSheet(args.id, { includeAnswers: args.includeAnswers === true }) } };
     case "listSessionAssets": return { status: 200, body: { ok: true, ...(await service.assets(args.id)) } };
-    case "getSessionParticipants": return { status: 200, body: { ok: true, participants: await service.participantCounts(args.id) } };
+    case "getSessionParticipants": return { status: 200, body: { ok: true, participants: await service.participants(args.id) } };
+    case "updateSessionParticipants": {
+      if (!Array.isArray(args.operations) || !args.operations.length || args.operations.some((op) => !PARTICIPANT_STATUS_OPERATIONS.includes(op?.type))) {
+        throw new SessionError(400, "invalid_operation", `operations must be ${PARTICIPANT_STATUS_OPERATIONS.join(", ")}`);
+      }
+      return { status: 200, body: { ok: true, verified: true, participants: await service.updateParticipants(args.id, args.version, args.operations, actor) } };
+    }
     case "createSessionProject": return { status: 201, body: { ok: true, verified: true, project: sessionProjectView(await service.create(args, actor)) } };
     case "updateSessionProject":
     case "updateSessionCueSheet": {

@@ -62,7 +62,7 @@ function parseSession001Rows(rows, env) {
     const existing = byIdentity.get(responseKey);
     const person = {
       responseKey, phoneKey: keyed(env, "phone", digits), emailKey: null,
-      response: { submittedAt: get("submittedAt"), name: get("name"), phoneMasked: maskPhone(digits), emailMasked: "",
+      response: { submittedAt: get("submittedAt"), name: get("name"), phone: formatPhone(digits), phoneMasked: maskPhone(digits), emailMasked: "",
         instagram, motivation: "", guestQuestion: get("guestQuestion"), consent: null, sourceProfile: "session-001",
         attendanceAvailability: get("attendanceAvailability"), familiarity: get("familiarity"),
         otherTopics: get("otherTopics"), recordingConsent: get("recordingConsent"), interviewInterest: get("interviewInterest"),
@@ -106,6 +106,14 @@ export function maskPhone(value) {
   if (d.length < 8) return d ? "*".repeat(d.length) : "";
   return `${d.slice(0, 3)}-****-${d.slice(-4)}`;
 }
+// The full number, for signed-in operators and staff running check-in (stored in participants.json only;
+// never in session.json, logs or error messages). Re-importing fills it in for people imported before.
+export function formatPhone(value) {
+  const d = phoneDigits(value);
+  if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return d.startsWith("02") ? `02-${d.slice(2, 6)}-${d.slice(6)}` : `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  return d;
+}
 export function maskEmail(value) {
   const e = String(value ?? "").trim().toLowerCase();
   const at = e.indexOf("@");
@@ -143,7 +151,7 @@ export function parseSheetRows(rows, env, { sessionId } = {}) {
       responseKey: keyed(env, "response", `${get("submittedAt")}|${digits}`),
       phoneKey: keyed(env, "phone", digits),
       emailKey: email ? keyed(env, "email", email) : null,
-      response: { submittedAt: text(get("submittedAt"), 40), name: text(get("name"), 80), phoneMasked: maskPhone(digits), emailMasked: maskEmail(email),
+      response: { submittedAt: text(get("submittedAt"), 40), name: text(get("name"), 80), phone: formatPhone(digits), phoneMasked: maskPhone(digits), emailMasked: maskEmail(email),
         instagram: normalizeInstagram(get("instagram")), motivation: text(get("motivation"), 2000), guestQuestion: text(get("guestQuestion"), 2000), consent: true }
     });
   }
@@ -261,7 +269,7 @@ export function participantSummary(doc) {
     lastSyncAt: doc.sync.lastSuccessAt, syncError: doc.sync.lastError };
 }
 
-// What the operator's browser gets: no HMAC keys (they are server-side matching data only).
+// What signed-in operators and staff get: the full phone number, never the HMAC keys (server-side matching data only).
 export function participantsView(doc) {
   const { log, ...rest } = doc;
   return { ...rest, people: doc.people.map(({ phoneKey: _p, emailKey: _e, responseKey: _r, ...person }) => person), summary: participantSummary(doc) };
