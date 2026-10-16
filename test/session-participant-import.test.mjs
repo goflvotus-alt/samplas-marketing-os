@@ -75,11 +75,18 @@ test('readback mismatch and lost write replies never report success or retry',as
  const g=fixture(),q=await preview(g);const write2=g.store.writeParticipants.bind(g.store);g.store.writeParticipants=async(...args)=>{await write2(...args);throw new SessionError(502,'dropbox_network_failed');};
  await assert.rejects(commit(g,q),e=>e.code==='dropbox_network_failed');assert.equal(g.uploads().length,1);
 });
-test('ordinary MCP participant reads return summary only and still expose exactly eight tools',async()=>{
- const f=fixture();await commit(f,await preview(f));const service=createSessionService(f.store,{env:ENV,readRows:f.readRows});
- const r=await callSessionTool('getSessionParticipants',{id:ID},{env:ENV,service,actor:{kind:'mcp',id:'fixture'}});
- assert.equal(SESSION_TOOLS.length,8);assert.equal(r.body.participants.summary.total,18);assert.deepEqual(r.body.participants.people,[]);
- assert(!JSON.stringify(r).includes('Synthetic Person'));assert(!JSON.stringify(r).includes('fixture1'));assert(!JSON.stringify(r).includes('Synthetic question'));
+test('ChatGPT (owner-only MCP) reads the operator list with masked contacts and changes status and check-in only when writes are open',async()=>{
+ const f=fixture();await commit(f,await preview(f));const service=createSessionService(f.store,{env:ENV,readRows:f.readRows});const actor={kind:'mcp',id:'chatgpt:fixture'};
+ const r=await callSessionTool('getSessionParticipants',{id:ID},{env:ENV,service,actor});
+ assert.equal(SESSION_TOOLS.length,9);assert.equal(r.body.participants.people.length,18);assert.equal(r.body.participants.people[0].response.phoneMasked,'010-****-0001');
+ assert(!JSON.stringify(r).includes('01070000001'),'no original contact');assert(!JSON.stringify(r).includes('phoneKey'),'no matching keys');
+ const p=r.body.participants.people[0],v=r.body.participants.version;
+ await assert.rejects(callSessionTool('updateSessionParticipants',{id:ID,version:v,operations:[{type:'check_in',participantId:p.id}]},{env:ENV,service,actor}),e=>e.code==='mcp_writes_disabled');
+ const on={...ENV,SESSION_MCP_WRITES:'test-only'};
+ const confirmed=await callSessionTool('updateSessionParticipants',{id:ID,version:v,operations:[{type:'update_participant',participantId:p.id,patch:{status:'confirmed'}},{type:'check_in',participantId:p.id}]},{env:on,service,actor});
+ const after=confirmed.body.participants.people.find(x=>x.id===p.id);assert.deepEqual([after.ops.status,Boolean(after.ops.checkedInAt)],['confirmed',true]);
+ for(const op of [{type:'set_capacity',capacity:1},{type:'set_participant_form',form:{}}]) await assert.rejects(callSessionTool('updateSessionParticipants',{id:ID,version:v+1,operations:[op]},{env:on,service,actor}),e=>e.code==='invalid_operation',op.type);
+ await assert.rejects(callSessionTool('updateSessionParticipants',{id:ID,version:v,operations:[{type:'undo_check_in',participantId:p.id}]},{env:on,service,actor}),e=>e.code==='version_conflict');
 });
 test('private REST readiness/preview/commit routes keep authentication; import routes return counts, the operator list stays masked',async()=>{
  const f=fixture(),service=createSessionService(f.store,{env:ENV,readRows:f.readRows});
