@@ -2,8 +2,8 @@ name: Session MCP checks
 on:
   pull_request:
     paths:
-      - 'scripts/session-mcp.mjs'
-      - 'test/session-mcp.test.mjs'
+      - 'scripts/session*.mjs'
+      - 'test/session*.test.mjs'
       - '.github/workflows/session-mcp-check.yml'
   workflow_dispatch:
 permissions:
@@ -18,5 +18,5 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-package-lock --ignore-scripts
-      - run: node --check scripts/session-mcp.mjs
-      - run: node --test test/session-mcp.test.mjs
+      - run: node --check scripts/session-mcp.mjs && node --check scripts/session-participant-import.mjs && node --check scripts/session-director-api.mjs
+      - run: node --test test/session*.test.mjs
