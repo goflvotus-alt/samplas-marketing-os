@@ -81,7 +81,7 @@ test('ordinary MCP participant reads return summary only and still expose exactl
  assert.equal(SESSION_TOOLS.length,8);assert.equal(r.body.participants.summary.total,18);assert.deepEqual(r.body.participants.people,[]);
  assert(!JSON.stringify(r).includes('Synthetic Person'));assert(!JSON.stringify(r).includes('fixture1'));assert(!JSON.stringify(r).includes('Synthetic question'));
 });
-test('private REST readiness/preview/commit routes keep authentication and only return counts',async()=>{
+test('private REST readiness/preview/commit routes keep authentication; import routes return counts, the operator list stays masked',async()=>{
  const f=fixture(),service=createSessionService(f.store,{env:ENV,readRows:f.readRows});
  async function route(name,body,auth=true){let status,out;const req={method:['participants-import-status','participants'].includes(name)?'GET':'POST',headers:auth?{'x-session-director-token':ENV.SESSION_WEB_SECRET,'x-session-actor':signActorToken({email:ACTOR.id,secret:ENV.SESSION_WEB_SECRET})}:{},async *[Symbol.asyncIterator](){yield Buffer.from(JSON.stringify(body));}};const res={writeHead:s=>status=s,end:b=>out=JSON.parse(b),setHeader(){}};await handleSessionDirectorRequest(req,res,new URL('https://fixture/api/session-director/'+name+'?id='+ID),{env:ENV,service});return {status,out};}
  for(const name of ['participants-import-status','participants-import-preview','participants-import']) assert.equal((await route(name,{},false)).status,401);
@@ -89,7 +89,8 @@ test('private REST readiness/preview/commit routes keep authentication and only 
  const p=await route('participants-import-preview',{version:0,source:SOURCE});assert.equal(p.status,200);assert.equal(f.uploads().length,0);
  assert.equal((await route('participants-sync',{version:0})).status,400,'old sync cannot bypass preview');
  const c=await route('participants-import',{version:0,source:SOURCE,previewToken:p.out.preview.previewToken});assert.equal(c.status,200);assert.equal(c.out.verified,true);assert(!JSON.stringify(c).includes('Synthetic Person'));
- const view=await route('participants',{});assert.equal(view.out.participants.summary.total,18);assert.deepEqual(view.out.participants.people,[]);assert(!JSON.stringify(view).includes('Synthetic Person'));
+ const view=await route('participants',{});assert.equal(view.out.participants.summary.total,18);assert.equal(view.out.participants.people.length,18,'operator can confirm and check in');
+ assert.equal(view.out.participants.people[0].response.phoneMasked,'010-****-0001');assert(!JSON.stringify(view).includes('01070000001'),'no original contact');assert(!JSON.stringify(view).includes('phoneKey'));
 });
 
 test('historical profile refuses even otherwise valid standard headers and excessive rows',async()=>{

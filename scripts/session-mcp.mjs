@@ -13,6 +13,7 @@ const id = { type: "string", pattern: "^(test-)?session-\\d{3,4}$", description:
 const version = { type: "integer", minimum: 1, description: "Latest version from getSessionProject or getSessionCueSheet" };
 const strict = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, required });
 const RULES = "Only after the user explicitly approves this exact change. Read the latest version first. On 409 read again and report the conflict; never retry automatically. The result is read back before it is reported as saved.";
+export const TASK_OPERATIONS = ["add_task", "update_task"];
 export const CUE_OPERATIONS = ["update_section", "update_question", "update_question_mc", "move_question", "add_question", "propose_answer_correction"];
 
 export const SESSION_TOOLS = [
@@ -30,8 +31,9 @@ export const SESSION_TOOLS = [
     inputSchema: strict({ number: { type: "integer", minimum: 1, maximum: 9999 }, title: { type: "string", minLength: 1, maxLength: 200 }, theme: { type: "string", maxLength: 1000 },
       date: { type: ["string", "null"], description: "YYYY-MM-DD or null when undecided" }, guest: strict({ name: { type: "string" }, handle: { type: "string" }, bio: { type: "string" } }),
       isTest: { type: "boolean", default: false } }, ["number", "title"]), annotations: WRITE },
-  { name: "updateSessionProject", description: `Change session details: title, theme, date, timeStart, timeEnd, venue, owners, guest, status (not ARCHIVED). ${RULES}`,
-    inputSchema: strict({ id, version, patch: { type: "object", minProperties: 1 } }, ["id", "version", "patch"]), annotations: WRITE },
+  { name: "updateSessionProject", description: `Change session details (patch: title, theme, date, timeStart, timeEnd, venue, owners, guest, status, not ARCHIVED) and/or the schedule TODO list (tasks: add_task {task: {title, due YYYY-MM-DD|null, owner, group, done}} or update_task {taskId, patch}). Task ids come from getSessionProject. ${RULES}`,
+    inputSchema: strict({ id, version, patch: { type: "object", minProperties: 1 },
+      tasks: { type: "array", minItems: 1, maxItems: 20, items: { type: "object", required: ["type"], properties: { type: { enum: TASK_OPERATIONS } } } } }, ["id", "version"]), annotations: WRITE },
   { name: "updateSessionCueSheet", description: `Apply cue sheet operations by id: ${CUE_OPERATIONS.join(", ")}. update_question_mc patches summary, keywords, episodes, followUps, toAudience, directionNotes, cautions, liveMemo. Guest answers cannot be changed here. ${RULES}`,
     inputSchema: strict({ id, version, operations: { type: "array", minItems: 1, maxItems: 20, items: { type: "object", required: ["type"], properties: { type: { enum: CUE_OPERATIONS } } } } }, ["id", "version", "operations"]),
     annotations: WRITE }
@@ -64,10 +66,13 @@ export async function callSessionTool(name, args, { env, service, actor }) {
     case "createSessionProject": return { status: 201, body: { ok: true, verified: true, project: sessionProjectView(await service.create(args, actor)) } };
     case "updateSessionProject":
     case "updateSessionCueSheet": {
-      const operations = name === "updateSessionProject" ? [{ type: "update_project", patch: args.patch }] : args.operations;
-      if (!Array.isArray(operations) || operations.some((op) => name === "updateSessionCueSheet" && !CUE_OPERATIONS.includes(op?.type))) {
-        throw new SessionError(400, "invalid_operation", `operations must be ${CUE_OPERATIONS.join(", ")}`);
+      const isProject = name === "updateSessionProject";
+      const listed = isProject ? (args.tasks ?? []) : args.operations;
+      if (!Array.isArray(listed) || listed.some((op) => !(isProject ? TASK_OPERATIONS : CUE_OPERATIONS).includes(op?.type))) {
+        throw new SessionError(400, "invalid_operation", isProject ? `tasks must be ${TASK_OPERATIONS.join(", ")}` : `operations must be ${CUE_OPERATIONS.join(", ")}`);
       }
+      const operations = isProject && args.patch !== undefined ? [{ type: "update_project", patch: args.patch }, ...listed] : listed;
+      if (!operations.length) throw new SessionError(400, "invalid_operation", "patch and/or tasks are required");
       const result = await service.update(args.id, args.version, operations, actor);
       const view = name === "updateSessionCueSheet" ? { cueSheet: await service.cueSheet(args.id) } : { project: sessionProjectView(result.doc) };
       return { status: 200, body: { ok: true, verified: true, version: result.doc.version, unchanged: result.unchanged, changed: result.changed, ...view } };

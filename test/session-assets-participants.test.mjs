@@ -214,7 +214,7 @@ test("participants API: off until every guard is set; then sync, ops with versio
     const secondPreview=await call(api.port,"POST","/api/session-director/participants-import-preview?id=session-003",{body:{version:2,source}});
     const resync = await call(api.port, "POST", "/api/session-director/participants-sync?id=session-003", { body: { version: 2, source, previewToken:secondPreview.body.preview.previewToken } });
     assert.deepEqual([resync.body.result.added, resync.body.summary.total], [0, 3]);
-    assert.ok(!sync.text.includes('테스트 하나') && !resync.text.includes('동기 A'), 'REST returns counts only');
+    assert.ok(!sync.text.includes('테스트 하나') && !resync.text.includes('동기 A'), 'import routes return counts only');
     assert.equal((await put("session-003", 2, [{ type: "set_capacity", capacity: 1 }])).status, 409, "stale version");
     await put("session-003", 3, [{ type: "set_capacity", capacity: 1 }, { type: "update_participant", participantId: people[0].id, patch: { status: "confirmed" } }]);
     const full = await put("session-003", 4, [{ type: "update_participant", participantId: people[1].id, patch: { status: "confirmed" } }]);

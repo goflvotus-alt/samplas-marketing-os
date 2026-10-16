@@ -202,11 +202,12 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
     if (route === "participants-import-status") return send(res, 200, { ok: true, readiness: service.participantImportReadiness() });
     if (route === "participants-import-preview") return send(res, 200, { ok: true, preview: await service.previewParticipantImport(id, await readBody(req), actor) });
     if (route === "participants-import") return send(res, 200, { ok: true, ...(await service.importParticipants(id, await readBody(req), actor)) });
-    if (route === "participants" && req.method === "GET") return send(res, 200, { ok: true, participants: await service.participantCounts(id) });
+    // Operator REST (web secret + signed actor): the masked list, so the Mac can confirm, notify and check in.
+    // The public Vercel proxy refuses this route itself; MCP gets counts only (participantCounts).
+    if (route === "participants" && req.method === "GET") return send(res, 200, { ok: true, participants: await service.participants(id) });
     if (route === "participants") {
       const body = await readBody(req);
-      await service.updateParticipants(id, body?.version, body?.operations, actor);
-      return send(res, 200, { ok: true, participants: await service.participantCounts(id) });
+      return send(res, 200, { ok: true, participants: await service.updateParticipants(id, body?.version, body?.operations, actor) });
     }
     if (route === "participants-sync") {
       const body = await readBody(req);

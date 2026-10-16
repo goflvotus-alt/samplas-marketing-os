@@ -133,3 +133,26 @@ test("private asset and participant MCP reads reuse the operator service without
     assert.equal((await tool(api.port, "getSessionParticipants", { id: "invalid" })).httpStatus >= 400, true);
   } finally { await api.close(); }
 });
+
+test("ChatGPT schedules the event and runs the TODO list through updateSessionProject; the web app reads the same tasks", async () => {
+  const api = await start({ ...BASE_ENV, SESSION_MCP_WRITES: "test-only" });
+  try {
+    const created = await tool(api.port, "createSessionProject", { number: 902, title: "TASKS", isTest: true });
+    const id = created.project.id;
+    const both = await tool(api.port, "updateSessionProject", { id, version: 1, patch: { date: "2026-11-21", timeStart: "13:00", timeEnd: "15:00", owners: ["병구"] },
+      tasks: [{ type: "add_task", task: { title: "포스터 시안", due: "2026-11-01", owner: "디자인", group: "모집" } }] });
+    assert.deepEqual([both.httpStatus, both.verified, both.project.date, both.project.tasks.length], [200, true, "2026-11-21", 9]);
+    const task = (await tool(api.port, "getSessionProject", { id })).project.tasks.find((t) => t.title === "포스터 시안");
+    assert.deepEqual([task.due, task.owner, task.done], ["2026-11-01", "디자인", false]);
+    const done = await tool(api.port, "updateSessionProject", { id, version: 2, tasks: [{ type: "update_task", taskId: task.id, patch: { done: true, owner: "병구" } }] });
+    assert.deepEqual([done.httpStatus, done.project.tasks.filter((t) => t.done).length], [200, 1]);
+    const fromWeb = await web(api.port, "GET", `/api/session-director/project?id=${id}`);
+    assert.deepEqual(fromWeb.project.tasks.find((t) => t.id === task.id), { ...task, done: true, owner: "병구" });
+
+    for (const tasks of [[{ type: "update_project", patch: { title: "x" } }], [{ type: "add_question", sectionId: "s", question: {} }], []]) {
+      assert.equal((await tool(api.port, "updateSessionProject", { id, version: 3, tasks })).httpStatus, 400, JSON.stringify(tasks));
+    }
+    assert.equal((await tool(api.port, "updateSessionProject", { id, version: 3 })).httpStatus, 400, "patch or tasks required");
+    assert.equal((await tool(api.port, "updateSessionProject", { id: "session-002", version: 1, tasks: [{ type: "add_task", task: { title: "x" } }] })).httpStatus, 403, "test-only keeps 002 untouched");
+  } finally { await api.close(); }
+});
