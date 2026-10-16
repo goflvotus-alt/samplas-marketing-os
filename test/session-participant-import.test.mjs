@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createParticipantImportService, SESSION001_SOURCE } from '../scripts/session-participant-import.mjs';
+import { createParticipantImportService, session001Source } from '../scripts/session-participant-import.mjs';
 import { createSessionService, handleSessionDirectorRequest, signActorToken } from '../scripts/session-director-api.mjs';
 import { createSessionDropboxStore, sessionPath, SESSION_ROOTS } from '../scripts/session-dropbox.mjs';
 import { createSessionDocument, SessionError } from '../scripts/session-store.mjs';
@@ -102,4 +102,15 @@ test('changed HMAC identity cannot silently duplicate existing imported applican
  const f=fixture();await commit(f,await preview(f));
  const rotated=createParticipantImportService(f.store,{env:{...ENV,SESSION_PARTICIPANT_HMAC_KEY:'different-fixture-key-01234567890123456789'},readRows:f.readRows});
  await assert.rejects(rotated.preview(ID,{version:1,source:SOURCE},ACTOR),e=>e.code==='import_key_changed');assert.equal(f.uploads().length,1);
+});
+
+test('SESSION 001 sheet id comes only from SESSION001_SHEET_ID; missing or different sources stop before any read',async()=>{
+ assert.throws(()=>session001Source({}),e=>e.code==='session001_sheet_not_configured');
+ const pinned=session001Source({SESSION001_SHEET_ID:' synthetic_pinned_sheet_0123456789 '});assert.equal(pinned.sheetId,'synthetic_pinned_sheet_0123456789');
+ const f=fixture(),live=JSON.stringify(createSessionDocument({number:1,title:'PINNED'},{actor:'fixture'}));f.fake.files.set(sessionPath('session-001'),{text:live,rev:'live-fixture'});
+ const unset=createParticipantImportService(f.store,{env:ENV,readRows:f.readRows});
+ await assert.rejects(unset.preview('session-001',{version:0},ACTOR),e=>e.code==='session001_sheet_not_configured');
+ const set=createParticipantImportService(f.store,{env:{...ENV,SESSION001_SHEET_ID:'synthetic_pinned_sheet_0123456789'},readRows:f.readRows});
+ await assert.rejects(set.preview('session-001',{version:0,source:SOURCE},ACTOR),e=>e.code==='import_source_not_allowed');
+ assert.equal(f.reads(),0);assert.equal(f.uploads().length,0);
 });

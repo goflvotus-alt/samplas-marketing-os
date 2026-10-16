@@ -6,7 +6,14 @@ import { SessionError, SESSION_ID_PATTERN } from './session-store.mjs';
 import { hmacKeyReady, parseSheetRows, mergeSync, participantSummary, FORM_HEADERS, SESSION001_HEADERS } from './session-participants.mjs';
 import { readSheetRows, sheetsConfigured } from './session-sheets.mjs';
 
-export const SESSION001_SOURCE = Object.freeze({sheetId:'1NSI14aywxS6qQkeR61C5GzXI-L38MwbuH28jmRnQ0Oc',sheetRange:"'설문지 응답 시트1'!A1:J10002",profile:'session-001'});
+// SESSION 001's response sheet is pinned by the server. Its id is configuration (SESSION001_SHEET_ID), never source:
+// this repository is public and the sheet holds applications. Without it, 001 imports stop before any read.
+export const SESSION001_RANGE="'설문지 응답 시트1'!A1:J10002";
+export function session001Source(env){
+ const sheetId=String(env.SESSION001_SHEET_ID??'').trim();
+ if(!/^[\w-]{20,100}$/.test(sheetId))fail(503,'session001_sheet_not_configured');
+ return {sheetId,sheetRange:SESSION001_RANGE,profile:'session-001'};
+}
 const TTL=10*60*1000;
 const fail=(status,code)=>{throw new SessionError(status,code,code);};
 const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
@@ -20,10 +27,11 @@ function canonicalRange(value) {
  if(!match)fail(400,'invalid_import_source');
  return "'"+(match[1]||match[2])+"'!A1:"+match[3]+'10002';
 }
-function sourceFor(id,doc,input){
+function sourceFor(env,id,doc,input){
  if(!SESSION_ID_PATTERN.test(String(id)))fail(400,'invalid_session_id');
  let source=input;
- if(source===undefined)source=id==='session-001'?SESSION001_SOURCE:{sheetId:doc.form.sheetId,sheetRange:doc.form.sheetRange,profile:'standard'};
+ const pinned=id==='session-001'?session001Source(env):null;
+ if(source===undefined)source=pinned||{sheetId:doc.form.sheetId,sheetRange:doc.form.sheetRange,profile:'standard'};
  if(!object(source)||Object.keys(source).some(k=>!['sheetId','sheetRange','profile'].includes(k)))fail(400,'invalid_import_source');
  const {sheetId,profile='standard'}=source;
  const sheetRange=canonicalRange(source.sheetRange);
@@ -32,7 +40,7 @@ function sourceFor(id,doc,input){
  if(profile==='session-001'&&!sheetRange.endsWith('!A1:J10002'))fail(400,'invalid_import_source');
  if(profile==='standard'&&!sheetRange.endsWith('!A1:H10002'))fail(400,'invalid_import_source');
  const normalized={sheetId,sheetRange,profile};
- if(id==='session-001'&&!isDeepStrictEqual(normalized,SESSION001_SOURCE))fail(403,'import_source_not_allowed');
+ if(pinned&&!isDeepStrictEqual(normalized,pinned))fail(403,'import_source_not_allowed');
  if(!id.startsWith('test-')&&id!=='session-001'&&(profile!=='standard'||sheetId!==doc.form.sheetId||(doc.form.sheetRange&&doc.form.sheetRange.includes('!')&&sheetRange!==canonicalRange(doc.form.sheetRange))))fail(403,'import_source_not_allowed');
  if(doc.form.sheetId&&doc.form.sheetId!==sheetId)fail(409,'import_source_changed');
  return normalized;
@@ -79,7 +87,7 @@ export function createParticipantImportService(store,{env=process.env,fetchImpl=
  return {
   readiness,
   async preview(id,input,actor){
-   guard(actor);validateInput(input,false);const {doc,rev}=await current(id,input.version);const source=sourceFor(id,doc,input.source);
+   guard(actor);validateInput(input,false);const {doc,rev}=await current(id,input.version);const source=sourceFor(env,id,doc,input.source);
    const {parsed,digest,counts}=await parsedRows(source);keyGuard(doc,parsed);
    const iat=now(),exp=iat+TTL;
    const previewToken=seal(env,{id,actor:actor.id,version:doc.version,rev,source,digest,iat,exp});
@@ -89,7 +97,7 @@ export function createParticipantImportService(store,{env=process.env,fetchImpl=
    guard(actor);validateInput(input,true);const claims=open(env,input.previewToken);
    if(!Number.isFinite(claims.exp)||!Number.isFinite(claims.iat)||claims.exp-claims.iat!==TTL||claims.iat>now()||claims.exp<=now())fail(409,'preview_expired');
    if(claims.id!==id||claims.actor!==actor.id||claims.version!==input.version)fail(409,'invalid_preview');
-   const {doc,rev}=await current(id,input.version);const source=sourceFor(id,doc,input.source);
+   const {doc,rev}=await current(id,input.version);const source=sourceFor(env,id,doc,input.source);
    if(!isDeepStrictEqual(claims.source,source))fail(409,'invalid_preview');
    if(claims.rev!==rev)fail(409,'preview_stale');
    const {parsed,digest,counts}=await parsedRows(source);const keyId=keyGuard(doc,parsed);
