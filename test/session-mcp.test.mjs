@@ -43,9 +43,10 @@ const web = (port, method, path, body) => new Promise((resolve, reject) => {
   req.end(body === undefined ? undefined : JSON.stringify(body));
 });
 
-test("six tools with read/write annotations; the MCP secret is separate from the web secret", async () => {
+test("eight tools with read/write annotations; the MCP secret is separate from the web secret", async () => {
   assert.deepEqual(SESSION_TOOLS.map((t) => [t.name, t.annotations.readOnlyHint]), [
     ["listSessionProjects", true], ["getSessionProject", true], ["getSessionCueSheet", true],
+    ["listSessionAssets", true], ["getSessionParticipants", true],
     ["createSessionProject", false], ["updateSessionProject", false], ["updateSessionCueSheet", false]]);
   const api = await start(BASE_ENV);
   try {
@@ -57,7 +58,7 @@ test("six tools with read/write annotations; the MCP secret is separate from the
 
     const client = new Client({ name: "session-tests", version: "1.0.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${api.port}/api/session-director/mcp`), { requestInit: { headers: mcpHeaders } }));
-    assert.equal((await client.listTools()).tools.length, 6);
+    assert.equal((await client.listTools()).tools.length, 8);
     await client.close();
   } finally { await api.close(); }
   const unconfigured = await start({ ...BASE_ENV, SESSION_MCP_SECRET: "" });
@@ -114,5 +115,21 @@ test("final-test flow in miniature: read cue sheet, edit one MC note, read back,
     assert.equal(proposal.httpStatus, 200);
     const stored = api.fake.json(sessionPath("test-session-001")).questions[0].guestAnswer;
     assert.deepEqual([stored.currentRev, stored.revisions.length, stored.revisions[0].text, stored.pending.length], [1, 1, "게스트 원문", 1]);
+  } finally { await api.close(); }
+});
+
+
+test("private asset and participant MCP reads reuse the operator service without writes", async () => {
+  const api = await start({ ...BASE_ENV, SESSION_MCP_WRITES: "off" });
+  try {
+    const created = await api.service.create({ number: 901, title: "Read test", isTest: true }, { id: "test" });
+    assert.equal(created.id, "test-session-901");
+    const people = await tool(api.port, "getSessionParticipants", { id: "test-session-901" });
+    assert.equal(people.httpStatus, 200);
+    assert.equal(people.participants.summary.total, 0);
+    const assets = await tool(api.port, "listSessionAssets", { id: "test-session-901" });
+    assert.equal(assets.httpStatus, 200);
+    assert.equal(assets.ok, true);
+    assert.equal((await tool(api.port, "getSessionParticipants", { id: "invalid" })).httpStatus >= 400, true);
   } finally { await api.close(); }
 });

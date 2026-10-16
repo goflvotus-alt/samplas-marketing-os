@@ -1,0 +1,22 @@
+name: Session MCP checks
+on:
+  pull_request:
+    paths:
+      - 'scripts/session-mcp.mjs'
+      - 'test/session-mcp.test.mjs'
+      - '.github/workflows/session-mcp-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  session-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-package-lock --ignore-scripts
+      - run: node --check scripts/session-mcp.mjs
+      - run: node --test test/session-mcp.test.mjs
