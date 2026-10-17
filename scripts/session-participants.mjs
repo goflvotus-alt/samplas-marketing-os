@@ -272,5 +272,6 @@ export function participantSummary(doc) {
 // What signed-in operators and staff get: the full phone number, never the HMAC keys (server-side matching data only).
 export function participantsView(doc) {
   const { log, ...rest } = doc;
-  return { ...rest, people: doc.people.map(({ phoneKey: _p, emailKey: _e, responseKey: _r, ...person }) => person), summary: participantSummary(doc) };
+  const { importKeyId: _key, ...sync } = doc.sync;
+  return { ...rest, sync, people: doc.people.map(({ phoneKey: _p, emailKey: _e, responseKey: _r, ...person }) => person), summary: participantSummary(doc) };
 }

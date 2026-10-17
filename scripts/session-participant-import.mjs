@@ -56,7 +56,16 @@ function open(env,token){
  catch {fail(409,'invalid_preview');}
 }
 export function createParticipantImportService(store,{env=process.env,fetchImpl=fetch,readRows=readSheetRows,now=Date.now}={}){
+ const autoStates=new Map(),pending=new Map();
  const readiness=()=>({hmacKeyReady:hmacKeyReady(env),sheetsConfigured:sheetsConfigured(env),syncEnabled:env.SESSION_PARTICIPANTS_SYNC==='on'});
+ const autoSyncStatus=(id,doc)=>{
+  const base={status:id==='session-001'?'idle':'unavailable',intervalSeconds:60,lastAttemptAt:doc?.sync.lastAttemptAt||null,lastSuccessAt:doc?.sync.lastSuccessAt||null,error:null};
+  if(id!=='session-001')return base;
+  if(!Object.values(readiness()).every(Boolean))return {...base,status:'disabled'};
+  // Only a successful, already-authorized import can bootstrap the scheduled writer.
+  if(!doc?.sync.importKeyId)return {...base,status:'awaiting_initial_import'};
+  return {...base,...autoStates.get(id)};
+ };
  function guard(actor){validateActor(actor);if(!Object.values(readiness()).every(Boolean))fail(503,'participants_import_not_ready');}
  async function current(id,version){const found=await store.readParticipants(id);if(found.doc.version!==version)throw new SessionError(409,'version_conflict','participants changed since preview',{currentVersion:found.doc.version});return found;}
  async function parsedRows(source){
@@ -86,6 +95,39 @@ export function createParticipantImportService(store,{env=process.env,fetchImpl=
  }
  return {
   readiness,
+  autoSyncStatus,
+  autoSync(id){
+   if(pending.has(id))return pending.get(id);
+   const promise=(async()=>{
+    if(id!=='session-001')return {status:'unavailable'};
+    if(!Object.values(readiness()).every(Boolean))return {status:'disabled'};
+    let doc;
+    const at=new Date(now()).toISOString();
+    try {
+     const found=await store.readParticipants(id);doc=found.doc;
+     if(!doc.sync.importKeyId)return autoSyncStatus(id,doc);
+     if(doc.sync.importKeyId!==mac(env,'key-id','participants'))fail(409,'import_key_changed');
+     autoStates.set(id,{...autoSyncStatus(id,doc),status:'syncing',lastAttemptAt:at});
+     const source=sourceFor(env,id,doc);
+     const {parsed,counts}=await parsedRows(source);keyGuard(doc,parsed);
+     const next=structuredClone(doc),result=mergeSync(next,parsed,{now:at});
+     const changed=result.added+result.updated+result.removed>0;
+     if(changed){
+      next.version++;next.updatedAt=at;
+      next.log=[...next.log,{v:next.version,at,actor:'session-participant-auto-sync',op:'sync_participants',participantId:null,...result}].slice(-500);
+      await store.writeParticipants(id,next,found.rev); // CAS, once: a later poll rereads before deciding to write.
+      const saved=(await store.readParticipants(id)).doc;
+      if(!isDeepStrictEqual(saved,next))fail(502,'write_unverified');
+     }
+     const state={status:changed?'synced':'unchanged',lastAttemptAt:at,lastSuccessAt:at,error:null,counts,result,version:next.version};
+     autoStates.set(id,state);return {...state,intervalSeconds:60};
+    } catch {
+     const state={status:'error',lastAttemptAt:at,lastSuccessAt:autoStates.get(id)?.lastSuccessAt||doc?.sync.lastSuccessAt||null,error:'participants_sync_failed'};
+     autoStates.set(id,state);return {...state,intervalSeconds:60};
+    }
+   })().finally(()=>pending.delete(id));
+   pending.set(id,promise);return promise;
+  },
   async preview(id,input,actor){
    guard(actor);validateInput(input,false);const {doc,rev}=await current(id,input.version);const source=sourceFor(env,id,doc,input.source);
    const {parsed,digest,counts}=await parsedRows(source);keyGuard(doc,parsed);

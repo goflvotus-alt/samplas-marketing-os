@@ -73,7 +73,7 @@ export function createSessionService(store, { env = process.env, fetchImpl = fet
     if (JSON.stringify(doc) !== JSON.stringify(expected)) throw new SessionError(502, "write_unverified", "participants did not read back as written", { currentVersion: doc.version });
     return doc;
   }
-  const participantsOut = (id, doc) => ({ ...participantsView(doc), syncAvailable: syncAvailable(), formLinkAllowed: allowFormLink(id) });
+  const participantsOut = (id, doc) => ({ ...participantsView(doc), syncAvailable: syncAvailable(), formLinkAllowed: allowFormLink(id), autoSync: participantImport.autoSyncStatus(id,doc) });
   async function verified(id, expected) {
     const { doc } = await store.read(id);
     if (doc.version !== expected.version || JSON.stringify(doc) !== JSON.stringify(expected)) {
@@ -99,6 +99,7 @@ export function createSessionService(store, { env = process.env, fetchImpl = fet
     assetThumbnail: (id, path) => assets.thumbnail(id, path),
     assetLink: (id, path) => assets.link(id, path),
     participantImportReadiness: () => participantImport.readiness(),
+    autoSyncParticipants: (id) => participantImport.autoSync(id),
     previewParticipantImport: (id, input, actor) => participantImport.preview(id, input, actor),
     importParticipants: (id, input, actor) => participantImport.commit(id, input, actor),
     async participantCounts(id) {
@@ -167,6 +168,13 @@ export function defaultSessionService(env) {
     : createSessionDropboxStore({ env });
   return (defaultService = createSessionService(store, { env }));
 }
+
+// Render keeps polling without a browser; tests and Mac servers never start this implicitly.
+export function startParticipantAutoSync(getService, schedule=setInterval) {
+  const timer=schedule(async()=>{try{await getService().autoSyncParticipants('session-001');}catch{/* No raw errors or row data in logs. */}},60000);
+  timer.unref?.();return timer;
+}
+if(process.env.RENDER==='true'&&process.env.IS_PULL_REQUEST==='false'&&process.env.NODE_ENV==='production')startParticipantAutoSync(()=>defaultSessionService(process.env));
 
 // options: { env, service, mcp } (service/mcp are injected by tests; mcp is the T4 handler)
 export async function handleSessionDirectorRequest(req, res, url, { env = process.env, service, mcp, now } = {}) {
