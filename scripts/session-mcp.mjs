@@ -18,6 +18,45 @@ export const TASK_OPERATIONS = ["add_task", "update_task", "delete_task", "add_n
 export const PARTICIPANT_STATUS_OPERATIONS = ["update_participant", "check_in", "undo_check_in"];
 export const CUE_OPERATIONS = ["update_section", "update_question", "update_question_mc", "move_question", "add_question", "propose_answer_correction"];
 
+// Every argument an operation takes is declared, so ChatGPT sends it (an undeclared property may be dropped).
+// The server still validates each field per operation (unknown fields are refused there).
+const str = (description, extra = {}) => ({ type: "string", description, ...extra });
+const dateOrNull = (description) => ({ type: ["string", "null"], description: `${description} (YYYY-MM-DD, or null to clear)` });
+const TASK_FIELDS = { title: str("Task title"), due: dateOrNull("Due date; the SCHEDULE calendar shows the task on this day"), owner: str("Owner"),
+  group: str("Group / category"), done: { type: "boolean", description: "Completed" }, required: { type: "boolean", description: "Required task (필수)" }, memo: str("Memo, up to 2000 characters") };
+const NOTE_FIELDS = { date: dateOrNull("Meeting date"), title: str("Note title"), body: str("Decisions / open items / follow-ups") };
+const TASK_ITEM = { type: "object", required: ["type"], additionalProperties: false, properties: {
+  type: { enum: TASK_OPERATIONS },
+  task: { type: "object", additionalProperties: false, properties: TASK_FIELDS, description: "add_task: the new task (title required)" },
+  taskId: str("update_task / delete_task: task id from getSessionProject"),
+  note: { type: "object", additionalProperties: false, properties: NOTE_FIELDS, description: "add_note: the new meeting note (title required)" },
+  noteId: str("update_note / delete_note: note id from getSessionProject"),
+  patch: { type: "object", additionalProperties: false, properties: { ...TASK_FIELDS, ...NOTE_FIELDS },
+    description: "update_task: any of title, due, owner, group, done, required, memo. update_note: any of date, title, body." },
+  trashId: str("restore_from_trash: trash entry id from getSessionProject (project.trash)") } };
+const MC_PATCH = { summary: str("MC summary / expected answer core"), keywords: { type: "array", items: { type: "string" } }, episodes: str("Episodes"),
+  followUps: { type: "array", items: { type: "string" }, description: "Follow-up questions" }, toAudience: { type: "array", items: { type: "string" }, description: "Questions for participants" },
+  directionNotes: str("Direction notes"), cautions: str("Cautions"), liveMemo: str("On-site memo") };
+const QUESTION_FIELDS = { code: str("Question code, e.g. Q3"), askText: str("MC question"), sentText: str("Question sent to the guest"),
+  durationMin: { type: ["integer", "null"], minimum: 0, maximum: 240, description: "Planned minutes" }, hidden: { type: "boolean", description: "true = archived (removed from the run, restorable)" } };
+const CUE_ITEM = { type: "object", required: ["type"], additionalProperties: false, properties: {
+  type: { enum: CUE_OPERATIONS },
+  sectionId: str("update_section / add_question / move_question: section id from getSessionCueSheet"),
+  questionId: str("update_question / update_question_mc / move_question / propose_answer_correction: question id"),
+  beforeQuestionId: { type: ["string", "null"], description: "move_question: place before this question in the target section; null = at the end" },
+  question: { type: "object", additionalProperties: false, properties: QUESTION_FIELDS, description: "add_question: the new question" },
+  patch: { type: "object", additionalProperties: false, properties: { key: str("Section key"), title: str("Section title"), start: str("HH:MM"), end: str("HH:MM"), ...QUESTION_FIELDS, ...MC_PATCH },
+    description: "update_section: key, title, start, end. update_question: code, askText, sentText, durationMin, hidden. update_question_mc: summary, keywords, episodes, followUps, toAudience, directionNotes, cautions, liveMemo." },
+  text: str("propose_answer_correction: the corrected wording proposed for the guest's original (an approver accepts it in the web app)"),
+  reason: str("propose_answer_correction: why"), evidence: str("propose_answer_correction: where the correction comes from") } };
+const PARTICIPANT_ITEM = { type: "object", required: ["type", "participantId"], additionalProperties: false, properties: {
+  type: { enum: PARTICIPANT_STATUS_OPERATIONS }, participantId: str("Participant id from getSessionParticipants"),
+  patch: { type: "object", additionalProperties: false, description: "update_participant only", properties: {
+    status: { enum: ["applied", "confirmed", "waitlisted", "cancelled", "no_show"] }, notice: { enum: ["none", "sent", "replied"] }, memo: str("Operator memo, up to 1000 characters") } } } };
+export const BENEFIT_OPERATIONS = ["verify_feedback", "unverify_feedback", "mark_used", "undo_used"];
+const BENEFIT_ITEM = { type: "object", required: ["type", "participantId"], additionalProperties: false, properties: {
+  type: { enum: BENEFIT_OPERATIONS }, participantId: str("Confirmed participant id from getSessionParticipants"), staff: str("Staff name recorded with the check, up to 40 characters") } };
+
 export const SESSION_TOOLS = [
   { name: "listSessionProjects", description: "List SAMPLAS SESSION projects (number, guest, status, date, version, progress).",
     inputSchema: strict({ includeTest: { type: "boolean", default: false } }), annotations: READ },
@@ -31,22 +70,29 @@ export const SESSION_TOOLS = [
     inputSchema: strict({ id }, ["id"]), annotations: READ },
   { name: "updateSessionParticipants", description: `Change participants by id from getSessionParticipants: update_participant {participantId, patch: {status applied|confirmed|waitlisted|cancelled|no_show, notice none|sent|replied, memo}}, check_in {participantId}, undo_check_in {participantId}. Capacity is enforced on the server. ${RULES}`,
     inputSchema: strict({ id, version: { type: "integer", minimum: 0, description: "Participants version from getSessionParticipants" },
-      operations: { type: "array", minItems: 1, maxItems: 20, items: { type: "object", required: ["type"], properties: { type: { enum: PARTICIPANT_STATUS_OPERATIONS } } } } }, ["id", "version", "operations"]), annotations: WRITE },
+      operations: { type: "array", minItems: 1, maxItems: 20, items: PARTICIPANT_ITEM } }, ["id", "version", "operations"]), annotations: WRITE },
   { name: "createSessionProject", description: `Create a new session from the default template (structure only; no answers are copied). ${RULES}`,
     inputSchema: strict({ number: { type: "integer", minimum: 1, maximum: 9999 }, title: { type: "string", minLength: 1, maxLength: 200 }, theme: { type: "string", maxLength: 1000 },
       date: { type: ["string", "null"], description: "YYYY-MM-DD or null when undecided" }, guest: strict({ name: { type: "string" }, handle: { type: "string" }, bio: { type: "string" } }),
       isTest: { type: "boolean", default: false } }, ["number", "title"]), annotations: WRITE },
   { name: "updateSessionProject", description: `Change session details (patch: title, theme, date, timeStart, timeEnd, venue, owners, guest, status, not ARCHIVED) and/or the schedule TODO list and meeting notes (tasks: add_task {task: {title, due YYYY-MM-DD|null, owner, group, done, required, memo}}, update_task {taskId, patch}, delete_task {taskId}, add_note {note: {date YYYY-MM-DD|null, title, body}}, update_note {noteId, patch}, delete_note {noteId}, restore_from_trash {trashId}). Deleted tasks and notes go to the session trash (project.trash) and can be restored. Ids come from getSessionProject. ${RULES}`,
     inputSchema: strict({ id, version, patch: { type: "object", minProperties: 1 },
-      tasks: { type: "array", minItems: 1, maxItems: 20, items: { type: "object", required: ["type"], properties: { type: { enum: TASK_OPERATIONS } } } } }, ["id", "version"]), annotations: WRITE },
+      tasks: { type: "array", minItems: 1, maxItems: 20, items: TASK_ITEM } }, ["id", "version"]), annotations: WRITE },
   { name: "updateSessionCueSheet", description: `Apply cue sheet operations by id: ${CUE_OPERATIONS.join(", ")}. update_question_mc patches summary, keywords, episodes, followUps, toAudience, directionNotes, cautions, liveMemo. Guest answers cannot be changed here. ${RULES}`,
-    inputSchema: strict({ id, version, operations: { type: "array", minItems: 1, maxItems: 20, items: { type: "object", required: ["type"], properties: { type: { enum: CUE_OPERATIONS } } } } }, ["id", "version", "operations"]),
-    annotations: WRITE }
+    inputSchema: strict({ id, version, operations: { type: "array", minItems: 1, maxItems: 20, items: CUE_ITEM } }, ["id", "version", "operations"]),
+    annotations: WRITE },
+  { name: "getSessionFeedback", description: "Read the session's FEEDBACK and PAMPHLET: feedback form links, the pamphlet's QR check, the anonymous per-question response summary (counts, averages, free-text answers) and the benefit policy. Responses are anonymous and never matched to participants.",
+    inputSchema: strict({ id }, ["id"]), annotations: READ },
+  { name: "getSessionBenefits", description: "Read the participant benefit state by participant id (feedback_unverified, available, used) with who confirmed it and when, plus the benefits version.",
+    inputSchema: strict({ id }, ["id"]), annotations: READ },
+  { name: "updateSessionBenefits", description: `Change benefits by participant id (confirmed participants only): verify_feedback (a staff member confirmed this person's feedback), unverify_feedback, mark_used (once; a second use is refused), undo_used. Never grant a benefit from response counts. ${RULES}`,
+    inputSchema: strict({ id, version: { type: "integer", minimum: 0, description: "Benefits version from getSessionBenefits" },
+      operations: { type: "array", minItems: 1, maxItems: 20, items: BENEFIT_ITEM } }, ["id", "version", "operations"]), annotations: WRITE }
 ];
 
 // The full number is for the web operations screen; ChatGPT gets the masked copy only.
 const withoutPhone = (view) => ({ ...view, people: view.people.map(({ response: { phone: _phone, ...response }, ...person }) => ({ ...person, response })) });
-const WRITE_TOOLS = new Set(["createSessionProject", "updateSessionProject", "updateSessionCueSheet", "updateSessionParticipants"]);
+const WRITE_TOOLS = new Set(["createSessionProject", "updateSessionProject", "updateSessionCueSheet", "updateSessionParticipants", "updateSessionBenefits"]);
 
 function assertWritable(env, tool, args) {
   const mode = env.SESSION_MCP_WRITES || "off";
@@ -75,6 +121,14 @@ export async function callSessionTool(name, args, { env, service, actor }) {
         throw new SessionError(400, "invalid_operation", `operations must be ${PARTICIPANT_STATUS_OPERATIONS.join(", ")}`);
       }
       return { status: 200, body: { ok: true, verified: true, participants: withoutPhone(await service.updateParticipants(args.id, args.version, args.operations, actor)) } };
+    }
+    case "getSessionFeedback": return { status: 200, body: { ok: true, feedback: await service.feedback(args.id) } };
+    case "getSessionBenefits": return { status: 200, body: { ok: true, benefits: await service.benefits(args.id) } };
+    case "updateSessionBenefits": {
+      if (!Array.isArray(args.operations) || !args.operations.length || args.operations.some((op) => !BENEFIT_OPERATIONS.includes(op?.type))) {
+        throw new SessionError(400, "invalid_operation", `operations must be ${BENEFIT_OPERATIONS.join(", ")}`);
+      }
+      return { status: 200, body: { ok: true, verified: true, benefits: await service.updateBenefits(args.id, args.version, args.operations, actor) } };
     }
     case "createSessionProject": return { status: 201, body: { ok: true, verified: true, project: sessionProjectView(await service.create(args, actor)) } };
     case "updateSessionProject":

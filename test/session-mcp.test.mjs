@@ -47,7 +47,8 @@ test("nine tools with read/write annotations; the MCP secret is separate from th
   assert.deepEqual(SESSION_TOOLS.map((t) => [t.name, t.annotations.readOnlyHint]), [
     ["listSessionProjects", true], ["getSessionProject", true], ["getSessionCueSheet", true],
     ["listSessionAssets", true], ["getSessionParticipants", true],
-    ["updateSessionParticipants", false], ["createSessionProject", false], ["updateSessionProject", false], ["updateSessionCueSheet", false]]);
+    ["updateSessionParticipants", false], ["createSessionProject", false], ["updateSessionProject", false], ["updateSessionCueSheet", false],
+    ["getSessionFeedback", true], ["getSessionBenefits", true], ["updateSessionBenefits", false]]);
   const api = await start(BASE_ENV);
   try {
     const list = { jsonrpc: "2.0", id: 1, method: "tools/list" };
@@ -58,7 +59,7 @@ test("nine tools with read/write annotations; the MCP secret is separate from th
 
     const client = new Client({ name: "session-tests", version: "1.0.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${api.port}/api/session-director/mcp`), { requestInit: { headers: mcpHeaders } }));
-    assert.equal((await client.listTools()).tools.length, 9);
+    assert.equal((await client.listTools()).tools.length, 12);
     await client.close();
   } finally { await api.close(); }
   const unconfigured = await start({ ...BASE_ENV, SESSION_MCP_SECRET: "" });
@@ -155,4 +156,51 @@ test("ChatGPT schedules the event and runs the TODO list through updateSessionPr
     assert.equal((await tool(api.port, "updateSessionProject", { id, version: 3 })).httpStatus, 400, "patch or tasks required");
     assert.equal((await tool(api.port, "updateSessionProject", { id: "session-002", version: 1, tasks: [{ type: "add_task", task: { title: "x" } }] })).httpStatus, 403, "test-only keeps 002 untouched");
   } finally { await api.close(); }
+});
+
+test("ChatGPT parity: published schemas accept every argument the operations take, and the SDK client runs the full TODO/NOTES cycle", async () => {
+  const { default: Ajv } = await import("ajv");
+  const ajv = new Ajv({ strict: false });
+  const schema = (name) => SESSION_TOOLS.find((t) => t.name === name).inputSchema;
+  const accepts = (name, args) => { const ok = ajv.validate(schema(name), args); assert.ok(ok, `${name}: ${JSON.stringify(ajv.errors)} for ${JSON.stringify(args)}`); };
+  const id = "test-session-903";
+  // Every operation shape the web app uses, as ChatGPT would send it.
+  accepts("updateSessionProject", { id, version: 1, patch: { date: "2026-10-31" }, tasks: [
+    { type: "add_task", task: { title: "t", due: "2026-10-20", owner: "o", group: "g", done: false, required: true, memo: "m" } },
+    { type: "update_task", taskId: "x", patch: { due: null, done: true, required: false, memo: "" } }, { type: "delete_task", taskId: "x" },
+    { type: "restore_from_trash", trashId: "x" }, { type: "add_note", note: { date: "2026-10-17", title: "n", body: "b" } },
+    { type: "update_note", noteId: "x", patch: { title: "n2", body: "b2", date: null } }, { type: "delete_note", noteId: "x" }] });
+  accepts("updateSessionCueSheet", { id, version: 1, operations: [{ type: "add_question", sectionId: "s", question: { code: "Q1", askText: "a", sentText: "s", durationMin: 5 } },
+    { type: "update_question", questionId: "q", patch: { hidden: true } }, { type: "move_question", questionId: "q", sectionId: "s", beforeQuestionId: null },
+    { type: "update_question_mc", questionId: "q", patch: { followUps: ["f"], liveMemo: "m" } }, { type: "update_section", sectionId: "s", patch: { title: "WEAR", start: "13:10" } },
+    { type: "propose_answer_correction", questionId: "q", text: "t", reason: "r", evidence: "e" }] });
+  accepts("updateSessionParticipants", { id, version: 1, operations: [{ type: "update_participant", participantId: "p", patch: { status: "confirmed", notice: "sent", memo: "m" } }, { type: "check_in", participantId: "p" }] });
+  accepts("updateSessionBenefits", { id, version: 0, operations: [{ type: "verify_feedback", participantId: "p", staff: "s" }, { type: "mark_used", participantId: "p" }] });
+  assert.equal(ajv.validate(schema("updateSessionProject"), { id, version: 1, tasks: [{ type: "add_task", task: { title: "t", secret: 1 } }] }), false, "undeclared fields stay refused");
+
+  const api = await start({ ...BASE_ENV, SESSION_MCP_WRITES: "test-only" });
+  const client = new Client({ name: "chatgpt-like", version: "1.0.0" });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${api.port}/api/session-director/mcp`), { requestInit: { headers: mcpHeaders } }));
+    const listed = (await client.listTools()).tools.find((t) => t.name === "updateSessionProject").inputSchema.properties.tasks.items.properties;
+    assert.deepEqual(Object.keys(listed).sort(), ["note", "noteId", "patch", "task", "taskId", "trashId", "type"], "tools/list publishes the operation arguments");
+    const call = async (name, args) => (await client.callTool({ name, arguments: args })).structuredContent;
+    await call("createSessionProject", { number: 903, title: "PARITY", isTest: true });
+    let p = (await call("getSessionProject", { id })).project;
+    let r = await call("updateSessionProject", { id, version: p.version, tasks: [{ type: "add_task", task: { title: "달력 테스트", due: "2026-10-20", required: true, memo: "m" } }, { type: "add_note", note: { date: "2026-10-17", title: "회의", body: "b" } }] });
+    const task = r.project.tasks.find((t) => t.title === "달력 테스트"), note = r.project.notes[0];
+    assert.deepEqual([task.due, task.required, task.memo, note.title], ["2026-10-20", true, "m", "회의"]);
+    r = await call("updateSessionProject", { id, version: r.version, tasks: [{ type: "update_task", taskId: task.id, patch: { due: "2026-10-22", done: true } }, { type: "update_note", noteId: note.id, patch: { body: "b2" } }] });
+    assert.deepEqual([r.project.tasks.find((t) => t.id === task.id).due, r.project.tasks.find((t) => t.id === task.id).done, r.project.notes[0].body], ["2026-10-22", true, "b2"]);
+    r = await call("updateSessionProject", { id, version: r.version, tasks: [{ type: "delete_task", taskId: task.id }, { type: "delete_note", noteId: note.id }] });
+    assert.deepEqual([r.project.tasks.some((t) => t.id === task.id), r.project.trash.length], [false, 2]);
+    const fromWeb = await web(api.port, "GET", `/api/session-director/project?id=${id}`);
+    assert.equal(fromWeb.project.trash.length, 2, "the web app reads the same trash");
+    r = await call("updateSessionProject", { id, version: r.version, tasks: r.project.trash.map((e) => ({ type: "restore_from_trash", trashId: e.id })) });
+    assert.deepEqual([r.project.tasks.find((t) => t.id === task.id).due, r.project.notes[0].body, r.project.trash.length], ["2026-10-22", "b2", 0]);
+    const stale = await call("updateSessionProject", { id, version: 1, tasks: [{ type: "delete_task", taskId: task.id }] });
+    assert.deepEqual([stale.httpStatus, stale.error], [409, "version_conflict"]);
+    assert.equal((await call("getSessionFeedback", { id })).feedback.configured, false);
+    assert.equal((await call("getSessionBenefits", { id })).benefits.version, 0);
+  } finally { await client.close(); await api.close(); }
 });
