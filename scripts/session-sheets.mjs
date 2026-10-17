@@ -26,7 +26,7 @@ async function accessToken(env, fetchImpl, now) {
   const part = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
   const unsigned = `${part({ alg: "RS256", typ: "JWT" })}.${part({ iss: key.client_email, scope: SCOPE, aud: TOKEN_URL, iat, exp: iat + 600 })}`;
   const signature = createSign("RSA-SHA256").update(unsigned).sign(key.private_key).toString("base64url");
-  const response = await fetchImpl(TOKEN_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  const response = await fetchImpl(TOKEN_URL, { method: "POST", signal: AbortSignal.timeout(20_000), headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${unsigned}.${signature}` }) });
   if (!response.ok) throw new SessionError(502, "sheets_auth_failed", `Google token request failed (HTTP ${response.status})`);
   return (await response.json()).access_token;
