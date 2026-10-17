@@ -13,7 +13,7 @@ const id = { type: "string", pattern: "^(test-)?session-\\d{3,4}$", description:
 const version = { type: "integer", minimum: 1, description: "Latest version from getSessionProject or getSessionCueSheet" };
 const strict = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, required });
 const RULES = "Only after the user explicitly approves this exact change. Read the latest version first. On 409 read again and report the conflict; never retry automatically. The result is read back before it is reported as saved.";
-export const TASK_OPERATIONS = ["add_task", "update_task"];
+export const TASK_OPERATIONS = ["add_task", "update_task", "delete_task", "add_note", "update_note", "delete_note", "restore_from_trash"];
 // Same as on-site staff in the web app: status and check-in, never capacity, form or import.
 export const PARTICIPANT_STATUS_OPERATIONS = ["update_participant", "check_in", "undo_check_in"];
 export const CUE_OPERATIONS = ["update_section", "update_question", "update_question_mc", "move_question", "add_question", "propose_answer_correction"];
@@ -21,7 +21,7 @@ export const CUE_OPERATIONS = ["update_section", "update_question", "update_ques
 export const SESSION_TOOLS = [
   { name: "listSessionProjects", description: "List SAMPLAS SESSION projects (number, guest, status, date, version, progress).",
     inputSchema: strict({ includeTest: { type: "boolean", default: false } }), annotations: READ },
-  { name: "getSessionProject", description: "Read one session: details, tasks, version and recent changes. Guest answers are not included.",
+  { name: "getSessionProject", description: "Read one session: details, tasks, meeting notes, trash (deleted tasks and notes), version and recent changes. Guest answers are not included.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
   { name: "getSessionCueSheet", description: "Read the cue sheet: sections and questions with the MC question (askText), the question sent to the guest (sentText), MC notes (mc) and the guest's original answer as a separate read-only block (guestAnswer, text only with includeAnswers). The original answer can never be edited; corrections are proposals an approver accepts in the web app.",
     inputSchema: strict({ id, includeAnswers: { type: "boolean", default: false } }, ["id"]), annotations: READ },
@@ -36,7 +36,7 @@ export const SESSION_TOOLS = [
     inputSchema: strict({ number: { type: "integer", minimum: 1, maximum: 9999 }, title: { type: "string", minLength: 1, maxLength: 200 }, theme: { type: "string", maxLength: 1000 },
       date: { type: ["string", "null"], description: "YYYY-MM-DD or null when undecided" }, guest: strict({ name: { type: "string" }, handle: { type: "string" }, bio: { type: "string" } }),
       isTest: { type: "boolean", default: false } }, ["number", "title"]), annotations: WRITE },
-  { name: "updateSessionProject", description: `Change session details (patch: title, theme, date, timeStart, timeEnd, venue, owners, guest, status, not ARCHIVED) and/or the schedule TODO list (tasks: add_task {task: {title, due YYYY-MM-DD|null, owner, group, done}} or update_task {taskId, patch}). Task ids come from getSessionProject. ${RULES}`,
+  { name: "updateSessionProject", description: `Change session details (patch: title, theme, date, timeStart, timeEnd, venue, owners, guest, status, not ARCHIVED) and/or the schedule TODO list and meeting notes (tasks: add_task {task: {title, due YYYY-MM-DD|null, owner, group, done, required, memo}}, update_task {taskId, patch}, delete_task {taskId}, add_note {note: {date YYYY-MM-DD|null, title, body}}, update_note {noteId, patch}, delete_note {noteId}, restore_from_trash {trashId}). Deleted tasks and notes go to the session trash (project.trash) and can be restored. Ids come from getSessionProject. ${RULES}`,
     inputSchema: strict({ id, version, patch: { type: "object", minProperties: 1 },
       tasks: { type: "array", minItems: 1, maxItems: 20, items: { type: "object", required: ["type"], properties: { type: { enum: TASK_OPERATIONS } } } } }, ["id", "version"]), annotations: WRITE },
   { name: "updateSessionCueSheet", description: `Apply cue sheet operations by id: ${CUE_OPERATIONS.join(", ")}. update_question_mc patches summary, keywords, episodes, followUps, toAudience, directionNotes, cautions, liveMemo. Guest answers cannot be changed here. ${RULES}`,
