@@ -21,7 +21,7 @@
 // Dropbox-returned path_display is ever used to build the popup.json path.
 import { getDropboxAccessToken, asciiSafeJson } from "./dropbox-report-uploader.mjs";
 
-const POPUP_PROJECTS_DROPBOX_PATH = "/SAMPLAS WORK/병구 작업/팝업 관련 자동화/PROJECTS";
+export const POPUP_PROJECTS_DROPBOX_PATH = "/SAMPLAS WORK/병구 작업/팝업 관련 자동화/PROJECTS";
 
 const DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder";
 const DROPBOX_DOWNLOAD_URL = "https://content.dropboxapi.com/2/files/download";
@@ -125,7 +125,10 @@ export async function getPopupProjectSummaries({ env = process.env, fetchImpl = 
       name: folder.name,
       hasData: project !== null,
       version: project?.version ?? null,
-      updatedAt: project?.updatedAt ?? null
+      updatedAt: project?.updatedAt ?? null,
+      // Added for the VIEW-ONLY web app (status line, trashed projects hidden); older readers ignore them.
+      status: project?.status ?? null,
+      deleted: Boolean(project?.deleted)
     });
   }
   return summaries;
@@ -171,7 +174,7 @@ export function validatePopupProjectPayload(payload) {
 // compare-and-swap in saveProjectWithExpectedVersion. Never swallows a
 // corrupt-JSON error — a write must not blindly overwrite an unparseable
 // existing file.
-async function downloadPopupJsonWithRev(folder, { accessToken, fetchImpl = fetch }) {
+export async function downloadPopupJsonWithRev(folder, { accessToken, fetchImpl = fetch }) {
   const popupJsonPath = `${folder.pathDisplay}/popup.json`;
   const response = await fetchImpl(DROPBOX_DOWNLOAD_URL, {
     method: "POST",
@@ -206,7 +209,7 @@ async function downloadPopupJsonWithRev(folder, { accessToken, fetchImpl = fetch
 // any number of Render instances). "add" mode (no rev) is only used for the
 // one-time case where the folder exists but popup.json has never been
 // written yet (expectedVersion must be null for that to be accepted).
-async function uploadPopupJson(folder, projectObj, { accessToken, fetchImpl = fetch, rev }) {
+export async function uploadPopupJson(folder, projectObj, { accessToken, fetchImpl = fetch, rev }) {
   const popupJsonPath = `${folder.pathDisplay}/popup.json`;
   const mode = rev ? { ".tag": "update", update: rev } : { ".tag": "add" };
   const response = await fetchImpl(DROPBOX_UPLOAD_URL, {
