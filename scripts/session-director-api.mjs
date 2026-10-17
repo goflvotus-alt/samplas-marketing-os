@@ -12,6 +12,7 @@ import { createSessionDocument, cueSheetView, SessionError, sessionProjectView }
 import { createAssetService } from "./session-assets.mjs";
 import { applyParticipantOperations, hmacKeyReady, mergeSync, parseSheetRows, participantSummary, participantsView } from "./session-participants.mjs";
 import { readSheetRows, sheetsConfigured } from "./session-sheets.mjs";
+import { applyBenefitOperations, benefitsView, feedbackConfigView, summariseFeedback } from "./session-feedback.mjs";
 
 import { createParticipantImportService } from "./session-participant-import.mjs";
 
@@ -108,6 +109,36 @@ export function createSessionService(store, { env = process.env, fetchImpl = fet
       return { sessionId: id, version: doc.version, capacity: doc.capacity, people: [], summary, syncAvailable: syncAvailable(), formLinkAllowed: allowFormLink(id), detailsWithheld: true };
     },
     async participants(id) { return participantsOut(id, (await store.readParticipants(id)).doc); },
+    // FEEDBACK: settings plus the anonymous response summary. A sheet failure keeps the settings and reports the code only.
+    async feedback(id) {
+      const config = await store.readFeedbackConfig(id);
+      if (!config) return { sessionId: id, configured: false };
+      const out = { sessionId: id, configured: true, ...feedbackConfigView(config), responses: null, responsesError: null, fetchedAt: new Date().toISOString() };
+      if (!config.feedbackForm?.sheetId) return { ...out, responsesError: "sheet_not_set" };
+      try {
+        out.responses = summariseFeedback(await readRows({ env, sheetId: config.feedbackForm.sheetId, range: config.feedbackForm.sheetRange || "A:Z", fetchImpl }), config.analysis || {});
+      } catch (error) {
+        if (!(error instanceof SessionError)) throw error;
+        out.responsesError = error.code;
+      }
+      return out;
+    },
+    // PAMPHLET: a temporary link to the one image named in feedback.json, checked to sit inside the session's asset folder.
+    async pamphletLink(id) {
+      const config = await store.readFeedbackConfig(id);
+      if (!config?.pamphlet?.path) throw new SessionError(404, "pamphlet_not_set");
+      return assets.link(id, config.pamphlet.path);
+    },
+    async benefits(id) { return benefitsView((await store.readBenefits(id)).doc); },
+    async updateBenefits(id, version, operations, actor) {
+      const [{ doc, rev }, config, { doc: participants }] = await Promise.all([store.readBenefits(id), store.readFeedbackConfig(id), store.readParticipants(id)]);
+      if (doc.version !== version) throw new SessionError(409, "version_conflict", "benefits changed since they were read", { currentVersion: doc.version });
+      const next = applyBenefitOperations(doc, operations, { participants, validUntil: config?.benefit?.validUntil || null, actor });
+      await store.writeBenefits(id, next, rev);
+      const { doc: saved } = await store.readBenefits(id);
+      if (JSON.stringify(saved) !== JSON.stringify(next)) throw new SessionError(502, "write_unverified", "benefits did not read back as written", { currentVersion: saved.version });
+      return benefitsView(saved);
+    },
     async updateParticipants(id, version, operations, actor) {
       const { doc, rev } = await store.readParticipants(id);
       if (doc.version !== version) throw new SessionError(409, "version_conflict", "participants changed since they were read", { currentVersion: doc.version });
@@ -188,7 +219,7 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
     service ||= defaultSessionService(env);
     const id = url.searchParams.get("id");
     const methods = { projects: ["GET", "POST"], project: ["GET", "PUT"], cuesheet: ["GET"], assets: ["GET"], "asset-thumbnail": ["GET"], "asset-link": ["GET"],
-      participants: ["GET", "PUT"], "participants-sync": ["POST"],
+      participants: ["GET", "PUT"], "participants-sync": ["POST"], feedback: ["GET"], benefits: ["GET", "PUT"], "pamphlet-link": ["GET"],
       "participants-import-status": ["GET"], "participants-import-preview": ["POST"], "participants-import": ["POST"] }[route];
     if (!methods) throw new SessionError(404, "not_found");
     if (!methods.includes(req.method)) {
@@ -206,6 +237,13 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
       const { bytes, type } = await service.assetThumbnail(id, url.searchParams.get("path"));
       res.writeHead(200, { "Content-Type": /^image\//.test(type) ? type : "image/jpeg", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
       return res.end(bytes);
+    }
+    if (route === "feedback") return send(res, 200, { ok: true, feedback: await service.feedback(id) });
+    if (route === "pamphlet-link") return send(res, 200, { ok: true, ...(await service.pamphletLink(id)) });
+    if (route === "benefits" && req.method === "GET") return send(res, 200, { ok: true, benefits: await service.benefits(id) });
+    if (route === "benefits") {
+      const body = await readBody(req);
+      return send(res, 200, { ok: true, benefits: await service.updateBenefits(id, body?.version, body?.operations, actor) });
     }
     if (route === "participants-import-status") return send(res, 200, { ok: true, readiness: service.participantImportReadiness() });
     if (route === "participants-import-preview") return send(res, 200, { ok: true, preview: await service.previewParticipantImport(id, await readBody(req), actor) });
