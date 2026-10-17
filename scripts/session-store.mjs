@@ -107,7 +107,11 @@ const MC_FIELDS = {
   summary: text(4000), keywords: textList(30, 100), episodes: text(4000), followUps: textList(30, 1000),
   toAudience: textList(30, 1000), directionNotes: text(4000), cautions: text(4000), liveMemo: text(4000)
 };
-const TASK_FIELDS = { title: text(300), due: dateOrNull, owner: text(100), done: bool, group: text(50) };
+const TASK_FIELDS = { title: text(300), due: dateOrNull, owner: text(100), done: bool, group: text(50), required: bool, memo: text(2000) };
+// Meeting notes, as POPUP DIRECTOR's 미팅 기록: date, title, body (decisions / open items / follow-ups).
+const NOTE_FIELDS = { date: dateOrNull, title: text(200), body: text(10000) };
+// Deleted tasks and notes go to the session's trash (newest kept) and can be restored; nothing is erased at once.
+const TRASH_LIMIT = 200;
 
 function cleanPatch(patch, rules, label) {
   if (!isObject(patch) || !Object.keys(patch).length) throw bad(`${label}.patch must be a non-empty object`);
@@ -183,7 +187,7 @@ const renumber = (doc, sectionId) => doc.questions
 const WEB_ONLY = new Set(["import_guest_answer", "approve_answer_correction", "reject_answer_correction", "save_live_log"]);
 const APPROVER_ONLY = new Set(["approve_answer_correction", "reject_answer_correction"]);
 export const OPERATION_TYPES = ["update_project", "update_section", "update_question", "update_question_mc", "move_question", "add_question",
-  "add_task", "update_task", "import_guest_answer", "propose_answer_correction", "approve_answer_correction", "reject_answer_correction", "save_live_log"];
+  "add_task", "update_task", "delete_task", "add_note", "update_note", "delete_note", "restore_from_trash", "import_guest_answer", "propose_answer_correction", "approve_answer_correction", "reject_answer_correction", "save_live_log"];
 
 export function validateOperations(operations, actor) {
   if (!Array.isArray(operations) || operations.length < 1 || operations.length > 50) throw bad("operations must be a list of 1-50 operations");
@@ -290,6 +294,42 @@ function applyOne(doc, op, actor, at, log) {
       const patch = cleanPatch(op.patch, TASK_FIELDS, "update_task");
       record(task.id, pick(task, Object.keys(patch)), patch);
       Object.assign(task, patch);
+      return;
+    }
+    case "delete_task":
+    case "delete_note": {
+      const kind = op.type === "delete_task" ? "task" : "note";
+      const list = kind === "task" ? doc.tasks : (doc.notes ||= []);
+      const item = findOr404(list, kind === "task" ? op.taskId : op.noteId, kind);
+      list.splice(list.indexOf(item), 1);
+      const entry = { id: randomUUID(), kind, item: structuredClone(item), deletedAt: at, deletedBy: actor.id };
+      doc.trash = [...(doc.trash || []), entry].slice(-TRASH_LIMIT);
+      record(item.id, { kind, title: item.title }, { trashId: entry.id });
+      return;
+    }
+    case "restore_from_trash": {
+      const entry = findOr404(doc.trash || [], op.trashId, "trash");
+      const list = entry.kind === "task" ? doc.tasks : (doc.notes ||= []);
+      if (list.some((x) => x.id === entry.item.id)) throw new SessionError(409, "already_restored", "that item is already back");
+      list.push(structuredClone(entry.item));
+      doc.trash = doc.trash.filter((x) => x !== entry);
+      record(entry.item.id, { trashId: entry.id }, { kind: entry.kind, title: entry.item.title });
+      return;
+    }
+    case "add_note": {
+      const fields = cleanPatch(op.note, NOTE_FIELDS, "add_note");
+      if (!fields.title?.trim()) throw bad("add_note.note.title is required");
+      const note = { id: randomUUID(), date: null, title: "", body: "", ...fields, createdAt: at };
+      (doc.notes ||= []).push(note);
+      record(note.id, null, { date: note.date, title: note.title });
+      return;
+    }
+    case "update_note": {
+      const note = findOr404(doc.notes || [], op.noteId, "note");
+      const patch = cleanPatch(op.patch, NOTE_FIELDS, "update_note");
+      if (patch.title !== undefined && !patch.title.trim()) throw bad("update_note.patch.title must not be empty");
+      record(note.id, pick(note, Object.keys(patch)), patch);
+      Object.assign(note, patch, { updatedAt: at });
       return;
     }
     case "import_guest_answer": {
