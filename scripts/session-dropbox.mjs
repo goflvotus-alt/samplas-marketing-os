@@ -8,6 +8,7 @@
 import { asciiSafeJson, getDropboxAccessToken } from "./dropbox-report-uploader.mjs";
 import { applyOperations, assertSessionDocument, sessionSummary, SessionError, SESSION_ID_PATTERN } from "./session-store.mjs";
 import { assertParticipants, emptyParticipants } from "./session-participants.mjs";
+import { assertBenefits, assertFeedbackConfig, emptyBenefits } from "./session-feedback.mjs";
 
 export const SESSION_ROOTS = { live: "/SAMPLAS WORK/SAMPLAS SESSION/_DIRECTOR", test: "/SAMPLAS WORK/SAMPLAS SESSION/_DIRECTOR_TEST" };
 const API = "https://api.dropboxapi.com/2/files/list_folder";
@@ -143,6 +144,21 @@ export function createSessionDropboxStore({ env = process.env, fetchImpl = fetch
     async writeParticipants(id, doc, rev) {
       const result = await upload(sessionPath(id, "participants.json"), doc, rev ? { ".tag": "update", update: rev } : { ".tag": "add" });
       if (result.conflict) throw new SessionError(409, "version_conflict", "participants changed since they were read", { currentVersion: (await this.readParticipants(id)).doc.version });
+      return { doc, rev: result.rev };
+    },
+
+    // --- feedback.json (team settings, read-only here) and benefits.json (staff state, same add / update-rev rules) ---
+    async readFeedbackConfig(id) {
+      await this.read(id);
+      return (await download(sessionPath(id, "feedback.json"), assertFeedbackConfig))?.doc || null;
+    },
+    async readBenefits(id) {
+      await this.read(id);
+      return (await download(sessionPath(id, "benefits.json"), assertBenefits)) || { doc: emptyBenefits(id), rev: null };
+    },
+    async writeBenefits(id, doc, rev) {
+      const result = await upload(sessionPath(id, "benefits.json"), doc, rev ? { ".tag": "update", update: rev } : { ".tag": "add" });
+      if (result.conflict) throw new SessionError(409, "version_conflict", "benefits changed since they were read", { currentVersion: (await this.readBenefits(id)).doc.version });
       return { doc, rev: result.rev };
     },
 
