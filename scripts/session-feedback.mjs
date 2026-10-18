@@ -65,6 +65,48 @@ export function summariseFeedback(rows, analysis = {}) {
   return { count: answers.length, questions, analysis: { highlights: pick("highlights"), requests: pick("requests"), nextIdeas: pick("nextIdeas") } };
 }
 
+// Feedback responses are assigned by their submission date in Asia/Seoul.
+// Both boundaries are inclusive: event day through the seventh calendar day after it.
+// Invalid or blank timestamps are excluded rather than attributed to the wrong SESSION.
+const KST_DAY_MS = 24 * 60 * 60 * 1000;
+export function feedbackWindow(eventDate, days = 7) {
+  if (typeof eventDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) return null;
+  const start = new Date(eventDate + "T00:00:00Z");
+  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== eventDate) return null;
+  return { from: eventDate, through: new Date(start.getTime() + days * KST_DAY_MS).toISOString().slice(0, 10) };
+}
+export function feedbackTimestampDay(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
+  }
+  if (typeof value === "number" && Number.isFinite(value) && value >= 1) {
+    // Google Sheets serial dates: 1899-12-30 is day zero.
+    return new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * KST_DAY_MS).toISOString().slice(0, 10);
+  }
+  const text = String(value ?? "").trim();
+  const m = text.match(/^(\d{4})[.\/\-]\s*(\d{1,2})[.\/\-]\s*(\d{1,2})(?:\D|$)/);
+  if (m) {
+    const day = `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+    return feedbackWindow(day, 0) ? day : null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+    const dt = new Date(text);
+    return Number.isNaN(dt.getTime()) ? null : feedbackTimestampDay(dt);
+  }
+  return null;
+}
+export function filterFeedbackBySessionDate(rows, eventDate, { days = 7, otherEventDates = [] } = {}) {
+  const window = feedbackWindow(eventDate, days);
+  if (!window || !Array.isArray(rows) || rows.length === 0) return null;
+  const otherWindows = otherEventDates.filter((v) => v !== eventDate).map((v) => feedbackWindow(v, days)).filter(Boolean);
+  return [rows[0], ...rows.slice(1).filter((row) => {
+    const day = feedbackTimestampDay(row?.[0]);
+    if (!day || day < window.from || day > window.through) return false;
+    // If two event windows overlap, do not double count the same response.
+    return !otherWindows.some((w) => day >= w.from && day <= w.through);
+  })];
+}
+
 // --- benefits.json ------------------------------------------------------------------------------
 export const emptyBenefits = (id) => ({ schemaVersion: BENEFIT_SCHEMA_VERSION, sessionId: id, version: 0, updatedAt: null, people: {}, log: [] });
 export function assertBenefits(doc) {
