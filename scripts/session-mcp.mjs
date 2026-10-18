@@ -5,6 +5,7 @@
 // Same service as REST: version check, 409 on a stale version, read-back before success.
 import { defaultSessionService, safeEqual } from "./session-director-api.mjs";
 import { SessionError, sessionProjectView } from "./session-store.mjs";
+import {TIMETABLE_OPERATION_SCHEMA} from './session-timetable.mjs';
 
 const protocols = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -58,6 +59,8 @@ const BENEFIT_ITEM = { type: "object", required: ["type", "participantId"], addi
   type: { enum: BENEFIT_OPERATIONS }, participantId: str("Confirmed participant id from getSessionParticipants"), staff: str("Staff name recorded with the check, up to 40 characters") } };
 
 export const SESSION_TOOLS = [
+  { name: 'getSessionTimetable', description: 'Read the independently versioned timetable, trash and history.', inputSchema: strict({id},['id']), annotations: READ },
+  { name: 'updateSessionTimetable', description: `Update timetable only: add_item, update_item, delete_item, restore_item, move_item. ${RULES}`, inputSchema: strict({id,version:{type:'integer',minimum:1,description:'Independent version from getSessionTimetable, never the session/cue version'},operations:{type:'array',minItems:1,maxItems:20,items:TIMETABLE_OPERATION_SCHEMA}},['id','version','operations']), annotations: WRITE },
   { name: "listSessionProjects", description: "List SAMPLAS SESSION projects (number, guest, status, date, version, progress).",
     inputSchema: strict({ includeTest: { type: "boolean", default: false } }), annotations: READ },
   { name: "getSessionProject", description: "Read one session: details, tasks, meeting notes, trash (deleted tasks and notes), version and recent changes. Guest answers are not included.",
@@ -110,7 +113,13 @@ export async function callSessionTool(name, args, { env, service, actor }) {
   if (unknown.length) throw new SessionError(400, "invalid_arguments", `unknown argument ${unknown.join(", ")}`);
   for (const key of tool.inputSchema.required) if (args[key] === undefined) throw new SessionError(400, "invalid_arguments", `${key} is required`);
   if (WRITE_TOOLS.has(name)) assertWritable(env, name, args);
+  if (name === 'updateSessionTimetable') {
+    const mode = env.SESSION_TIMETABLE_MCP_WRITES || 'off';
+    if (mode !== 'on' && !(mode === 'test-only' && /^test-session-\d{3,4}$/.test(args.id))) throw new SessionError(403, 'timetable_mcp_writes_disabled');
+  }
   switch (name) {
+    case 'getSessionTimetable': return {status:200,body:{ok:true,timetable:await service.timetable(args.id)}};
+    case 'updateSessionTimetable': return {status:200,body:{ok:true,verified:true,timetable:await service.updateTimetable(args.id,args.version,args.operations,actor)}};
     case "listSessionProjects": return { status: 200, body: { ok: true, projects: await service.list({ includeTest: args.includeTest === true }) } };
     case "getSessionProject": return { status: 200, body: { ok: true, project: await service.project(args.id) } };
     case "getSessionCueSheet": return { status: 200, body: { ok: true, cueSheet: await service.cueSheet(args.id, { includeAnswers: args.includeAnswers === true }) } };

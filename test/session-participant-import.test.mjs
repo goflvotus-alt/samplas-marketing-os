@@ -78,7 +78,7 @@ test('readback mismatch and lost write replies never report success or retry',as
 test('ChatGPT (owner-only MCP) reads the operator list with masked contacts and changes status and check-in only when writes are open',async()=>{
  const f=fixture();await commit(f,await preview(f));const service=createSessionService(f.store,{env:ENV,readRows:f.readRows});const actor={kind:'mcp',id:'chatgpt:fixture'};
  const r=await callSessionTool('getSessionParticipants',{id:ID},{env:ENV,service,actor});
- assert.equal(SESSION_TOOLS.length,12);assert.equal(r.body.participants.people.length,18);assert.equal(r.body.participants.people[0].response.phoneMasked,'010-****-0001');
+ assert.equal(SESSION_TOOLS.length,14);assert.equal(r.body.participants.people.length,18);assert.equal(r.body.participants.people[0].response.phoneMasked,'010-****-0001');
  assert.equal(r.body.participants.people[0].response.phone,undefined,'ChatGPT gets the masked number only');assert(!JSON.stringify(r).includes('010-7000-0001'));assert(!JSON.stringify(r).includes('phoneKey'),'no matching keys');
  const p=r.body.participants.people[0],v=r.body.participants.version;
  await assert.rejects(callSessionTool('updateSessionParticipants',{id:ID,version:v,operations:[{type:'check_in',participantId:p.id}]},{env:ENV,service,actor}),e=>e.code==='mcp_writes_disabled');

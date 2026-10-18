@@ -43,8 +43,9 @@ const web = (port, method, path, body) => new Promise((resolve, reject) => {
   req.end(body === undefined ? undefined : JSON.stringify(body));
 });
 
-test("nine tools with read/write annotations; the MCP secret is separate from the web secret", async () => {
+test("timetable additions preserve existing tool read/write annotations; the MCP secret is separate from the web secret", async () => {
   assert.deepEqual(SESSION_TOOLS.map((t) => [t.name, t.annotations.readOnlyHint]), [
+    ["getSessionTimetable", true], ["updateSessionTimetable", false],
     ["listSessionProjects", true], ["getSessionProject", true], ["getSessionCueSheet", true],
     ["listSessionAssets", true], ["getSessionParticipants", true],
     ["updateSessionParticipants", false], ["createSessionProject", false], ["updateSessionProject", false], ["updateSessionCueSheet", false],
@@ -59,7 +60,7 @@ test("nine tools with read/write annotations; the MCP secret is separate from th
 
     const client = new Client({ name: "session-tests", version: "1.0.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${api.port}/api/session-director/mcp`), { requestInit: { headers: mcpHeaders } }));
-    assert.equal((await client.listTools()).tools.length, 12);
+    assert.equal((await client.listTools()).tools.length, 14);
     await client.close();
   } finally { await api.close(); }
   const unconfigured = await start({ ...BASE_ENV, SESSION_MCP_SECRET: "" });

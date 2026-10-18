@@ -15,6 +15,8 @@ import { readSheetRows, sheetsConfigured } from "./session-sheets.mjs";
 import { applyBenefitOperations, benefitsView, feedbackConfigView, summariseFeedback, filterFeedbackBySessionDate, feedbackWindow } from "./session-feedback.mjs";
 
 import { createParticipantImportService } from "./session-participant-import.mjs";
+import { createTimetableService } from './session-timetable.mjs';
+import { timetableRequest } from './session-timetable-api.mjs';
 
 export const SESSION_API_PREFIX = "/api/session-director/";
 export const ACTOR_MAX_LIFETIME_SECONDS = 300;
@@ -83,6 +85,7 @@ export function createSessionService(store, { env = process.env, fetchImpl = fet
     return doc;
   }
   return {
+    ...createTimetableService(store),
     list: (options) => store.list(options),
     async project(id) { return sessionProjectView((await store.read(id)).doc); },
     async cueSheet(id, options) { return cueSheetView((await store.read(id)).doc, options); },
@@ -227,6 +230,7 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
     const actor = authenticateWeb(req, env, { now });
     service ||= defaultSessionService(env);
     const id = url.searchParams.get("id");
+    if (route === 'timetable') return send(res, 200, await timetableRequest(req,id,{env,service,actor,readBody,now:now ?? Date.now()}));
     const methods = { projects: ["GET", "POST"], project: ["GET", "PUT"], cuesheet: ["GET"], assets: ["GET"], "asset-thumbnail": ["GET"], "asset-link": ["GET"],
       participants: ["GET", "PUT"], "participants-sync": ["POST"], feedback: ["GET"], benefits: ["GET", "PUT"], "pamphlet-link": ["GET"],
       "participants-import-status": ["GET"], "participants-import-preview": ["POST"], "participants-import": ["POST"] }[route];

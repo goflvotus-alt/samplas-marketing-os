@@ -8,6 +8,7 @@
 import { asciiSafeJson, getDropboxAccessToken } from "./dropbox-report-uploader.mjs";
 import { applyOperations, assertSessionDocument, sessionSummary, SessionError, SESSION_ID_PATTERN } from "./session-store.mjs";
 import { assertParticipants, emptyParticipants } from "./session-participants.mjs";
+import { assertTimetable, emptyTimetable } from './session-timetable.mjs';
 import { assertBenefits, assertFeedbackConfig, emptyBenefits } from "./session-feedback.mjs";
 
 export const SESSION_ROOTS = { live: "/SAMPLAS WORK/SAMPLAS SESSION/_DIRECTOR", test: "/SAMPLAS WORK/SAMPLAS SESSION/_DIRECTOR_TEST" };
@@ -133,6 +134,20 @@ export function createSessionDropboxStore({ env = process.env, fetchImpl = fetch
       if (notFound(response.status, text)) return null;
       if (!response.ok) throw failed("temporary_link", response.status);
       return JSON.parse(text).link;
+    },
+
+    async readTimetable(id) {
+      await this.read(id);
+      const found = await download(sessionPath(id, 'timetable.json'), assertTimetable);
+      if (found && found.doc.id !== id) throw new SessionError(500, 'invalid_timetable');
+      return found || { doc: emptyTimetable(id), rev: null };
+    },
+    async writeTimetable(id, doc, rev) {
+      assertTimetable(doc);
+      if (doc.id !== id) throw new SessionError(400, 'invalid_timetable');
+      const result = await upload(sessionPath(id, 'timetable.json'), doc, rev ? { '.tag': 'update', update: rev } : { '.tag': 'add' });
+      if (result.conflict) throw new SessionError(409, 'version_conflict', 'Timetable changed', { currentVersion: (await this.readTimetable(id)).doc.version });
+      return { doc, rev: result.rev };
     },
 
     // --- participants.json next to session.json (same add / update-rev rules, never overwritten blindly) ---
