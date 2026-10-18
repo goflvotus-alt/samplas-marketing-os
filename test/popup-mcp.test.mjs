@@ -87,7 +87,12 @@ function setup() {
 test("tools/list exposes CRUD tools and keeps the three original names", async () => {
   const reply = await popupRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }, {});
   const names = reply.result.tools.map((t) => t.name);
-  for (const n of ["listPopupProjects", "getPopupProject", "updatePopupProject", "createPopupProject", "deletePopupProject", "restorePopupProject"]) assert.ok(names.includes(n), n);
+  assert.deepEqual(names.sort(), ["createPopupProject", "deletePopupProject", "getPopupProject", "getPopupProjectHistory", "listPopupProjects", "restorePopupProject", "updatePopupProject"]);
+  for (const t of reply.result.tools) {
+    assert.ok(t.description, t.name);
+    assert.equal(t.inputSchema.type, "object", t.name);
+    for (const r of t.inputSchema.required ?? []) assert.ok(t.inputSchema.properties[r], `${t.name}.${r}`);
+  }
   assert.equal(POPUP_TOOLS.find((t) => t.name === "updatePopupProject").inputSchema.properties.body.type, "object");
 });
 
