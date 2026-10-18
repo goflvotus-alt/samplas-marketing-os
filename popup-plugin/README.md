@@ -7,7 +7,10 @@ It forwards MCP JSON-RPC to Marketing OS `POST /api/ai-audit/popup/mcp` (`script
 - **Tools** come from Marketing OS `tools/list`. Adding or changing a tool needs a Render deploy only, not a Sites redeploy.
 - **Compatible:** `listPopupProjects`, `getPopupProject` and `updatePopupProject` keep their names. `updatePopupProject` still accepts the old `{name, body: {project, expectedVersion}}` form.
 - **Secret:** the site's existing `SAMPLAS_INTERNAL_TOKEN`, sent as `x-samplas-internal-token`. It is never logged or returned.
-- **Owner check:** an authenticated ChatGPT user (`oai-authenticated-user-id`) is required for every method except `initialize`/`ping`. When `POPUP_PLUGIN_OWNER_IDS` is set, only those ids are allowed.
+- **Auth:** the site is private, so the Sites OAuth gate answers every unauthenticated request with a plain-text 401 before the worker runs.
+- **Handshake:** the worker answers `initialize` and `ping` itself, so ChatGPT does not wait for Render to wake up.
+- **Tool list:** `tools/list` is answered without a user id, as in the original bridge.
+- **Tool calls:** `tools/call` and every other method need `oai-authenticated-user-id`. When `POPUP_PLUGIN_OWNER_IDS` is set, only those ids are allowed.
 - **Errors:** an unreachable, non-2xx or malformed upstream reply becomes a JSON-RPC error. It is never reported as success.
 
 Environment: `SAMPLAS_INTERNAL_TOKEN` (already set), optional `POPUP_MCP_ENDPOINT`, optional `POPUP_PLUGIN_OWNER_IDS`.
@@ -20,4 +23,5 @@ Order: deploy Marketing OS first, check that `POST /api/ai-audit/popup/mcp` answ
 2. Replace `worker/index.js` with the content of `popup-plugin/worker/index.mjs`. The default export is unchanged in shape: `{ fetch(request, env) }`.
 3. Keep every environment variable and secret as it is.
 4. Build, validate and deploy to production.
-5. In ChatGPT, refresh the "SAMPLAS Popup Projects" connector so that it reads the new tool list.
+5. An unauthenticated direct request must get the gate's plain-text 401 with `www-authenticate: Bearer resource_metadata=...`. A JSON body here means the gate is open: roll back. A direct request cannot test the worker itself.
+6. In ChatGPT, refresh the "SAMPLAS Popup Projects" connector. It must show 7 tools, and `listPopupProjects` must answer. If either fails, deploy the previous version again.

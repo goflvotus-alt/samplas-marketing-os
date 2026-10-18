@@ -11,7 +11,13 @@ const json = (body, status = 200) => new Response(body === null ? null : JSON.st
   status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" }
 });
 const rpcError = (id, code, message, status = 200) => json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, status);
-const OPEN_METHODS = new Set(["initialize", "ping"]);
+// The Sites OAuth gate admits only signed-in, allowed users. The worker answers the handshake itself (Render's free plan
+// can take a minute to wake up) and, like the original bridge, lists tools without a user id. Every tool call needs one.
+// Keep PROTOCOLS, SERVER_INFO and INSTRUCTIONS in step with scripts/popup-mcp.mjs (test/popup-plugin-worker.test.mjs checks it).
+const PROTOCOLS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+const SERVER_INFO = { name: "samplas-popup-director", version: "2.0.0" };
+const INSTRUCTIONS = "Private SAMPLAS POPUP DIRECTOR. Read (getPopupProject) before editing and send only the change with expectedVersion. Write only what the user asked; never invent budget, venue or brand. Delete only after explicit confirmation. Never retry a conflict or an unconfirmed write automatically; only verified:true means saved.";
+const OPEN_METHODS = new Set(["tools/list"]);
 const OWNER_ID = /^[A-Za-z0-9_.:@-]{1,120}$/;
 
 // undefined when not configured (no owner filter), null when malformed (refuse everyone), else the set.
@@ -38,6 +44,12 @@ export function createWorker({ fetchImpl = (...args) => fetch(...args) } = {}) {
       } catch { return rpcError(null, -32700, "Parse error", 400); }
       if (!rpc || Array.isArray(rpc) || rpc.jsonrpc !== "2.0" || typeof rpc.method !== "string") return rpcError(rpc?.id, -32600, "Invalid Request", 400);
       if (rpc.method === "notifications/initialized" && !Object.hasOwn(rpc, "id")) return json(null, 202);
+      if (rpc.method === "initialize" || rpc.method === "ping") {
+        if (!(typeof rpc.id === "string" || (typeof rpc.id === "number" && Number.isFinite(rpc.id)))) return rpcError(null, -32600, "Invalid id", 400);
+        const version = rpc.params?.protocolVersion;
+        return json({ jsonrpc: "2.0", id: rpc.id, result: rpc.method === "ping" ? {} : {
+          protocolVersion: PROTOCOLS.includes(version) ? version : PROTOCOLS[0], capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO, instructions: INSTRUCTIONS } });
+      }
 
       const user = request.headers.get("oai-authenticated-user-id") || "";
       if (!OPEN_METHODS.has(rpc.method)) {
