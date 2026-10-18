@@ -32,7 +32,7 @@ async function setup({ rows = ROWS, config = CONFIG } = {}) {
   const reads = [];
   const service = createSessionService(createSessionDropboxStore({ env: {}, fetchImpl: (u, i) => fake.fetchImpl(u, i), getToken: fake.getToken }),
     { env: {}, readRows: async (args) => { reads.push(args); if (rows instanceof Error) throw rows; return rows; } });
-  await service.create({ number: 990, title: "TEST", isTest: true }, ACTOR);
+  await service.create({ number: 990, title: "TEST", date: "2026-09-06", isTest: true }, ACTOR);
   const put = (file, doc) => fake.files.set(sessionPath(ID, file), { text: JSON.stringify(doc), rev: `seed-${file}` });
   put("participants.json", { schemaVersion: 1, sessionId: ID, version: 3, updatedAt: null, capacity: 15, form: { formUrl: "", sheetId: "", sheetRange: "", linkVisible: false },
     sync: { lastSuccessAt: null, lastAttemptAt: null, lastError: null, rowCount: 0, skippedNoConsent: 0, skippedInvalid: 0 }, people: [person("p1", "confirmed"), person("p2", "cancelled"), person("p3", "confirmed")], log: [] });
