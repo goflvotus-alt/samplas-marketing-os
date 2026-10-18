@@ -3,7 +3,8 @@ import { SessionError } from './session-store.mjs';
 import { publicTimetable } from './session-timetable.mjs';
 
 export function verifyTimetableActor(req, id, env, now = Date.now()) {
-  const secret = env.SESSION_TIMETABLE_WEB_SECRET;
+  // The existing web secret, under its own HMAC context and scope; SESSION_TIMETABLE_WEB_SECRET is an optional override.
+  const secret = env.SESSION_TIMETABLE_WEB_SECRET || env.SESSION_WEB_SECRET;
   if (typeof secret !== 'string' || secret.length < 32) return false;
   const [payload,sig,extra] = String(req.headers['x-session-timetable-actor'] || '').split('.');
   if (!payload || !sig || extra !== undefined || payload.length > 1024) return false;

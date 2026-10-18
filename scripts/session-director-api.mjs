@@ -14,7 +14,7 @@ import { applyParticipantOperations, hmacKeyReady, mergeSync, parseSheetRows, pa
 import { readSheetRows, sheetsConfigured } from "./session-sheets.mjs";
 import { applyBenefitOperations, benefitsView, feedbackConfigView, summariseFeedback, filterFeedbackBySessionDate, feedbackWindow } from "./session-feedback.mjs";
 
-import { createParticipantImportService } from "./session-participant-import.mjs";
+import { autoSyncEligible, createParticipantImportService } from "./session-participant-import.mjs";
 import { createTimetableService } from './session-timetable.mjs';
 import { timetableRequest } from './session-timetable-api.mjs';
 
@@ -214,7 +214,8 @@ export function defaultSessionService(env) {
 
 // Render keeps polling without a browser; tests and Mac servers never start this implicitly.
 export function startParticipantAutoSync(getService, schedule=setInterval) {
-  const timer=schedule(async()=>{try{await getService().autoSyncParticipants('session-001');}catch{/* No raw errors or row data in logs. */}},60000);
+  // Every live session; one without an approved initial import returns after a single read and writes nothing.
+  const timer=schedule(async()=>{try{const service=getService();for(const {id} of await service.list({includeTest:false}))if(autoSyncEligible(id))try{await service.autoSyncParticipants(id);}catch{/* per session */}}catch{/* No raw errors or row data in logs. */}},60000);
   timer.unref?.();return timer;
 }
 if(process.env.RENDER==='true'&&process.env.IS_PULL_REQUEST==='false'&&process.env.NODE_ENV==='production')startParticipantAutoSync(()=>defaultSessionService(process.env));

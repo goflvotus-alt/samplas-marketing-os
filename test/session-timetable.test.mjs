@@ -80,3 +80,17 @@ test('trash retains newest 100 entries and history newest 200 versions',()=>{
   }
   assert.equal(doc.trash.length,100);assert.equal(doc.trash[0].item.title,'A5');assert.equal(doc.trash.at(-1).item.title,'A104');assert.equal(doc.log.length,200);assert.equal(doc.log.at(-1).version,doc.version);
 });
+
+test('timetable actor reuses SESSION_WEB_SECRET under its own context; the general web actor never passes',async()=>{
+  const {createHmac}=await import('node:crypto');
+  const {signActorToken}=await import('../scripts/session-director-api.mjs');
+  const env={SESSION_WEB_SECRET:'w'.repeat(40)},now=Date.now(),iat=Math.floor(now/1000),id='test-session-990';
+  const sign=(context,claims)=>{const p=Buffer.from(JSON.stringify(claims)).toString('base64url');return `${p}.${createHmac('sha256',env.SESSION_WEB_SECRET).update(context+p).digest('base64url')}`;};
+  const put=actor=>{let writes=0;return timetableRequest({method:'PUT',headers:{'x-session-timetable-actor':actor}},id,{env,now,service:{updateTimetable:async()=>{writes++;return {};}},actor:{kind:'web',id:'web@session.local'},readBody:async()=>({version:1,operations:[]})}).then(r=>({r,writes}),e=>({e,writes}));};
+  const ok=await put(sign('session-timetable-actor:v1.',{iat,exp:iat+120,scope:'timetable:write',method:'PUT',id}));
+  assert.equal(ok.writes,1);
+  const general=await put(signActorToken({email:'web@session.local',secret:env.SESSION_WEB_SECRET,now}));
+  assert.equal(general.e?.status,403);assert.equal(general.writes,0);
+  const otherSession=await put(sign('session-timetable-actor:v1.',{iat,exp:iat+120,scope:'timetable:write',method:'PUT',id:'session-002'}));
+  assert.equal(otherSession.e?.status,403);
+});

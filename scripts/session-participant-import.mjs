@@ -16,6 +16,8 @@ export function session001Source(env){
 }
 const TTL=10*60*1000;
 const fail=(status,code)=>{throw new SessionError(status,code,code);};
+// Live sessions only (never test-session-*). Scheduled writes still start only after an approved import (sync.importKeyId).
+export const autoSyncEligible=id=>SESSION_ID_PATTERN.test(String(id))&&!String(id).startsWith('test-');
 const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
 const equal=(a,b)=>{const x=Buffer.from(String(a)),y=Buffer.from(String(b));return x.length===y.length&&timingSafeEqual(x,y);};
 const mac=(env,purpose,value)=>createHmac('sha256',env.SESSION_PARTICIPANT_HMAC_KEY).update('session-import:v1:'+purpose+':'+value).digest('base64url');
@@ -59,8 +61,8 @@ export function createParticipantImportService(store,{env=process.env,fetchImpl=
  const autoStates=new Map(),pending=new Map();
  const readiness=()=>({hmacKeyReady:hmacKeyReady(env),sheetsConfigured:sheetsConfigured(env),syncEnabled:env.SESSION_PARTICIPANTS_SYNC==='on'});
  const autoSyncStatus=(id,doc)=>{
-  const base={status:id==='session-001'?'idle':'unavailable',intervalSeconds:60,lastAttemptAt:doc?.sync.lastAttemptAt||null,lastSuccessAt:doc?.sync.lastSuccessAt||null,error:null};
-  if(id!=='session-001')return base;
+  const base={status:autoSyncEligible(id)?'idle':'unavailable',intervalSeconds:60,lastAttemptAt:doc?.sync.lastAttemptAt||null,lastSuccessAt:doc?.sync.lastSuccessAt||null,error:null};
+  if(!autoSyncEligible(id))return base;
   if(!Object.values(readiness()).every(Boolean))return {...base,status:'disabled'};
   // Only a successful, already-authorized import can bootstrap the scheduled writer.
   if(!doc?.sync.importKeyId)return {...base,status:'awaiting_initial_import'};
@@ -99,7 +101,7 @@ export function createParticipantImportService(store,{env=process.env,fetchImpl=
   autoSync(id){
    if(pending.has(id))return pending.get(id);
    const promise=(async()=>{
-    if(id!=='session-001')return {status:'unavailable'};
+    if(!autoSyncEligible(id))return {status:'unavailable'};
     if(!Object.values(readiness()).every(Boolean))return {status:'disabled'};
     let doc;
     const at=new Date(now()).toISOString();
