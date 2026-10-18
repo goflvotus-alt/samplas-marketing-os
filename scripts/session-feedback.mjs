@@ -84,14 +84,14 @@ export function feedbackTimestampDay(value) {
     return new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * KST_DAY_MS).toISOString().slice(0, 10);
   }
   const text = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+    const dt = new Date(text);
+    return Number.isNaN(dt.getTime()) ? null : feedbackTimestampDay(dt);
+  }
   const m = text.match(/^(\d{4})[.\/\-]\s*(\d{1,2})[.\/\-]\s*(\d{1,2})(?:\D|$)/);
   if (m) {
     const day = `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
     return feedbackWindow(day, 0) ? day : null;
-  }
-  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
-    const dt = new Date(text);
-    return Number.isNaN(dt.getTime()) ? null : feedbackTimestampDay(dt);
   }
   return null;
 }
