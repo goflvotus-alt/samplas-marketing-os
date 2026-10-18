@@ -22,6 +22,6 @@ export async function timetableRequest(req, id, {env,service,actor,readBody,now=
   if (req.method!=='PUT') throw new SessionError(405,'method_not_allowed');
   if (!editor) throw new SessionError(403,'timetable_editor_required');
   const body=await readBody(req);
-  if (!body || Object.keys(body).some(k=>!['version','operations'].includes(k))) throw new SessionError(400,'invalid_timetable');
+  if (!body || typeof body!=='object' || Array.isArray(body) || Object.keys(body).some(k=>!['version','operations'].includes(k))) throw new SessionError(400,'invalid_timetable','document: invalid_shape',{field:'document',reason:'invalid_shape'});
   return {ok:true,verified:true,timetable:await service.updateTimetable(id,body.version,body.operations,actor)};
 }
