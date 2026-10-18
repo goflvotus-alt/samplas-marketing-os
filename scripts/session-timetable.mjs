@@ -5,8 +5,28 @@ const fail = (field='operations',reason='invalid_shape') => { throw new SessionE
 const object = v => v && typeof v === 'object' && !Array.isArray(v);
 const keys = (v, allowed, field='item') => { if (!object(v)) fail(field,'invalid_type'); if(Object.keys(v).some(k => !allowed.includes(k))) fail(field,'unknown_fields'); };
 const itemId = v => typeof v === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(v);
-const fields = ['start','end','title','details'];
-const fieldSchema={type:'object',additionalProperties:false,properties:{start:{type:'string',maxLength:5},end:{type:'string',maxLength:5},title:{type:'string',minLength:1,maxLength:200},details:{type:'string',maxLength:10000}}};
+const textFields = ['start','end','title','details'];
+const fields = [...textFields,'participants'];
+const participantSchema={type:'array',maxItems:20,items:{type:'object',additionalProperties:false,required:['name'],properties:{name:{type:'string',minLength:1,maxLength:100,pattern:'\\S'},role:{type:'string',maxLength:100}}}};
+const participants = item => (item.participants || []).map(({name,role=''})=>({name,role}));
+function checkParticipants(value) {
+  if (!Array.isArray(value)) fail('participants','invalid_type');
+  if (value.length>20) fail('participants','out_of_range');
+  for (const entry of value) {
+    keys(entry,['name','role'],'participants');
+    if (typeof entry.name!=='string') fail('participants.name','invalid_type');
+    if (!entry.name.trim()) fail('participants.name','required');
+    if (entry.name.length>100) fail('participants.name','too_long');
+    if ('role' in entry && typeof entry.role!=='string') fail('participants.role','invalid_type');
+    if (entry.role?.length>100) fail('participants.role','too_long');
+  }
+}
+export function normalizedTimetable(doc) {
+  const result=structuredClone(doc);
+  for (const item of [...result.items,...result.trash.map(entry=>entry.item)]) item.participants=participants(item);
+  return result;
+}
+const fieldSchema={type:'object',additionalProperties:false,properties:{start:{type:'string',maxLength:5},end:{type:'string',maxLength:5},title:{type:'string',minLength:1,maxLength:200},details:{type:'string',maxLength:10000},participants:participantSchema}};
 const iid={type:'string',pattern:'^[a-zA-Z0-9-]{1,100}$'};
 export const TIMETABLE_OPERATION_SCHEMA={oneOf:[
   {type:'object',additionalProperties:false,properties:{type:{const:'add_item'},item:{...fieldSchema,required:['start','title']}},required:['type','item']},
@@ -17,7 +37,8 @@ export const TIMETABLE_OPERATION_SCHEMA={oneOf:[
 function checkItem(item,requireStart=false) {
   keys(item, ['id',...fields]);
   if (!itemId(item.id)) fail('itemId','invalid_format');
-  for(const field of fields)if(typeof item[field]!=='string')fail(field,'invalid_type');
+  if ('participants' in item) checkParticipants(item.participants);
+  for(const field of textFields)if(typeof item[field]!=='string')fail(field,'invalid_type');
   if(requireStart && !item.start)fail('start','required');
   if (!item.title.trim()) fail('title','required');
   if(item.title.length>200)fail('title','too_long');
@@ -35,16 +56,18 @@ export function assertTimetable(doc) {
   for (const item of [...doc.items,...doc.trash.map(e=>e.item)]) { checkItem(item); if (ids.has(item.id)) fail(); ids.add(item.id); }
   return doc;
 }
-export const publicTimetable = doc => ({ id: doc.id, version: doc.version, items: doc.items.map(({id,start,end,title,details})=>({id,start,end,title,details})) });
+export const publicTimetable = doc => ({ id: doc.id, version: doc.version, items: doc.items.map(item=>{const {id,start,end,title,details}=item;return {id,start,end,title,details,participants:participants(item)};}) });
 export function applyTimetableOperations(source, operations, {actor, now = new Date().toISOString()} = {}) {
   assertTimetable(source);
   if (!Array.isArray(operations) || operations.length < 1 || operations.length > 20) fail('operations','out_of_range');
   const doc = structuredClone(source), changes = [];
   for (const op of operations) {
     keys(op, {add_item:['type','item'],update_item:['type','itemId','patch'],delete_item:['type','itemId'],restore_item:['type','itemId'],move_item:['type','itemId','beforeItemId']}[op?.type] || [], 'operations');
+    const previousItem=[...doc.items,...doc.trash.map(entry=>entry.item)].find(item=>item.id===op.itemId);
+    const beforeParticipants=previousItem ? participants(previousItem) : [];
     if (op.type === 'add_item') {
       keys(op.item, fields);
-      doc.items.push({ id: randomUUID(), start: '', end: '', details: '', ...op.item });
+      doc.items.push({ id: randomUUID(), start: '', end: '', details: '', ...structuredClone(op.item) });
       checkItem(doc.items.at(-1),true);
     } else if (op.type === 'restore_item') {
       const i = doc.trash.findIndex(e=>e.item.id===op.itemId); if (i<0) fail('itemId','not_found');
@@ -52,7 +75,7 @@ export function applyTimetableOperations(source, operations, {actor, now = new D
     } else {
       if (!itemId(op.itemId)) fail('itemId','invalid_format');
       const i = doc.items.findIndex(e=>e.id===op.itemId); if (i<0) fail('itemId','not_found');
-      if (op.type === 'update_item') { keys(op.patch,fields,'patch'); if (!Object.keys(op.patch).length) fail('patch','required'); Object.assign(doc.items[i],op.patch); checkItem(doc.items[i],true); }
+      if (op.type === 'update_item') { keys(op.patch,fields,'patch'); if (!Object.keys(op.patch).length) fail('patch','required'); Object.assign(doc.items[i],structuredClone(op.patch)); checkItem(doc.items[i],Object.keys(op.patch).some(field=>field!=='participants')); }
       else if (op.type === 'delete_item') doc.trash.push({ item: doc.items.splice(i,1)[0], index: i, deletedAt: now, deletedBy: actor?.id || 'unknown' });
       else if (op.type === 'move_item') {
         if (op.beforeItemId !== null && !itemId(op.beforeItemId)) fail('beforeItemId','invalid_format');
@@ -62,19 +85,23 @@ export function applyTimetableOperations(source, operations, {actor, now = new D
         if (before<0) fail('beforeItemId','not_found'); doc.items.splice(before,0,item);
       } else fail('type','invalid_operation');
     }
-    changes.push({type:op.type,itemId:op.itemId || doc.items.at(-1).id});
+    const changedId=op.itemId || doc.items.at(-1).id;
+    const changedItem=[...doc.items,...doc.trash.map(entry=>entry.item)].find(item=>item.id===changedId);
+    const change={type:op.type,itemId:changedId};
+    if (op.type==='add_item' || (op.type==='update_item' && 'participants' in op.patch) || op.type==='delete_item' || op.type==='restore_item') change.participants={before:beforeParticipants,after:participants(changedItem)};
+    changes.push(change);
   }
   doc.trash=doc.trash.slice(-100);
   assertTimetable(doc);
   if (JSON.stringify(doc.items)===JSON.stringify(source.items) && JSON.stringify(doc.trash)===JSON.stringify(source.trash)) return {doc:source,unchanged:true};
-  doc.version++; doc.updatedAt = now; doc.log.push({version:doc.version,at:now,actor:actor?.id || 'unknown',changes});
+  doc.version++; doc.updatedAt = now; doc.log.push({version:doc.version,at:now,actor:actor?.id || 'unknown',source:['web','mcp'].includes(actor?.kind)?actor.kind:'unknown',changes});
   doc.log=doc.log.slice(-200);
   return {doc,unchanged:false};
 }
 
 export function createTimetableService(store) {
   return {
-    async timetable(id) { return (await store.readTimetable(id)).doc; },
+    async timetable(id) { return normalizedTimetable((await store.readTimetable(id)).doc); },
     async updateTimetable(id, version, operations, actor) {
       if (!Number.isSafeInteger(version) || version<1) fail('version','out_of_range');
       const {doc,rev} = await store.readTimetable(id);
@@ -85,7 +112,7 @@ export function createTimetableService(store) {
         const saved = (await store.readTimetable(id)).doc;
         if (JSON.stringify(saved)!==JSON.stringify(result.doc)) throw new SessionError(502,'write_unverified');
       }
-      return result.doc;
+      return normalizedTimetable(result.doc);
     }
   };
 }
