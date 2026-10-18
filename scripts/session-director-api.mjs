@@ -14,7 +14,9 @@ import { applyParticipantOperations, hmacKeyReady, mergeSync, parseSheetRows, pa
 import { readSheetRows, sheetsConfigured } from "./session-sheets.mjs";
 import { applyBenefitOperations, benefitsView, feedbackConfigView, summariseFeedback, filterFeedbackBySessionDate, feedbackWindow } from "./session-feedback.mjs";
 
-import { createParticipantImportService } from "./session-participant-import.mjs";
+import { autoSyncEligible, createParticipantImportService } from "./session-participant-import.mjs";
+import { createTimetableService } from './session-timetable.mjs';
+import { timetableRequest } from './session-timetable-api.mjs';
 
 export const SESSION_API_PREFIX = "/api/session-director/";
 export const ACTOR_MAX_LIFETIME_SECONDS = 300;
@@ -83,6 +85,7 @@ export function createSessionService(store, { env = process.env, fetchImpl = fet
     return doc;
   }
   return {
+    ...createTimetableService(store),
     list: (options) => store.list(options),
     async project(id) { return sessionProjectView((await store.read(id)).doc); },
     async cueSheet(id, options) { return cueSheetView((await store.read(id)).doc, options); },
@@ -211,7 +214,8 @@ export function defaultSessionService(env) {
 
 // Render keeps polling without a browser; tests and Mac servers never start this implicitly.
 export function startParticipantAutoSync(getService, schedule=setInterval) {
-  const timer=schedule(async()=>{try{await getService().autoSyncParticipants('session-001');}catch{/* No raw errors or row data in logs. */}},60000);
+  // Every live session; one without an approved initial import returns after a single read and writes nothing.
+  const timer=schedule(async()=>{try{const service=getService();for(const {id} of await service.list({includeTest:false}))if(autoSyncEligible(id))try{await service.autoSyncParticipants(id);}catch{/* per session */}}catch{/* No raw errors or row data in logs. */}},60000);
   timer.unref?.();return timer;
 }
 if(process.env.RENDER==='true'&&process.env.IS_PULL_REQUEST==='false'&&process.env.NODE_ENV==='production')startParticipantAutoSync(()=>defaultSessionService(process.env));
@@ -227,6 +231,7 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
     const actor = authenticateWeb(req, env, { now });
     service ||= defaultSessionService(env);
     const id = url.searchParams.get("id");
+    if (route === 'timetable') return send(res, 200, await timetableRequest(req,id,{env,service,actor,readBody,now:now ?? Date.now()}));
     const methods = { projects: ["GET", "POST"], project: ["GET", "PUT"], cuesheet: ["GET"], assets: ["GET"], "asset-thumbnail": ["GET"], "asset-link": ["GET"],
       participants: ["GET", "PUT"], "participants-sync": ["POST"], feedback: ["GET"], benefits: ["GET", "PUT"], "pamphlet-link": ["GET"],
       "participants-import-status": ["GET"], "participants-import-preview": ["POST"], "participants-import": ["POST"] }[route];

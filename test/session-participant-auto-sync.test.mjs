@@ -28,7 +28,7 @@ function fixture(){
 test('automatic sync cannot bootstrap real data; only the existing approved preview/commit unlocks it',async()=>{
  const f=fixture();const out=await f.service.autoSync(ID);
  assert.equal(out.status,'awaiting_initial_import');assert.equal(f.reads(),0);assert.equal(f.uploads().length,0);
- assert.equal((await f.service.autoSync('session-002')).status,'unavailable');assert.equal(f.uploads().length,0);
+ assert.notEqual((await f.service.autoSync('session-002')).status,'synced');assert.equal((await f.service.autoSync('test-session-990')).status,'unavailable');assert.equal(f.uploads().length,0);
  const initial=await f.bootstrap();assert.equal(initial.summary.applied,18);assert.equal(initial.summary.confirmed,0);assert.equal(initial.summary.capacity,15);
  f.advance();const again=await f.service.autoSync(ID);assert.equal(again.status,'unchanged');assert.equal(f.uploads().length,1,'no repeated write for identical responses');
  assert.equal(again.counts.validApplicants,18);
@@ -94,7 +94,7 @@ test('REST and MCP see the same stored participants; HMAC internals never enter 
 
 test('server scheduler polls without a browser, detaches timer and never logs sensitive failures',async()=>{
  let tick,period,detached=false,calls=0;
- const timer=startParticipantAutoSync(()=>({autoSyncParticipants:async id=>{assert.equal(id,ID);calls++;throw Error('PRIVATE');}}),(callback,ms)=>{tick=callback;period=ms;return {unref(){detached=true;}};});
+ const timer=startParticipantAutoSync(()=>({list:async()=>[{id:ID},{id:'test-session-990'}],autoSyncParticipants:async id=>{assert.equal(id,ID);calls++;throw Error('PRIVATE');}}),(callback,ms)=>{tick=callback;period=ms;return {unref(){detached=true;}};});
  assert.equal(period,60000);assert.equal(detached,true);assert(timer);
  await tick();assert.equal(calls,1);
 });
