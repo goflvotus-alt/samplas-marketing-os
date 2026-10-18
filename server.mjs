@@ -2,6 +2,7 @@ import {createVeilControl,serveVeilRpc} from './scripts/veil-found-control.mjs';
 import { SEEDING_MCP_PATH, serveSeedingMcp, createSeedingRestClient } from './scripts/seeding-mcp.mjs';
 import { SESSION_API_PREFIX, handleSessionDirectorRequest } from "./scripts/session-director-api.mjs";
 import { serveSessionMcp } from "./scripts/session-mcp.mjs";
+import { POPUP_MCP_PATH, servePopupMcp } from "./scripts/popup-mcp.mjs";
 import { runCandidateResearch, discoverAccount, candidateScheduleDue, registerCandidates } from './scripts/seeding-candidates.mjs';
 import { handleSeeding, handlePool, mutateSeedingCandidates } from './scripts/seeding-store.mjs';
 import { buildTaggedUploadPlans } from './scripts/seeding-tagged-upload-matcher.mjs';
@@ -681,6 +682,7 @@ const server = isMainModule ? createServer(async (req, res) => {
       return json(res, { error: "Unauthorized" }, 401);
     }
     if (url.pathname === '/api/ai-audit/veil-found/mcp') return serveVeilRpc(req,res,veilControl);
+    if (url.pathname === POPUP_MCP_PATH) return servePopupMcp(req, res, { env });
     if (url.pathname === SEEDING_MCP_PATH) {
       return serveSeedingMcp(req, res, createSeedingRestClient({
         baseUrl: `http://127.0.0.1:${port}`, token: env.AI_AUDIT_SECRET
