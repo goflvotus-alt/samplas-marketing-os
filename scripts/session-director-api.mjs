@@ -12,7 +12,7 @@ import { createSessionDocument, cueSheetView, SessionError, sessionProjectView }
 import { createAssetService } from "./session-assets.mjs";
 import { applyParticipantOperations, hmacKeyReady, mergeSync, parseSheetRows, participantSummary, participantsView } from "./session-participants.mjs";
 import { readSheetRows, sheetsConfigured } from "./session-sheets.mjs";
-import { applyBenefitOperations, benefitsView, feedbackConfigView, summariseFeedback } from "./session-feedback.mjs";
+import { applyBenefitOperations, benefitsView, feedbackConfigView, summariseFeedback, filterFeedbackBySessionDate, feedbackWindow } from "./session-feedback.mjs";
 
 import { createParticipantImportService } from "./session-participant-import.mjs";
 
@@ -116,7 +116,16 @@ export function createSessionService(store, { env = process.env, fetchImpl = fet
       const out = { sessionId: id, configured: true, ...feedbackConfigView(config), responses: null, responsesError: null, fetchedAt: new Date().toISOString() };
       if (!config.feedbackForm?.sheetId) return { ...out, responsesError: "sheet_not_set" };
       try {
-        out.responses = summariseFeedback(await readRows({ env, sheetId: config.feedbackForm.sheetId, range: config.feedbackForm.sheetRange || "A:Z", fetchImpl }), config.analysis || {});
+        const eventDate = (await store.read(id)).doc.date;
+        const window = feedbackWindow(eventDate);
+        if (!window) return { ...out, responsesError: "feedback_date_not_set" };
+        const otherProjects = await store.list();
+        const projects = Array.isArray(otherProjects) ? otherProjects : Array.isArray(otherProjects?.projects) ? otherProjects.projects : [];
+        const overlappingDates = projects.filter((p) => p?.id !== id && typeof p?.date === "string").map((p) => p.date);
+        const rows = await readRows({ env, sheetId: config.feedbackForm.sheetId, range: config.feedbackForm.sheetRange || "A:Z", fetchImpl });
+        const selected = filterFeedbackBySessionDate(rows, eventDate, { otherEventDates: overlappingDates });
+        out.responses = summariseFeedback(selected, config.analysis || {});
+        out.responseWindow = window;
       } catch (error) {
         if (!(error instanceof SessionError)) throw error;
         out.responsesError = error.code;
