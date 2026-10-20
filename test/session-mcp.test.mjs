@@ -205,3 +205,19 @@ test("ChatGPT parity: published schemas accept every argument the operations tak
     assert.equal((await call("getSessionBenefits", { id })).benefits.version, 0);
   } finally { await client.close(); await api.close(); }
 });
+
+test('FORM MCP reuses project CAS and write gate; web reads identical links',async()=>{
+ const api=await start({...BASE_ENV,SESSION_MCP_WRITES:'test-only'});
+ try{
+  const created=await tool(api.port,'createSessionProject',{number:990,title:'FORM fixture',isTest:true});
+  const links={responderUrl:'https://docs.google.com/forms/d/e/PUBLIC/viewform',editUrl:'https://docs.google.com/forms/d/FORM/edit',sheetUrl:'https://docs.google.com/spreadsheets/d/SHEET/edit'};
+  const schema=SESSION_TOOLS.find(t=>t.name==='updateSessionProject').inputSchema.properties.patch.properties.applicationForm;
+  assert.deepEqual(Object.keys(schema.properties).sort(),Object.keys(links).sort());
+  const saved=await tool(api.port,'updateSessionProject',{id:'test-session-990',version:created.project.version,patch:{applicationForm:links}});assert.equal(saved.ok,true);
+  const read=await tool(api.port,'getSessionProject',{id:'test-session-990'});assert.deepEqual(read.project.applicationForm,links);
+  const feedback=await web(api.port,'GET','/api/session-director/feedback?id=test-session-990');for(const key of Object.keys(links))assert.equal(feedback.feedback.applicationForm[key],links[key]);
+  const stale=await tool(api.port,'updateSessionProject',{id:'test-session-990',version:created.project.version,patch:{applicationForm:{sheetUrl:''}}});assert.equal(stale.httpStatus,409);
+  const denied=await tool(api.port,'updateSessionProject',{id:'session-002',version:1,patch:{applicationForm:links}});assert.equal(denied.error,'mcp_writes_disabled');
+  assert.equal((await tool(api.port,'getSessionProject',{id:'test-session-990'})).project.version,read.project.version);
+ }finally{await api.close();}
+});

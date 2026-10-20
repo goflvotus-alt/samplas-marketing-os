@@ -114,7 +114,9 @@ export function createSessionService(store, { env = process.env, fetchImpl = fet
     async participants(id) { return participantsOut(id, (await store.readParticipants(id)).doc); },
     // FEEDBACK: settings plus the anonymous response summary. A sheet failure keeps the settings and reports the code only.
     async feedback(id) {
-      const config = await store.readFeedbackConfig(id);
+      const savedForm = (await store.read(id)).doc.applicationForm;
+      const legacyConfig = await store.readFeedbackConfig(id);
+      const config = savedForm ? {...(legacyConfig || {}), applicationForm:{...legacyConfig?.applicationForm,...savedForm}} : legacyConfig;
       if (!config) return { sessionId: id, configured: false };
       const out = { sessionId: id, configured: true, ...feedbackConfigView(config), responses: null, responsesError: null, fetchedAt: new Date().toISOString() };
       if (!config.feedbackForm?.sheetId) return { ...out, responsesError: "sheet_not_set" };

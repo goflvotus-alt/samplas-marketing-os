@@ -97,9 +97,25 @@ const guest = (value, key) => {
   return out;
 };
 
+// Project-specific application links; never response rows or access credentials.
+export const APPLICATION_FORM_SCHEMA = {type:'object',additionalProperties:false,minProperties:1,properties:{
+  responderUrl:{type:'string',maxLength:500},editUrl:{type:'string',maxLength:500},sheetUrl:{type:'string',maxLength:500}
+}};
+const applicationForm = (value,key) => {
+  if (!isObject(value) || !Object.keys(value).length) throw bad(`${key} must be a non-empty object`);
+  const patterns={responderUrl:/^https:\/\/docs\.google\.com\/forms\/d\/e\/[\w-]+\/viewform(?:\?[^#\s]*)?$/,editUrl:/^https:\/\/docs\.google\.com\/forms\/d\/[\w-]+\/edit(?:\?[^#\s]*)?$/,sheetUrl:/^https:\/\/docs\.google\.com\/spreadsheets\/d\/[\w-]+\/edit(?:\?[^#\s]*)?(?:#gid=\d+)?$/};
+  const out={};
+  for (const [field,url] of Object.entries(value)) {
+    if (!Object.hasOwn(patterns,field)) throw bad(`${key}.${field} is not editable`);
+    if (typeof url!=='string' || url.length>500 || (url!=='' && !patterns[field].test(url))) throw bad(`${key}.${field} must be a matching Google URL or empty`);
+    out[field]=url;
+  }
+  return out;
+};
+
 const PROJECT_FIELDS = {
   title: text(200), theme: text(1000), date: dateOrNull, timeStart: timeOrEmpty, timeEnd: timeOrEmpty,
-  venue: text(200), owners: textList(20, 100), guest, status
+  venue: text(200), owners: textList(20, 100), guest, status, applicationForm
 };
 const SECTION_FIELDS = { key: text(30), title: text(100), start: timeOrEmpty, end: timeOrEmpty };
 const QUESTION_FIELDS = { code: text(20), askText: text(4000), sentText: text(4000), durationMin: minutes, hidden: bool };
@@ -230,6 +246,7 @@ function applyOne(doc, op, actor, at, log) {
     case "update_project": {
       const patch = cleanPatch(op.patch, PROJECT_FIELDS, "update_project");
       if (patch.guest) patch.guest = { ...doc.guest, ...patch.guest };
+      if (patch.applicationForm) patch.applicationForm = { ...doc.applicationForm, ...patch.applicationForm };
       record(doc.id, pick(doc, Object.keys(patch)), patch);
       Object.assign(doc, structuredClone(patch));
       return;
