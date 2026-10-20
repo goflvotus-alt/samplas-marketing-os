@@ -75,15 +75,18 @@ test('PARTIAL and missing payment evidence cannot pass scheduled automatic revie
  assert.equal(r.ok,false);assert.equal(r.publication,null);await assert.rejects(access(join(outputDir,'issued','2026-10-06_2026-10-12','manifest.json')));
  }
 });
-test('an unexplained decrease blocks review and publication instead of being called a refund',async()=>{
+test('an unexplained decrease is published as UNKNOWN with the reason on page one, never called a refund',async()=>{
  const {outputDir}=await setup();await generateWeeklyMetaAdsReport(options(outputDir));
  const r=await generateWeeklyMetaAdsReport(options(outputDir,'second',{fetchActualOrders:async s=>actual(s==='2026-10-06'?[{...original,actual_order_amount:{payment_amount:99000}}]:[current])}));
- assert.equal(r.ok,false);assert.equal(r.comparison.status,'UNKNOWN_ADJUSTMENT');assert.equal(r.comparison.refundAdjustment,null);assert.equal(r.publication,null);
+ assert.equal(r.ok,true);assert.equal(r.comparison.status,'UNKNOWN_ADJUSTMENT');assert.equal(r.comparison.refundAdjustment,null);
+ assert.equal(r.review.result,'UNKNOWN');assert.deepEqual(r.review.unknowns,['UNKNOWN_ADJUSTMENT']);assert.equal(r.publication.review.result,'UNKNOWN');
+ const banner=String((await workbook(r)).getWorksheet('REPORT').getCell('A4').value);
+ assert.match(banner,/미검증\(UNKNOWN\)/);assert.match(banner,/설명되지 않은 금액 차이/);
 });
 test('old or unrelated cancellation evidence does not explain a new amount difference',async()=>{
  const {outputDir}=await setup();await generateWeeklyMetaAdsReport(options(outputDir));
  const r=await generateWeeklyMetaAdsReport(options(outputDir,'second',{fetchActualOrders:async s=>actual(s==='2026-10-06'?[{...original,canceled:'M',actual_order_amount:{payment_amount:99000},refunds:[{refund_date:'2026-10-12T01:00:00Z',refund_amount:99000}]}]:[current])}));
- assert.equal(r.ok,false);assert.equal(r.comparison.status,'UNKNOWN_ADJUSTMENT');
+ assert.equal(r.ok,true);assert.equal(r.review.result,'UNKNOWN');assert.equal(r.comparison.status,'UNKNOWN_ADJUSTMENT');assert.equal(r.comparison.refundAdjustment,null);
 });
 test('previous reread failure blocks publication even when a verified prior report exists',async()=>{
  const {outputDir}=await setup();await generateWeeklyMetaAdsReport(options(outputDir));
@@ -102,10 +105,12 @@ test('publishing twice never overwrites the first reviewed workbook or manifest'
  const {outputDir}=await setup();const first=await generateWeeklyMetaAdsReport(options(outputDir));const bytes=await readFile(first.publication.manifestPath);
  const r=await generateWeeklyMetaAdsReport(options(outputDir));assert.equal(r.ok,true);assert.equal(r.publication.alreadyIssued,true);assert.deepEqual(await readFile(first.publication.manifestPath),bytes);
 });
-test('missing authoritative completeness evidence is insufficient for automatic publication',async()=>{
+test('missing authoritative completeness evidence is published only as UNKNOWN, never PASS',async()=>{
  const {outputDir}=await setup();const {completeness,...unverified}=level;
  const r=await generateWeeklyMetaAdsReport(options(outputDir,'first',{fetchByLevel:async()=>unverified}));
- assert.equal(r.ok,false);assert.ok(r.review.errors.some(s=>s.includes('COMPLETE_COVERAGE_REQUIRED')));
+ assert.equal(r.ok,true);assert.equal(r.review.result,'UNKNOWN');assert.ok(r.review.unknowns.some(s=>s.endsWith(':COVERAGE_UNKNOWN')));
+ const page=(await workbook(r)).getWorksheet('REPORT');
+ assert.match(String(page.getCell('A4').value),/action_values/);assert.match(String(page.getCell('A7').value),/미검증/);
 });
 test('a partial or failed previous Analytics response cannot pass review',async()=>{
  const {outputDir}=await setup();
@@ -120,7 +125,7 @@ test('unknown positive and negative order changes cannot cancel each other into 
  const {outputDir}=await setup();await generateWeeklyMetaAdsReport(options(outputDir));
  const replacement={...original,order_id:'replacement'};
  const r=await generateWeeklyMetaAdsReport(options(outputDir,'second',{fetchActualOrders:async s=>actual(s==='2026-10-06'?[refunded,replacement]:[current]),fetchActualAnalytics:async s=>acquisition(s==='2026-10-06'?[original,replacement]:[current])}));
- assert.equal(r.ok,false);assert.equal(r.comparison.status,'UNKNOWN_ADJUSTMENT');
+ assert.equal(r.review.result,'UNKNOWN');assert.equal(r.comparison.status,'UNKNOWN_ADJUSTMENT');assert.equal(r.comparison.refundAdjustment,null);
 });
 test('duplicate partial refund events count once and an unrelated claim amount is rejected',async()=>{
  for(const amount of [99000,50000]){
@@ -128,7 +133,7 @@ test('duplicate partial refund events count once and an unrelated claim amount i
  const event={order_id:id,refund_code:'refund1',refund_date:'2026-10-19T12:27:42+09:00',actual_refund_amount:amount};
  const partial={...original,canceled:'M',actual_order_amount:{payment_amount:99000},refunds:[event,event]};
  const r=await generateWeeklyMetaAdsReport(options(outputDir,'second',{fetchActualOrders:async s=>actual(s==='2026-10-06'?[partial]:[current])}));
- assert.equal(r.ok,amount===99000);assert.equal(r.comparison.refundAdjustment,amount===99000?-99000:null);
+ assert.equal(r.review.result,amount===99000?'PASS':'UNKNOWN');assert.equal(r.comparison.refundAdjustment,amount===99000?-99000:null);
  }
 });
 test('failed delivery never leaves a trusted issued baseline, and a retry can publish',async()=>{
@@ -161,7 +166,7 @@ test('a discounted partial return without a confirmed refund amount stays UNKNOW
  await generateWeeklyMetaAdsReport(options(outputDir,'first',{fetchActualOrders:async s=>actual(s==='2026-10-06'?[discounted]:[])}));
  const returned={...discounted,canceled:'M',actual_order_amount:{payment_amount:99000},items:[discounted.items[0],{...discounted.items[1],order_status:'R40',refund_date:'2026-10-19T12:27:42+09:00'}]};
  const r=await generateWeeklyMetaAdsReport(options(outputDir,'second',{fetchActualOrders:async s=>actual(s==='2026-10-06'?[returned]:[current])}));
- assert.equal(r.ok,false);assert.equal(r.comparison.status,'UNKNOWN_ADJUSTMENT');
+ assert.equal(r.review.result,'UNKNOWN');assert.equal(r.comparison.status,'UNKNOWN_ADJUSTMENT');
 });
 test('only one concurrent publisher may deliver a period before immutable issuance completes',async()=>{
  const {outputDir}=await setup();let deliveries=0,release,started;

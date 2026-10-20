@@ -64,8 +64,10 @@ test('real collector functions and adapters deliver evidence through review to i
   c.fetchCafe24Orders=async(s,u,o)=>{const r=await c.cafe24GetOrders(s,u,{...o,strictOrders:true});return {...r,source:'cafe24_admin_api_inflow'};};
   const outputDir=await mkdtemp(join(tmpdir(),'coverage-chain-'));
   const r=await generateWeeklyMetaAdsReport({outputDir,env:{},referenceDateKey:'2026-10-13',period:{since:scope.since,until:scope.until},onePage:true,requireCompleteData:true,now:()=>new Date('2026-10-13T01:00:00Z'),fetchByLevel:c.buildMetaAdsSummaryForWeeklyReport,fetchActualOrders:c.fetchCafe24ActualOrdersForWeeklyReport,fetchActualAnalytics:c.fetchCafe24AnalyticsForWeeklyReport});
-  assert.equal(r.ok,state==='complete',JSON.stringify(r.review||r));
+  // Known gaps (partial pages) block; unverifiable evidence is issued only as UNKNOWN.
+  assert.equal(r.ok,state!=='partial',JSON.stringify(r.review||r));
+  assert.equal(r.review.result,{complete:'PASS',partial:'FAIL',missing:'UNKNOWN',missing_acquisition:'UNKNOWN'}[state]);
   const manifest=join(outputDir,'issued','2026-10-06_2026-10-12','manifest.json');
-  if(state==='complete'){await access(manifest);assert.equal(r.publication.summary.metaPaidRevenue,198000);}else await assert.rejects(access(manifest));
+  if(state!=='partial'){await access(manifest);assert.equal(r.publication.summary.metaPaidRevenue,state==='missing_acquisition'?0:198000);assert.equal(r.publication.review.result,r.review.result);}else await assert.rejects(access(manifest));
  }
 });

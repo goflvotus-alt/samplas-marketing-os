@@ -48,3 +48,22 @@ export function cafe24AnalyticsCoverage(body,scope){
  if(rows.some(r=>!scoped(r,scope)||!numeric(r.order_amount)||!['ad','medium','campaign','content','keyword'].every(k=>typeof r[k]==='string')))return result('cafe24_analytics',scope,'UNKNOWN',['ANALYTICS_ROW_INVALID'],observed);
  return result('cafe24_analytics',scope,'COMPLETE',[],observed);
 }
+// Account-level insights are the denominator Meta itself reports. When every additive metric of a
+// level equals it, rows that omitted actions/action_values are proven to contribute zero; otherwise
+// the omission stays UNKNOWN. Values are never zero-filled here.
+const ADDITIVE=['spend','impressions','clicks','purchases','purchaseValue'];
+const cents=v=>Math.round(Number(v)*100);
+export function metaAccountTotalsCoverage(body,scope,totals){
+ const rows=body?.data,observed={rowCount:Array.isArray(rows)?rows.length:null,hasNextPage:Boolean(body?.paging?.next)};
+ if(upstream(body))return {...result('meta_account_totals',scope,upstream(body),['UPSTREAM_'+upstream(body)],observed),totals:null};
+ if(!Array.isArray(rows)||rows.length!==1||observed.hasNextPage)return {...result('meta_account_totals',scope,'UNKNOWN',['ACCOUNT_ROW_NOT_SINGLE'],observed),totals:null};
+ const row=rows[0];
+ if(row.date_start!==scope.since||row.date_stop!==scope.until)return {...result('meta_account_totals',scope,'UNKNOWN',['ACCOUNT_SCOPE_MISMATCH'],observed),totals:null};
+ if(!['spend','impressions','clicks'].every(k=>numeric(row[k]))||!['actions','action_values'].every(k=>Array.isArray(row[k])&&row[k].every(a=>a&&typeof a.action_type==='string'&&numeric(a.value))))return {...result('meta_account_totals',scope,'UNKNOWN',['ACCOUNT_ACTIONS_NOT_RETURNED'],observed),totals:null};
+ if(!totals||!ADDITIVE.every(k=>numeric(totals[k])))return {...result('meta_account_totals',scope,'UNKNOWN',['ACCOUNT_TOTALS_INVALID'],observed),totals:null};
+ return {...result('meta_account_totals',scope,'COMPLETE',[],observed),totals:Object.fromEntries(ADDITIVE.map(k=>[k,Number(totals[k])]))};
+}
+export function accountReconciles(levelTotals,account,scope){
+ if(account?.kind!=='meta_account_totals'||account.completeness!=='COMPLETE'||account.scope?.since!==scope.since||account.scope?.until!==scope.until||!account.totals)return false;
+ return ADDITIVE.every(k=>numeric(levelTotals?.[k])&&cents(levelTotals[k])===cents(account.totals[k]));
+}

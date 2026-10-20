@@ -1,4 +1,4 @@
-import {metaInsightsCoverage,metaWeeklyCoverage,cafe24OrdersCoverage,cafe24AnalyticsCoverage,combineWeeklyCoverage} from './scripts/weekly-data-completeness.mjs';
+import {metaInsightsCoverage,metaWeeklyCoverage,metaAccountTotalsCoverage,cafe24OrdersCoverage,cafe24AnalyticsCoverage,combineWeeklyCoverage} from './scripts/weekly-data-completeness.mjs';
 import {createVeilControl,serveVeilRpc} from './scripts/veil-found-control.mjs';
 import { SEEDING_MCP_PATH, serveSeedingMcp, createSeedingRestClient } from './scripts/seeding-mcp.mjs';
 import { SESSION_API_PREFIX, handleSessionDirectorRequest } from "./scripts/session-director-api.mjs";
@@ -359,6 +359,7 @@ const server = isMainModule ? createServer(async (req, res) => {
             naver: fetchNaverAdsPerformanceForWeeklyReport,
             instagram: buildInstagramRangeDataForWeeklyReport,
             meta: buildMetaAdsSummaryForWeeklyReport,
+            metaAccount: fetchMetaAccountTotalsForWeeklyReport,
             actualOrders: fetchCafe24ActualOrdersForWeeklyReport,
             actualAnalytics: fetchCafe24AnalyticsForWeeklyReport
           }
@@ -8666,8 +8667,12 @@ const metaWeeklyReportScheduler = {
   lastSuccessAt: null,
   lastRunSinceKey: null,
   lastUploadedReport: null,
-  lastError: null
+  lastError: null,
+  failedSinceKey: null,
+  failures: 0
 };
+// ponytail: in-memory per-process cap; a restart inside the window allows another 3 attempts.
+const META_WEEKLY_MAX_ATTEMPTS = 3;
 
 // Thin adapter: reuses the existing buildMetaAdsSummaryWithCache (backing the existing
 // /api/meta-ads/summary route) as-is, only reshaping exceptions into {ok:false, error}
@@ -8680,6 +8685,25 @@ export async function buildMetaAdsSummaryForWeeklyReport(since, until, level) {
     return { source:data.source, syncedAt:data.syncedAt, since:data.since, until:data.until, level:data.level, cacheMode:data.cacheMode, cacheAgeMs:data.cacheAgeMs, ttlMs:data.ttlMs, coverage, completeness: coverage.completeness, rows: data.rows || data.campaigns || data.adsets || data.ads || [], totals: data.totals || summarizeMetaAdsRows(data.rows || []) };
   } catch (error) {
     return { ok: false, error: safeErrorMessage(error), completeness:'UNAVAILABLE', coverage:{kind:'meta_insights',scope:{since,until,level},completeness:'UNAVAILABLE',reasons:['INSIGHTS_REQUEST_FAILED']} };
+  }
+}
+
+// Fresh (never cached) account-level insights used only to verify omitted per-row action values.
+export async function fetchMetaAccountTotalsForWeeklyReport(since, until) {
+  const scope = { since, until };
+  try {
+    const adAccountId = cleanAdAccountId();
+    if (!adAccountId) throw new Error("META_AD_ACCOUNT_ID missing");
+    const body = await graphGet(`${adAccountId}/insights`, {
+      fields: "spend,impressions,clicks,actions,action_values",
+      level: "account",
+      time_range: JSON.stringify({ since, until }),
+      limit: 2
+    });
+    const row = Array.isArray(body?.data) ? body.data[0] : null;
+    return metaAccountTotalsCoverage(body, scope, row ? { spend: row.spend, impressions: row.impressions, clicks: row.clicks, purchases: actionValue(row.actions, "purchase"), purchaseValue: actionValue(row.action_values, "purchase") } : null);
+  } catch {
+    return { kind: "meta_account_totals", scope, completeness: "UNAVAILABLE", reasons: ["ACCOUNT_REQUEST_FAILED"], observed: {}, totals: null };
   }
 }
 
@@ -8729,6 +8753,13 @@ export async function fetchCafe24AnalyticsForWeeklyReport(since, until) {
 async function runMetaWeeklyReportCheck() {
   if (metaWeeklyReportScheduler.running) return;
   if (!isWeeklyNaverReportDue(new Date(), metaWeeklyReportScheduler.lastRunSinceKey)) return;
+  const weekKey = previousTuesdayToMondayRange(seoulDateKey()).since;
+  if (metaWeeklyReportScheduler.failedSinceKey === weekKey && metaWeeklyReportScheduler.failures >= META_WEEKLY_MAX_ATTEMPTS) return;
+  const countFailure = () => {
+    if (metaWeeklyReportScheduler.failedSinceKey !== weekKey) metaWeeklyReportScheduler.failures = 0;
+    metaWeeklyReportScheduler.failedSinceKey = weekKey;
+    metaWeeklyReportScheduler.failures += 1;
+  };
   metaWeeklyReportScheduler.running = true;
   metaWeeklyReportScheduler.lastAttemptAt = new Date().toISOString();
   try {
@@ -8747,6 +8778,7 @@ async function runMetaWeeklyReportCheck() {
       fetchByLevel: buildMetaAdsSummaryForWeeklyReport,
       fetchActualOrders: fetchCafe24ActualOrdersForWeeklyReport,
       fetchActualAnalytics: fetchCafe24AnalyticsForWeeklyReport,
+      fetchAccountTotals: fetchMetaAccountTotalsForWeeklyReport,
       env,
       saveReport: destination.mode === "dropbox"
         ? (workbook, { since, until }) => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: `${destination.dir.replace(/\/+$/, "")}/META_ADS_WEEKLY_${since}_${until}.xlsx`, env })
@@ -8760,9 +8792,11 @@ async function runMetaWeeklyReportCheck() {
       console.log(`[META_ADS_WEEKLY_REPORT] saved ${result.filePath}`);
     } else {
       metaWeeklyReportScheduler.lastError = result.error;
+      countFailure();
     }
   } catch (error) {
     metaWeeklyReportScheduler.lastError = safeErrorMessage(error);
+    countFailure();
     await logApiError("meta_weekly_report", error, {});
   } finally {
     metaWeeklyReportScheduler.running = false;

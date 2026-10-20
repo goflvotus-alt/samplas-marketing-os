@@ -276,7 +276,7 @@ export async function buildWeeklyMetaReportWorkbook(model, { onePage = false } =
     for (const row of c.rows) sheet.addRow(row);
     if (!c.rows.length) sheet.addRow({status:c.status});
     const summary = workbook.addWorksheet('ISSUED_COMPARISON');
-    summary.addRows([['전주 기간',model.previousSince,model.previousUntil],['발행 당시 주문 수',c.issuedOrderCount??'UNAVAILABLE'],['발행 당시 매출',c.issuedRevenue??'UNAVAILABLE'],['후속 환불 조정',c.refundAdjustment??'UNAVAILABLE'],['현재 기준 순매출',c.currentRevenue??'UNAVAILABLE'],['발행 기준일',c.issuedAt??'UNAVAILABLE'],['현재 조회 기준일',c.asOf],['검증 결과',c.status]]);
+    summary.addRows([['전주 기간',model.previousSince,model.previousUntil],['발행 당시 주문 수',c.issuedOrderCount??'UNAVAILABLE'],['발행 당시 매출',c.issuedRevenue??'UNAVAILABLE'],['후속 환불 조정',c.refundAdjustment??'UNAVAILABLE'],['현재 기준 순매출',c.currentRevenue??'UNAVAILABLE'],['발행 기준일',c.issuedAt??'UNAVAILABLE'],['발행본 종류',c.issuedKind??'UNAVAILABLE'],['현재 조회 기준일',c.asOf],['검증 결과',c.status]]);
   }
   buildRawSheet(workbook, model);
   return workbook;
@@ -331,7 +331,7 @@ export async function writeMetaWeeklyReportFile(workbook, { since, until, output
 // Orchestrator
 // ---------------------------------------------------------------------------
 
-export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, onePage = false, requireCompleteData = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, outputDir, env = process.env, saveReport, publicationMode = referenceDateKey && onePage && requireCompleteData ? 'auto' : 'draft', now = () => new Date() } = {}) {
+export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, onePage = false, requireCompleteData = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, fetchAccountTotals, outputDir, env = process.env, saveReport, publicationMode = referenceDateKey && onePage && requireCompleteData ? 'auto' : 'draft', now = () => new Date() } = {}) {
   // The existing scheduler supplies referenceDateKey + strict onePage; library calls remain drafts.
   const generatedAt = now().toISOString();
   if (typeof fetchByLevel !== "function") throw new Error("generateWeeklyMetaAdsReport requires fetchByLevel(since, until, level)");
@@ -411,10 +411,18 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, on
     catch { return {ok:false,since,until,filePath:null,publication:null,error:'PREVIOUS_ISSUED_REPORT_INVALID'}; }
     comparison = reconcileMetaPublication({issued,currentProducts:model.previousActualProducts,currentOrders:previousOrders,asOf:now().toISOString()});
     model.previousPublicationComparison = comparison;
-    if (comparison.status === 'UNKNOWN_ADJUSTMENT') return {ok:false,since,until,filePath:null,publication:null,comparison,error:'UNKNOWN_ADJUSTMENT'};
   }
-  const review = reviewMetaPublication({model,current,previous,actualOrders,actualAnalytics,previousOrders,previousAnalytics,comparison});
-  if (scheduled && review.result !== 'PASS') return {ok:false,since,until,filePath:null,publication:null,review,comparison,error:'AUTO_REVIEW_FAILED'};
+  // Account-level totals only upgrade an UNKNOWN level when every additive metric matches; a failed
+  // account request leaves the level UNKNOWN.
+  const accountTotals = {};
+  if (requireCompleteData && fetchAccountTotals) {
+    for (const [name, s, u] of [['current', since, until], ['previous', previousSince, previousUntil]]) {
+      try { accountTotals[name] = await fetchAccountTotals(s, u); } catch { accountTotals[name] = null; }
+    }
+  }
+  const review = reviewMetaPublication({model,current,previous,actualOrders,actualAnalytics,previousOrders,previousAnalytics,comparison,accountTotals});
+  if (scheduled && review.result === 'FAIL') return {ok:false,since,until,filePath:null,publication:null,review,comparison,error:'AUTO_REVIEW_FAILED'};
+  if (requireCompleteData) model.verification = {result:review.result,unknowns:review.unknowns,failures:review.failures,mode:scheduled?'scheduled':publicationMode};
   const workbook = await buildWeeklyMetaReportWorkbook(model, { onePage });
   if (scheduled) {
     const record = publicationRecord({model,actualOrders,generatedAt,reviewedAt:now().toISOString(),review});

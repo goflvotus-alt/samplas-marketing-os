@@ -3,10 +3,12 @@ import {readFile,open,mkdir,rename,realpath,unlink} from 'node:fs/promises';
 import {join,dirname,resolve,relative,isAbsolute} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import ExcelJS from 'exceljs';
+import {accountReconciles} from './weekly-data-completeness.mjs';
 import {cafe24OrderAmount,cafe24OrderItems,cafe24ItemAmount,isCafe24CanceledItem,isCafe24CanceledOrRefunded} from './cafe24-order-amount.mjs';
 
-const POLICY='META_AUTO_PASS_V1';
+const POLICY='META_WEEKLY_REVIEW_V2',LEGACY_POLICY='META_LEGACY_IMPORT_V1';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+const publishable=r=>r?.policy===POLICY&&Array.isArray(r.failures)&&Array.isArray(r.unknowns)&&!r.failures.length&&(r.result==='PASS'?!r.unknowns.length:r.result==='UNKNOWN'&&r.unknowns.length>0)&&JSON.stringify(r.errors)===JSON.stringify([...r.failures,...r.unknowns]);
 const time=value=>typeof value==='string'&&Number.isFinite(Date.parse(value))?Date.parse(value):NaN;
 const money=value=>value!==null&&value!==undefined&&value!==''&&Number.isFinite(Number(value))&&Number(value)>=0?Number(value):null;
 const isMeta=row=>['META_PAID','META_INFLOW'].includes(row.tracking_source);
@@ -48,48 +50,59 @@ function rawOrders(data){
  return {orders,conflicts};
 }
 
-function partialOrUnverified(value){
+// allowUnknown: UNKNOWN (could not verify) is reported separately from PARTIAL/UNAVAILABLE (known gaps).
+function partialOrUnverified(value,allowUnknown=false){
  if(!value||typeof value!=='object')return false;
  if(value.partial===true||value.complete===false||value.available===false||value.possibleLimitReached===true||value.ok===false||value.error)return true;
- if(value.completeness&&value.completeness!=='COMPLETE')return true;
+ if(value.completeness&&value.completeness!=='COMPLETE'&&!(allowUnknown&&value.completeness==='UNKNOWN'))return true;
  if(value.status&&['PARTIAL','UNAVAILABLE','ERROR'].includes(value.status))return true;
  if(Array.isArray(value.issues)&&value.issues.some(s=>/partial|incomplete|not_verified|unavailable|zero_filled/i.test(s)))return true;
- return ['meta','coverage','data'].some(k=>partialOrUnverified(value[k]));
+ return ['meta','coverage','data'].some(k=>partialOrUnverified(value[k],allowUnknown));
 }
 
-export function reviewMetaPublication({model,current,previous,actualOrders,actualAnalytics,previousOrders,previousAnalytics,comparison}){
- const errors=[],coverage={};
+// PASS: every source verified. UNKNOWN: no known gap, but some source could not be verified (published with
+// the reasons on page one). FAIL: a known gap or inconsistency (never published).
+export function reviewMetaPublication({model,current,previous,actualOrders,actualAnalytics,previousOrders,previousAnalytics,comparison,accountTotals={}}){
+ const failures=[],unknowns=[],coverage={};
+ const periods={current:{since:model.since,until:model.until},previous:{since:model.previousSince,until:model.previousUntil}};
  for(const [name,levels] of [['current',current],['previous',previous]])for(const level of ['campaign','adset','ad']){
   const data=levels?.[level];
-  coverage[`${name}.${level}`]=data?.coverage?.completeness||data?.completeness||data?.meta?.completeness||'UNKNOWN';
-  // Only collector evidence can establish completeness; legacy payloads fail closed.
-  if(!data||!Array.isArray(data.rows)||partialOrUnverified(data)||!(data.completeness==='COMPLETE'||data.meta?.completeness==='COMPLETE'))errors.push(`${name}.${level}:COMPLETE_COVERAGE_REQUIRED`);
-  if(!['spend','impressions','clicks','purchases','purchaseValue'].every(k=>money(data?.totals?.[k])!==null))errors.push(`${name}.${level}:METRICS_UNAVAILABLE`);
+  const declared=data?.coverage?.completeness||data?.completeness||data?.meta?.completeness||'UNKNOWN';
+  coverage[`${name}.${level}`]=declared;
+  if(!data||!Array.isArray(data.rows)||partialOrUnverified(data,true))failures.push(`${name}.${level}:COMPLETE_COVERAGE_REQUIRED`);
+  else if(declared!=='COMPLETE'){
+   if(accountReconciles(data.totals,accountTotals[name],periods[name]))coverage[`${name}.${level}`]='COMPLETE_BY_ACCOUNT_TOTALS';
+   else unknowns.push(`${name}.${level}:COVERAGE_UNKNOWN`);
+  }
+  if(!['spend','impressions','clicks','purchases','purchaseValue'].every(k=>money(data?.totals?.[k])!==null))failures.push(`${name}.${level}:METRICS_UNAVAILABLE`);
  }
  const products=model.actualProducts;
- if(!products?.available||products.missingItems||products.missingDates||products.possibleLimitReached)errors.push('ACTUAL_COVERAGE_INCOMPLETE');
- if(!model.previousActualProducts?.available)errors.push('PREVIOUS_ACTUAL_UNAVAILABLE');
+ if(!products?.available||products.missingItems||products.missingDates||products.possibleLimitReached)failures.push('ACTUAL_COVERAGE_INCOMPLETE');
+ if(!model.previousActualProducts?.available)failures.push('PREVIOUS_ACTUAL_UNAVAILABLE');
  for (const [name,input,data] of [['current',actualOrders,actualAnalytics],['previous',previousOrders,previousAnalytics]]) {
   coverage[`${name}.orders`]=input?.coverage?.completeness||'UNKNOWN';
   coverage[`${name}.analytics`]=data?.coverage?.completeness||'UNKNOWN';
   const analytics=data?.data?.orderdetails||data?.orderdetails;
-  if(data?.coverage?.completeness!=='COMPLETE'||!data||data.ok!==true||!Array.isArray(analytics)||analytics.length>=100||partialOrUnverified(data))errors.push(`${name}:ANALYTICS_COVERAGE_INCOMPLETE`);
-  if(input?.coverage?.completeness!=='COMPLETE'||input?.source!=='cafe24_inflow_queries'||input.analyticsOrdersComplete!==true||!Array.isArray(input.analyticsOrders)||input.analyticsOrders.length>=500||!Array.isArray(input.trackingQueries)||input.trackingQueries.length!==5||input.trackingQueries.some(q=>q.ok!==true||q.complete!==true||!Number.isInteger(q.count)||q.count<0||q.count>=500)||rawOrders(input).conflicts.size||partialOrUnverified(input))errors.push(`${name}:ORDER_PROVENANCE_REQUIRED`);
+  if(!data||data.ok!==true||!Array.isArray(analytics)||analytics.length>=100||partialOrUnverified(data,true))failures.push(`${name}:ANALYTICS_COVERAGE_INCOMPLETE`);
+  else if(data.coverage?.completeness!=='COMPLETE')unknowns.push(`${name}:ANALYTICS_COVERAGE_UNKNOWN`);
+  if(input?.source!=='cafe24_inflow_queries'||input.analyticsOrdersComplete!==true||!Array.isArray(input.analyticsOrders)||input.analyticsOrders.length>=500||!Array.isArray(input.trackingQueries)||input.trackingQueries.length!==5||input.trackingQueries.some(q=>q.ok!==true||q.complete!==true||!Number.isInteger(q.count)||q.count<0||q.count>=500)||rawOrders(input).conflicts.size||partialOrUnverified(input,true))failures.push(`${name}:ORDER_PROVENANCE_REQUIRED`);
+  else if(input.coverage?.completeness!=='COMPLETE')unknowns.push(`${name}:ORDER_COVERAGE_UNKNOWN`);
  }
  const {orders,conflicts}=rawOrders(actualOrders);
- if(conflicts.size||partialOrUnverified(actualOrders))errors.push('ORDER_EVIDENCE_INCOMPLETE');
+ if(conflicts.size||partialOrUnverified(actualOrders,true))failures.push('ORDER_EVIDENCE_INCOMPLETE');
  for(const entry of actualById(products).values()){
   const o=orders.get(entry.orderId)?.order;
   const payment=money(o?.actual_order_amount?.payment_amount??o?.payment_amount);
-  if(!o||o.paid!=='T'||payment===null||entry.amount!==cafe24OrderAmount(o)||!Number.isSafeInteger(entry.amount)||!inPeriod(o.order_date,model.since,model.until))errors.push('PAYMENT_EVIDENCE_INCOMPLETE');
+  if(!o||o.paid!=='T'||payment===null||entry.amount!==cafe24OrderAmount(o)||!Number.isSafeInteger(entry.amount)||!inPeriod(o.order_date,model.since,model.until))failures.push('PAYMENT_EVIDENCE_INCOMPLETE');
  }
- if(comparison?.status==='UNKNOWN_ADJUSTMENT')errors.push('UNKNOWN_ADJUSTMENT');
- return {policy:POLICY,result:errors.length?'FAIL':'PASS',errors:[...new Set(errors)],coverage};
+ if(comparison?.status==='UNKNOWN_ADJUSTMENT')unknowns.push('UNKNOWN_ADJUSTMENT');
+ const f=[...new Set(failures)],u=[...new Set(unknowns)];
+ return {policy:POLICY,result:f.length?'FAIL':u.length?'UNKNOWN':'PASS',errors:[...f,...u],failures:f,unknowns:u,coverage};
 }
 
 export function reconcileMetaPublication({issued,currentProducts,currentOrders,asOf}){
  const currentRevenue=currentProducts?.available?currentProducts.summary.metaPaidRevenue:null;
- const base={issuedRevenue:issued?.summary.metaPaidRevenue??null,issuedOrderCount:issued?.summary.metaPaidOrderCount??null,issuedAt:issued?.issuedAt??null,currentRevenue,currentOrderCount:currentProducts?.summary?.metaPaidOrderCount??null,asOf,refundAdjustment:null,rows:[]};
+ const base={issuedKind:issued?(issued.kind||'scheduled'):null,issuedRevenue:issued?.summary.metaPaidRevenue??null,issuedOrderCount:issued?.summary.metaPaidOrderCount??null,issuedAt:issued?.issuedAt??null,currentRevenue,currentOrderCount:currentProducts?.summary?.metaPaidOrderCount??null,asOf,refundAdjustment:null,rows:[]};
  if(!issued)return {...base,status:'NO_ISSUED_BASELINE'};
  const {orders,conflicts}=rawOrders(currentOrders),now=actualById(currentProducts),old=new Map(issued.orders.map(o=>[o.orderId,o]));
  let unknown=!currentProducts?.available||conflicts.size>0;
@@ -141,7 +154,8 @@ export function publicationRecord({model,actualOrders,generatedAt,reviewedAt,rev
 export async function readIssuedMetaReport({outputDir,since,until}){
  const dir=periodDir(outputDir,since,until);let m;
  try{m=JSON.parse(await readFile(join(dir,'manifest.json'),'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw Error('ISSUED_MANIFEST_INVALID');}
- if(m.schemaVersion!==1||m.policy!==POLICY||m.mode!=='scheduled'||m.review?.policy!==POLICY||m.review?.result!=='PASS'||m.review.errors?.length||m.since!==since||m.until!==until||!scheduledMetaPublication({at:new Date(m.generatedAt),since,until,mode:m.mode,onePage:true,requireCompleteData:true})||!(time(m.reviewedAt)>=time(m.generatedAt))||m.issuedAt!==m.reviewedAt||!Array.isArray(m.orders))throw Error('ISSUED_REVIEW_INVALID');
+ if(m.kind==='legacy_import')return readLegacyManifest(dir,m,since,until);
+ if(m.schemaVersion!==1||m.policy!==POLICY||m.mode!=='scheduled'||!publishable(m.review)||m.since!==since||m.until!==until||!scheduledMetaPublication({at:new Date(m.generatedAt),since,until,mode:m.mode,onePage:true,requireCompleteData:true})||!(time(m.reviewedAt)>=time(m.generatedAt))||m.issuedAt!==m.reviewedAt||!Array.isArray(m.orders))throw Error('ISSUED_REVIEW_INVALID');
  if(new Set(m.orders.map(o=>o.orderId)).size!==m.orders.length||m.orders.some(o=>!o.orderId||!inPeriod(o.orderDate,since,until)||!Number.isSafeInteger(o.amount)||o.amount<0)||m.orders.length!==m.summary?.metaPaidOrderCount||m.orders.reduce((s,o)=>s+o.amount,0)!==m.summary?.metaPaidRevenue)throw Error('ISSUED_LEDGER_INVALID');
  const bytes=await readFile(join(dir,'report.xlsx'));
  if(sha(bytes)!==m.sha256)throw Error('ISSUED_HASH_MISMATCH');
@@ -168,12 +182,8 @@ async function durableWrite(path,bytes){const h=await open(path,'wx',0o600);try{
 async function syncDir(path){const h=await open(path,'r');try{await h.sync();}finally{await h.close();}}
 
 export async function storeIssuedMetaReport({outputDir,workbook,record,save}){
- if(record.review?.result!=='PASS'||record.review?.policy!==POLICY||record.mode!=='scheduled')throw Error('ISSUED_REVIEW_INVALID');
- const final=periodDir(outputDir,record.since,record.until),parent=dirname(final);
- await mkdir(parent,{recursive:true});
- const lockPath=join(parent,`.${record.since}_${record.until}.lock`);
- let lock;try{lock=await open(lockPath,'wx',0o600);}catch(e){if(e.code==='EEXIST')throw Error('ISSUED_PUBLICATION_BUSY');throw e;}
- try {
+ if(!publishable(record.review)||record.mode!=='scheduled')throw Error('ISSUED_REVIEW_INVALID');
+ return withPeriodLock(outputDir,record.since,record.until,async({parent,final})=>{
  const existing=await readIssuedMetaReport({outputDir,since:record.since,until:record.until});
  if(existing)return {...existing,alreadyIssued:true};
  const evidence=workbook.addWorksheet('ISSUE_EVIDENCE',{state:'veryHidden'});
@@ -190,5 +200,85 @@ export async function storeIssuedMetaReport({outputDir,workbook,record,save}){
  // An already-issued nonempty directory cannot be replaced by rename (including a race).
  await rename(stage,final);await syncDir(parent);
  return {...manifest,filePath:join(final,'report.xlsx'),manifestPath:join(final,'manifest.json'),alreadyIssued:false,delivery};
- } finally {await lock.close();await unlink(lockPath);}
+ });
+}
+
+async function withPeriodLock(outputDir,since,until,work){
+ const final=periodDir(outputDir,since,until),parent=dirname(final);
+ await mkdir(parent,{recursive:true});
+ const lockPath=join(parent,`.${since}_${until}.lock`);
+ let lock;try{lock=await open(lockPath,'wx',0o600);}catch(e){if(e.code==='EEXIST')throw Error('ISSUED_PUBLICATION_BUSY');throw e;}
+ try{return await work({parent,final});}finally{await lock.close();await unlink(lockPath);}
+}
+
+// ---------------------------------------------------------------------------
+// Legacy baseline: an already-delivered Dropbox workbook (read-only source) registered as the issued
+// figures for its period. Only values present in that workbook are recorded; item detail is not invented.
+// ---------------------------------------------------------------------------
+const cellText=v=>v&&typeof v==='object'?(v.richText?v.richText.map(t=>t.text).join(''):v.result??v.text??''):v;
+export async function extractLegacyMetaBaseline(bytes){
+ const w=new ExcelJS.Workbook();await w.xlsx.load(bytes);
+ const report=w.getWorksheet('REPORT'),sold=w.getWorksheet('ACTUAL_PRODUCTS_SOLD');
+ if(!report||!sold)throw Error('LEGACY_SHEETS_MISSING');
+ const period=/SAMPLAS\s+\|\s+(\d{4}-\d{2}-\d{2})\s+–\s+(\d{4}-\d{2}-\d{2})/.exec(String(cellText(report.getCell('A2').value)||''));
+ if(!period)throw Error('LEGACY_PERIOD_MISSING');
+ const [,since,until]=period;let card=null;
+ report.eachRow(row=>row.eachCell(cell=>{if(cellText(cell.value)==='Cafe24 실제 Meta 유료 주문')card={row:Number(cell.row),col:Number(cell.col)};}));
+ if(!card)throw Error('LEGACY_ACTUAL_CARD_MISSING');
+ const revenue=cellText(report.getCell(card.row+1,card.col).value),note=String(cellText(report.getCell(card.row+2,card.col).value)||'');
+ const count=/(?:^|· )(\d+)건 · 주문번호 일치/.exec(note);
+ if(!Number.isSafeInteger(revenue)||revenue<0||!count)throw Error('LEGACY_ACTUAL_UNAVAILABLE');
+ const header={};sold.getRow(1).eachCell(c=>{header[cellText(c.value)]=Number(c.col);});
+ if(!['order_id','order_date','tracking_source','actual_paid_amount'].every(k=>header[k]))throw Error('LEGACY_COLUMNS_MISSING');
+ const orders=new Map();
+ sold.eachRow((row,n)=>{
+  if(n===1)return;
+  const v=k=>cellText(row.getCell(header[k]).value);
+  if(!['META_PAID','META_INFLOW'].includes(v('tracking_source')))return;
+  const id=String(v('order_id')||''),date=String(v('order_date')||''),paid=v('actual_paid_amount');
+  if(!id||!inPeriod(date,since,until))throw Error('LEGACY_ORDER_INVALID');
+  if(!orders.has(id))orders.set(id,{orderId:id,orderDate:date.slice(0,10),amount:0,items:[]});
+  if(paid!==null&&paid!==undefined&&paid!==''){if(!Number.isSafeInteger(paid)||paid<0)throw Error('LEGACY_ORDER_INVALID');orders.get(id).amount+=paid;}
+ });
+ const list=[...orders.values()],summary={metaPaidOrderCount:Number(count[1]),metaPaidRevenue:revenue};
+ if(list.length!==summary.metaPaidOrderCount||list.reduce((s,o)=>s+o.amount,0)!==summary.metaPaidRevenue)throw Error('LEGACY_TOTAL_MISMATCH');
+ return {since,until,summary,orders:list,reportedActualText:note};
+}
+
+// Dropbox content_hash: SHA-256 over the concatenated SHA-256 digests of 4 MiB blocks.
+export function dropboxContentHash(bytes){
+ const parts=[];for(let i=0;i<bytes.length;i+=4194304)parts.push(createHash('sha256').update(bytes.subarray(i,i+4194304)).digest());
+ return sha(Buffer.concat(parts));
+}
+export function legacyBaselineRecord({extracted,bytes,source,importedAt}){
+ if(source?.dropboxContentHash&&source.dropboxContentHash!==dropboxContentHash(bytes))throw Error('LEGACY_DROPBOX_HASH_MISMATCH');
+ if(!/^id:[A-Za-z0-9_-]+$/.test(source?.dropboxFileId||'')||typeof source.dropboxPath!=='string'||!source.dropboxPath.startsWith('/')||!Number.isFinite(time(source.serverModified)))throw Error('LEGACY_SOURCE_INVALID');
+ if(!(time(importedAt)>=time(source.serverModified)))throw Error('LEGACY_IMPORT_TIME_INVALID');
+ return {schemaVersion:1,kind:'legacy_import',policy:LEGACY_POLICY,legacyImport:true,since:extracted.since,until:extracted.until,
+  issuedAt:new Date(time(source.serverModified)).toISOString(),importedAt,
+  source:{dropboxFileId:source.dropboxFileId,dropboxPath:source.dropboxPath,dropboxRev:source.dropboxRev||null,serverModified:source.serverModified,dropboxContentHash:dropboxContentHash(bytes),sha256:sha(bytes),size:bytes.length},
+  reportedActual:{...extracted.summary,text:extracted.reportedActualText},summary:extracted.summary,orders:extracted.orders};
+}
+
+async function readLegacyManifest(dir,m,since,until){
+ if(m.schemaVersion!==1||m.policy!==LEGACY_POLICY||m.legacyImport!==true||m.since!==since||m.until!==until||!Array.isArray(m.orders)||!(time(m.importedAt)>=time(m.issuedAt))||m.sha256!==m.source?.sha256)throw Error('ISSUED_REVIEW_INVALID');
+ const bytes=await readFile(join(dir,'report.xlsx'));
+ if(sha(bytes)!==m.sha256)throw Error('ISSUED_HASH_MISMATCH');
+ const again=await extractLegacyMetaBaseline(bytes);
+ if(again.since!==since||again.until!==until||JSON.stringify(again.summary)!==JSON.stringify(m.summary)||JSON.stringify(again.orders)!==JSON.stringify(m.orders))throw Error('ISSUED_LEDGER_MISMATCH');
+ return {...m,filePath:join(dir,'report.xlsx'),manifestPath:join(dir,'manifest.json')};
+}
+
+// Writes the untouched source bytes plus manifest; refuses any period that already has a record.
+export async function storeLegacyMetaBaseline({outputDir,bytes,record}){
+ const again=await extractLegacyMetaBaseline(bytes);
+ if(record.kind!=='legacy_import'||sha(bytes)!==record.source?.sha256||again.since!==record.since||again.until!==record.until)throw Error('LEGACY_RECORD_INVALID');
+ return withPeriodLock(outputDir,record.since,record.until,async({parent,final})=>{
+  if(await readIssuedMetaReport({outputDir,since:record.since,until:record.until}).catch(()=>true))throw Error('ISSUED_PERIOD_ALREADY_RECORDED');
+  const manifest={...record,sha256:record.source.sha256};
+  const stage=join(parent,`.pending-${randomUUID()}`);await mkdir(stage,{mode:0o700});
+  await durableWrite(join(stage,'report.xlsx'),bytes);await durableWrite(join(stage,'manifest.json'),JSON.stringify(manifest,null,2));await syncDir(stage);
+  await rename(stage,final);await syncDir(parent);
+  return {...manifest,filePath:join(final,'report.xlsx'),manifestPath:join(final,'manifest.json')};
+ });
 }
