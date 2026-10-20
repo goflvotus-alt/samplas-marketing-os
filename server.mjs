@@ -2378,6 +2378,16 @@ async function readCafe24TokenRecord() {
   }
 }
 
+function normalizeCafe24ExpiresAt(value) {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})?$/.exec(value);
+  if (!match || Number(value.slice(11,13)) > 23 || Number(value.slice(14,16)) > 59 || Number(value.slice(17,19)) > 59) return null;
+  const calendar = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (calendar.toISOString().slice(0,10) !== value.slice(0,10)) return null;
+  const time = Date.parse(match[4] ? value : `${value}+09:00`);
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
 async function writeCafe24TokenRecord(record) {
   await mkdir(cafe24TokenStoreDir, { recursive: true });
   const payload = {
@@ -2385,7 +2395,7 @@ async function writeCafe24TokenRecord(record) {
     status: record.status || "active",
     accessToken: record.accessToken || "",
     refreshToken: record.refreshToken || "",
-    expiresAt: record.expiresAt || null,
+    expiresAt: normalizeCafe24ExpiresAt(record.expiresAt),
     updatedAt: record.updatedAt || new Date().toISOString(),
     lastRefreshAt: record.lastRefreshAt || null,
     reauthRequiredAt: record.reauthRequiredAt || null,
@@ -2413,8 +2423,9 @@ function cafe24TokenStoreKind() {
 
 function cafe24TokenNeedsRefresh(record, skewMs = 10 * 60 * 1000) {
   if (!record?.accessToken) return true;
-  if (!record.expiresAt) return false;
-  const expiresAt = new Date(record.expiresAt).getTime();
+  const normalized = normalizeCafe24ExpiresAt(record.expiresAt);
+  if (!normalized) return true;
+  const expiresAt = Date.parse(normalized);
   if (!Number.isFinite(expiresAt)) return true;
   return expiresAt - Date.now() <= skewMs;
 }
@@ -6858,7 +6869,13 @@ async function fetchCafe24AnalyticsOrderDetails({
   endDate,
   orderId
 } = {}) {
-  await ensureCafe24AccessToken();
+  try {
+    await ensureCafe24AccessToken();
+  } catch {
+    const error = new Error("Cafe24 Analytics authentication unavailable (401)");
+    error.status = 401;
+    throw error;
+  }
 
   const url = new URL("https://ca-api.cafe24data.com/sales/orderdetails");
   url.searchParams.set("mall_id", env.CAFE24_MALL_ID);
@@ -6872,43 +6889,54 @@ async function fetchCafe24AnalyticsOrderDetails({
     url.searchParams.set("orderId", orderId);
   }
 
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${env.CAFE24_ACCESS_TOKEN}`,
-      "Content-Type": "application/json"
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const requestToken = env.CAFE24_ACCESS_TOKEN;
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${requestToken}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    const text = await response.text();
+
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { message: text.slice(0, 1000) };
     }
-  });
 
-  const text = await response.text();
+    if (!response.ok) {
+      const message = String(body?.error?.message || body?.message || body?.error_description || "");
+      const expired = response.status === 401 && /(?:access[ _]token.*(?:time )?expired|expired.*access[ _]token)/i.test(message);
+      if (expired && attempt === 0) {
+        try {
+          // A concurrent request may already have rotated the token after this request began.
+          if (env.CAFE24_ACCESS_TOKEN === requestToken) await refreshCafe24TokenSingleFlight();
+        } catch {
+          const error = new Error("Cafe24 Analytics authentication refresh failed (401)");
+          error.status = 401;
+          throw error;
+        }
+        continue;
+      }
+      const error = new Error(`Cafe24 Analytics API error ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
 
-  let body;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = { message: text.slice(0, 1000) };
+    return {
+      ok: true,
+      statusCode: response.status,
+      request: {
+        startDate,
+        endDate,
+        orderId: orderId || null
+      },
+      data: body
+    };
   }
-
-  if (!response.ok) {
-    const error = new Error(
-      body?.message ||
-      body?.error_description ||
-      `Cafe24 Analytics API error ${response.status}`
-    );
-    error.status = response.status;
-    error.body = body;
-    throw error;
-  }
-
-  return {
-    ok: true,
-    statusCode: response.status,
-    request: {
-      startDate,
-      endDate,
-      orderId: orderId || null
-    },
-    data: body
-  };
 }
 
 async function attachCafe24OrderItems(orders = []) {
