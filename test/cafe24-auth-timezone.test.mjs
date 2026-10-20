@@ -9,7 +9,7 @@ const normalization=()=>extract('function normalizeCafe24ExpiresAt(','async func
 const expiry=extract('function cafe24TokenNeedsRefresh(','function safeCafe24TokenRecord');
 const reader=extract('async function fetchCafe24AnalyticsOrderDetails(','async function attachCafe24OrderItems(');
 const single=extract('let cafe24RefreshInFlightPromise','async function ensureCafe24AccessToken');
-function context(fetch,refresh){const c={URL,env:{CAFE24_MALL_ID:'fixture',CAFE24_ACCESS_TOKEN:'old'},ensureCafe24AccessToken:async()=>{},fetch,refreshCafe24Token:refresh||(async()=>{c.env.CAFE24_ACCESS_TOKEN='new';})};runInNewContext(single+'\n'+reader,c);return c;}
+function context(fetch,refresh){const c={URL,cafe24AnalyticsCoverage:()=>({completeness:'COMPLETE'}),env:{CAFE24_MALL_ID:'fixture',CAFE24_ACCESS_TOKEN:'old'},ensureCafe24AccessToken:async()=>{},fetch,refreshCafe24Token:refresh||(async()=>{c.env.CAFE24_ACCESS_TOKEN='new';})};runInNewContext(single+'\n'+reader,c);return c;}
 const response=(status,message)=>({ok:status===200,status,text:async()=>JSON.stringify(status===200?{orderdetails:[]}:{error:{code:status,message}})});
 const request=c=>c.fetchCafe24AnalyticsOrderDetails({startDate:'2026-10-06',endDate:'2026-10-12'});
 test('legacy KST, UTC and offset expiries normalize identically in UTC and KST processes',()=>{

@@ -45,6 +45,7 @@ function freshMetaContext(overrides = {}) {
     buildMetaAdsSummaryForWeeklyReport: () => {},
     fetchCafe24ActualOrdersForWeeklyReport: () => {},
     fetchCafe24AnalyticsForWeeklyReport: () => {},
+    fetchMetaAccountTotalsForWeeklyReport: () => {},
     safeErrorMessage: (error) => String(error?.message || error),
     logApiError: async () => {},
     previousTuesdayToMondayRange: () => ({since:"2026-09-22",until:"2026-09-28"}),
