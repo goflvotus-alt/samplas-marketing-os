@@ -268,15 +268,18 @@ export async function buildWeeklyMetaReportWorkbook(model, { onePage = false } =
   if(!model.actualProducts?.available)actual.addRow({attribution_note:"UNAVAILABLE — "+(model.actualProducts?.reason||"Cafe24 actual orders not supplied; no Meta revenue substitution.")});
   else{for(const row of model.actualProducts.rows)actual.addRow(row);if(model.actualProducts.missingItems||model.actualProducts.missingDates)actual.addRow({attribution_note:`Coverage warning: missing item detail ${model.actualProducts.missingItems}; missing trusted date ${model.actualProducts.missingDates}. Not a complete sales reconciliation.`});}
   if(model.actualProducts?.possibleLimitReached)actual.addRow({attribution_note:"Coverage warning: existing Cafe24 reader limit reached; report may be partial."});
+  if(model.verification?.actual?.current===false)actual.addRow({attribution_note:'미검증: Cafe24 Analytics/주문 범위를 검증하지 못해 Meta 귀속 실제 주문·금액을 확정할 수 없음. 0원으로 해석하지 말 것.'});
   for(const key of ["product_amount","actual_paid_amount","analytics_order_amount"])actual.getColumn(key).numFmt=WON_FMT;
   if (model.previousPublicationComparison) {
     const c = model.previousPublicationComparison;
+    // Values that depend on an unverified Cafe24 reread or issue are 미검증, never a computed 0.
+    const prevOk = model.verification?.actual?.previous !== false, issuedOk = c.issuedVerified !== false, U = '미검증';
     const sheet = workbook.addWorksheet('REFUND_ADJUSTMENTS');
     setupSheet(sheet,[['orderId','주문번호'],['orderDate','주문일'],['refundDate','취소·환불일'],['refundAmount','환불금액'],['issuedAt','발행 기준일'],['currentStatus','현재 상태'],['issuedAmount','발행 금액'],['currentAmount','현재 순매출'],['adjustment','조정액'],['status','검증 결과']].map(([key,header])=>({key,header,width:24})));
-    for (const row of c.rows) sheet.addRow(row);
+    for (const row of c.rows) sheet.addRow(prevOk && issuedOk ? row : {...row, issuedAmount: issuedOk ? row.issuedAmount : U, currentAmount: prevOk ? row.currentAmount : U, adjustment: U, refundAmount: U});
     if (!c.rows.length) sheet.addRow({status:c.status});
     const summary = workbook.addWorksheet('ISSUED_COMPARISON');
-    summary.addRows([['전주 기간',model.previousSince,model.previousUntil],['발행 당시 주문 수',c.issuedOrderCount??'UNAVAILABLE'],['발행 당시 매출',c.issuedRevenue??'UNAVAILABLE'],['후속 환불 조정',c.refundAdjustment??'UNAVAILABLE'],['현재 기준 순매출',c.currentRevenue??'UNAVAILABLE'],['발행 기준일',c.issuedAt??'UNAVAILABLE'],['발행본 종류',c.issuedKind??'UNAVAILABLE'],['현재 조회 기준일',c.asOf],['검증 결과',c.status]]);
+    summary.addRows([['전주 기간',model.previousSince,model.previousUntil],['발행 당시 주문 수',!issuedOk?U:c.issuedOrderCount??'UNAVAILABLE'],['발행 당시 매출',!issuedOk?U:c.issuedRevenue??'UNAVAILABLE'],['후속 환불 조정',!issuedOk||!prevOk?U:c.refundAdjustment??'UNAVAILABLE'],['현재 기준 순매출',!prevOk?U:c.currentRevenue??'UNAVAILABLE'],['발행 기준일',c.issuedAt??'UNAVAILABLE'],['발행본 종류',c.issuedKind??'UNAVAILABLE'],['현재 조회 기준일',c.asOf],['검증 결과',c.status]]);
   }
   buildRawSheet(workbook, model);
   return workbook;
@@ -422,7 +425,7 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, on
   }
   const review = reviewMetaPublication({model,current,previous,actualOrders,actualAnalytics,previousOrders,previousAnalytics,comparison,accountTotals});
   if (scheduled && review.result === 'FAIL') return {ok:false,since,until,filePath:null,publication:null,review,comparison,error:'AUTO_REVIEW_FAILED'};
-  if (requireCompleteData) model.verification = {result:review.result,unknowns:review.unknowns,failures:review.failures,mode:scheduled?'scheduled':publicationMode};
+  if (requireCompleteData) model.verification = {result:review.result,unknowns:review.unknowns,failures:review.failures,actual:review.actual,mode:scheduled?'scheduled':publicationMode};
   const workbook = await buildWeeklyMetaReportWorkbook(model, { onePage });
   if (scheduled) {
     const record = publicationRecord({model,actualOrders,generatedAt,reviewedAt:now().toISOString(),review});

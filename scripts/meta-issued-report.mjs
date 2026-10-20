@@ -97,12 +97,15 @@ export function reviewMetaPublication({model,current,previous,actualOrders,actua
  }
  if(comparison?.status==='UNKNOWN_ADJUSTMENT')unknowns.push('UNKNOWN_ADJUSTMENT');
  const f=[...new Set(failures)],u=[...new Set(unknowns)];
- return {policy:POLICY,result:f.length?'FAIL':u.length?'UNKNOWN':'PASS',errors:[...f,...u],failures:f,unknowns:u,coverage};
+ // Cafe24 actual amounts are confirmed only when their orders and acquisition evidence are verified.
+ const gap=name=>[`${name}:ANALYTICS_COVERAGE_UNKNOWN`,`${name}:ORDER_COVERAGE_UNKNOWN`,`${name}:ANALYTICS_COVERAGE_INCOMPLETE`,`${name}:ORDER_PROVENANCE_REQUIRED`].some(c=>f.includes(c)||u.includes(c));
+ const actual={current:!gap('current')&&!['ACTUAL_COVERAGE_INCOMPLETE','PAYMENT_EVIDENCE_INCOMPLETE','ORDER_EVIDENCE_INCOMPLETE'].some(c=>f.includes(c)),previous:!gap('previous')&&!f.includes('PREVIOUS_ACTUAL_UNAVAILABLE')};
+ return {policy:POLICY,result:f.length?'FAIL':u.length?'UNKNOWN':'PASS',errors:[...f,...u],failures:f,unknowns:u,coverage,actual};
 }
 
 export function reconcileMetaPublication({issued,currentProducts,currentOrders,asOf}){
  const currentRevenue=currentProducts?.available?currentProducts.summary.metaPaidRevenue:null;
- const base={issuedKind:issued?(issued.kind||'scheduled'):null,issuedRevenue:issued?.summary.metaPaidRevenue??null,issuedOrderCount:issued?.summary.metaPaidOrderCount??null,issuedAt:issued?.issuedAt??null,currentRevenue,currentOrderCount:currentProducts?.summary?.metaPaidOrderCount??null,asOf,refundAdjustment:null,rows:[]};
+ const base={issuedKind:issued?(issued.kind||'scheduled'):null,issuedVerified:issued?issued.summary?.actualVerified!==false:null,issuedRevenue:issued?.summary.metaPaidRevenue??null,issuedOrderCount:issued?.summary.metaPaidOrderCount??null,issuedAt:issued?.issuedAt??null,currentRevenue,currentOrderCount:currentProducts?.summary?.metaPaidOrderCount??null,asOf,refundAdjustment:null,rows:[]};
  if(!issued)return {...base,status:'NO_ISSUED_BASELINE'};
  const {orders,conflicts}=rawOrders(currentOrders),now=actualById(currentProducts),old=new Map(issued.orders.map(o=>[o.orderId,o]));
  let unknown=!currentProducts?.available||conflicts.size>0;
@@ -148,7 +151,7 @@ export function reconcileMetaPublication({issued,currentProducts,currentOrders,a
 export function publicationRecord({model,actualOrders,generatedAt,reviewedAt,review}){
  const raw=rawOrders(actualOrders).orders;
  const orders=[...actualById(model.actualProducts).values()].map(entry=>({...entry,items:cafe24OrderItems(raw.get(entry.orderId)?.order).filter(i=>!completed(i)).map(i=>({itemId:itemId(i),quantity:Number(i.quantity||1),amount:cafe24ItemAmount(i,Number(i.quantity||1))}))}));
- return {schemaVersion:1,policy:POLICY,mode:'scheduled',since:model.since,until:model.until,generatedAt,issuedAt:reviewedAt,reviewedAt,review,summary:{metaPaidOrderCount:model.actualProducts.summary.metaPaidOrderCount,metaPaidRevenue:model.actualProducts.summary.metaPaidRevenue},orders};
+ return {schemaVersion:1,policy:POLICY,mode:'scheduled',since:model.since,until:model.until,generatedAt,issuedAt:reviewedAt,reviewedAt,review,summary:{metaPaidOrderCount:model.actualProducts.summary.metaPaidOrderCount,metaPaidRevenue:model.actualProducts.summary.metaPaidRevenue,actualVerified:review.actual?.current===true},orders};
 }
 
 export async function readIssuedMetaReport({outputDir,since,until}){

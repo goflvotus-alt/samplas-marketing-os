@@ -155,3 +155,47 @@ test('scheduler stops after three failed attempts for the same week',async()=>{
  for(let i=0;i<10;i++)await c.run();
  assert.equal(runs,3);
 });
+
+const unverifiedAnalytics=orders=>({...acquisition(orders),coverage:{completeness:'UNKNOWN',reasons:['ANALYTICS_ROW_INVALID']}});
+const cmp=w=>Object.fromEntries(w.getWorksheet('ISSUED_COMPARISON').getSheetValues().filter(Boolean).map(r=>[r[1],r[2]]));
+test('unverifiable current Cafe24 actuals show 미검증 on page one, never a computed amount or 0',async()=>{
+ const outputDir=await tmp();
+ const r=await generateWeeklyMetaAdsReport(scheduled(outputDir,'second',{fetchActualAnalytics:async s=>s==='2026-10-13'?unverifiedAnalytics([current]):acquisition(s==='2026-10-06'?[original]:[])}));
+ assert.equal(r.ok,true);assert.equal(r.review.result,'UNKNOWN');assert.equal(r.review.actual.current,false);assert.equal(r.review.actual.previous,true);
+ const w=await book(r.publication.filePath),page=w.getWorksheet('REPORT');
+ assert.equal(page.getCell('J10').value,'미검증');assert.match(String(page.getCell('J11').value),/확인 불가.*0원 아님/);
+ assert.equal(page.getCell('C22').value,'미검증');assert.equal(page.getCell('C23').value,'미검증');
+ assert.ok(!JSON.stringify(page.getRow(10).values).includes('107000'));
+ assert.ok(JSON.stringify(w.getWorksheet('ACTUAL_PRODUCTS_SOLD').getSheetValues()).includes('0원으로 해석하지 말 것'));
+ assert.equal(r.publication.summary.actualVerified,false);
+});
+
+test('a verified zero stays 0 with a PASS banner',async()=>{
+ const outputDir=await tmp();
+ const r=await generateWeeklyMetaAdsReport(scheduled(outputDir,'second',{fetchActualOrders:async s=>actual(s==='2026-10-06'?[refunded]:[]),fetchActualAnalytics:async s=>acquisition(s==='2026-10-06'?[original]:[])}));
+ assert.equal(r.review.result,'PASS',JSON.stringify(r.review));
+ const page=(await book(r.publication.filePath)).getWorksheet('REPORT');
+ assert.equal(page.getCell('J10').value,0);assert.equal(page.getCell('C23').value,0);assert.equal(r.publication.summary.actualVerified,true);
+});
+
+test('unverifiable previous reread: issued value kept, adjustment and current net shown as 미검증 on page one and comparison sheets',async()=>{
+ const {file}=await legacyWorkbook();const outputDir=await tmp();
+ await importLegacyMetaBaseline({file,source,write:true,outputDir});
+ const r=await generateWeeklyMetaAdsReport(scheduled(outputDir,'second',{fetchActualAnalytics:async s=>s==='2026-10-06'?unverifiedAnalytics([original]):acquisition(s==='2026-10-13'?[current]:[])}));
+ assert.equal(r.review.result,'UNKNOWN');assert.equal(r.review.actual.previous,false);
+ const w=await book(r.publication.filePath),page=w.getWorksheet('REPORT'),c=cmp(w);
+ assert.equal(page.getCell('E23').value,198000);
+ assert.match(String(page.getCell('D28').value),/후속 환불 조정 미검증 · 현재 기준 순매출 미검증/);
+ assert.equal(c['발행 당시 매출'],198000);assert.equal(c['후속 환불 조정'],'미검증');assert.equal(c['현재 기준 순매출'],'미검증');
+ const adj=w.getWorksheet('REFUND_ADJUSTMENTS');assert.equal(adj.getCell('H2').value,'미검증');assert.equal(adj.getCell('I2').value,'미검증');
+});
+
+test('a week issued with unverified actuals is shown as 미검증 when it becomes the previous week',async()=>{
+ const outputDir=await tmp();
+ const first=await generateWeeklyMetaAdsReport(scheduled(outputDir,'first',{fetchActualAnalytics:async s=>s==='2026-10-06'?unverifiedAnalytics([original]):acquisition([])}));
+ assert.equal(first.publication.summary.actualVerified,false);
+ const r=await generateWeeklyMetaAdsReport(scheduled(outputDir,'second'));
+ const w=await book(r.publication.filePath),c=cmp(w);
+ assert.equal(r.comparison.issuedVerified,false);assert.equal(w.getWorksheet('REPORT').getCell('E23').value,'미검증');
+ assert.equal(c['발행 당시 매출'],'미검증');assert.equal(c['후속 환불 조정'],'미검증');assert.equal(c['현재 기준 순매출'],0);
+});
