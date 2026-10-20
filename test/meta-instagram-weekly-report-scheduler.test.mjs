@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
+import { isWeeklyNaverReportDue, seoulDateKey, previousTuesdayToMondayRange } from "../scripts/naver-ads-weekly-report.mjs";
 
 // Same source-extraction technique as test/naver-weekly-report-scheduler.test.mjs: pull the
 // REAL metaWeeklyReportScheduler/instagramWeeklyReportScheduler state objects + their
@@ -33,8 +34,12 @@ const instagramSchedulerSource = [
   "function __getInstagramSchedulerState() { return { ...instagramWeeklyReportScheduler }; }"
 ].join("\n");
 
+// The scheduler reads `new Date()`; tests pin it through the context's Date global.
+const clockAt = iso => { const t = Date.parse(iso); return class extends Date { constructor(...a) { super(...(a.length ? a : [t])); } static now() { return t; } }; };
+
 function freshMetaContext(overrides = {}) {
   const context = {
+    Date: clockAt("2026-09-29T01:00:00Z"), // Tuesday 10:00 KST
     env: {},
     isWeeklyNaverReportDue: () => true,
     resolvePlatformDropboxDestination: () => ({ mode: "dropbox", dir: "/SAMPLAS WORK/병구 작업/메타 광고/리포트" }),
@@ -122,7 +127,7 @@ test("Meta: a same-size existing Dropbox file (duplicate prevention / restart sa
   assert.equal(state.lastError, null);
 });
 
-test("Meta: upload failure and retry — a failed poll does not mark the week complete, and a later poll succeeds", async () => {
+test("Meta: upload failure and retry — a failed poll does not mark the week complete, and the 10:15 slot succeeds", async () => {
   let attempt = 0;
   const ctx = freshMetaContext({
     generateWeeklyMetaAdsReport: async () => {
@@ -133,9 +138,42 @@ test("Meta: upload failure and retry — a failed poll does not mark the week co
   });
   await ctx.runMetaWeeklyReportCheck();
   assert.equal(ctx.__getMetaSchedulerState().lastRunSinceKey, null);
+  assert.equal(ctx.__getMetaSchedulerState().nextRetryAt, "2026-09-29T01:15:00.000Z");
+  await ctx.runMetaWeeklyReportCheck(); // same slot: no immediate retry
+  assert.equal(attempt, 1);
+  ctx.Date = clockAt("2026-09-29T01:15:00Z");
   await ctx.runMetaWeeklyReportCheck();
   assert.equal(ctx.__getMetaSchedulerState().lastRunSinceKey, "2026-09-22");
+  assert.equal(ctx.__getMetaSchedulerState().nextRetryAt, null);
   assert.equal(attempt, 2);
+});
+
+test("Meta: polled every minute 09:59-11:01 KST, failures retry only at 10:00, 10:15 and 10:30 and log the next retry", async () => {
+  const at = [], logs = [];
+  const ctx = freshMetaContext({
+    console: { log: line => logs.push(line) },
+    isWeeklyNaverReportDue, seoulDateKey, previousTuesdayToMondayRange, // real Tuesday 10:xx KST window
+    generateWeeklyMetaAdsReport: async () => { at.push(new ctx.Date().toISOString().slice(11, 16)); return { ok: false, error: "AUTO_REVIEW_FAILED" }; }
+  });
+  for (let m = -1; m <= 61; m++) { ctx.Date = clockAt(new Date(Date.UTC(2026, 8, 29, 1, m)).toISOString()); await ctx.runMetaWeeklyReportCheck(); }
+  assert.deepEqual(at, ["01:00", "01:15", "01:30"]);
+  assert.deepEqual(logs, [
+    "[META_ADS_WEEKLY_REPORT] attempt 1/3 failed for 2026-09-22_2026-09-28: AUTO_REVIEW_FAILED; next retry 10:15 KST",
+    "[META_ADS_WEEKLY_REPORT] attempt 2/3 failed for 2026-09-22_2026-09-28: AUTO_REVIEW_FAILED; next retry 10:30 KST",
+    "[META_ADS_WEEKLY_REPORT] attempt 3/3 failed for 2026-09-22_2026-09-28: AUTO_REVIEW_FAILED; no retry left this week"
+  ]);
+  assert.equal(ctx.__getMetaSchedulerState().nextRetryAt, null);
+});
+
+test("Meta: a restart inside a slot allows one attempt there, never a burst, and nothing from 10:45", async () => {
+  let runs = 0;
+  const failing = { generateWeeklyMetaAdsReport: async () => { runs += 1; throw new Error("Cafe24 HTTP 503"); } };
+  const ctx = freshMetaContext({ ...failing, Date: clockAt("2026-09-29T01:20:00Z") }); // fresh process at 10:20
+  for (const t of ["01:20", "01:21", "01:29", "01:30", "01:31", "01:44", "01:45", "01:59"]) { ctx.Date = clockAt(`2026-09-29T${t}:00Z`); await ctx.runMetaWeeklyReportCheck(); }
+  assert.equal(runs, 2); // 10:20 (slot 10:15) + 10:30
+  const late = freshMetaContext({ ...failing, Date: clockAt("2026-09-29T01:50:00Z") }); // restart at 10:50
+  await late.runMetaWeeklyReportCheck();
+  assert.equal(runs, 2);
 });
 
 test("Meta: a concurrent poll while already running is a no-op (running flag guard)", async () => {

@@ -253,7 +253,8 @@ const server = isMainModule ? createServer(async (req, res) => {
           lastAttemptAt: metaWeeklyReportScheduler.lastAttemptAt,
           lastUploadAt: metaWeeklyReportScheduler.lastSuccessAt,
           lastUploadedReport: metaWeeklyReportScheduler.lastUploadedReport,
-          lastError: metaWeeklyReportScheduler.lastError
+          lastError: metaWeeklyReportScheduler.lastError,
+          nextRetryAt: metaWeeklyReportScheduler.nextRetryAt
         },
         instagramWeeklyReport: {
           destination: resolvePlatformDropboxDestination(env, { dirEnvKey: "DROPBOX_INSTAGRAM_WEEKLY_REPORT_DIR", defaultDir: "/SAMPLAS WORK/병구 작업/인스타그램 리포트" }).mode,
@@ -8668,11 +8669,13 @@ const metaWeeklyReportScheduler = {
   lastRunSinceKey: null,
   lastUploadedReport: null,
   lastError: null,
-  failedSinceKey: null,
-  failures: 0
+  attemptedSlotKey: null,
+  nextRetryAt: null
 };
-// ponytail: in-memory per-process cap; a restart inside the window allows another 3 attempts.
-const META_WEEKLY_MAX_ATTEMPTS = 3;
+// One attempt per 15-minute slot starting 10:00 / 10:15 / 10:30 KST; none from 10:45.
+// ponytail: slot memory is per process; a restart inside a slot allows one more attempt there
+// (the issued manifest still blocks a second upload). Persist it if restarts become common.
+const META_WEEKLY_RETRY_SLOTS = 3;
 
 // Thin adapter: reuses the existing buildMetaAdsSummaryWithCache (backing the existing
 // /api/meta-ads/summary route) as-is, only reshaping exceptions into {ok:false, error}
@@ -8752,16 +8755,21 @@ export async function fetchCafe24AnalyticsForWeeklyReport(since, until) {
 
 async function runMetaWeeklyReportCheck() {
   if (metaWeeklyReportScheduler.running) return;
-  if (!isWeeklyNaverReportDue(new Date(), metaWeeklyReportScheduler.lastRunSinceKey)) return;
-  const weekKey = previousTuesdayToMondayRange(seoulDateKey()).since;
-  if (metaWeeklyReportScheduler.failedSinceKey === weekKey && metaWeeklyReportScheduler.failures >= META_WEEKLY_MAX_ATTEMPTS) return;
+  const now = new Date();
+  if (!isWeeklyNaverReportDue(now, metaWeeklyReportScheduler.lastRunSinceKey)) return;
+  const { since: weekKey, until: weekUntil } = previousTuesdayToMondayRange(seoulDateKey(now));
+  // KST is UTC+9 with no minute offset, so UTC minutes are the KST minutes of the 10:xx window.
+  const slot = Math.floor(now.getUTCMinutes() / 15);
+  const slotKey = `${weekKey}#${slot}`;
+  if (slot >= META_WEEKLY_RETRY_SLOTS || metaWeeklyReportScheduler.attemptedSlotKey === slotKey) return;
+  metaWeeklyReportScheduler.attemptedSlotKey = slotKey;
   const countFailure = () => {
-    if (metaWeeklyReportScheduler.failedSinceKey !== weekKey) metaWeeklyReportScheduler.failures = 0;
-    metaWeeklyReportScheduler.failedSinceKey = weekKey;
-    metaWeeklyReportScheduler.failures += 1;
+    const next = slot + 1 < META_WEEKLY_RETRY_SLOTS ? `10:${(slot + 1) * 15} KST` : null;
+    metaWeeklyReportScheduler.nextRetryAt = next && new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), (slot + 1) * 15)).toISOString();
+    console.log(`[META_ADS_WEEKLY_REPORT] attempt ${slot + 1}/${META_WEEKLY_RETRY_SLOTS} failed for ${weekKey}_${weekUntil}: ${metaWeeklyReportScheduler.lastError}; ${next ? `next retry ${next}` : "no retry left this week"}`);
   };
   metaWeeklyReportScheduler.running = true;
-  metaWeeklyReportScheduler.lastAttemptAt = new Date().toISOString();
+  metaWeeklyReportScheduler.lastAttemptAt = now.toISOString();
   try {
     const destination = resolvePlatformDropboxDestination(env, {
       dirEnvKey: "DROPBOX_META_WEEKLY_REPORT_DIR",
@@ -8789,6 +8797,7 @@ async function runMetaWeeklyReportCheck() {
       metaWeeklyReportScheduler.lastSuccessAt = new Date().toISOString();
       metaWeeklyReportScheduler.lastUploadedReport = result.filePath;
       metaWeeklyReportScheduler.lastError = null;
+      metaWeeklyReportScheduler.nextRetryAt = null;
       console.log(`[META_ADS_WEEKLY_REPORT] saved ${result.filePath}`);
     } else {
       metaWeeklyReportScheduler.lastError = result.error;

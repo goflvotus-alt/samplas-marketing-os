@@ -9,6 +9,7 @@ import {generateWeeklyMetaAdsReport} from '../scripts/meta-ads-weekly-report.mjs
 import {metaAccountTotalsCoverage,accountReconciles} from '../scripts/weekly-data-completeness.mjs';
 import {extractLegacyMetaBaseline,readIssuedMetaReport} from '../scripts/meta-issued-report.mjs';
 import {importLegacyMetaBaseline} from '../scripts/meta-legacy-baseline-import.mjs';
+import {isWeeklyNaverReportDue,seoulDateKey,previousTuesdayToMondayRange} from '../scripts/naver-ads-weekly-report.mjs';
 
 const codes=['meta_meantime_look','meta_ssage','meta_adv_catalog','meta_adv_image','meta_adv_video'];
 const id='20261011-0000055';
@@ -143,17 +144,54 @@ test('fixed Tuesday 10:00 KST dry-run publishes locally with no Dropbox upload; 
  assert.equal(first.publication.since,'2026-10-13');assert.equal(first.publication.until,'2026-10-19');
 });
 
-test('scheduler stops after three failed attempts for the same week',async()=>{
+// Real server scheduler + real generator/issued store; only network adapters and the clock are fakes.
+async function schedulerHarness(outputDir,{fail={},uploads=[],logs=[]}={}){
  const src=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
  const cut=(a,b)=>src.slice(src.indexOf(a),src.indexOf(b,src.indexOf(a)));
- let runs=0;
- const c={console,env:{},isWeeklyNaverReportDue:()=>true,seoulDateKey:()=>'2026-10-20',previousTuesdayToMondayRange:()=>({since:'2026-10-13',until:'2026-10-19'}),
-  resolvePlatformDropboxDestination:()=>({mode:'local'}),generateWeeklyMetaAdsReport:async()=>{runs++;return {ok:false,error:'AUTO_REVIEW_FAILED'};},
-  buildMetaAdsSummaryForWeeklyReport:null,fetchCafe24ActualOrdersForWeeklyReport:null,fetchCafe24AnalyticsForWeeklyReport:null,fetchMetaAccountTotalsForWeeklyReport:null,
-  saveWeeklyReportToDropboxAtPath:null,safeErrorMessage:e=>String(e),logApiError:async()=>{}};
- runInNewContext(cut('const metaWeeklyReportScheduler = {','// Thin adapter')+'\n'+cut('async function runMetaWeeklyReportCheck()','// Instagram Weekly Report scheduler')+'\nthis.run=runMetaWeeklyReportCheck;',c);
- for(let i=0;i<10;i++)await c.run();
- assert.equal(runs,3);
+ const opts=scheduled(outputDir,'second');let clock;
+ const c={console:{log:l=>logs.push(l)},env:{},isWeeklyNaverReportDue,seoulDateKey,previousTuesdayToMondayRange,
+  resolvePlatformDropboxDestination:()=>({mode:'dropbox',dir:'/SAMPLAS WORK/병구 작업/메타 광고/리포트'}),
+  generateWeeklyMetaAdsReport:o=>generateWeeklyMetaAdsReport({...o,outputDir,now:()=>new Date(clock)}),
+  buildMetaAdsSummaryForWeeklyReport:async(...a)=>fail.meta?.(clock)?{ok:false,error:'Meta HTTP 500',completeness:'UNAVAILABLE',coverage:{completeness:'UNAVAILABLE',reasons:['INSIGHTS_REQUEST_FAILED']}}:opts.fetchByLevel(...a),
+  fetchCafe24ActualOrdersForWeeklyReport:async(...a)=>{if(fail.cafe24?.(clock))throw new Error('Cafe24 HTTP 401');return opts.fetchActualOrders(...a);},
+  fetchCafe24AnalyticsForWeeklyReport:opts.fetchActualAnalytics,fetchMetaAccountTotalsForWeeklyReport:opts.fetchAccountTotals,
+  saveWeeklyReportToDropboxAtPath:async(w,{targetPath})=>{if(fail.dropbox?.(clock))throw new Error('Dropbox upload failed (HTTP 503)');uploads.push(targetPath);return {filePath:targetPath,uploaded:true};},
+  safeErrorMessage:e=>String(e?.message||e),logApiError:async()=>{}};
+ runInNewContext(cut('const metaWeeklyReportScheduler = {','// Thin adapter')+'\n'+cut('async function runMetaWeeklyReportCheck()','// Instagram Weekly Report scheduler')+'\nthis.run=runMetaWeeklyReportCheck;this.state=()=>metaWeeklyReportScheduler;',c);
+ const at=hhmm=>{clock=`2026-10-20T${hhmm}:00Z`;c.Date=class extends Date{constructor(...a){super(...(a.length?a:[clock]));}};return c.run();};
+ return {at,state:c.state};
+}
+const minutes=(from,to)=>Array.from({length:to-from+1},(_,i)=>`0${1+Math.floor((from+i)/60)}:${String((from+i)%60).padStart(2,'0')}`);
+
+test('Meta 10:00 / Cafe24 10:15 / Dropbox 10:30 failures: three attempts, no upload, no record, legacy intact',async()=>{
+ const {file}=await legacyWorkbook();const outputDir=await tmp();
+ const {manifestPath}=await importLegacyMetaBaseline({file,source,write:true,outputDir,now:()=>new Date('2026-10-20T00:30:00Z')});
+ const before=await readFile(manifestPath),uploads=[],logs=[];
+ const h=await schedulerHarness(outputDir,{uploads,logs,fail:{meta:t=>t<'2026-10-20T01:15',cafe24:t=>t<'2026-10-20T01:30',dropbox:()=>true}});
+ for(const m of minutes(0,59))await h.at(m);
+ assert.deepEqual(uploads,[]);assert.equal(h.state().lastRunSinceKey,null);
+ assert.deepEqual(logs.map(l=>l.replace(/ for .*?: /,' | ')),[
+  '[META_ADS_WEEKLY_REPORT] attempt 1/3 failed | Meta HTTP 500; next retry 10:15 KST',
+  '[META_ADS_WEEKLY_REPORT] attempt 2/3 failed | Incomplete Meta performance or Cafe24 actual attribution data; report was not saved.; next retry 10:30 KST',
+  '[META_ADS_WEEKLY_REPORT] attempt 3/3 failed | Dropbox upload failed (HTTP 503); no retry left this week']);
+ assert.deepEqual((await readdir(join(outputDir,'issued'))).filter(d=>!d.startsWith('.')),['2026-10-06_2026-10-12']);
+ assert.deepEqual(await readFile(manifestPath),before);
+});
+
+test('recovers at 10:30 after Meta and Dropbox failures: one upload; restart and later polls never re-upload',async()=>{
+ const {file}=await legacyWorkbook();const outputDir=await tmp();
+ const {manifestPath}=await importLegacyMetaBaseline({file,source,write:true,outputDir,now:()=>new Date('2026-10-20T00:30:00Z')});
+ const before=await readFile(manifestPath),uploads=[];
+ const fail={meta:t=>t<'2026-10-20T01:15',dropbox:t=>t<'2026-10-20T01:30'};
+ const h=await schedulerHarness(outputDir,{uploads,fail});
+ for(const m of minutes(0,59))await h.at(m);
+ assert.deepEqual(uploads,['/SAMPLAS WORK/병구 작업/메타 광고/리포트/META_ADS_WEEKLY_2026-10-13_2026-10-19.xlsx']);
+ assert.equal(h.state().lastRunSinceKey,'2026-10-13');
+ const issued=await readIssuedMetaReport({outputDir,since:'2026-10-13',until:'2026-10-19'});assert.equal(issued.mode,'scheduled');
+ const restarted=await schedulerHarness(outputDir,{uploads,fail}); // new process inside the 10:30 slot
+ await restarted.at('01:40');
+ assert.equal(uploads.length,1);assert.equal(restarted.state().lastRunSinceKey,'2026-10-13');
+ assert.deepEqual(await readFile(manifestPath),before);
 });
 
 const unverifiedAnalytics=orders=>({...acquisition(orders),coverage:{completeness:'UNKNOWN',reasons:['ANALYTICS_ROW_INVALID']}});
