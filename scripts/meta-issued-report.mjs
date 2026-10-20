@@ -58,10 +58,11 @@ function partialOrUnverified(value){
 }
 
 export function reviewMetaPublication({model,current,previous,actualOrders,actualAnalytics,previousOrders,previousAnalytics,comparison}){
- const errors=[];
+ const errors=[],coverage={};
  for(const [name,levels] of [['current',current],['previous',previous]])for(const level of ['campaign','adset','ad']){
   const data=levels?.[level];
-  // The live adapter currently drops coverage metadata: absence must fail closed.
+  coverage[`${name}.${level}`]=data?.coverage?.completeness||data?.completeness||data?.meta?.completeness||'UNKNOWN';
+  // Only collector evidence can establish completeness; legacy payloads fail closed.
   if(!data||!Array.isArray(data.rows)||partialOrUnverified(data)||!(data.completeness==='COMPLETE'||data.meta?.completeness==='COMPLETE'))errors.push(`${name}.${level}:COMPLETE_COVERAGE_REQUIRED`);
   if(!['spend','impressions','clicks','purchases','purchaseValue'].every(k=>money(data?.totals?.[k])!==null))errors.push(`${name}.${level}:METRICS_UNAVAILABLE`);
  }
@@ -69,9 +70,11 @@ export function reviewMetaPublication({model,current,previous,actualOrders,actua
  if(!products?.available||products.missingItems||products.missingDates||products.possibleLimitReached)errors.push('ACTUAL_COVERAGE_INCOMPLETE');
  if(!model.previousActualProducts?.available)errors.push('PREVIOUS_ACTUAL_UNAVAILABLE');
  for (const [name,input,data] of [['current',actualOrders,actualAnalytics],['previous',previousOrders,previousAnalytics]]) {
+  coverage[`${name}.orders`]=input?.coverage?.completeness||'UNKNOWN';
+  coverage[`${name}.analytics`]=data?.coverage?.completeness||'UNKNOWN';
   const analytics=data?.data?.orderdetails||data?.orderdetails;
-  if(!data||data.ok!==true||!Array.isArray(analytics)||analytics.length>=100||partialOrUnverified(data))errors.push(`${name}:ANALYTICS_COVERAGE_INCOMPLETE`);
-  if(input?.source!=='cafe24_inflow_queries'||input.analyticsOrdersComplete!==true||!Array.isArray(input.analyticsOrders)||input.analyticsOrders.length>=500||!Array.isArray(input.trackingQueries)||input.trackingQueries.length!==5||input.trackingQueries.some(q=>q.ok!==true||q.complete!==true||!Number.isInteger(q.count)||q.count<0||q.count>=500)||rawOrders(input).conflicts.size||partialOrUnverified(input))errors.push(`${name}:ORDER_PROVENANCE_REQUIRED`);
+  if(data?.coverage?.completeness!=='COMPLETE'||!data||data.ok!==true||!Array.isArray(analytics)||analytics.length>=100||partialOrUnverified(data))errors.push(`${name}:ANALYTICS_COVERAGE_INCOMPLETE`);
+  if(input?.coverage?.completeness!=='COMPLETE'||input?.source!=='cafe24_inflow_queries'||input.analyticsOrdersComplete!==true||!Array.isArray(input.analyticsOrders)||input.analyticsOrders.length>=500||!Array.isArray(input.trackingQueries)||input.trackingQueries.length!==5||input.trackingQueries.some(q=>q.ok!==true||q.complete!==true||!Number.isInteger(q.count)||q.count<0||q.count>=500)||rawOrders(input).conflicts.size||partialOrUnverified(input))errors.push(`${name}:ORDER_PROVENANCE_REQUIRED`);
  }
  const {orders,conflicts}=rawOrders(actualOrders);
  if(conflicts.size||partialOrUnverified(actualOrders))errors.push('ORDER_EVIDENCE_INCOMPLETE');
@@ -81,7 +84,7 @@ export function reviewMetaPublication({model,current,previous,actualOrders,actua
   if(!o||o.paid!=='T'||payment===null||entry.amount!==cafe24OrderAmount(o)||!Number.isSafeInteger(entry.amount)||!inPeriod(o.order_date,model.since,model.until))errors.push('PAYMENT_EVIDENCE_INCOMPLETE');
  }
  if(comparison?.status==='UNKNOWN_ADJUSTMENT')errors.push('UNKNOWN_ADJUSTMENT');
- return {policy:POLICY,result:errors.length?'FAIL':'PASS',errors:[...new Set(errors)]};
+ return {policy:POLICY,result:errors.length?'FAIL':'PASS',errors:[...new Set(errors)],coverage};
 }
 
 export function reconcileMetaPublication({issued,currentProducts,currentOrders,asOf}){

@@ -11,8 +11,8 @@ const id='20261011-0000055';
 const original={order_id:id,order_date:'2026-10-11T20:33:59+09:00',payment_date:'2026-10-11T20:33:59+09:00',paid:'T',canceled:'F',actual_order_amount:{payment_amount:'198000.00'},items:[{order_item_code:id+'-01',product_name:'Test jeans',product_price:'198000.00',quantity:1,order_status:'N30',status_code:'N1'}]};
 const refunded={...original,canceled:'T',cancel_date:'2026-10-19T12:27:28+09:00',return_confirmed_date:'2026-10-19T12:27:28+09:00',actual_order_amount:{payment_amount:'0.00'},items:[{...original.items[0],order_status:'R40',status_code:'C3',status_text:'반품완료',refund_date:'2026-10-19T12:27:42+09:00'}]};
 const current={...original,order_id:'20261015-0000011',order_date:'2026-10-15',actual_order_amount:{payment_amount:'107000.00'},items:[{...original.items[0],order_item_code:'new-item',product_price:107000}]};
-const actual=orders=>({source:'cafe24_inflow_queries',orders:[],trackingQueries:codes.map(code=>({code,ok:true,complete:true,count:0})),analyticsOrders:orders,analyticsOrdersComplete:true});
-const acquisition=orders=>({ok:true,data:{orderdetails:orders.map(o=>({order_id:o.order_id,ad:'ig',medium:'paid',content:'ad1',order_amount:198000}))}});
+const actual=orders=>({coverage:{completeness:'COMPLETE'},source:'cafe24_inflow_queries',orders:[],trackingQueries:codes.map(code=>({code,ok:true,complete:true,count:0})),analyticsOrders:orders,analyticsOrdersComplete:true});
+const acquisition=orders=>({coverage:{completeness:'COMPLETE'},ok:true,data:{orderdetails:orders.map(o=>({order_id:o.order_id,ad:'ig',medium:'paid',content:'ad1',order_amount:198000}))}});
 const level={completeness:'COMPLETE',source:'meta_marketing_api',rows:[{adId:'ad1',adName:'Test ad'}],totals:{spend:10000,impressions:1000,clicks:100,purchases:7,purchaseValue:1720000,ctr:.1,cpc:100,cpa:10000/7,roas:172}};
 async function setup(){return {outputDir:await mkdtemp(join(tmpdir(),'meta-issued-'))};}
 function options(outputDir,week='first',overrides={}){

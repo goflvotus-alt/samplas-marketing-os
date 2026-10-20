@@ -1,3 +1,4 @@
+import {metaInsightsCoverage,metaWeeklyCoverage,cafe24OrdersCoverage,cafe24AnalyticsCoverage,combineWeeklyCoverage} from './scripts/weekly-data-completeness.mjs';
 import {createVeilControl,serveVeilRpc} from './scripts/veil-found-control.mjs';
 import { SEEDING_MCP_PATH, serveSeedingMcp, createSeedingRestClient } from './scripts/seeding-mcp.mjs';
 import { SESSION_API_PREFIX, handleSessionDirectorRequest } from "./scripts/session-director-api.mjs";
@@ -1650,6 +1651,7 @@ async function buildMetaAdsSummary(since, until, options = {}) {
     since,
     until,
     level,
+    coverage: metaInsightsCoverage(body, {since,until,level}),
     rows,
     campaigns: level === "campaign" ? rows : [],
     adsets: level === "adset" ? rows : [],
@@ -2688,7 +2690,7 @@ async function fetchCafe24WeeklyTrackingOrders(startDate, endDate, options) {
     body = await cafe24GetOrders(startDate, endDate, { limit: 500, inflowPath: options.inflowPath, strictOrders: true });
   }
   if (!body || body.error || !Array.isArray(body.orders)) throw new Error('Incomplete Cafe24 inflow query response.');
-  return { source: 'cafe24_admin_api_inflow', orders: body.orders };
+  return { source: 'cafe24_admin_api_inflow', orders: body.orders, coverage:body.coverage };
 }
 
 async function fallbackCafe24OrdersAfterError(startDate, endDate, error) {
@@ -6692,17 +6694,20 @@ async function cafe24GetOrders(startDate, endDate, options = {}) {
   const requestedLimit = Math.min(Number(options.limit || 500) || 500, 1000);
   const pageSize = Math.min(100, requestedLimit);
   const orders = [];
+  let terminalPage = false, pages = 0, malformedPage = false;
   for (let offset = 0; offset < requestedLimit; offset += pageSize) {
     url.searchParams.set("limit", String(pageSize));
     url.searchParams.set("offset", String(offset));
     const body = await cafe24FetchOrdersPage(url);
     if (options.strictOrders && !Array.isArray(body?.orders)) throw new Error("Incomplete Cafe24 inflow orders page.");
+    pages += 1;
+    if (!Array.isArray(body?.orders)) malformedPage = true;
     const pageOrders = body.orders || [];
     orders.push(...pageOrders);
-    if (pageOrders.length < pageSize) break;
+    if (pageOrders.length < pageSize) { terminalPage = true; break; }
   }
   await attachCafe24OrderItems(orders);
-  return { orders };
+  return { orders, ...(options.strictOrders ? {coverage:cafe24OrdersCoverage(orders,{since:startDate,until:endDate},{terminalPage,pages,limit:requestedLimit,malformedPage})} : {}) };
 }
 
 async function cafe24FetchOrdersPage(url) {
@@ -6934,6 +6939,7 @@ async function fetchCafe24AnalyticsOrderDetails({
         endDate,
         orderId: orderId || null
       },
+      coverage: cafe24AnalyticsCoverage(body, {since:startDate,until:endDate}),
       data: body
     };
   }
@@ -8670,9 +8676,10 @@ const metaWeeklyReportScheduler = {
 export async function buildMetaAdsSummaryForWeeklyReport(since, until, level) {
   try {
     const data = await buildMetaAdsSummaryWithCache(since, until, { level });
-    return { rows: data.rows || data.campaigns || data.adsets || data.ads || [], totals: data.totals || summarizeMetaAdsRows(data.rows || []) };
+    const coverage = metaWeeklyCoverage(data, {since,until,level});
+    return { source:data.source, syncedAt:data.syncedAt, since:data.since, until:data.until, level:data.level, cacheMode:data.cacheMode, cacheAgeMs:data.cacheAgeMs, ttlMs:data.ttlMs, coverage, completeness: coverage.completeness, rows: data.rows || data.campaigns || data.adsets || data.ads || [], totals: data.totals || summarizeMetaAdsRows(data.rows || []) };
   } catch (error) {
-    return { ok: false, error: safeErrorMessage(error) };
+    return { ok: false, error: safeErrorMessage(error), completeness:'UNAVAILABLE', coverage:{kind:'meta_insights',scope:{since,until,level},completeness:'UNAVAILABLE',reasons:['INSIGHTS_REQUEST_FAILED']} };
   }
 }
 
@@ -8685,7 +8692,7 @@ export async function fetchCafe24ActualOrdersForWeeklyReport(since, until, { inc
       const result = await fetchCafe24Orders(since, until, { limit: 500, inflowPath: code, weeklyMetaTracking: true });
       if (!result || result.error || result.ok === false || result.source !== 'cafe24_admin_api_inflow' || !Array.isArray(result.orders) || result.orders.some(order => !order || typeof order !== 'object')) throw new Error('Incomplete query result');
       const complete = result.orders.length < 500;
-      trackingQueries.push({ code, ok: true, complete, count: result.orders.length });
+      trackingQueries.push({ code, ok: true, complete, count: result.orders.length, coverage:result.coverage });
       orders.push(...result.orders.map(order => ({ ...order, _metaTrackingCode: code })));
     } catch {
       // No raw API error, headers, or order payload in report/log metadata.
@@ -8696,17 +8703,20 @@ export async function fetchCafe24ActualOrdersForWeeklyReport(since, until, { inc
   if (includeAnalyticsOrders) {
     result.analyticsOrders = [];
     result.analyticsOrdersComplete = false;
+    result.analyticsOrdersCoverage = {completeness:'UNAVAILABLE',reasons:['GENERAL_ORDERS_NOT_AVAILABLE']};
     try {
       if (!trackingQueries.every(query => query.ok && query.complete)) throw new Error('Incomplete weekly tracking coverage.');
       // Reuse the direct Orders reader for the same bounded period, without a ghost filter.
       // The weekly guard above has already validated the period. Never use a cached fallback.
       const body = await cafe24GetOrders(since, until, { limit: 500, strictOrders: true });
+      result.analyticsOrdersCoverage = body?.coverage || {completeness:'UNKNOWN',reasons:['ORDERS_COVERAGE_NOT_RECORDED']};
       if (Array.isArray(body?.orders) && !body.error && body.orders.length < 500) {
         result.analyticsOrders = body.orders;
         result.analyticsOrdersComplete = true;
       }
     } catch { /* Coverage remains explicitly unavailable. */ }
   }
+  result.coverage = combineWeeklyCoverage([...trackingQueries.map(q=>q.ok?q.coverage:{completeness:'UNAVAILABLE',reasons:['INFLOW_QUERY_FAILED']}), ...(includeAnalyticsOrders?[result.analyticsOrdersCoverage]:[])],{since,until});
   return result;
 }
 
