@@ -117,3 +117,14 @@ test("mcp cannot archive; summary counts tasks and answers", () => {
   assert.deepEqual(s.progress, { tasksDone: 0, tasksTotal: 8, questions: 3, answers: 0 });
   assert.equal(s.guest, "TEST GUEST");
 });
+
+test('application links: strict Google destinations, partial merge, no unrelated session changes',()=>{
+ const source=seeded(),before=structuredClone(source);
+ const links={responderUrl:'https://docs.google.com/forms/d/e/PUBLIC/viewform',editUrl:'https://docs.google.com/forms/d/FORM/edit',sheetUrl:'https://docs.google.com/spreadsheets/d/SHEET/edit'};
+ const next=applyOperations(source,[{type:'update_project',patch:{applicationForm:links}}],{actor:mcp}).doc;
+ assert.deepEqual(next.applicationForm,links);assert.deepEqual(source,before);
+ for(const key of ['questions','tasks','notes','sections','date'])assert.deepEqual(next[key],source[key]);
+ const partial=applyOperations(next,[{type:'update_project',patch:{applicationForm:{sheetUrl:''}}}],{actor:mcp}).doc;
+ assert.deepEqual(partial.applicationForm,{...links,sheetUrl:''});
+ for(const invalid of [{editUrl:'https://evil.test/edit'},{sheetUrl:'https://docs.google.com.evil.test/spreadsheets/d/S/edit'},{responderUrl:'javascript:alert(1)'},{secret:'x'},{sheetUrl:'https://docs.google.com/forms/d/F/edit'}])rejects(()=>applyOperations(next,[{type:'update_project',patch:{applicationForm:invalid}}],{actor:mcp}),400);
+});

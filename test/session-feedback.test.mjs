@@ -106,3 +106,12 @@ test("pamphlet: only the configured file, checked inside the session's asset fol
   await assert.rejects(service.pamphletLink(ID), (e) => e.status === 404, "no asset folder for the test session -> refused, never an arbitrary path");
   await assert.rejects((await setup({ config: { ...CONFIG, pamphlet: null } })).service.pamphletLink(ID), (e) => e.code === "pamphlet_not_set");
 });
+
+test('FORM reads project links before legacy settings without touching participants or feedback settings',async()=>{
+ const {fake,service}=await setup();
+ const links={responderUrl:'https://docs.google.com/forms/d/e/NEW/viewform',editUrl:'https://docs.google.com/forms/d/NEW/edit',sheetUrl:'https://docs.google.com/spreadsheets/d/NEW/edit'};
+ const source=fake.files.get(sessionPath(ID));const doc=JSON.parse(source.text);doc.applicationForm=links;source.text=JSON.stringify(doc);
+ const before=[...fake.files.entries()].map(([path,file])=>[path,file.text]);
+ const result=await service.feedback(ID);assert.deepEqual({...result.applicationForm,responderCheck:undefined},{...links,responderCheck:undefined});
+ assert.deepEqual([...fake.files.entries()].map(([path,file])=>[path,file.text]),before);
+});

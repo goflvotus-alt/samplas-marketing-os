@@ -4,7 +4,7 @@
 // Writes: SESSION_MCP_WRITES = "off" (default) | "test-only" (test-session-* only) | "on".
 // Same service as REST: version check, 409 on a stale version, read-back before success.
 import { defaultSessionService, safeEqual } from "./session-director-api.mjs";
-import { SessionError, sessionProjectView } from "./session-store.mjs";
+import { SessionError, sessionProjectView, APPLICATION_FORM_SCHEMA } from "./session-store.mjs";
 import {TIMETABLE_OPERATION_SCHEMA} from './session-timetable.mjs';
 
 const protocols = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -78,8 +78,8 @@ export const SESSION_TOOLS = [
     inputSchema: strict({ number: { type: "integer", minimum: 1, maximum: 9999 }, title: { type: "string", minLength: 1, maxLength: 200 }, theme: { type: "string", maxLength: 1000 },
       date: { type: ["string", "null"], description: "YYYY-MM-DD or null when undecided" }, guest: strict({ name: { type: "string" }, handle: { type: "string" }, bio: { type: "string" } }),
       isTest: { type: "boolean", default: false } }, ["number", "title"]), annotations: WRITE },
-  { name: "updateSessionProject", description: `Change session details (patch: title, theme, date, timeStart, timeEnd, venue, owners, guest, status, not ARCHIVED) and/or the schedule TODO list and meeting notes (tasks: add_task {task: {title, due YYYY-MM-DD|null, owner, group, done, required, memo}}, update_task {taskId, patch}, delete_task {taskId}, add_note {note: {date YYYY-MM-DD|null, title, body}}, update_note {noteId, patch}, delete_note {noteId}, restore_from_trash {trashId}). Deleted tasks and notes go to the session trash (project.trash) and can be restored. Ids come from getSessionProject. ${RULES}`,
-    inputSchema: strict({ id, version, patch: { type: "object", minProperties: 1 },
+  { name: "updateSessionProject", description: `Change session details (patch: applicationForm {responderUrl, editUrl, sheetUrl} (verified existing Google URLs only; omitted fields preserved, empty string clears), title, theme, date, timeStart, timeEnd, venue, owners, guest, status, not ARCHIVED) and/or the schedule TODO list and meeting notes (tasks: add_task {task: {title, due YYYY-MM-DD|null, owner, group, done, required, memo}}, update_task {taskId, patch}, delete_task {taskId}, add_note {note: {date YYYY-MM-DD|null, title, body}}, update_note {noteId, patch}, delete_note {noteId}, restore_from_trash {trashId}). Deleted tasks and notes go to the session trash (project.trash) and can be restored. Ids come from getSessionProject. ${RULES}`,
+    inputSchema: strict({ id, version, patch: { type: "object", minProperties: 1, properties:{applicationForm:APPLICATION_FORM_SCHEMA} },
       tasks: { type: "array", minItems: 1, maxItems: 20, items: TASK_ITEM } }, ["id", "version"]), annotations: WRITE },
   { name: "updateSessionCueSheet", description: `Apply cue sheet operations by id: ${CUE_OPERATIONS.join(", ")}. update_question_mc patches summary, keywords, episodes, followUps, toAudience, directionNotes, cautions, liveMemo. Guest answers cannot be changed here. ${RULES}`,
     inputSchema: strict({ id, version, operations: { type: "array", minItems: 1, maxItems: 20, items: CUE_ITEM } }, ["id", "version", "operations"]),
