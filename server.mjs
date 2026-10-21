@@ -8313,13 +8313,17 @@ async function runCafe24MetaSyncGuard({ force = false } = {}) {
     const missing = products.filter((product) => !metaGroups.has(String(product.product_no)));
     const maxActions = Math.min(20, Math.max(1, Number(env.CAFE24_META_SYNC_MAX_ACTIONS || 20)));
     const candidates = [];
+    const maxInventoryChecks = Math.min(80, Math.max(maxActions, Number(env.CAFE24_META_SYNC_MAX_INVENTORY_CHECKS || 80)));
+    let inventoryChecks = 0;
     for (const product of missing) {
-      if (candidates.length >= maxActions) break;
+      if (candidates.length >= maxActions || inventoryChecks >= maxInventoryChecks) break;
       const key = String(product.product_no);
       const previous = state.products?.[key];
       if (previous?.status === "success") continue;
       if (previous?.lastAttemptDate === today) continue;
+      inventoryChecks += 1;
       const inventory = await cafe24ProductHasSellableInventory(product.product_no);
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 75));
       if (!inventory.sellable) continue;
       candidates.push({ product, inventory });
     }
@@ -8360,6 +8364,7 @@ async function runCafe24MetaSyncGuard({ force = false } = {}) {
       cafe24ProductCount: products.length,
       metaGroupCount: metaGroups.size,
       missingCount: missing.length,
+      inventoryChecks,
       attemptedCount: results.length,
       successCount: results.filter((row) => row.ok).length,
       failedCount: results.filter((row) => !row.ok).length
