@@ -1198,6 +1198,19 @@ const server = isMainModule ? createServer(async (req, res) => {
       }
     }
     if (url.pathname === "/api/cafe24/oauth/callback") {
+      // Both Cafe24 OAuth clients share the one registered callback URI.
+      // Meta Sync states are kept in their own one-time map and write only to
+      // cafe24-meta-sync-token.json; reporting OAuth keeps the legacy token store.
+      const callbackState = url.searchParams.get("state");
+      if (callbackState && cafe24MetaSyncOAuthStates.has(callbackState)) {
+        try {
+          await handleCafe24MetaSyncOAuthCallback(url);
+          return redirect(res, "/?cafe24_meta_sync_oauth=success");
+        } catch (error) {
+          await logApiError("cafe24_meta_sync_oauth_callback", error, {});
+          return redirect(res, `/?cafe24_meta_sync_oauth=error&reason=${encodeURIComponent(safeErrorMessage(error))}`);
+        }
+      }
       // 재인증 성공/실패 어느 쪽이든 토큰/시크릿 값을 화면에 절대 노출하지 않는다.
       // 성공/실패 모두 "/"로 리다이렉트해서 대시보드 SPA가 쿼리스트링만 보고
       // 토스트 + Settings 오류 배너로 안내하도록 한다. (2026-07-08 Cafe24 재인증 흐름 개선)
@@ -7421,7 +7434,9 @@ function consumeCafe24MetaSyncOAuthState(state) {
 }
 
 function cafe24MetaSyncRedirectUri() {
-  return env.CAFE24_META_SYNC_REDIRECT_URI || `http://${host}:${port}/api/cafe24-meta-sync/oauth/callback`;
+  // Reuse the already-registered Cafe24 callback URI. The callback route distinguishes
+  // reporting OAuth vs Meta Sync OAuth by the one-time state map, so the token stores stay isolated.
+  return env.CAFE24_META_SYNC_REDIRECT_URI || cafe24RedirectUri();
 }
 
 function cafe24MetaSyncScopes() {
