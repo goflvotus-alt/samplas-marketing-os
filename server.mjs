@@ -1400,6 +1400,9 @@ const server = isMainModule ? createServer(async (req, res) => {
   runCafe24MetaSyncStartupProbe().catch((error) => {
     console.error("[CAFE24_META_SYNC_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
   });
+  runMetaCatalogReadProbe().catch((error) => {
+    console.error("[META_CATALOG_READ_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
+  });
   // Instagram 자동 동기화 스케줄러 시작: 서버 부팅 시 1회 실행 후 6시간마다 반복.
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
@@ -8196,6 +8199,37 @@ function json(res, value, status = 200) {
 function redirect(res, location) {
   res.writeHead(302, { Location: location });
   res.end();
+}
+
+
+async function runMetaCatalogReadProbe() {
+  const catalogId = String(env.META_CATALOG_ID || "").trim();
+  const productNo = String(env.CAFE24_META_SYNC_TEST_PRODUCT_NO || "").trim();
+  if (!catalogId || !/^\d+$/.test(productNo)) return;
+  try {
+    const body = await graphGet(`${catalogId}/products`, {
+      fields: "id,retailer_id,retailer_product_group_id,name,availability",
+      filter: JSON.stringify({ retailer_product_group_id: { eq: productNo } }),
+      limit: 20
+    });
+    const rows = Array.isArray(body?.data) ? body.data : [];
+    console.log("[META_CATALOG_READ_PROBE]", JSON.stringify({
+      ok: true,
+      catalogId,
+      productNo: Number(productNo),
+      count: rows.length,
+      retailerIds: rows.map((row) => row.retailer_id).filter(Boolean).slice(0, 10)
+    }));
+  } catch (error) {
+    console.error("[META_CATALOG_READ_PROBE]", JSON.stringify({
+      ok: false,
+      catalogId,
+      productNo: Number(productNo),
+      error: safeErrorMessage(error),
+      status: error.status || null,
+      code: error.code || null
+    }));
+  }
 }
 
 async function graphGet(path, params = {}) {
