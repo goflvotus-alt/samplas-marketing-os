@@ -6,10 +6,12 @@ import ExcelJS from 'exceljs';
 import {accountReconciles} from './weekly-data-completeness.mjs';
 import {cafe24OrderAmount,cafe24OrderItems,cafe24ItemAmount,isCafe24CanceledItem,isCafe24CanceledOrRefunded} from './cafe24-order-amount.mjs';
 
-// V3 adds attribution grades, amount status and candidates; V2 records stay readable, never rewritten.
-const POLICY='META_WEEKLY_REVIEW_V3',READ_POLICIES=new Set(['META_WEEKLY_REVIEW_V2',POLICY]),LEGACY_POLICY='META_LEGACY_IMPORT_V1';
+// The policy name is the compatibility contract with earlier releases (da0c941, 1392fb2), whose reader
+// accepts only this name; graded records add recordFormat 3 and new fields, never a new policy, so
+// rolling back to those releases keeps reading every record written here.
+const POLICY='META_WEEKLY_REVIEW_V2',RECORD_FORMAT=3,LEGACY_POLICY='META_LEGACY_IMPORT_V1';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
-const publishable=(r,policies=new Set([POLICY]))=>policies.has(r?.policy)&&Array.isArray(r.failures)&&Array.isArray(r.unknowns)&&!r.failures.length&&(r.result==='PASS'?!r.unknowns.length:r.result==='UNKNOWN'&&r.unknowns.length>0)&&JSON.stringify(r.errors)===JSON.stringify([...r.failures,...r.unknowns]);
+const publishable=r=>r?.policy===POLICY&&Array.isArray(r.failures)&&Array.isArray(r.unknowns)&&!r.failures.length&&(r.result==='PASS'?!r.unknowns.length:r.result==='UNKNOWN'&&r.unknowns.length>0)&&JSON.stringify(r.errors)===JSON.stringify([...r.failures,...r.unknowns]);
 const time=value=>typeof value==='string'&&Number.isFinite(Date.parse(value))?Date.parse(value):NaN;
 const money=value=>value!==null&&value!==undefined&&value!==''&&Number.isFinite(Number(value))&&Number(value)>=0?Number(value):null;
 const isMeta=row=>['META_PAID','META_INFLOW'].includes(row.tracking_source);
@@ -159,34 +161,69 @@ export function publicationRecord({model,actualOrders,generatedAt,reviewedAt,rev
  // Ad-name candidates are kept for order-level follow-up only; they are never part of orders or the totals.
  const candidates=[...first.values()].filter(r=>r.attribution_grade==='G2_AD_NAME').map(r=>({orderId:String(r.order_id),orderDate:r.order_date,amount:r.actual_paid_amount,matchedAdId:r.matched_ad_id,adName:r.ad_mapping,analyticsCampaign:r.campaign_id,analyticsContent:r.content_id,amountStatus:r.amount_status}));
  const grades=model.actualProducts.summary.grades;
- return {schemaVersion:1,policy:POLICY,mode:'scheduled',since:model.since,until:model.until,generatedAt,issuedAt:reviewedAt,reviewedAt,review,summary:{metaPaidOrderCount:model.actualProducts.summary.metaPaidOrderCount,metaPaidRevenue:model.actualProducts.summary.metaPaidRevenue,actualVerified:review.actual?.current===true,...(grades?{grades}:{})},orders,candidates};
+ // Refund ledger: cumulative confirmed adjustment per issued order as this report shows it.
+ const reportedAdjustments=model.refundTracking?.reportedAdjustments||[];
+ return {schemaVersion:1,policy:POLICY,recordFormat:RECORD_FORMAT,mode:'scheduled',since:model.since,until:model.until,generatedAt,issuedAt:reviewedAt,reviewedAt,review,summary:{metaPaidOrderCount:model.actualProducts.summary.metaPaidOrderCount,metaPaidRevenue:model.actualProducts.summary.metaPaidRevenue,actualVerified:review.actual?.current===true,...(grades?{grades}:{})},orders,candidates,reportedAdjustments};
 }
 
-// Re-reads the orders of recent issued weeks; issued files are only read. A refund is "new" when dated
-// after newSince (the previous publication), so a refund already shown last week is not deducted again.
-// The previous week is already reconciled by the ISSUED_COMPARISON sheet; it is listed, not re-read or
-// re-totalled, so one refund is never deducted twice within a report.
-export async function trackIssuedRefunds({outputDir,before,weeks=8,fetchOrders,asOf,newSince=null,comparedSince=null}){
+const shiftDay=(d,n)=>new Date(Date.parse(`${d}T00:00:00Z`)+n*864e5).toISOString().slice(0,10);
+const ledgerKey=(period,order)=>`${period}|${order}`;
+// What an issued record says it already adjusted: its own ledger (recordFormat 3) or, for records of
+// earlier releases, the confirmed rows of its REFUND_ADJUSTMENTS sheet (about its previous week).
+async function priorAdjustments(issued){
+ if(issued.kind==='legacy_import')return [];
+ if(issued.recordFormat>=3)return issued.reportedAdjustments||[];
+ const w=new ExcelJS.Workbook();await w.xlsx.load(await readFile(issued.filePath));
+ const sheet=w.getWorksheet('REFUND_ADJUSTMENTS');if(!sheet)return [];
+ const head=sheet.getRow(1).values,col=name=>head.indexOf(name),period=`${shiftDay(issued.since,-7)}_${shiftDay(issued.until,-7)}`,out=[];
+ sheet.eachRow((row,n)=>{const v=row.values;if(n===1||v[col('검증 결과')]!=='REFUND_ADJUSTMENT'||!Number.isFinite(v[col('조정액')]))return;out.push({issuedPeriod:period,orderId:String(v[col('주문번호')]),cumulativeAdjustment:v[col('조정액')],refundDate:v[col('취소·환불일')]||null});});
+ return out;
+}
+
+// Re-reads the orders of the last `weeks` issued weeks (the previous week reuses the generator's own
+// comparison) and counts each confirmed adjustment once: this week's amount is the cumulative
+// adjustment minus what an earlier issued record already reported. Unknown differences are shown,
+// never counted or recorded. Issued files are only read.
+export async function trackIssuedRefunds({outputDir,before,weeks=8,fetchOrders,asOf,previous=null}){
  let entries=[];
  try{entries=await readdir(join(outputDir,'issued'));}catch(e){if(e.code!=='ENOENT')throw e;}
- const periods=entries.filter(n=>/^\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$/.test(n)).map(n=>n.split('_')).filter(([,u])=>u<before).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,weeks);
- const result={weeks,newSince,asOf,periods:[],newRefundCount:0,newRefundAmount:0,unknownCount:0,failedPeriods:0};
- for(const [since,until] of periods){
-  const p={since,until,kind:null,status:null,rows:[],error:null,coveredByIssuedComparison:since===comparedSince};result.periods.push(p);
+ const all=entries.filter(n=>/^\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$/.test(n)).map(n=>n.split('_')).filter(([,u])=>u<before).sort((a,b)=>b[0].localeCompare(a[0]));
+ const result={weeks,asOf,periods:[],newRefundCount:0,newRefundAmount:0,previouslyReportedCount:0,unknownCount:0,failedPeriods:0,ledgerError:null,reportedAdjustments:[]};
+ // Every record from the oldest tracked week onward may carry ledger entries for the tracked weeks.
+ const prior=new Map();
+ for(const [since,until] of all.slice(0,weeks)){
+  try{const issued=await readIssuedMetaReport({outputDir,since,until});for(const e of await priorAdjustments(issued)){const k=ledgerKey(e.issuedPeriod,e.orderId);if(!prior.has(k))prior.set(k,{...e,reportedIn:`${since}_${until}`});}}
+  catch(e){result.ledgerError=`${since}_${until}: ${e.message}`;}
+ }
+ for(const [since,until] of all.slice(0,weeks)){
+  const period=`${since}_${until}`,p={since,until,kind:null,status:null,rows:[],error:null};result.periods.push(p);
   let issued;
-  try{issued=await readIssuedMetaReport({outputDir,since,until});}catch(e){p.status='ISSUED_INVALID';p.error=e.message;if(!p.coveredByIssuedComparison)result.failedPeriods++;continue;}
+  try{issued=await readIssuedMetaReport({outputDir,since,until});}catch(e){p.status='ISSUED_INVALID';p.error=e.message;result.failedPeriods++;continue;}
   p.kind=issued.kind||'scheduled';
-  if(p.coveredByIssuedComparison){p.status='COVERED_BY_ISSUED_COMPARISON';continue;}
-  let data;
-  try{data=await fetchOrders(since,until);}catch{data=null;}
-  if(!Array.isArray(data?.orders)||data.coverage?.completeness!=='COMPLETE'){p.status='UNVERIFIED';p.error='CAFE24_REREAD_INCOMPLETE';result.failedPeriods++;continue;}
-  const byId=new Map(data.orders.map(o=>[orderId(o),o]));
-  const rows=issued.orders.filter(o=>byId.has(o.orderId)).map(o=>({order_id:o.orderId,order_date:o.orderDate,tracking_source:'META_PAID',actual_paid_amount:cafe24OrderAmount(byId.get(o.orderId))}));
-  const revenue=rows.reduce((s,r)=>s+r.actual_paid_amount,0);
-  const c=reconcileMetaPublication({issued,currentProducts:{available:true,rows,summary:{metaPaidRevenue:revenue,metaPaidOrderCount:rows.length}},currentOrders:{orders:data.orders},asOf});
+  let c;
+  if(previous&&since===previous.since){c=previous.comparison;if(!c){p.status='UNVERIFIED';p.error='PREVIOUS_COMPARISON_UNAVAILABLE';result.failedPeriods++;continue;}}
+  else{
+   let data;
+   try{data=await fetchOrders(since,until);}catch{data=null;}
+   if(!Array.isArray(data?.orders)||data.coverage?.completeness!=='COMPLETE'){p.status='UNVERIFIED';p.error='CAFE24_REREAD_INCOMPLETE';result.failedPeriods++;continue;}
+   const byId=new Map(data.orders.map(o=>[orderId(o),o]));
+   const rows=issued.orders.filter(o=>byId.has(o.orderId)).map(o=>({order_id:o.orderId,order_date:o.orderDate,tracking_source:'META_PAID',actual_paid_amount:cafe24OrderAmount(byId.get(o.orderId))}));
+   const revenue=rows.reduce((s,r)=>s+r.actual_paid_amount,0);
+   c=reconcileMetaPublication({issued,currentProducts:{available:true,rows,summary:{metaPaidRevenue:revenue,metaPaidOrderCount:rows.length}},currentOrders:{orders:data.orders},asOf});
+  }
   p.status=c.status;
-  p.rows=c.rows.map(r=>{const isNew=r.status==='REFUND_ADJUSTMENT'?(newSince&&r.refundDate?time(r.refundDate)>time(newSince):null):null;return {...r,newThisWeek:isNew};});
-  for(const r of p.rows){if(r.status!=='REFUND_ADJUSTMENT'){result.unknownCount++;continue;}if(r.newThisWeek){result.newRefundCount++;result.newRefundAmount+=r.adjustment;}}
+  p.rows=(c.rows||[]).map(r=>{
+   if(r.status!=='REFUND_ADJUSTMENT')return {...r,ledger:'UNKNOWN',applied:null};
+   const before=prior.get(ledgerKey(period,r.orderId)),delta=r.adjustment-(before?.cumulativeAdjustment||0);
+   return {...r,ledger:delta?'NEW':'PREVIOUSLY_REPORTED',applied:delta,reportedIn:before?.reportedIn||null};
+  });
+ }
+ // A ledger that cannot be read could hide an earlier report: count nothing new, record nothing.
+ for(const p of result.periods)for(const r of p.rows){
+  if(r.ledger==='UNKNOWN'){result.unknownCount++;continue;}
+  if(result.ledgerError){r.ledger='LEDGER_UNVERIFIED';r.applied=null;continue;}
+  if(r.ledger==='NEW'){result.newRefundCount++;result.newRefundAmount+=r.applied;}else result.previouslyReportedCount++;
+  result.reportedAdjustments.push({issuedPeriod:`${p.since}_${p.until}`,orderId:r.orderId,cumulativeAdjustment:r.adjustment,refundDate:r.refundDate});
  }
  return result;
 }
@@ -195,7 +232,7 @@ export async function readIssuedMetaReport({outputDir,since,until}){
  const dir=periodDir(outputDir,since,until);let m;
  try{m=JSON.parse(await readFile(join(dir,'manifest.json'),'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw Error('ISSUED_MANIFEST_INVALID');}
  if(m.kind==='legacy_import')return readLegacyManifest(dir,m,since,until);
- if(m.schemaVersion!==1||!READ_POLICIES.has(m.policy)||m.review?.policy!==m.policy||m.mode!=='scheduled'||!publishable(m.review,READ_POLICIES)||m.since!==since||m.until!==until||!scheduledMetaPublication({at:new Date(m.generatedAt),since,until,mode:m.mode,onePage:true,requireCompleteData:true})||!(time(m.reviewedAt)>=time(m.generatedAt))||m.issuedAt!==m.reviewedAt||!Array.isArray(m.orders))throw Error('ISSUED_REVIEW_INVALID');
+ if(m.schemaVersion!==1||m.policy!==POLICY||m.mode!=='scheduled'||!publishable(m.review)||m.since!==since||m.until!==until||!scheduledMetaPublication({at:new Date(m.generatedAt),since,until,mode:m.mode,onePage:true,requireCompleteData:true})||!(time(m.reviewedAt)>=time(m.generatedAt))||m.issuedAt!==m.reviewedAt||!Array.isArray(m.orders))throw Error('ISSUED_REVIEW_INVALID');
  if(new Set(m.orders.map(o=>o.orderId)).size!==m.orders.length||m.orders.some(o=>!o.orderId||!inPeriod(o.orderDate,since,until)||!Number.isSafeInteger(o.amount)||o.amount<0)||m.orders.length!==m.summary?.metaPaidOrderCount||m.orders.reduce((s,o)=>s+o.amount,0)!==m.summary?.metaPaidRevenue)throw Error('ISSUED_LEDGER_INVALID');
  const bytes=await readFile(join(dir,'report.xlsx'));
  if(sha(bytes)!==m.sha256)throw Error('ISSUED_HASH_MISMATCH');

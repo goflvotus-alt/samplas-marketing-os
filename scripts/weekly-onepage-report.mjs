@@ -93,7 +93,8 @@ function confirmedFor(actual,adId,g){
 function refundLine(t){
  if(!t)return '최근 발행 환불 추적 없음';
  if(t.error)return `최근 발행 환불 추적 미검증 (${t.error})`;
- return `최근 ${t.weeks}주 신규 확인 환불 ${t.newRefundCount}건 ${number(t.newRefundAmount,'원')} · 미확인 차이 ${t.unknownCount}건 · 조회 실패 ${t.failedPeriods}기간`;
+ if(t.ledgerError)return `정정 장부 미검증 · 이번 반영 0건 · 미확인 차이 ${t.unknownCount}건`;
+ return `최근 ${t.weeks}주 정정 최초 반영 ${t.newRefundCount}건 ${number(t.newRefundAmount,'원')} · 이전 반영 ${t.previouslyReportedCount}건 · 미확인 ${t.unknownCount}건 · 조회 실패 ${t.failedPeriods}기간`;
 }
 export function metaOnePage(workbook,model) {
  const s=base(workbook,model,'META ADS WEEKLY REPORT'),sum=model.summary||{},prev=model.previousSummary||{};

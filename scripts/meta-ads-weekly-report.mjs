@@ -307,19 +307,22 @@ function buildAttributionSheet(workbook, model) {
   for (const key of ["clickValue", "viewValue", "g1Revenue"]) sheet.getColumn(key).numFmt = WON_FMT;
 }
 
-// Recent issued weeks re-read by order number; issued files are never modified.
+// Recent issued weeks re-read by order number; issued files are never modified. "이번 반영액" is what this
+// report adds on top of what earlier issued reports already adjusted (refund ledger), so nothing twice.
+const LEDGER_LABEL = { NEW: "최초 반영", PREVIOUSLY_REPORTED: "이전 반영", UNKNOWN: "미확인 (합산 안 함)", LEDGER_UNVERIFIED: "장부 미검증 (합산 안 함)" };
 function buildRefundTrackingSheet(workbook, t) {
   const sheet = workbook.addWorksheet("REFUND_TRACKING");
-  setupSheet(sheet, [["period", "발행 기간"], ["kind", "발행본 종류"], ["orderId", "주문번호"], ["issuedAmount", "발행 금액"], ["currentAmount", "현재 금액"], ["adjustment", "조정액"], ["refundDate", "취소·환불일"], ["status", "검증 결과"], ["newThisWeek", "이번 주 신규"]].map(([key, header]) => ({ key, header, width: 20 })));
+  setupSheet(sheet, [["period", "발행 기간"], ["kind", "발행본 종류"], ["orderId", "주문번호"], ["issuedAmount", "발행 금액"], ["currentAmount", "현재 금액"], ["adjustment", "누적 조정액"], ["refundDate", "취소·환불일"], ["status", "검증 결과"], ["ledger", "장부 판정"], ["applied", "이번 반영액"]].map(([key, header]) => ({ key, header, width: 20 })));
   if (t.error) sheet.addRow({ period: `미검증 — ${t.error}` });
+  if (t.ledgerError) sheet.addRow({ period: `정정 장부 미검증 — ${t.ledgerError} · 이번 보고서는 새 정정을 반영하지 않음` });
   for (const p of t.periods || []) {
     const period = `${p.since} ~ ${p.until}`;
-    if (p.status === "COVERED_BY_ISSUED_COMPARISON") { sheet.addRow({ period, kind: p.kind, status: "직전 주 · ISSUED_COMPARISON 시트에서 대조 (중복 집계 안 함)" }); continue; }
     if (!p.rows.length) { sheet.addRow({ period, kind: p.kind, status: p.error ? `미검증 — ${p.error}` : p.status }); continue; }
-    for (const r of p.rows) sheet.addRow({ period, kind: p.kind, orderId: r.orderId, issuedAmount: r.issuedAmount, currentAmount: r.currentAmount, adjustment: r.adjustment, refundDate: r.refundDate, status: r.status, newThisWeek: r.newThisWeek === true ? "Y" : r.newThisWeek === false ? "N · 이전 보고" : "판정 불가" });
+    for (const r of p.rows) sheet.addRow({ period, kind: p.kind, orderId: r.orderId, issuedAmount: r.issuedAmount, currentAmount: r.currentAmount, adjustment: r.adjustment, refundDate: r.refundDate, status: r.status,
+      ledger: r.ledger === "PREVIOUSLY_REPORTED" && r.reportedIn ? `이전 반영 (${r.reportedIn} 발행본)` : LEDGER_LABEL[r.ledger] || r.ledger, applied: r.applied ?? null });
   }
-  sheet.addRow({ period: `최근 ${t.weeks || 8}주 · 신규 기준 ${t.newSince || "직전 발행 없음"} 이후 환불만 합계 · 미확인 차이는 합계 제외` });
-  for (const key of ["issuedAmount", "currentAmount", "adjustment"]) sheet.getColumn(key).numFmt = WON_FMT;
+  sheet.addRow({ period: `최근 ${t.weeks || 8}주 발행 주문 · 이번 반영액 = 누적 조정액 − 이전 발행본 장부 반영액 · 미확인은 합계 제외 · 직전 주는 ISSUED_COMPARISON과 같은 대조 결과` });
+  for (const key of ["issuedAmount", "currentAmount", "adjustment", "applied"]) sheet.getColumn(key).numFmt = WON_FMT;
 }
 
 // ---------------------------------------------------------------------------
@@ -472,7 +475,7 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, on
   // Supplementary views: a failure is shown as 미검증 in its own section and never blocks publication.
   if (requireCompleteData && fetchAttribution) model.attribution = checkAttributionSplit(await Promise.resolve().then(() => fetchAttribution(since, until)).catch(() => null), model.summary);
   if (requireCompleteData && fetchRefundOrders) {
-    try { model.refundTracking = await trackIssuedRefunds({ outputDir: issuedOutputDir, before: since, weeks: 8, fetchOrders: fetchRefundOrders, asOf: now().toISOString(), newSince: comparison?.issuedAt ?? null, comparedSince: previousSince }); }
+    try { model.refundTracking = await trackIssuedRefunds({ outputDir: issuedOutputDir, before: since, weeks: 8, fetchOrders: fetchRefundOrders, asOf: now().toISOString(), previous: { since: previousSince, comparison } }); }
     catch (error) { model.refundTracking = { error: String(error?.message || error), periods: [] }; }
   }
   const review = reviewMetaPublication({model,current,previous,actualOrders,actualAnalytics,previousOrders,previousAnalytics,comparison,accountTotals});
