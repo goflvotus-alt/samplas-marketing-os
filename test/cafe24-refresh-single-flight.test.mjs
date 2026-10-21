@@ -35,8 +35,9 @@ function harness({old=false,oauthFailure=null,external=false,always401=false,fir
       const begin=code.indexOf(start), finish=code.indexOf(end,begin);
       code=code.slice(0,begin)+code.slice(begin,finish).replace('await refreshCafe24TokenSingleFlight()', 'await refreshCafe24Token()')+code.slice(finish);
     }
-    const begin = code.indexOf('      // Another process may have rotated');
-    if (begin >= 0) code = code.slice(0, begin) + code.slice(code.indexOf('      await markCafe24ReauthRequired(refreshError);', begin));
+    code = code.replace(/    if \(isCafe24RefreshTokenInvalid\(response.status, body\)\) \{[\s\S]*?\n    throw refreshError;/,
+      '    if (isCafe24RefreshTokenInvalid(response.status, body)) {\n      await markCafe24ReauthRequired(refreshError);\n    }\n    throw refreshError;');
+    code = code.replace(/  if \(existing\?\.refreshToken !== failedRefreshToken\) \{\n    \/\/ Do not mark a token[\s\S]*?\n  }\n/, '');
   }
   const initial = {schema:1,status:'active',accessToken:'FAKE_ACCESS_0',refreshToken:'FAKE_REFRESH_0',expiresAt:'2026-10-21T09:00:00Z'};
   const files = new Map([['/FAKE/tokens/store.json',JSON.stringify(initial)]]), calls = [], writes = [];
@@ -102,7 +103,11 @@ function harness({old=false,oauthFailure=null,external=false,always401=false,fir
   runInNewContext(chunks.join('\n')+`\nasync function diagnosticRead(){const mallId=env.CAFE24_MALL_ID;${diagnostic}\nreturn runCheck('orders','/orders');}\nasync function manualRefresh(){${manual}\n}`,c);
   return {c,calls,writes,files,readStore,get oauthCalls(){return oauthCalls;},
     clearFailure:()=>{failure=null;},hold:()=>{pending=true;},release:()=>{pending=false;releaseOAuth?.();},
-    currentAccess:()=>currentAccess};
+    currentAccess:()=>currentAccess,
+    rotate:()=>{
+      currentAccess='FAKE_ACCESS_EXTERNAL';currentRefresh='FAKE_REFRESH_EXTERNAL';
+      files.set('/FAKE/tokens/store.json',JSON.stringify({...initial,accessToken:currentAccess,refreshToken:currentRefresh}));
+    }};
 }
 
 async function concurrentPaths(h) {
@@ -157,6 +162,31 @@ test('T4 genuinely invalid refresh token still marks reauth and later ensure mak
   assert.equal(h.readStore().status,'reauth_required');
   await assert.rejects(h.c.ensureCafe24AccessToken(),/reauth_required/);
   assert.equal(h.oauthCalls,1);
+});
+
+test('W1 rotation after the outer reread but before mark preserves active and returns recovery to the caller',async()=>{
+  for(const throughOrders of [false,true]) {
+    const h=harness({oauthFailure:'invalid'}),mark=h.c.markCafe24ReauthRequired;
+    let received;
+    h.c.markCafe24ReauthRequired=async(error,usedToken)=>{
+      received=usedToken;
+      h.rotate(); // The winner finishes its atomic rename just before mark reads the store.
+      return mark(error,usedToken);
+    };
+    if(throughOrders) {
+      const result=await h.c.cafe24FetchJson('https://FAKE_MALL.cafe24api.com/api/v2/admin/orders');
+      assert.equal(result.orders?.[0].order_id,'FAKE_ORDER');
+    } else {
+      const result=await h.c.refreshCafe24TokenSingleFlight();
+      assert.equal(result.ok,true);assert.equal(result.concurrentRefresh,true);
+      assert.deepEqual(Array.from(result.updated),[]);assert.equal(result.token.status,'active');
+      assert(!JSON.stringify(result).includes('FAKE_'));
+      assert.equal((await h.c.cafe24FetchJson('https://FAKE_MALL.cafe24api.com/api/v2/admin/orders')).orders[0].order_id,'FAKE_ORDER');
+    }
+    assert.equal(received,'FAKE_REFRESH_0');
+    assert.equal(h.calls.at(-1).authorization,'Bearer FAKE_ACCESS_EXTERNAL');
+    assert.equal(h.readStore().status,'active');assert.equal(h.writes.length,0);assert.equal(h.oauthCalls,1);
+  }
 });
 
 test('T5 network and parsing failures keep active and release single-flight for a later retry',async()=>{

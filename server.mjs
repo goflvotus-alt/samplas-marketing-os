@@ -2460,8 +2460,12 @@ async function cafe24TokenDiagnostics() {
   return safeCafe24TokenRecord(await readCafe24TokenRecord());
 }
 
-async function markCafe24ReauthRequired(error) {
+async function markCafe24ReauthRequired(error, failedRefreshToken) {
   const existing = await readCafe24TokenRecord();
+  if (existing?.refreshToken !== failedRefreshToken) {
+    // Do not mark a token that another process replaced after the caller's reread.
+    return safeCafe24TokenRecord(existing);
+  }
   const record = await writeCafe24TokenRecord({
     ...(existing || {}),
     status: "reauth_required",
@@ -7214,7 +7218,10 @@ async function refreshCafe24Token() {
       if (latest?.status === "active" && latest.refreshToken && latest.refreshToken !== record.refreshToken) {
         return { ok: true, updated: [], concurrentRefresh: true, token: safeCafe24TokenRecord(latest) };
       }
-      await markCafe24ReauthRequired(refreshError);
+      const token = await markCafe24ReauthRequired(refreshError, record.refreshToken);
+      if (token.status === "active") {
+        return { ok: true, updated: [], concurrentRefresh: true, token };
+      }
     }
     throw refreshError;
   }
