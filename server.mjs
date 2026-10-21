@@ -361,6 +361,8 @@ const server = isMainModule ? createServer(async (req, res) => {
             instagram: buildInstagramRangeDataForWeeklyReport,
             meta: buildMetaAdsSummaryForWeeklyReport,
             metaAccount: fetchMetaAccountTotalsForWeeklyReport,
+            metaAttribution: fetchMetaAttributionForWeeklyReport,
+            refundOrders: fetchCafe24OrdersForRefundTracking,
             actualOrders: fetchCafe24ActualOrdersForWeeklyReport,
             actualAnalytics: fetchCafe24AnalyticsForWeeklyReport
           }
@@ -8710,6 +8712,46 @@ export async function fetchMetaAccountTotalsForWeeklyReport(since, until) {
   }
 }
 
+// Ad-level purchases split into 7-day click and 1-day view attribution (fresh, uncached, GET only).
+// The default weekly query is untouched; the report checks that click + view add back up to it.
+export async function fetchMetaAttributionForWeeklyReport(since, until) {
+  const scope = { since, until };
+  try {
+    const adAccountId = cleanAdAccountId();
+    if (!adAccountId) throw new Error("META_AD_ACCOUNT_ID missing");
+    let body = await graphGet(`${adAccountId}/insights`, {
+      fields: "ad_id,actions,action_values",
+      level: "ad",
+      time_range: JSON.stringify(scope),
+      action_attribution_windows: JSON.stringify(["7d_click", "1d_view"]),
+      limit: 200
+    });
+    const rows = [...(body.data || [])];
+    for (let pages = 1; body.paging?.next; pages += 1) {
+      if (pages >= 20) throw new Error("PAGE_LIMIT");
+      body = await graphGetRawUrl(body.paging.next);
+      rows.push(...(body.data || []));
+    }
+    // Same entry actionValue() reads: the first purchase or pixel-purchase action.
+    const entry = items => (items || []).find(item => ["purchase", "offsite_conversion.fb_pixel_purchase"].includes(item.action_type));
+    const ads = {}, totals = { click: { purchases: 0, value: 0 }, view: { purchases: 0, value: 0 } };
+    for (const row of rows) {
+      const a = entry(row.actions), v = entry(row.action_values);
+      const split = { click: { purchases: Number(a?.["7d_click"] || 0), value: Number(v?.["7d_click"] || 0) }, view: { purchases: Number(a?.["1d_view"] || 0), value: Number(v?.["1d_view"] || 0) } };
+      ads[row.ad_id] = split;
+      for (const k of ["click", "view"]) { totals[k].purchases += split[k].purchases; totals[k].value += split[k].value; }
+    }
+    return { kind: "meta_attribution_split", scope, windows: ["7d_click", "1d_view"], completeness: "COMPLETE", reasons: [], ads, totals };
+  } catch {
+    return { kind: "meta_attribution_split", scope, completeness: "UNAVAILABLE", reasons: ["ATTRIBUTION_REQUEST_FAILED"], ads: {}, totals: null };
+  }
+}
+
+// Direct (never cached) Admin Orders for one issued week, used only to re-read issued orders for refunds.
+export async function fetchCafe24OrdersForRefundTracking(since, until) {
+  return cafe24GetOrders(since, until, { limit: 1000, strictOrders: true });
+}
+
 // Query provenance is internal metadata; never fabricate Cafe24 response fields.
 const META_WEEKLY_TRACKING_CODES = ['meta_meantime_look', 'meta_ssage', 'meta_adv_catalog', 'meta_adv_image', 'meta_adv_video'];
 export async function fetchCafe24ActualOrdersForWeeklyReport(since, until, { includeAnalyticsOrders = false } = {}) {
@@ -8787,6 +8829,8 @@ async function runMetaWeeklyReportCheck() {
       fetchActualOrders: fetchCafe24ActualOrdersForWeeklyReport,
       fetchActualAnalytics: fetchCafe24AnalyticsForWeeklyReport,
       fetchAccountTotals: fetchMetaAccountTotalsForWeeklyReport,
+      fetchAttribution: fetchMetaAttributionForWeeklyReport,
+      fetchRefundOrders: fetchCafe24OrdersForRefundTracking,
       env,
       saveReport: destination.mode === "dropbox"
         ? (workbook, { since, until }) => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: `${destination.dir.replace(/\/+$/, "")}/META_ADS_WEEKLY_${since}_${until}.xlsx`, env })

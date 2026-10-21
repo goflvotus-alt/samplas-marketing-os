@@ -86,7 +86,60 @@ function buildMetaIndexes(metaAds = []) {
     }
   }
 
-  return { byAdId, byCampaignId };
+  // Ad name -> distinct ad IDs among the period's delivering ads (Insights returns only those).
+  const byName = new Map();
+  for (const [adId, row] of byAdId) {
+    const name = adNameKey(row?.adName || row?.ad_name || row?.name);
+    if (!name) continue;
+    if (!byName.has(name)) byName.set(name, new Set());
+    byName.get(name).add(adId);
+  }
+
+  return { byAdId, byCampaignId, byName };
+}
+
+const adNameKey = (value) => text(value)?.normalize("NFC").trim() || null;
+const PAID_META_SOURCES = new Set(["ig", "meta"]);
+const isMetaPaidRow = (row) =>
+  PAID_META_SOURCES.has(String(row?.ad || "").trim().toLowerCase()) &&
+  String(row?.medium || "").trim().toLowerCase() === "paid";
+
+// G1: Cafe24 Analytics recorded a paid visit with an ad ID that delivered in the period.
+// G2: only the ad name matches, and exactly one delivering ad has that name (candidate, never summed).
+// G3: paid Meta visit whose ID/name matches no delivering ad, or matches several (never summed).
+function gradeMetaPaid(analyticsRow, metaIndexes) {
+  const content = String(analyticsRow.content || "").trim();
+  const byId = metaIndexes.byAdId.get(content);
+  if (byId) {
+    return { tracking_source: "META_PAID", attribution_grade: "G1_AD_ID", matched_ad_id: content,
+      ad_mapping: text(byId.adName || byId.ad_name || byId.name) || `META PAID / ad ${content}`,
+      attribution_note: "Cafe24 광고 ID 유입 확인: Analytics paid visit carried a delivering ad ID. Not a one-to-one match with a Meta purchase event." };
+  }
+  const ids = metaIndexes.byName.get(adNameKey(content)) || new Set();
+  if (ids.size === 1) {
+    const [adId] = ids;
+    const row = metaIndexes.byAdId.get(adId);
+    return { tracking_source: "META_PAID_NAME", attribution_grade: "G2_AD_NAME", matched_ad_id: adId,
+      ad_mapping: text(row?.adName || row?.ad_name || row?.name),
+      attribution_note: "광고명 유일 일치 후보: Analytics recorded the ad name, not its ID. Candidate only; excluded from confirmed revenue." };
+  }
+  return { tracking_source: "META_PAID_UNMATCHED", attribution_grade: "G3_UNMATCHED", matched_ad_id: null,
+    ad_mapping: ids.size > 1 ? "AD NAME NOT UNIQUE" : content ? `UNMATCHED META PAID / ${content}` : "UNMATCHED META PAID",
+    attribution_note: ids.size > 1
+      ? "Paid Meta visit; several delivering ads share this name. Excluded from confirmed revenue."
+      : "Paid Meta visit; no delivering ad has this ID or name. Excluded from confirmed revenue." };
+}
+
+const CLAIM_REQUESTED = /(취소|반품|교환)\s*(신청|접수|요청|보류)/;
+// Claims still open keep their canonical amount but are shown apart from kept sales. A paid,
+// uncanceled order whose canonical payment is 0 (seen on Naver Pay) is unverified, never 0원.
+function orderAmountStatus(order, items, paidAmount) {
+  if (paidAmount === 0 && String(order?.paid || "").trim().toUpperCase() === "T") return "PAYMENT_UNVERIFIED";
+  // status_text is authoritative (a withdrawn claim keeps its request date); dates only when it is absent.
+  const open = items.some((item) => item?.status_text
+    ? CLAIM_REQUESTED.test(String(item.status_text))
+    : Boolean(item?.cancel_request_date || item?.return_request_date || item?.exchange_request_date));
+  return open ? "CLAIM_IN_PROGRESS" : "NORMAL";
 }
 
 function legacyTracking(order) {
@@ -131,7 +184,17 @@ function legacyTracking(order) {
   };
 }
 
-function classifyAttribution(analyticsRow, metaIndexes, order) {
+function classifyAttribution(analyticsRow, metaIndexes, order, adGrades = false) {
+  if (adGrades && analyticsRow && isMetaPaidRow(analyticsRow)) {
+    return {
+      ...gradeMetaPaid(analyticsRow, metaIndexes),
+      campaign_id: String(analyticsRow.campaign || "").trim() || null,
+      content_id: String(analyticsRow.content || "").trim() || null,
+      analytics_ad: String(analyticsRow.ad || "").trim() || null,
+      analytics_medium: String(analyticsRow.medium || "").trim() || null,
+      analytics_keyword: String(analyticsRow.keyword || "").trim() || null
+    };
+  }
   if (!analyticsRow) {
     return (
       legacyTracking(order) || {
@@ -230,8 +293,8 @@ function classifyAttribution(analyticsRow, metaIndexes, order) {
 
 // Filtered Orders queries establish membership; Analytics remains supplemental.
 // Query metadata is internal and never masquerades as a Cafe24 payload field.
-function inflowQueryAttribution(order, codes, analyticsRow, metaIndexes) {
-  const supplemental = classifyAttribution(analyticsRow, metaIndexes, order);
+function inflowQueryAttribution(order, codes, analyticsRow, metaIndexes, adGrades = false) {
+  const supplemental = classifyAttribution(analyticsRow, metaIndexes, order, adGrades);
   const conflict = codes.size > 1;
   const code = order._metaTrackingCode;
   const trusted = !conflict && Boolean(LEGACY_MAPPINGS[code]);
@@ -241,6 +304,7 @@ function inflowQueryAttribution(order, codes, analyticsRow, metaIndexes) {
   return {
     ...supplemental,
     tracking_source: trusted ? "META_INFLOW" : "META_INFLOW_UNTRUSTED",
+    ...(adGrades ? { attribution_grade: trusted ? "INFLOW_CODE" : "INFLOW_UNTRUSTED" } : {}),
     inflow_path: [...codes].sort().join(" | "),
     ad_mapping: mapping,
     trusted,
@@ -253,7 +317,9 @@ export function buildActualProductsSold({
   analytics,
   metaAds = [],
   since,
-  until
+  until,
+  // Weekly reports grade paid Meta visits against the period's ads; other callers keep the old rule.
+  adGrades = false
 }) {
   if (
     !data ||
@@ -303,7 +369,7 @@ export function buildActualProductsSold({
   );
 
   const metaIndexes = buildMetaIndexes(metaAds);
-  let candidateOrders = data.orders;
+  let candidateOrders = data.orders, candidateMissingAdmin = 0;
   if (queryMode && Object.hasOwn(data, "analyticsOrders")) {
     const acquisition = analyticsRows(analytics);
     if (!data.analyticsOrdersComplete || !Array.isArray(data.analyticsOrders) || !analytics || analytics.ok === false || (!Array.isArray(analytics.orderdetails) && !Array.isArray(analytics.data?.orderdetails)) || acquisition.length >= 100) return {
@@ -312,7 +378,10 @@ export function buildActualProductsSold({
     const paidIds = new Set(acquisition.filter(row => String(row.ad || '').toLowerCase() === 'ig' && String(row.medium || '').toLowerCase() === 'paid').map(row => text(row.order_id)).filter(Boolean));
     const actualIds = new Set(data.analyticsOrders.map(order => text(order?.order_id) || text(order?.orderId)));
     if ([...paidIds].some(id => !actualIds.has(id))) return { available: false, rows: [], reason: "Analytics paid order has no matching Admin order; actual sales unavailable." };
-    candidateOrders = [...data.orders, ...data.analyticsOrders.filter(order => paidIds.has(text(order?.order_id) || text(order?.orderId)))];
+    // meta/paid visits are graded candidates only; one without an Admin order is counted, never fatal.
+    const namedIds = adGrades ? new Set(acquisition.filter(isMetaPaidRow).map(row => text(row.order_id)).filter(id => id && !paidIds.has(id))) : new Set();
+    candidateMissingAdmin = [...namedIds].filter(id => !actualIds.has(id)).length;
+    candidateOrders = [...data.orders, ...data.analyticsOrders.filter(order => { const id = text(order?.order_id) || text(order?.orderId); return paidIds.has(id) || namedIds.has(id); })];
   }
 
   const rows = [];
@@ -353,15 +422,18 @@ export function buildActualProductsSold({
       : undefined;
 
     const attribution = queryMode && codesByOrder.has(orderId)
-      ? inflowQueryAttribution(order, codesByOrder.get(orderId), analyticsRow, metaIndexes)
-      : classifyAttribution(analyticsRow, metaIndexes, order);
+      ? inflowQueryAttribution(order, codesByOrder.get(orderId), analyticsRow, metaIndexes, adGrades)
+      : classifyAttribution(analyticsRow, metaIndexes, order, adGrades);
 
     const paidAmount = cafe24OrderAmount(order);
     const analyticsOrderAmount =
       Number(analyticsRow?.order_amount) || null;
+    const amountStatus = orderAmountStatus(order, items, paidAmount);
 
     orderSummary.set(orderId || `NO_ID_${rows.length}`, {
       tracking_source: attribution.tracking_source,
+      attribution_grade: attribution.attribution_grade || null,
+      amount_status: amountStatus,
       paidAmount
     });
 
@@ -411,7 +483,12 @@ export function buildActualProductsSold({
           text(item.status_text) ||
           text(item.status_code),
 
-        attribution_note: attribution.attribution_note
+        attribution_note: attribution.attribution_note,
+        ...(adGrades ? {
+          attribution_grade: attribution.attribution_grade || null,
+          matched_ad_id: attribution.matched_ad_id || null,
+          amount_status: amountStatus
+        } : {})
       });
     });
   }
@@ -421,6 +498,9 @@ export function buildActualProductsSold({
     reason: "Incomplete Cafe24 order items or dates; no Meta revenue substitution."
   };
   const uniqueOrders = [...orderSummary.values()];
+  const confirmed = uniqueOrders.filter((row) => ["META_PAID", "META_INFLOW"].includes(row.tracking_source));
+  const paid = (list) => list.reduce((sum, row) => sum + Number(row.paidAmount || 0), 0);
+  const byStatus = (status) => confirmed.filter((row) => row.amount_status === status);
 
   return {
     available: true,
@@ -446,7 +526,23 @@ export function buildActualProductsSold({
 
       unattributedOrderCount: uniqueOrders.filter(
         (row) => row.tracking_source === "UNATTRIBUTED"
-      ).length
+      ).length,
+
+      // metaPaidRevenue keeps its issued meaning (every confirmed order); these only split it for display.
+      ...(adGrades ? {
+        grades: {
+          adIdCount: confirmed.filter((row) => row.attribution_grade === "G1_AD_ID").length,
+          inflowCodeCount: confirmed.filter((row) => row.tracking_source === "META_INFLOW").length,
+          normalCount: byStatus("NORMAL").length,
+          normalRevenue: paid(byStatus("NORMAL")),
+          claimCount: byStatus("CLAIM_IN_PROGRESS").length,
+          claimRevenue: paid(byStatus("CLAIM_IN_PROGRESS")),
+          paymentUnverifiedCount: byStatus("PAYMENT_UNVERIFIED").length,
+          adNameCandidateCount: uniqueOrders.filter((row) => row.attribution_grade === "G2_AD_NAME").length,
+          unmatchedPaidCount: uniqueOrders.filter((row) => row.attribution_grade === "G3_UNMATCHED").length,
+          candidateMissingAdmin
+        }
+      } : {})
     }
   };
 }

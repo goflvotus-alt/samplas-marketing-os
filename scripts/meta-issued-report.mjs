@@ -1,14 +1,15 @@
 // Publication evidence only. Canonical Cafe24 amounts and attribution are unchanged.
-import {readFile,open,mkdir,rename,realpath,unlink} from 'node:fs/promises';
+import {readFile,readdir,open,mkdir,rename,realpath,unlink} from 'node:fs/promises';
 import {join,dirname,resolve,relative,isAbsolute} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import ExcelJS from 'exceljs';
 import {accountReconciles} from './weekly-data-completeness.mjs';
 import {cafe24OrderAmount,cafe24OrderItems,cafe24ItemAmount,isCafe24CanceledItem,isCafe24CanceledOrRefunded} from './cafe24-order-amount.mjs';
 
-const POLICY='META_WEEKLY_REVIEW_V2',LEGACY_POLICY='META_LEGACY_IMPORT_V1';
+// V3 adds attribution grades, amount status and candidates; V2 records stay readable, never rewritten.
+const POLICY='META_WEEKLY_REVIEW_V3',READ_POLICIES=new Set(['META_WEEKLY_REVIEW_V2',POLICY]),LEGACY_POLICY='META_LEGACY_IMPORT_V1';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
-const publishable=r=>r?.policy===POLICY&&Array.isArray(r.failures)&&Array.isArray(r.unknowns)&&!r.failures.length&&(r.result==='PASS'?!r.unknowns.length:r.result==='UNKNOWN'&&r.unknowns.length>0)&&JSON.stringify(r.errors)===JSON.stringify([...r.failures,...r.unknowns]);
+const publishable=(r,policies=new Set([POLICY]))=>policies.has(r?.policy)&&Array.isArray(r.failures)&&Array.isArray(r.unknowns)&&!r.failures.length&&(r.result==='PASS'?!r.unknowns.length:r.result==='UNKNOWN'&&r.unknowns.length>0)&&JSON.stringify(r.errors)===JSON.stringify([...r.failures,...r.unknowns]);
 const time=value=>typeof value==='string'&&Number.isFinite(Date.parse(value))?Date.parse(value):NaN;
 const money=value=>value!==null&&value!==undefined&&value!==''&&Number.isFinite(Number(value))&&Number(value)>=0?Number(value):null;
 const isMeta=row=>['META_PAID','META_INFLOW'].includes(row.tracking_source);
@@ -96,6 +97,8 @@ export function reviewMetaPublication({model,current,previous,actualOrders,actua
   if(!o||o.paid!=='T'||payment===null||entry.amount!==cafe24OrderAmount(o)||!Number.isSafeInteger(entry.amount)||!inPeriod(o.order_date,model.since,model.until))failures.push('PAYMENT_EVIDENCE_INCOMPLETE');
  }
  if(comparison?.status==='UNKNOWN_ADJUSTMENT')unknowns.push('UNKNOWN_ADJUSTMENT');
+ // A paid, uncanceled order with canonical payment 0 (e.g. Naver Pay) cannot be confirmed as 0원.
+ if(products?.summary?.grades?.paymentUnverifiedCount>0)unknowns.push('PAYMENT_AMOUNT_UNVERIFIED');
  const f=[...new Set(failures)],u=[...new Set(unknowns)];
  // Cafe24 actual amounts are confirmed only when their orders and acquisition evidence are verified.
  const gap=name=>[`${name}:ANALYTICS_COVERAGE_UNKNOWN`,`${name}:ORDER_COVERAGE_UNKNOWN`,`${name}:ANALYTICS_COVERAGE_INCOMPLETE`,`${name}:ORDER_PROVENANCE_REQUIRED`].some(c=>f.includes(c)||u.includes(c));
@@ -149,16 +152,50 @@ export function reconcileMetaPublication({issued,currentProducts,currentOrders,a
 }
 
 export function publicationRecord({model,actualOrders,generatedAt,reviewedAt,review}){
- const raw=rawOrders(actualOrders).orders;
- const orders=[...actualById(model.actualProducts).values()].map(entry=>({...entry,items:cafe24OrderItems(raw.get(entry.orderId)?.order).filter(i=>!completed(i)).map(i=>({itemId:itemId(i),quantity:Number(i.quantity||1),amount:cafe24ItemAmount(i,Number(i.quantity||1))}))}));
- return {schemaVersion:1,policy:POLICY,mode:'scheduled',since:model.since,until:model.until,generatedAt,issuedAt:reviewedAt,reviewedAt,review,summary:{metaPaidOrderCount:model.actualProducts.summary.metaPaidOrderCount,metaPaidRevenue:model.actualProducts.summary.metaPaidRevenue,actualVerified:review.actual?.current===true},orders};
+ const raw=rawOrders(actualOrders).orders,first=new Map();
+ for(const r of model.actualProducts?.rows||[])if(!first.has(String(r.order_id)))first.set(String(r.order_id),r);
+ const graded=id=>{const r=first.get(id);return r?.attribution_grade?{grade:r.attribution_grade,amountStatus:r.amount_status}:{};};
+ const orders=[...actualById(model.actualProducts).values()].map(entry=>({...entry,...graded(entry.orderId),items:cafe24OrderItems(raw.get(entry.orderId)?.order).filter(i=>!completed(i)).map(i=>({itemId:itemId(i),quantity:Number(i.quantity||1),amount:cafe24ItemAmount(i,Number(i.quantity||1))}))}));
+ // Ad-name candidates are kept for order-level follow-up only; they are never part of orders or the totals.
+ const candidates=[...first.values()].filter(r=>r.attribution_grade==='G2_AD_NAME').map(r=>({orderId:String(r.order_id),orderDate:r.order_date,amount:r.actual_paid_amount,matchedAdId:r.matched_ad_id,adName:r.ad_mapping,analyticsCampaign:r.campaign_id,analyticsContent:r.content_id,amountStatus:r.amount_status}));
+ const grades=model.actualProducts.summary.grades;
+ return {schemaVersion:1,policy:POLICY,mode:'scheduled',since:model.since,until:model.until,generatedAt,issuedAt:reviewedAt,reviewedAt,review,summary:{metaPaidOrderCount:model.actualProducts.summary.metaPaidOrderCount,metaPaidRevenue:model.actualProducts.summary.metaPaidRevenue,actualVerified:review.actual?.current===true,...(grades?{grades}:{})},orders,candidates};
+}
+
+// Re-reads the orders of recent issued weeks; issued files are only read. A refund is "new" when dated
+// after newSince (the previous publication), so a refund already shown last week is not deducted again.
+// The previous week is already reconciled by the ISSUED_COMPARISON sheet; it is listed, not re-read or
+// re-totalled, so one refund is never deducted twice within a report.
+export async function trackIssuedRefunds({outputDir,before,weeks=8,fetchOrders,asOf,newSince=null,comparedSince=null}){
+ let entries=[];
+ try{entries=await readdir(join(outputDir,'issued'));}catch(e){if(e.code!=='ENOENT')throw e;}
+ const periods=entries.filter(n=>/^\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$/.test(n)).map(n=>n.split('_')).filter(([,u])=>u<before).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,weeks);
+ const result={weeks,newSince,asOf,periods:[],newRefundCount:0,newRefundAmount:0,unknownCount:0,failedPeriods:0};
+ for(const [since,until] of periods){
+  const p={since,until,kind:null,status:null,rows:[],error:null,coveredByIssuedComparison:since===comparedSince};result.periods.push(p);
+  let issued;
+  try{issued=await readIssuedMetaReport({outputDir,since,until});}catch(e){p.status='ISSUED_INVALID';p.error=e.message;if(!p.coveredByIssuedComparison)result.failedPeriods++;continue;}
+  p.kind=issued.kind||'scheduled';
+  if(p.coveredByIssuedComparison){p.status='COVERED_BY_ISSUED_COMPARISON';continue;}
+  let data;
+  try{data=await fetchOrders(since,until);}catch{data=null;}
+  if(!Array.isArray(data?.orders)||data.coverage?.completeness!=='COMPLETE'){p.status='UNVERIFIED';p.error='CAFE24_REREAD_INCOMPLETE';result.failedPeriods++;continue;}
+  const byId=new Map(data.orders.map(o=>[orderId(o),o]));
+  const rows=issued.orders.filter(o=>byId.has(o.orderId)).map(o=>({order_id:o.orderId,order_date:o.orderDate,tracking_source:'META_PAID',actual_paid_amount:cafe24OrderAmount(byId.get(o.orderId))}));
+  const revenue=rows.reduce((s,r)=>s+r.actual_paid_amount,0);
+  const c=reconcileMetaPublication({issued,currentProducts:{available:true,rows,summary:{metaPaidRevenue:revenue,metaPaidOrderCount:rows.length}},currentOrders:{orders:data.orders},asOf});
+  p.status=c.status;
+  p.rows=c.rows.map(r=>{const isNew=r.status==='REFUND_ADJUSTMENT'?(newSince&&r.refundDate?time(r.refundDate)>time(newSince):null):null;return {...r,newThisWeek:isNew};});
+  for(const r of p.rows){if(r.status!=='REFUND_ADJUSTMENT'){result.unknownCount++;continue;}if(r.newThisWeek){result.newRefundCount++;result.newRefundAmount+=r.adjustment;}}
+ }
+ return result;
 }
 
 export async function readIssuedMetaReport({outputDir,since,until}){
  const dir=periodDir(outputDir,since,until);let m;
  try{m=JSON.parse(await readFile(join(dir,'manifest.json'),'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw Error('ISSUED_MANIFEST_INVALID');}
  if(m.kind==='legacy_import')return readLegacyManifest(dir,m,since,until);
- if(m.schemaVersion!==1||m.policy!==POLICY||m.mode!=='scheduled'||!publishable(m.review)||m.since!==since||m.until!==until||!scheduledMetaPublication({at:new Date(m.generatedAt),since,until,mode:m.mode,onePage:true,requireCompleteData:true})||!(time(m.reviewedAt)>=time(m.generatedAt))||m.issuedAt!==m.reviewedAt||!Array.isArray(m.orders))throw Error('ISSUED_REVIEW_INVALID');
+ if(m.schemaVersion!==1||!READ_POLICIES.has(m.policy)||m.review?.policy!==m.policy||m.mode!=='scheduled'||!publishable(m.review,READ_POLICIES)||m.since!==since||m.until!==until||!scheduledMetaPublication({at:new Date(m.generatedAt),since,until,mode:m.mode,onePage:true,requireCompleteData:true})||!(time(m.reviewedAt)>=time(m.generatedAt))||m.issuedAt!==m.reviewedAt||!Array.isArray(m.orders))throw Error('ISSUED_REVIEW_INVALID');
  if(new Set(m.orders.map(o=>o.orderId)).size!==m.orders.length||m.orders.some(o=>!o.orderId||!inPeriod(o.orderDate,since,until)||!Number.isSafeInteger(o.amount)||o.amount<0)||m.orders.length!==m.summary?.metaPaidOrderCount||m.orders.reduce((s,o)=>s+o.amount,0)!==m.summary?.metaPaidRevenue)throw Error('ISSUED_LEDGER_INVALID');
  const bytes=await readFile(join(dir,'report.xlsx'));
  if(sha(bytes)!==m.sha256)throw Error('ISSUED_HASH_MISMATCH');
