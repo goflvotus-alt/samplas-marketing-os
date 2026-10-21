@@ -1087,7 +1087,7 @@ const server = isMainModule ? createServer(async (req, res) => {
       return json(res, await uploadWorkDataFiles(payload));
     }
     if (url.pathname === "/api/cafe24/refresh-token") {
-      const data = await refreshCafe24Token();
+      const data = await refreshCafe24TokenSingleFlight();
       return json(res, data);
     }
     if (url.pathname === "/api/cafe24/oauth/start") {
@@ -2460,8 +2460,12 @@ async function cafe24TokenDiagnostics() {
   return safeCafe24TokenRecord(await readCafe24TokenRecord());
 }
 
-async function markCafe24ReauthRequired(error) {
+async function markCafe24ReauthRequired(error, failedRefreshToken) {
   const existing = await readCafe24TokenRecord();
+  if (existing?.refreshToken !== failedRefreshToken) {
+    // Do not mark a token that another process replaced after the caller's reread.
+    return safeCafe24TokenRecord(existing);
+  }
   const record = await writeCafe24TokenRecord({
     ...(existing || {}),
     status: "reauth_required",
@@ -2628,7 +2632,7 @@ async function fetchCafe24Orders(startDate, endDate, options = {}) {
     await logApiError("cafe24_orders", error, { startDate, endDate, stage: "orders" });
     if (!isCafe24InvalidToken(error)) return await fallbackCafe24OrdersAfterError(startDate, endDate, error);
     try {
-      await refreshCafe24Token();
+      await refreshCafe24TokenSingleFlight();
     } catch (refreshError) {
       await logCafe24OrdersDebug("refresh_error", {
         startDate,
@@ -2690,7 +2694,7 @@ async function fetchCafe24WeeklyTrackingOrders(startDate, endDate, options) {
   try { body = await cafe24GetOrders(startDate, endDate, { limit: 500, inflowPath: options.inflowPath, strictOrders: true }); }
   catch (error) {
     if (!isCafe24InvalidToken(error)) throw error;
-    await refreshCafe24Token();
+    await refreshCafe24TokenSingleFlight();
     body = await cafe24GetOrders(startDate, endDate, { limit: 500, inflowPath: options.inflowPath, strictOrders: true });
   }
   if (!body || body.error || !Array.isArray(body.orders)) throw new Error('Incomplete Cafe24 inflow query response.');
@@ -7039,7 +7043,7 @@ async function diagnoseCafe24ProductAccess() {
     let r = await call(path, params);
     if (!r.ok && isCafe24InvalidToken({ message: cafe24ErrorMessage(r.body) || "", body: r.body })) {
       try {
-        await refreshCafe24Token();
+        await refreshCafe24TokenSingleFlight();
         r = await call(path, params);
       } catch (_refreshError) {
         // 재발급 실패 사유는 토큰 관련 문자열이 섞일 수 있어 응답/로그에 남기지 않습니다.
@@ -7208,7 +7212,16 @@ async function refreshCafe24Token() {
     const refreshError = new Error(`${message} refresh token도 만료됐으면 Cafe24 OAuth 재인증이 필요합니다.`);
     refreshError.status = response.status;
     if (isCafe24RefreshTokenInvalid(response.status, body)) {
-      await markCafe24ReauthRequired(refreshError);
+      // Another process may have rotated the refresh token while this request was in flight.
+      // Re-reading also hydrates the latest access token for the following API retry.
+      const latest = await readCafe24TokenRecord();
+      if (latest?.status === "active" && latest.refreshToken && latest.refreshToken !== record.refreshToken) {
+        return { ok: true, updated: [], concurrentRefresh: true, token: safeCafe24TokenRecord(latest) };
+      }
+      const token = await markCafe24ReauthRequired(refreshError, record.refreshToken);
+      if (token.status === "active") {
+        return { ok: true, updated: [], concurrentRefresh: true, token };
+      }
     }
     throw refreshError;
   }
