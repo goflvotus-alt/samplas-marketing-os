@@ -69,3 +69,11 @@ State는 서버 메모리에서 인증 시도별로 독립 보관하며 10분 �
 No token, secret, or authorization header should be logged or committed.
 
 OAuth start는 관리자 인증이 필요합니다. 직접 URL로 인증을 시작하지 마세요. 서버 재시작 시 기존 state는 모두 무효화되므로 대시보드 로그인 후 재인증 버튼으로 새로 시작합니다.
+
+## Meta Sync security and automatic writes
+
+Both `/api/cafe24/oauth/start` and `/api/cafe24-meta-sync/oauth/start` require the existing private API authentication gate. Both callbacks remain public for provider redirects, but consume their own valid one-time state before handling errors or exchanging tokens. The clients keep separate token stores; shared callback routing does not bypass state validation.
+
+Cafe24 product write probes and resync guards are disabled at boot and on periodic checks, even when `CAFE24_META_SYNC_TEST_PRODUCT_NO` or `CAFE24_META_SYNC_GUARD_ENABLED` is configured. The retained manual implementations have no HTTP or scheduler caller. Do not enable or invoke them until a separate explicit approval and execution procedure is reviewed.
+
+The Meta catalog read probe remains GET-only: it reads the stored Meta access token, does not refresh it, and does not modify external data. OAuth network or JSON failures use fixed messages; provider error fields are normalized and capped at 120 characters with known state, code, client secret and URLs redacted.

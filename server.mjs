@@ -1394,20 +1394,11 @@ const server = isMainModule ? createServer(async (req, res) => {
   }
 }).listen(port, host, () => {
   console.log(`SAMPLAS Marketing OS running at http://${host}:${port}`);
-  runCafe24MetaSyncStartupProbe().catch((error) => {
-    console.error("[CAFE24_META_SYNC_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
-  });
+  // Cafe24 product writes are manual-only; never start a write probe at boot.
   runMetaCatalogReadProbe().catch((error) => {
     console.error("[META_CATALOG_READ_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
   });
-  runCafe24MetaSyncGuard().catch((error) => {
-    console.error("[CAFE24_META_SYNC_GUARD]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
-  });
-  setInterval(() => {
-    runCafe24MetaSyncGuardScheduledCheck().catch((error) => {
-      console.error("[CAFE24_META_SYNC_GUARD]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
-    });
-  }, 15 * 60 * 1000);
+  // Automatic catalog resends and their interval are disabled independently of env flags.
   // Instagram 자동 동기화 스케줄러 시작: 서버 부팅 시 1회 실행 후 6시간마다 반복.
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
@@ -7340,8 +7331,12 @@ function consumeCafe24OAuthState(state) {
   return Boolean(expiresAt && expiresAt > Date.now());
 }
 
-function sanitizeCafe24OAuthError(value) {
-  return String(value || "").replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+function sanitizeCafe24OAuthError(value, sensitiveValues = []) {
+  let text = String(value || "");
+  for (const secret of sensitiveValues) {
+    if (typeof secret === "string" && secret) text = text.replaceAll(secret, "[redacted]");
+  }
+  return text.replace(/https?:\/\/[^\s]+/gi, "[redacted URL]").replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
 }
 
 function buildCafe24AuthorizeUrl() {
@@ -7372,8 +7367,9 @@ async function handleCafe24OAuthCallback(callbackUrl) {
   if (!consumeCafe24OAuthState(state)) {
     throw new Error("Cafe24 OAuth state가 누락되었거나 만료·불일치·사용 완료되었습니다. 재인증을 다시 시작하세요.");
   }
-  const error = sanitizeCafe24OAuthError(callbackUrl.searchParams.get("error"));
-  const errorDescription = sanitizeCafe24OAuthError(callbackUrl.searchParams.get("error_description"));
+  const sensitiveValues = [state, code, env.CAFE24_CLIENT_SECRET];
+  const error = sanitizeCafe24OAuthError(callbackUrl.searchParams.get("error"), sensitiveValues);
+  const errorDescription = sanitizeCafe24OAuthError(callbackUrl.searchParams.get("error_description"), sensitiveValues);
   if (error) throw new Error(`Cafe24 OAuth error: ${error}${errorDescription ? ` (${errorDescription})` : ""}`);
   if (!code) throw new Error("Cafe24 OAuth callback에 code가 없습니다.");
 
@@ -7390,18 +7386,23 @@ async function handleCafe24OAuthCallback(callbackUrl) {
     code,
     redirect_uri: cafe24RedirectUri()
   });
-  const response = await fetch(tokenUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: params.toString()
-  });
-  const body = await response.json();
+  let response, body;
+  try {
+    response = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params.toString()
+    });
+    body = await response.json();
+  } catch {
+    throw new Error("Cafe24 OAuth token 교환 응답을 확인할 수 없습니다. 재인증을 다시 시작하세요.");
+  }
   if (!response.ok || body.error) {
     const message = body.error_description || body.error?.message || body.message || `Cafe24 OAuth token exchange failed ${response.status}`;
-    throw new Error(sanitizeCafe24OAuthError(message));
+    throw new Error(sanitizeCafe24OAuthError(message, [...sensitiveValues, body.access_token, body.refresh_token]));
   }
   if (!body.access_token || !body.refresh_token) {
     throw new Error("Cafe24 OAuth 응답에 access_token 또는 refresh_token이 없습니다.");
@@ -7595,6 +7596,11 @@ async function resendCafe24ProductForMeta(productNo) {
 }
 
 async function runCafe24MetaSyncStartupProbe() {
+  return { ok: true, skipped: true, reason: "automatic_product_writes_disabled" };
+}
+
+// Retained for a future explicitly approved manual procedure; no route or scheduler calls this.
+async function executeCafe24MetaSyncManualProbe() {
   const raw = String(env.CAFE24_META_SYNC_TEST_PRODUCT_NO || "").trim();
   if (!/^\d+$/.test(raw)) return;
   const productNo = Number(raw);
@@ -7616,13 +7622,14 @@ async function runCafe24MetaSyncStartupProbe() {
 }
 
 async function handleCafe24MetaSyncOAuthCallback(callbackUrl) {
-  const error = callbackUrl.searchParams.get("error");
-  const errorDescription = callbackUrl.searchParams.get("error_description");
-  if (error) throw new Error(`Cafe24 Meta Sync OAuth error: ${error}${errorDescription ? ` (${errorDescription})` : ""}`);
-  const code = callbackUrl.searchParams.get("code");
   const state = callbackUrl.searchParams.get("state");
+  if (!consumeCafe24MetaSyncOAuthState(state)) throw new Error("Cafe24 Meta Sync OAuth state가 유효하지 않거나 만료되었습니다.");
+  const code = callbackUrl.searchParams.get("code");
+  const sensitiveValues = [state, code, env.CAFE24_META_SYNC_CLIENT_SECRET];
+  const error = sanitizeCafe24OAuthError(callbackUrl.searchParams.get("error"), sensitiveValues);
+  const errorDescription = sanitizeCafe24OAuthError(callbackUrl.searchParams.get("error_description"), sensitiveValues);
+  if (error) throw new Error(`Cafe24 Meta Sync OAuth error: ${error}${errorDescription ? ` (${errorDescription})` : ""}`);
   if (!code) throw new Error("Cafe24 Meta Sync OAuth callback에 code가 없습니다.");
-  if (!consumeCafe24MetaSyncOAuthState(state)) throw new Error("Cafe24 Meta Sync OAuth state가 유효하지 않습니다.");
   const required = ["CAFE24_MALL_ID", "CAFE24_META_SYNC_CLIENT_ID", "CAFE24_META_SYNC_CLIENT_SECRET"];
   const missing = required.filter((key) => !env[key]);
   if (missing.length) throw new Error(`Cafe24 Meta Sync OAuth token 교환에 필요한 값이 없습니다: ${missing.join(", ")}`);
@@ -7634,18 +7641,23 @@ async function handleCafe24MetaSyncOAuthCallback(callbackUrl) {
     code,
     redirect_uri: cafe24MetaSyncRedirectUri()
   });
-  const response = await fetch(tokenUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: params.toString()
-  });
-  const body = await response.json();
+  let response, body;
+  try {
+    response = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params.toString()
+    });
+    body = await response.json();
+  } catch {
+    throw new Error("Cafe24 OAuth token 교환 응답을 확인할 수 없습니다. 재인증을 다시 시작하세요.");
+  }
   if (!response.ok || body.error) {
     const message = body.error_description || body.error?.message || body.message || `Cafe24 Meta Sync token exchange failed ${response.status}`;
-    throw new Error(message);
+    throw new Error(sanitizeCafe24OAuthError(message, [...sensitiveValues, body.access_token, body.refresh_token]));
   }
   if (!body.access_token || !body.refresh_token) throw new Error("Cafe24 Meta Sync OAuth 응답에 token이 없습니다.");
   return writeCafe24MetaSyncTokenRecord({
@@ -8312,7 +8324,12 @@ async function cafe24ProductHasSellableInventory(productNo) {
   return { sellable: totalQuantity > 0, totalQuantity, variantCount: variants.length };
 }
 
-async function runCafe24MetaSyncGuard({ force = false } = {}) {
+async function runCafe24MetaSyncGuard() {
+  return { ok: true, skipped: true, reason: "automatic_product_writes_disabled" };
+}
+
+// Retained for a future explicitly approved manual procedure; no route or scheduler calls this.
+async function executeCafe24MetaSyncManualGuard({ force = false } = {}) {
   if (env.CAFE24_META_SYNC_GUARD_ENABLED !== "on") {
     return { ok: true, skipped: true, reason: "disabled" };
   }
@@ -8414,15 +8431,7 @@ async function runCafe24MetaSyncGuard({ force = false } = {}) {
 }
 
 async function runCafe24MetaSyncGuardScheduledCheck() {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Seoul",
-    hour: "2-digit",
-    hourCycle: "h23"
-  }).formatToParts(now);
-  const hour = Number(parts.find((part) => part.type === "hour")?.value || -1);
-  if (hour !== 5) return;
-  await runCafe24MetaSyncGuard();
+  return { ok: true, skipped: true, reason: "automatic_product_writes_disabled" };
 }
 
 async function runMetaCatalogReadProbe() {

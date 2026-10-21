@@ -76,3 +76,11 @@ test('OAuth logs contain no credentials, authorization code, state or full autho
   for(const value of [state,'FAKE_CODE','FAKE_ACCESS','FAKE_REFRESH','FAKE_SECRET','https://','authorizeUrl']) assert(!h.logs.join('').includes(value),value);
   assert(!source.includes('env.CAFE24_OAUTH_STATE'));
 });
+test('reporting OAuth network and JSON failures expose no raw response fragments or credentials',async()=>{
+ const h=harness();for(const mode of ['network','json']){
+  const state=h.start(),secret=`${state} FAKE_CODE FAKE_SECRET PRIVATE_PAYLOAD\n`;
+  h.c.fetch=async()=>{if(mode==='network')throw Error(secret);return {ok:true,json:async()=>{throw Error(secret);}};};
+  await assert.rejects(h.callback(state),e=>!e.message.includes('FAKE_')&&!e.message.includes('PRIVATE_PAYLOAD')&&!e.message.includes('\n'));
+  await assert.rejects(h.callback(state),/state/);
+ }
+});
