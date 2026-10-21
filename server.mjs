@@ -1397,6 +1397,9 @@ const server = isMainModule ? createServer(async (req, res) => {
   }
 }).listen(port, host, () => {
   console.log(`SAMPLAS Marketing OS running at http://${host}:${port}`);
+  runCafe24MetaSyncStartupProbe().catch((error) => {
+    console.error("[CAFE24_META_SYNC_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
+  });
   // Instagram 자동 동기화 스케줄러 시작: 서버 부팅 시 1회 실행 후 6시간마다 반복.
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
@@ -7498,6 +7501,93 @@ function buildCafe24MetaSyncAuthorizeUrl() {
   url.searchParams.set("redirect_uri", cafe24MetaSyncRedirectUri());
   url.searchParams.set("scope", cafe24MetaSyncScopes().join(","));
   return url.toString();
+}
+
+
+async function cafe24MetaSyncAccessToken() {
+  const record = await readCafe24MetaSyncTokenRecord();
+  if (!record?.accessToken) throw new Error("Cafe24 Meta Sync access token이 없습니다. 전용 OAuth 인증이 필요합니다.");
+  if (record.expiresAt && Date.parse(record.expiresAt) <= Date.now()) {
+    throw new Error("Cafe24 Meta Sync access token이 만료됐습니다. 전용 OAuth 재인증이 필요합니다.");
+  }
+  return record.accessToken;
+}
+
+async function cafe24MetaSyncProductRequest(path, { method = "GET", body } = {}) {
+  const accessToken = await cafe24MetaSyncAccessToken();
+  const response = await fetch(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "X-Cafe24-Api-Version": env.CAFE24_API_VERSION || "2026-03-01"
+    },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  let payload = null;
+  try { payload = await response.json(); } catch {}
+  if (!response.ok || payload?.error) {
+    const error = new Error(payload?.error_description || payload?.error?.message || payload?.message || `Cafe24 Meta Sync API failed ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function resendCafe24ProductForMeta(productNo) {
+  const normalized = Number(productNo);
+  if (!Number.isInteger(normalized) || normalized <= 0) throw new Error("유효한 product_no가 필요합니다.");
+  const current = await cafe24MetaSyncProductRequest(`/products/${normalized}?shop_no=1`);
+  const product = current?.product;
+  if (!product) throw new Error(`Cafe24 product ${normalized} 조회 결과가 없습니다.`);
+  if (!["T", "F"].includes(product.display) || !["T", "F"].includes(product.selling)) {
+    throw new Error(`Cafe24 product ${normalized}의 display/selling 상태를 확인할 수 없습니다.`);
+  }
+  const before = {
+    productNo: normalized,
+    productCode: product.product_code || null,
+    productName: product.product_name || null,
+    display: product.display,
+    selling: product.selling
+  };
+  const updated = await cafe24MetaSyncProductRequest(`/products/${normalized}`, {
+    method: "PUT",
+    body: {
+      shop_no: 1,
+      request: {
+        display: product.display,
+        selling: product.selling
+      }
+    }
+  });
+  return {
+    ok: true,
+    action: "noop_product_update_for_meta_resync",
+    changedBusinessFields: false,
+    before,
+    responseProductNo: updated?.product?.product_no || normalized
+  };
+}
+
+async function runCafe24MetaSyncStartupProbe() {
+  const raw = String(env.CAFE24_META_SYNC_TEST_PRODUCT_NO || "").trim();
+  if (!/^\d+$/.test(raw)) return;
+  const productNo = Number(raw);
+  const marker = join(cafe24MetaSyncTokenStoreDir, `cafe24-meta-sync-probe-${productNo}.json`);
+  try {
+    await readFile(marker, "utf8");
+    console.log("[CAFE24_META_SYNC_PROBE]", JSON.stringify({ productNo, skipped: true, reason: "already_ran" }));
+    return;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  try {
+    const result = await resendCafe24ProductForMeta(productNo);
+    await writeFile(marker, JSON.stringify({ ...result, ranAt: new Date().toISOString() }, null, 2), { mode: 0o600 });
+    console.log("[CAFE24_META_SYNC_PROBE]", JSON.stringify({ productNo, ok: true, action: result.action, changedBusinessFields: false }));
+  } catch (error) {
+    console.error("[CAFE24_META_SYNC_PROBE]", JSON.stringify({ productNo, ok: false, error: safeErrorMessage(error), status: error.status || null }));
+  }
 }
 
 async function handleCafe24MetaSyncOAuthCallback(callbackUrl) {
