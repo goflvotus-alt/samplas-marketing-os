@@ -224,12 +224,7 @@ CAFE24_SCOPES=mall.read_order
 
 7. Save Environment Variables.
 8. Restart or redeploy Render.
-9. Start OAuth in the browser:
-
-```txt
-https://samplas-marketing-os.onrender.com/api/cafe24/oauth/start
-```
-
+9. 대시보드에 운영자로 로그인한 후 Cafe24 재인증 버튼을 사용합니다.
 10. Approve the Cafe24 authorization.
 
 Important:
@@ -311,3 +306,5 @@ Do not upload Cafe24 CSV until:
 4. `/api/status` shows the expected true/false state.
 
 On the current Free plan, CSV upload is only a temporary test. It is not permanent monthly storage.
+
+OAuth start는 관리자 인증이 필요합니다. 직접 URL로 인증을 시작하지 마세요. 서버 재시작 시 기존 state는 모두 무효화되므로 대시보드 로그인 후 재인증 버튼으로 새로 시작합니다.

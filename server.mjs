@@ -1119,10 +1119,7 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (url.pathname === "/api/diagnostics/cafe24-oauth-config") {
       // redirect_uri 불일치("invalid_request: redirect_uri is invalid") 진단용 읽기 전용 API.
       // client_secret/access_token/refresh_token은 절대 포함하지 않는다.
-      // buildCafe24AuthorizeUrl()을 직접 호출하지 않는다 — 그 함수는 매번 새 state를 생성해
-      // env.CAFE24_OAUTH_STATE를 덮어쓰기 때문에(부작용), 실제 재인증 진행 중에 이 진단
-      // endpoint를 호출하면 진행 중이던 재인증의 state 검증이 깨질 수 있다. 여기서는 미리보기용
-      // authorize URL을 별도로, 부작용 없이 다시 조립한다. (2026-07-08 Cafe24 redirect_uri 진단)
+      // 진단은 인증 state를 발급하지 않는 읽기 전용 미리보기다.
       try {
         const required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID"];
         const missing = required.filter((key) => !env[key]);
@@ -2435,6 +2432,7 @@ async function readCafe24TokenRecord() {
   try {
     const text = await readFile(cafe24TokenStoreFile, "utf8");
     const record = JSON.parse(text);
+    record.scopes = Array.isArray(record.scopes) ? record.scopes.filter(scope => typeof scope === "string") : [];
     hydrateCafe24EnvFromTokenRecord(record);
     return record;
   } catch (error) {
@@ -2461,6 +2459,7 @@ async function writeCafe24TokenRecord(record) {
     accessToken: record.accessToken || "",
     refreshToken: record.refreshToken || "",
     expiresAt: normalizeCafe24ExpiresAt(record.expiresAt),
+    scopes: Array.isArray(record.scopes) ? record.scopes.filter(scope => typeof scope === "string") : [],
     updatedAt: record.updatedAt || new Date().toISOString(),
     lastRefreshAt: record.lastRefreshAt || null,
     reauthRequiredAt: record.reauthRequiredAt || null,
@@ -2601,7 +2600,7 @@ function isLocalRequest(req) {
 // - operator login (checks SAMPLAS_OPERATOR_BASIC_AUTH itself)
 // - OAuth provider redirects (cross-site navigation, so no SameSite=Strict cookie; they verify state)
 // The /api/ai-audit/ prefix has its own AI_AUDIT_SECRET check and never accepts the session or Basic.
-const PUBLIC_API_PATHS = new Set(["/api/operator/session", "/api/cafe24/oauth/start", "/api/cafe24/oauth/callback", "/api/cafe24-meta-sync/oauth/start", "/api/cafe24-meta-sync/oauth/callback", "/api/meta/oauth/callback"]);
+const PUBLIC_API_PATHS = new Set(["/api/operator/session", "/api/cafe24/oauth/callback", "/api/cafe24-meta-sync/oauth/callback", "/api/meta/oauth/callback"]);
 
 function hasOperatorSession(req) {
   const cookies = Object.fromEntries(String(req.headers.cookie || "").split(";").map((part) => part.trim().split("=")).filter(([key, value]) => key && value));
@@ -7323,14 +7322,35 @@ function isCafe24RefreshTokenInvalid(status, body) {
   return false;
 }
 
+const cafe24OAuthStates = new Map();
+
+function createCafe24OAuthState() {
+  const now = Date.now();
+  for (const [state, expiresAt] of cafe24OAuthStates) {
+    if (expiresAt <= now) cafe24OAuthStates.delete(state);
+  }
+  const state = randomUUID();
+  cafe24OAuthStates.set(state, now + 10 * 60 * 1000);
+  return state;
+}
+
+function consumeCafe24OAuthState(state) {
+  const expiresAt = cafe24OAuthStates.get(state);
+  cafe24OAuthStates.delete(state);
+  return Boolean(expiresAt && expiresAt > Date.now());
+}
+
+function sanitizeCafe24OAuthError(value) {
+  return String(value || "").replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
 function buildCafe24AuthorizeUrl() {
   const required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID"];
   const missing = required.filter((key) => !env[key]);
   if (missing.length) {
     throw new Error(`Cafe24 OAuth 시작에 필요한 값이 없습니다: ${missing.join(", ")}`);
   }
-  const state = randomUUID();
-  env.CAFE24_OAUTH_STATE = state;
+  const state = createCafe24OAuthState();
   const redirectUri = cafe24RedirectUri();
   const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/oauth/authorize`);
   url.searchParams.set("response_type", "code");
@@ -7338,16 +7358,10 @@ function buildCafe24AuthorizeUrl() {
   url.searchParams.set("state", state);
   url.searchParams.set("redirect_uri", redirectUri);
   if (env.CAFE24_SCOPES) url.searchParams.set("scope", env.CAFE24_SCOPES);
-  // 진단용 로그: redirect_uri 불일치("invalid_request: redirect_uri is invalid")를 추적하기 위해
-  // 인코딩 전/후 redirect_uri와 전체 authorize URL을 출력한다. 토큰/시크릿은 포함하지 않는다.
-  // (2026-07-08 Cafe24 redirect_uri 불일치 진단)
   console.log("[CAFE24_OAUTH_START]", {
     mallId: env.CAFE24_MALL_ID,
-    redirectUriSource: env.CAFE24_REDIRECT_URI ? "env.CAFE24_REDIRECT_URI" : `fallback(http://${host}:${port}/...)`,
-    redirectUriDecoded: redirectUri,
-    redirectUriEncoded: encodeURIComponent(redirectUri),
-    scopes: env.CAFE24_SCOPES || "(empty)",
-    authorizeUrl: url.toString()
+    redirectUriSource: env.CAFE24_REDIRECT_URI ? "configured" : "fallback",
+    scopesConfigured: Boolean(env.CAFE24_SCOPES)
   });
   return url.toString();
 }
@@ -7355,13 +7369,13 @@ function buildCafe24AuthorizeUrl() {
 async function handleCafe24OAuthCallback(callbackUrl) {
   const code = callbackUrl.searchParams.get("code");
   const state = callbackUrl.searchParams.get("state");
-  const error = callbackUrl.searchParams.get("error");
-  const errorDescription = callbackUrl.searchParams.get("error_description");
+  if (!consumeCafe24OAuthState(state)) {
+    throw new Error("Cafe24 OAuth state가 누락되었거나 만료·불일치·사용 완료되었습니다. 재인증을 다시 시작하세요.");
+  }
+  const error = sanitizeCafe24OAuthError(callbackUrl.searchParams.get("error"));
+  const errorDescription = sanitizeCafe24OAuthError(callbackUrl.searchParams.get("error_description"));
   if (error) throw new Error(`Cafe24 OAuth error: ${error}${errorDescription ? ` (${errorDescription})` : ""}`);
   if (!code) throw new Error("Cafe24 OAuth callback에 code가 없습니다.");
-  if (env.CAFE24_OAUTH_STATE && state !== env.CAFE24_OAUTH_STATE) {
-    throw new Error("Cafe24 OAuth state가 일치하지 않습니다. 재인증을 다시 시작하세요.");
-  }
 
   const required = ["CAFE24_MALL_ID", "CAFE24_CLIENT_ID", "CAFE24_CLIENT_SECRET"];
   const missing = required.filter((key) => !env[key]);
@@ -7387,7 +7401,7 @@ async function handleCafe24OAuthCallback(callbackUrl) {
   const body = await response.json();
   if (!response.ok || body.error) {
     const message = body.error_description || body.error?.message || body.message || `Cafe24 OAuth token exchange failed ${response.status}`;
-    throw new Error(message);
+    throw new Error(sanitizeCafe24OAuthError(message));
   }
   if (!body.access_token || !body.refresh_token) {
     throw new Error("Cafe24 OAuth 응답에 access_token 또는 refresh_token이 없습니다.");
@@ -7651,8 +7665,8 @@ async function handleCafe24MetaSyncOAuthCallback(callbackUrl) {
 // pattern above (state -> authorize redirect -> callback -> validate -> save),
 // with two differences Meta actually needs: Cafe24 rotates via refresh_token,
 // Meta doesn't expose one for this flow, so there is no refresh() here — only
-// a fresh OAuth run replaces the stored token. And unlike Cafe24 (single
-// env.CAFE24_OAUTH_STATE), state here is a short-lived, single-use Map entry
+// a fresh OAuth run replaces the stored token. Like Cafe24,
+// state here is a short-lived, single-use Map entry
 // so a stale or replayed callback can't be accepted.
 // ---------------------------------------------------------------------------
 

@@ -17,7 +17,7 @@ Prepared for SAMPLAS Inventory Intelligence Phase 2F.
 
 ## Existing OAuth Flow
 
-1. User browser opens `GET /api/cafe24/oauth/start`.
+1. 대시보드의 Cafe24 재인증 버튼이 운영자 세션을 확보한 후 비공개 start 경로로 이동합니다.
 2. `buildCafe24AuthorizeUrl()` creates a Cafe24 authorization URL with `randomUUID()` state.
 3. User logs in to Cafe24 and approves the app.
 4. Cafe24 redirects to `GET /api/cafe24/oauth/callback`.
@@ -33,11 +33,7 @@ Run the local server from the repository root:
 npm start
 ```
 
-Open the OAuth start route manually:
-
-```txt
-http://127.0.0.1:8787/api/cafe24/oauth/start
-```
+대시보드에 운영자로 로그인한 후 Cafe24 재인증 버튼을 사용합니다. 로그인 취소 또는 인증 실패 시 이동하지 않습니다.
 
 Then:
 
@@ -68,6 +64,8 @@ Expected after successful reauthentication:
 
 ## Notes
 
-State validation is present for the same-process OAuth flow. The current callback only rejects mismatched state when an expected state exists in memory, so after a server restart the callback should be restarted from `/api/cafe24/oauth/start`.
+State는 서버 메모리에서 인증 시도별로 독립 보관하며 10분 후 만료되고 한 번만 사용할 수 있습니다. 누락·불일치·만료·재사용은 토큰 교환 전에 거부합니다.
 
 No token, secret, or authorization header should be logged or committed.
+
+OAuth start는 관리자 인증이 필요합니다. 직접 URL로 인증을 시작하지 마세요. 서버 재시작 시 기존 state는 모두 무효화되므로 대시보드 로그인 후 재인증 버튼으로 새로 시작합니다.

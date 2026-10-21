@@ -47,11 +47,7 @@ CAFE24_SCOPES=mall.read_order
 
 ## Start Reauthorization
 
-Open this URL in the browser:
-
-```txt
-https://samplas-marketing-os.onrender.com/api/cafe24/oauth/start
-```
+대시보드에 운영자로 로그인한 후 Cafe24 재인증 버튼을 사용합니다.
 
 Flow:
 
@@ -112,11 +108,7 @@ Dashboard > API Setup includes:
 Cafe24 재인증 > 재인증 시작
 ```
 
-This opens:
-
-```txt
-/api/cafe24/oauth/start
-```
+The button obtains an operator session before starting OAuth in the same tab. Cancelling or failing login keeps the current page.
 
 ## If It Still Fails
 
@@ -132,3 +124,5 @@ Common causes:
 - Cafe24 app does not have order read permission.
 - `CAFE24_CLIENT_ID` or `CAFE24_CLIENT_SECRET` is wrong.
 - Render was not restarted after environment variable update.
+
+OAuth start는 관리자 인증이 필요합니다. 직접 URL로 인증을 시작하지 마세요. 서버 재시작 시 기존 state는 모두 무효화되므로 대시보드 로그인 후 재인증 버튼으로 새로 시작합니다.
