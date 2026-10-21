@@ -120,6 +120,11 @@ const env = await loadEnv();
 const workDir = resolve(env.WORK_DIR || join(root, "work"));
 const cafe24TokenStoreDir = resolve(env.CAFE24_TOKEN_STORE_DIR || join(workDir, "secrets"));
 const cafe24TokenStoreFile = join(cafe24TokenStoreDir, "cafe24-token-store.json");
+// Meta catalog resync uses a completely separate Cafe24 OAuth app/token.
+// It must never hydrate or overwrite the reporting CAFE24_* credentials above.
+const cafe24MetaSyncTokenStoreDir = resolve(env.CAFE24_META_SYNC_TOKEN_STORE_DIR || cafe24TokenStoreDir);
+const cafe24MetaSyncTokenStoreFile = join(cafe24MetaSyncTokenStoreDir, "cafe24-meta-sync-token.json");
+const cafe24MetaSyncOAuthStates = new Map();
 // Meta OAuth reconnect: persistent store defaults to the same secrets directory Cafe24
 // already uses on the Render persistent disk (META_TOKEN_STORE_DIR is only needed to
 // point elsewhere). env.META_ACCESS_TOKEN stays a supported fallback — metaAccessTokenEnvFallback
@@ -1093,6 +1098,24 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (url.pathname === "/api/cafe24/oauth/start") {
       return redirect(res, buildCafe24AuthorizeUrl());
     }
+    if (url.pathname === "/api/cafe24-meta-sync/oauth/start") {
+      try {
+        return redirect(res, buildCafe24MetaSyncAuthorizeUrl());
+      } catch (error) {
+        return json(res, { ok: false, error: safeErrorMessage(error) }, 400);
+      }
+    }
+    if (url.pathname === "/api/cafe24-meta-sync/diagnostics") {
+      const token = await readCafe24MetaSyncTokenRecord();
+      return json(res, {
+        ok: true,
+        mallId: env.CAFE24_MALL_ID || null,
+        clientId: env.CAFE24_META_SYNC_CLIENT_ID || null,
+        redirectUri: cafe24MetaSyncRedirectUri(),
+        configuredScopes: cafe24MetaSyncScopes(),
+        token: safeCafe24MetaSyncTokenRecord(token)
+      });
+    }
     if (url.pathname === "/api/diagnostics/cafe24-oauth-config") {
       // redirect_uri 불일치("invalid_request: redirect_uri is invalid") 진단용 읽기 전용 API.
       // client_secret/access_token/refresh_token은 절대 포함하지 않는다.
@@ -1164,6 +1187,15 @@ const server = isMainModule ? createServer(async (req, res) => {
         redirectUri: cafe24RedirectUri(),
         token
       });
+    }
+    if (url.pathname === "/api/cafe24-meta-sync/oauth/callback") {
+      try {
+        await handleCafe24MetaSyncOAuthCallback(url);
+        return redirect(res, "/?cafe24_meta_sync_oauth=success");
+      } catch (error) {
+        await logApiError("cafe24_meta_sync_oauth_callback", error, {});
+        return redirect(res, `/?cafe24_meta_sync_oauth=error&reason=${encodeURIComponent(safeErrorMessage(error))}`);
+      }
     }
     if (url.pathname === "/api/cafe24/oauth/callback") {
       // 재인증 성공/실패 어느 쪽이든 토큰/시크릿 값을 화면에 절대 노출하지 않는다.
@@ -2542,7 +2574,7 @@ function isLocalRequest(req) {
 // - operator login (checks SAMPLAS_OPERATOR_BASIC_AUTH itself)
 // - OAuth provider redirects (cross-site navigation, so no SameSite=Strict cookie; they verify state)
 // The /api/ai-audit/ prefix has its own AI_AUDIT_SECRET check and never accepts the session or Basic.
-const PUBLIC_API_PATHS = new Set(["/api/operator/session", "/api/cafe24/oauth/start", "/api/cafe24/oauth/callback", "/api/meta/oauth/callback"]);
+const PUBLIC_API_PATHS = new Set(["/api/operator/session", "/api/cafe24/oauth/start", "/api/cafe24/oauth/callback", "/api/cafe24-meta-sync/oauth/start", "/api/cafe24-meta-sync/oauth/callback", "/api/meta/oauth/callback"]);
 
 function hasOperatorSession(req) {
   const cookies = Object.fromEntries(String(req.headers.cookie || "").split(";").map((part) => part.trim().split("=")).filter(([key, value]) => key && value));
@@ -7370,6 +7402,132 @@ function escapeHtml(value) {
 
 function cafe24RedirectUri() {
   return env.CAFE24_REDIRECT_URI || `http://${host}:${port}/api/cafe24/oauth/callback`;
+}
+
+function createCafe24MetaSyncOAuthState() {
+  const now = Date.now();
+  for (const [key, expiresAt] of cafe24MetaSyncOAuthStates) {
+    if (expiresAt <= now) cafe24MetaSyncOAuthStates.delete(key);
+  }
+  const state = randomUUID();
+  cafe24MetaSyncOAuthStates.set(state, now + 10 * 60 * 1000);
+  return state;
+}
+
+function consumeCafe24MetaSyncOAuthState(state) {
+  const expiresAt = cafe24MetaSyncOAuthStates.get(state);
+  cafe24MetaSyncOAuthStates.delete(state);
+  return Boolean(expiresAt && expiresAt > Date.now());
+}
+
+function cafe24MetaSyncRedirectUri() {
+  return env.CAFE24_META_SYNC_REDIRECT_URI || `http://${host}:${port}/api/cafe24-meta-sync/oauth/callback`;
+}
+
+function cafe24MetaSyncScopes() {
+  return String(env.CAFE24_META_SYNC_SCOPES || "mall.read_product,mall.write_product")
+    .split(",")
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+}
+
+async function readCafe24MetaSyncTokenRecord() {
+  try {
+    return JSON.parse(await readFile(cafe24MetaSyncTokenStoreFile, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function writeCafe24MetaSyncTokenRecord(record) {
+  await mkdir(cafe24MetaSyncTokenStoreDir, { recursive: true });
+  const payload = {
+    schema: 1,
+    status: record.status || "active",
+    accessToken: record.accessToken || "",
+    refreshToken: record.refreshToken || "",
+    expiresAt: normalizeCafe24ExpiresAt(record.expiresAt),
+    scopes: Array.isArray(record.scopes) ? record.scopes : [],
+    updatedAt: record.updatedAt || new Date().toISOString(),
+    lastRefreshAt: record.lastRefreshAt || null,
+    lastError: record.lastError || null
+  };
+  const tempFile = join(cafe24MetaSyncTokenStoreDir, `.cafe24-meta-sync-token.${process.pid}.${randomUUID()}.tmp`);
+  await writeFile(tempFile, JSON.stringify(payload, null, 2), { mode: 0o600 });
+  await rename(tempFile, cafe24MetaSyncTokenStoreFile);
+  return payload;
+}
+
+function safeCafe24MetaSyncTokenRecord(record) {
+  return {
+    source: cafe24MetaSyncTokenStoreDir.startsWith("/var/data") ? "render_persistent_disk" : "file_store",
+    status: record?.status || (record ? "active" : "missing"),
+    hasAccessToken: Boolean(record?.accessToken),
+    hasRefreshToken: Boolean(record?.refreshToken),
+    expiresAt: record?.expiresAt || null,
+    updatedAt: record?.updatedAt || null,
+    scopes: Array.isArray(record?.scopes) ? record.scopes : [],
+    lastError: record?.lastError || null
+  };
+}
+
+function buildCafe24MetaSyncAuthorizeUrl() {
+  const required = ["CAFE24_MALL_ID", "CAFE24_META_SYNC_CLIENT_ID"];
+  const missing = required.filter((key) => !env[key]);
+  if (missing.length) throw new Error(`Cafe24 Meta Sync OAuth 시작에 필요한 값이 없습니다: ${missing.join(", ")}`);
+  const url = new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/oauth/authorize`);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", env.CAFE24_META_SYNC_CLIENT_ID);
+  url.searchParams.set("state", createCafe24MetaSyncOAuthState());
+  url.searchParams.set("redirect_uri", cafe24MetaSyncRedirectUri());
+  url.searchParams.set("scope", cafe24MetaSyncScopes().join(","));
+  return url.toString();
+}
+
+async function handleCafe24MetaSyncOAuthCallback(callbackUrl) {
+  const error = callbackUrl.searchParams.get("error");
+  const errorDescription = callbackUrl.searchParams.get("error_description");
+  if (error) throw new Error(`Cafe24 Meta Sync OAuth error: ${error}${errorDescription ? ` (${errorDescription})` : ""}`);
+  const code = callbackUrl.searchParams.get("code");
+  const state = callbackUrl.searchParams.get("state");
+  if (!code) throw new Error("Cafe24 Meta Sync OAuth callback에 code가 없습니다.");
+  if (!consumeCafe24MetaSyncOAuthState(state)) throw new Error("Cafe24 Meta Sync OAuth state가 유효하지 않습니다.");
+  const required = ["CAFE24_MALL_ID", "CAFE24_META_SYNC_CLIENT_ID", "CAFE24_META_SYNC_CLIENT_SECRET"];
+  const missing = required.filter((key) => !env[key]);
+  if (missing.length) throw new Error(`Cafe24 Meta Sync OAuth token 교환에 필요한 값이 없습니다: ${missing.join(", ")}`);
+
+  const tokenUrl = `https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/oauth/token`;
+  const credentials = Buffer.from(`${env.CAFE24_META_SYNC_CLIENT_ID}:${env.CAFE24_META_SYNC_CLIENT_SECRET}`).toString("base64");
+  const params = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: cafe24MetaSyncRedirectUri()
+  });
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: params.toString()
+  });
+  const body = await response.json();
+  if (!response.ok || body.error) {
+    const message = body.error_description || body.error?.message || body.message || `Cafe24 Meta Sync token exchange failed ${response.status}`;
+    throw new Error(message);
+  }
+  if (!body.access_token || !body.refresh_token) throw new Error("Cafe24 Meta Sync OAuth 응답에 token이 없습니다.");
+  return writeCafe24MetaSyncTokenRecord({
+    status: "active",
+    accessToken: body.access_token,
+    refreshToken: body.refresh_token,
+    expiresAt: body.expires_at || null,
+    scopes: Array.isArray(body.scopes) ? body.scopes : cafe24MetaSyncScopes(),
+    updatedAt: new Date().toISOString(),
+    lastRefreshAt: null,
+    lastError: null
+  });
 }
 
 // ---------------------------------------------------------------------------
