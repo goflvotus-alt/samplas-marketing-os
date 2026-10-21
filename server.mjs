@@ -8241,13 +8241,19 @@ async function writeCafe24MetaSyncGuardState(state) {
 
 async function listCafe24MetaSyncProducts() {
   const rows = [];
-  for (let offset = 0; offset < 5000; offset += 100) {
+  let sinceProductNo = 0;
+  for (let pageNo = 0; pageNo < 500; pageNo += 1) {
     const body = await cafe24MetaSyncProductRequest(
-      `/products?shop_no=1&display=T&selling=T&limit=100&offset=${offset}&fields=product_no,product_code,product_name,display,selling`
+      `/products?shop_no=1&display=T&selling=T&limit=100&since_product_no=${sinceProductNo}&fields=product_no,product_code,product_name,display,selling`
     );
     const page = Array.isArray(body?.products) ? body.products : [];
+    if (!page.length) break;
     rows.push(...page);
+    const nextSince = Math.max(...page.map((product) => Number(product.product_no) || 0));
+    if (!nextSince || nextSince <= sinceProductNo) break;
+    sinceProductNo = nextSince;
     if (page.length < 100) break;
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
   }
   return rows;
 }
@@ -8310,6 +8316,17 @@ async function runCafe24MetaSyncGuard({ force = false } = {}) {
       listMetaCatalogProductGroups()
     ]);
 
+    for (const [productNo, record] of Object.entries(state.products || {})) {
+      if (metaGroups.has(String(productNo)) && record?.status !== "confirmed") {
+        state.products[productNo] = {
+          ...record,
+          status: "confirmed",
+          confirmedAt: new Date().toISOString(),
+          lastError: null
+        };
+      }
+    }
+
     const missing = products.filter((product) => !metaGroups.has(String(product.product_no)));
     const maxActions = Math.min(20, Math.max(1, Number(env.CAFE24_META_SYNC_MAX_ACTIONS || 20)));
     const candidates = [];
@@ -8319,7 +8336,8 @@ async function runCafe24MetaSyncGuard({ force = false } = {}) {
       if (candidates.length >= maxActions || inventoryChecks >= maxInventoryChecks) break;
       const key = String(product.product_no);
       const previous = state.products?.[key];
-      if (previous?.status === "success") continue;
+      if (previous?.status === "confirmed") continue;
+      if (Number(previous?.attemptCount || 0) >= 3) continue;
       if (previous?.lastAttemptDate === today) continue;
       inventoryChecks += 1;
       const inventory = await cafe24ProductHasSellableInventory(product.product_no);
@@ -8335,7 +8353,9 @@ async function runCafe24MetaSyncGuard({ force = false } = {}) {
       try {
         const resend = await resendCafe24ProductForMeta(productNo);
         state.products[String(productNo)] = {
+          ...(state.products[String(productNo)] || {}),
           status: "resent",
+          attemptCount: Number(state.products[String(productNo)]?.attemptCount || 0) + 1,
           lastAttemptDate: today,
           lastAttemptAt: startedAt,
           productName: candidate.product.product_name || null,
@@ -8345,7 +8365,9 @@ async function runCafe24MetaSyncGuard({ force = false } = {}) {
         results.push({ productNo, ok: true, action: resend.action, totalQuantity: candidate.inventory.totalQuantity });
       } catch (error) {
         state.products[String(productNo)] = {
+          ...(state.products[String(productNo)] || {}),
           status: "failed",
+          attemptCount: Number(state.products[String(productNo)]?.attemptCount || 0) + 1,
           lastAttemptDate: today,
           lastAttemptAt: startedAt,
           productName: candidate.product.product_name || null,
