@@ -1403,6 +1403,14 @@ const server = isMainModule ? createServer(async (req, res) => {
   runMetaCatalogReadProbe().catch((error) => {
     console.error("[META_CATALOG_READ_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
   });
+  runCafe24MetaSyncGuard().catch((error) => {
+    console.error("[CAFE24_META_SYNC_GUARD]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
+  });
+  setInterval(() => {
+    runCafe24MetaSyncGuardScheduledCheck().catch((error) => {
+      console.error("[CAFE24_META_SYNC_GUARD]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
+    });
+  }, 15 * 60 * 1000);
   // Instagram 자동 동기화 스케줄러 시작: 서버 부팅 시 1회 실행 후 6시간마다 반복.
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
@@ -8201,6 +8209,180 @@ function redirect(res, location) {
   res.end();
 }
 
+
+
+const cafe24MetaSyncGuardStateFile = join(cafe24MetaSyncTokenStoreDir, "cafe24-meta-sync-guard-state.json");
+let cafe24MetaSyncGuardRunning = false;
+
+function koreaDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+async function readCafe24MetaSyncGuardState() {
+  try {
+    return JSON.parse(await readFile(cafe24MetaSyncGuardStateFile, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return { schema: 1, runs: {}, products: {} };
+    throw error;
+  }
+}
+
+async function writeCafe24MetaSyncGuardState(state) {
+  await mkdir(cafe24MetaSyncTokenStoreDir, { recursive: true });
+  const tempFile = join(cafe24MetaSyncTokenStoreDir, `.cafe24-meta-sync-guard-state.${process.pid}.${randomUUID()}.tmp`);
+  await writeFile(tempFile, JSON.stringify(state, null, 2), { mode: 0o600 });
+  await rename(tempFile, cafe24MetaSyncGuardStateFile);
+}
+
+async function listCafe24MetaSyncProducts() {
+  const rows = [];
+  for (let offset = 0; offset < 5000; offset += 100) {
+    const body = await cafe24MetaSyncProductRequest(
+      `/products?shop_no=1&display=T&selling=T&limit=100&offset=${offset}&fields=product_no,product_code,product_name,display,selling`
+    );
+    const page = Array.isArray(body?.products) ? body.products : [];
+    rows.push(...page);
+    if (page.length < 100) break;
+  }
+  return rows;
+}
+
+async function listMetaCatalogProductGroups() {
+  const catalogId = String(env.META_CATALOG_ID || "").trim();
+  if (!catalogId) throw new Error("META_CATALOG_ID가 없습니다.");
+  const rows = await graphGetAllPages(`${catalogId}/products`, {
+    fields: "retailer_id,retailer_product_group_id",
+    limit: 500
+  }, { maxPages: 20 });
+  const groups = new Set();
+  for (const row of rows) {
+    const group = String(row?.retailer_product_group_id || "").trim();
+    if (group) groups.add(group);
+    else {
+      const retailerId = String(row?.retailer_id || "");
+      const inferred = retailerId.match(/^(\d+)\./)?.[1];
+      if (inferred) groups.add(inferred);
+    }
+  }
+  return groups;
+}
+
+function cafe24VariantQuantity(variant) {
+  if (Number.isFinite(Number(variant?.quantity))) return Number(variant.quantity);
+  const inventories = Array.isArray(variant?.inventories) ? variant.inventories : variant?.inventory ? [variant.inventory] : [];
+  return inventories.reduce((sum, item) => sum + (Number.isFinite(Number(item?.quantity)) ? Number(item.quantity) : 0), 0);
+}
+
+async function cafe24ProductHasSellableInventory(productNo) {
+  const body = await cafe24MetaSyncProductRequest(
+    `/products/${productNo}/variants?shop_no=1&embed=inventories&limit=100`
+  );
+  const variants = Array.isArray(body?.variants) ? body.variants : [];
+  if (!variants.length) return { sellable: false, totalQuantity: 0, variantCount: 0 };
+  let totalQuantity = 0;
+  for (const variant of variants) {
+    const quantity = cafe24VariantQuantity(variant);
+    totalQuantity += Math.max(0, quantity);
+  }
+  return { sellable: totalQuantity > 0, totalQuantity, variantCount: variants.length };
+}
+
+async function runCafe24MetaSyncGuard({ force = false } = {}) {
+  if (env.CAFE24_META_SYNC_GUARD_ENABLED !== "on") {
+    return { ok: true, skipped: true, reason: "disabled" };
+  }
+  if (cafe24MetaSyncGuardRunning) return { ok: true, skipped: true, reason: "already_running" };
+  cafe24MetaSyncGuardRunning = true;
+  const today = koreaDateKey();
+  const state = await readCafe24MetaSyncGuardState();
+  try {
+    if (!force && state.runs?.[today]?.status === "completed") {
+      return { ok: true, skipped: true, reason: "already_completed_today", run: state.runs[today] };
+    }
+
+    const [products, metaGroups] = await Promise.all([
+      listCafe24MetaSyncProducts(),
+      listMetaCatalogProductGroups()
+    ]);
+
+    const missing = products.filter((product) => !metaGroups.has(String(product.product_no)));
+    const maxActions = Math.min(20, Math.max(1, Number(env.CAFE24_META_SYNC_MAX_ACTIONS || 20)));
+    const candidates = [];
+    for (const product of missing) {
+      if (candidates.length >= maxActions) break;
+      const key = String(product.product_no);
+      const previous = state.products?.[key];
+      if (previous?.status === "success") continue;
+      if (previous?.lastAttemptDate === today) continue;
+      const inventory = await cafe24ProductHasSellableInventory(product.product_no);
+      if (!inventory.sellable) continue;
+      candidates.push({ product, inventory });
+    }
+
+    const results = [];
+    for (const candidate of candidates) {
+      const productNo = Number(candidate.product.product_no);
+      const startedAt = new Date().toISOString();
+      try {
+        const resend = await resendCafe24ProductForMeta(productNo);
+        state.products[String(productNo)] = {
+          status: "resent",
+          lastAttemptDate: today,
+          lastAttemptAt: startedAt,
+          productName: candidate.product.product_name || null,
+          totalQuantity: candidate.inventory.totalQuantity,
+          changedBusinessFields: false
+        };
+        results.push({ productNo, ok: true, action: resend.action, totalQuantity: candidate.inventory.totalQuantity });
+      } catch (error) {
+        state.products[String(productNo)] = {
+          status: "failed",
+          lastAttemptDate: today,
+          lastAttemptAt: startedAt,
+          productName: candidate.product.product_name || null,
+          totalQuantity: candidate.inventory.totalQuantity,
+          error: safeErrorMessage(error)
+        };
+        results.push({ productNo, ok: false, error: safeErrorMessage(error) });
+      }
+      await writeCafe24MetaSyncGuardState(state);
+    }
+
+    state.runs ||= {};
+    state.runs[today] = {
+      status: "completed",
+      completedAt: new Date().toISOString(),
+      cafe24ProductCount: products.length,
+      metaGroupCount: metaGroups.size,
+      missingCount: missing.length,
+      attemptedCount: results.length,
+      successCount: results.filter((row) => row.ok).length,
+      failedCount: results.filter((row) => !row.ok).length
+    };
+    await writeCafe24MetaSyncGuardState(state);
+    console.log("[CAFE24_META_SYNC_GUARD]", JSON.stringify({ date: today, ...state.runs[today], productNos: results.map((row) => row.productNo) }));
+    return { ok: true, run: state.runs[today], results };
+  } finally {
+    cafe24MetaSyncGuardRunning = false;
+  }
+}
+
+async function runCafe24MetaSyncGuardScheduledCheck() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(now);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || -1);
+  if (hour !== 5) return;
+  await runCafe24MetaSyncGuard();
+}
 
 async function runMetaCatalogReadProbe() {
   const catalogId = String(env.META_CATALOG_ID || "").trim();
