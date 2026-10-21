@@ -2452,7 +2452,8 @@ function safeCafe24TokenRecord(record) {
     reauthRequiredAt: record?.reauthRequiredAt || null,
     needsRefresh: cafe24TokenNeedsRefresh(record),
     reauthRequired: status === "reauth_required",
-    lastError: record?.lastError || null
+    lastError: record?.lastError || null,
+    scopes: Array.isArray(record?.scopes) ? record.scopes : []
   };
 }
 
@@ -7237,6 +7238,7 @@ async function refreshCafe24Token() {
     accessToken: body.access_token,
     refreshToken: body.refresh_token || record.refreshToken,
     expiresAt: body.expires_at || record.expiresAt || null,
+    scopes: Array.isArray(body.scopes) ? body.scopes : (record.scopes || []),
     updatedAt,
     lastRefreshAt: updatedAt,
     reauthRequiredAt: null,
@@ -7295,7 +7297,8 @@ async function handleCafe24OAuthCallback(callbackUrl) {
   const code = callbackUrl.searchParams.get("code");
   const state = callbackUrl.searchParams.get("state");
   const error = callbackUrl.searchParams.get("error");
-  if (error) throw new Error(`Cafe24 OAuth error: ${error}`);
+  const errorDescription = callbackUrl.searchParams.get("error_description");
+  if (error) throw new Error(`Cafe24 OAuth error: ${error}${errorDescription ? ` (${errorDescription})` : ""}`);
   if (!code) throw new Error("Cafe24 OAuth callback에 code가 없습니다.");
   if (env.CAFE24_OAUTH_STATE && state !== env.CAFE24_OAUTH_STATE) {
     throw new Error("Cafe24 OAuth state가 일치하지 않습니다. 재인증을 다시 시작하세요.");
@@ -7337,6 +7340,7 @@ async function handleCafe24OAuthCallback(callbackUrl) {
     accessToken: body.access_token,
     refreshToken: body.refresh_token,
     expiresAt: body.expires_at || null,
+    scopes: Array.isArray(body.scopes) ? body.scopes : [],
     updatedAt: new Date().toISOString(),
     lastRefreshAt: null,
     reauthRequiredAt: null,
