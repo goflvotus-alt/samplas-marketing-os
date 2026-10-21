@@ -9,6 +9,8 @@ import ExcelJS from 'exceljs';
 import * as coverage from '../scripts/weekly-data-completeness.mjs';
 import {createMetaWeeklyCafe24SourceHandler,minimizeCafe24Source,validateCafe24SourceQuery,inMetaWeeklyWindow,UnexpectedCafe24SourceShape} from '../scripts/meta-weekly-cafe24-source.mjs';
 import {generateWeeklyMetaAdsReport} from '../scripts/meta-ads-weekly-report.mjs';
+import {cafe24OrderAmount,normalizeCafe24PaymentMethod} from '../scripts/cafe24-order-amount.mjs';
+import {reconcileMetaPublication} from '../scripts/meta-issued-report.mjs';
 
 const src=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
 const slice=(a,b)=>src.slice(src.indexOf(a),src.indexOf(b,src.indexOf(a)));
@@ -170,6 +172,67 @@ test('unexpected response shapes fail with a fixed code: no raw data, no partial
  assert.throws(()=>minimizeCafe24Source('orders',good.refund),UnexpectedCafe24SourceShape);
  // Unknown fields are dropped, not an error; nulls the fetchers can return stay null.
  assert.deepEqual(minimizeCafe24Source('refund',{orders:[{order_id:'1',order_date:'2026-10-07',items:null,future_field:{x:1},buyer:{name:'x'}}],coverage:COMPLETE,extra:'x'}),{orders:[{order_id:'1',order_date:'2026-10-07'}],coverage:COMPLETE});
+});
+
+test('payment_methods keeps only the method, preserves 100 won and refund accounting without primary fields',async()=>{
+ const secret={...PII,bank_account:{holder:'FAKE_PRIVATE_HOLDER'},unknown:{nested:{email:'FAKE_PRIVATE_EMAIL'}}};
+ const make=(methods,extra={})=>order('FAKE_ORDER','2026-10-14',{
+  payment_method:undefined,payment_method_name:undefined,payment_methods:methods,
+  actual_order_amount:{payment_amount:'0.00',order_price_amount:'100.00'},
+  ...extra
+ },[item('FAKE_ORDER',1,{product_price:'100.00'})]);
+ const sanitize=o=>minimizeCafe24Source('refund',{orders:[o],coverage:COMPLETE}).orders[0];
+ const issued={issuedAt:'2026-10-13T00:00:00Z',summary:{metaPaidRevenue:100,metaPaidOrderCount:1},orders:[{orderId:'FAKE_ORDER',amount:100,items:[]}]};
+ const comparison=o=>{
+  const amount=cafe24OrderAmount(o);
+  return reconcileMetaPublication({issued,currentOrders:{orders:[o]},currentProducts:{available:true,rows:amount?[{order_id:o.order_id,actual_paid_amount:amount}]:[],summary:{metaPaidRevenue:amount,metaPaidOrderCount:amount?1:0}},asOf:'2026-10-21T00:00:00Z'});
+ };
+ for(const method of ['point','prepaid','선불금','적립금','card']) {
+  const original=make([{payment_method:method,...secret},{payment_method:'card',...secret}]);
+  const clean=sanitize(original);
+  assert.deepEqual(clean.payment_methods,[{payment_method:method},{payment_method:'card'}]);
+  assert.equal(normalizeCafe24PaymentMethod(clean),normalizeCafe24PaymentMethod(original));
+  assert.equal(cafe24OrderAmount(clean),cafe24OrderAmount(original));
+  assert.equal(cafe24OrderAmount(clean),method==='card'?0:100);
+  assert.deepEqual(comparison(clean),comparison(original));
+  const refunded={...original,canceled:'T',refund_date:'2026-10-20T12:00:00Z'};
+  assert.deepEqual(comparison(sanitize(refunded)),comparison(refunded));
+  assert.equal(comparison(sanitize(refunded)).refundAdjustment,-100);
+  const out=JSON.stringify(clean);
+  for(const value of [...PII_VALUES,'FAKE_PRIVATE_HOLDER','FAKE_PRIVATE_EMAIL'])assert(!out.includes(value));
+  for(const overrides of [{payment_method:['card']},{payment_method_name:['카드']},{payment_method_name:['적립금'],payment_method:['card']}]){
+   const withPrimary={...original,...overrides};
+   assert.equal(cafe24OrderAmount(sanitize(withPrimary)),cafe24OrderAmount(withPrimary));
+   assert.deepEqual(sanitize(withPrimary).payment_method,withPrimary.payment_method);
+   assert.deepEqual(sanitize(withPrimary).payment_method_name,withPrimary.payment_method_name);
+  }
+  for(const kind of ['actual','refund']){
+   const data=kind==='actual'?{source:'cafe24_inflow_queries',orders:[original],trackingQueries:[],coverage:COMPLETE,analyticsOrders:[original],analyticsOrdersComplete:true,analyticsOrdersCoverage:COMPLETE}:{orders:[original],coverage:COMPLETE};
+   const h=harness({fetchers:{[kind]:async()=>data}});
+   const response=await h.run(`kind=${kind}&since=2026-10-13&until=2026-10-19`);
+   assert.equal(response.status,200);
+   assert.deepEqual(response.body.result.orders[0].payment_methods,clean.payment_methods);
+   if(kind==='actual')assert.deepEqual(response.body.result.analyticsOrders[0].payment_methods,clean.payment_methods);
+   for(const value of PII_VALUES)assert(!JSON.stringify(response.body).includes(value));
+  }
+ }
+});
+
+test('payment_methods distinguishes string arrays, empty, null and absent; invalid shapes fail without disclosure',async()=>{
+ const o=order('FAKE_ORDER','2026-10-14');
+ for(const value of [[],['cash','point'],null,undefined]){
+  const input={...o,payment_methods:value};
+  const result=minimizeCafe24Source('refund',{orders:[input],coverage:COMPLETE});
+  assert.deepEqual(result.orders[0].payment_methods,value);
+  assert.equal(cafe24OrderAmount(result.orders[0]),cafe24OrderAmount(input));
+ }
+ for(const value of [{payment_method:'point'},'point',42,true,[null],[42],[{}],[{payment_method:null}],[{payment_method:['point']}],[{payment_method:{buyer_email:'FAKE_PRIVATE_EMAIL'}}],['point',{payment_method:'card'}]]){
+  const input={orders:[{...o,payment_methods:value}],coverage:COMPLETE};
+  assert.throws(()=>minimizeCafe24Source('refund',input),UnexpectedCafe24SourceShape);
+  const h=harness({fetchers:{refund:async()=>input}});
+  const result=await h.run('kind=refund&since=2026-10-13&until=2026-10-19');
+  assert.deepEqual(result,{status:502,body:{ok:false,error:'cafe24_source_unexpected_shape'}});
+ }
 });
 
 test('response carries no personal field or value, only allowlisted report fields',async()=>{

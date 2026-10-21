@@ -15,7 +15,7 @@ const MONEY = ["order_price_amount", "payment_amount", "actual_payment_amount", 
   "membership_discount_amount", "set_product_discount_amount", "coupon_discount_price", "app_discount_amount", "market_other_discount_amount"];
 const ORDER_KEYS = new Set([...MONEY, "order_id", "order_date", "payment_date", "paid_date", "ordered_date", "created_date", "order_timestamp", "paid", "canceled", "cancelled",
   "cancel_date", "cancel_status", "return_confirmed_date", "return_status", "refund_date", "refund_status", "refunded", "returned", "status", "order_status", "order_amount",
-  "actual_shipping_fee", "total_price", "total_shipping_fee", "delivery_fee", "payment_method", "payment_method_name", "payment_methods", "market_id", "inflow_path",
+  "actual_shipping_fee", "total_price", "total_shipping_fee", "delivery_fee", "payment_method", "payment_method_name", "market_id", "inflow_path",
   "ghost_mall_id", "itemFetchError", "_metaTrackingCode"]);
 const AMOUNT_KEYS = new Set(MONEY);
 const ITEM_KEYS = new Set(["order_item_code", "item_no", "product_no", "product_code", "variant_code", "product_name", "name", "option_value", "option_name", "option", "sku",
@@ -45,8 +45,19 @@ function pick(source, keys) {
   return out;
 }
 const list = (value, map) => Array.isArray(value) ? value.map(map) : fail();
+function paymentMethods(value) {
+  if (value === null) return null;
+  if (!Array.isArray(value)) fail();
+  // Preserve code arrays without coercion; the amount reader's object fallback needs only this field.
+  if (value.every(v => typeof v === "string")) return [...value];
+  return value.map(v => {
+    if (!isObject(v) || typeof v.payment_method !== "string") fail();
+    return { payment_method: v.payment_method };
+  });
+}
 function order(o) {
   const out = pick(o, ORDER_KEYS);
+  if (o.payment_methods !== undefined) out.payment_methods = paymentMethods(o.payment_methods);
   for (const key of ["actual_order_amount", "initial_order_amount"]) if (o[key] != null) out[key] = pick(o[key], AMOUNT_KEYS);
   for (const key of ITEM_LISTS) if (o[key] != null) out[key] = list(o[key], i => pick(i, ITEM_KEYS));
   if (o.refunds != null) out.refunds = list(o.refunds, r => pick(r, REFUND_KEYS));
