@@ -191,8 +191,9 @@ async function runVeilFoundScheduledCheck() {
 
 // Read-only Cafe24 source for an off-Production Meta weekly rehearsal: the scheduler's own fetchers
 // with the scheduler's arguments (no canonical cache; tokens refresh only in this process).
+// Requires the configured internal credential: no loopback-host fallback when it is unset.
 const metaWeeklyCafe24Source = createMetaWeeklyCafe24SourceHandler({
-  authorized: isAuthorizedInternalRequest,
+  authorized: req => Boolean(env.CAFE24_PROXY_BASIC_AUTH) && isAuthorizedInternalRequest(req),
   json,
   isReportRunning: () => metaWeeklyReportScheduler.running,
   fetchers: {

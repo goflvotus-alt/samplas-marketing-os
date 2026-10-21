@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {runInNewContext} from 'node:vm';
 import ExcelJS from 'exceljs';
 import * as coverage from '../scripts/weekly-data-completeness.mjs';
-import {createMetaWeeklyCafe24SourceHandler,minimizeCafe24Source,validateCafe24SourceQuery,inMetaWeeklyWindow} from '../scripts/meta-weekly-cafe24-source.mjs';
+import {createMetaWeeklyCafe24SourceHandler,minimizeCafe24Source,validateCafe24SourceQuery,inMetaWeeklyWindow,UnexpectedCafe24SourceShape} from '../scripts/meta-weekly-cafe24-source.mjs';
 import {generateWeeklyMetaAdsReport} from '../scripts/meta-ads-weekly-report.mjs';
 
 const src=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
@@ -92,9 +92,9 @@ test('only finished 7-day periods within the kind limit are accepted (400)',asyn
  assert.equal(validateCafe24SourceQuery(q('kind=actual&since=2026-10-14&until=2026-10-20').searchParams,WED).kind,'actual');
 });
 
-test('Tuesday 10:00-10:59 KST and a running scheduled report are refused (503)',async()=>{
- for(const iso of ['2026-10-27T01:00:00Z','2026-10-27T01:59:59Z']){const h=harness({now:at(iso)});const r=await h.run('kind=actual&since=2026-10-13&until=2026-10-19');assert.deepEqual([r.status,r.body.error],[503,'meta_weekly_report_window'],iso);assert.equal(h.calls.length,0);}
- for(const iso of ['2026-10-27T00:59:59Z','2026-10-27T02:00:00Z','2026-10-28T01:30:00Z'])assert.equal(inMetaWeeklyWindow(new Date(iso)),false,iso);
+test('Tuesday 09:50-11:00 KST and a running scheduled report are refused (503)',async()=>{
+ for(const iso of ['2026-10-27T00:50:00Z','2026-10-27T00:59:59Z','2026-10-27T01:00:00Z','2026-10-27T01:59:59Z']){const h=harness({now:at(iso)});const r=await h.run('kind=actual&since=2026-10-13&until=2026-10-19');assert.deepEqual([r.status,r.body.error],[503,'meta_weekly_report_window'],iso);assert.equal(h.calls.length,0);}
+ for(const iso of ['2026-10-27T00:49:59Z','2026-10-27T02:00:00Z','2026-10-26T00:55:00Z','2026-10-28T01:30:00Z'])assert.equal(inMetaWeeklyWindow(new Date(iso)),false,iso);
  const h=harness({running:true});assert.equal((await h.run()).status,503);assert.equal(h.calls.length,0);
 });
 
@@ -114,22 +114,62 @@ test('each kind calls its scheduler fetcher with the scheduler arguments; failur
  const r=await h.run();assert.deepEqual([r.status,r.body],[502,{ok:false,error:'cafe24_source_failed'}]);
 });
 
-test('server wiring: internal auth only, scheduler fetchers and arguments, no localhost exception',async()=>{
+// Wiring as deployed: the real isAuthorizedInternalRequest and the real handler block from server.mjs.
+function wired(env,host){
  const block=slice('const metaWeeklyCafe24Source = createMetaWeeklyCafe24SourceHandler','const server = isMainModule');
- const calls=[],c={createMetaWeeklyCafe24SourceHandler,isAuthorizedInternalRequest:req=>req.internal===true,json:(res,body,status=200)=>res.out={status,body},metaWeeklyReportScheduler:{running:false},
-  fetchCafe24ActualOrdersForWeeklyReport:async(...a)=>{calls.push(['actual',...a]);return {};},fetchCafe24AnalyticsForWeeklyReport:async(...a)=>{calls.push(['analytics',...a]);return {};},fetchCafe24OrdersForRefundTracking:async(...a)=>{calls.push(['refund',...a]);return {};}};
- runInNewContext(block.replace('const metaWeeklyCafe24Source','globalThis.metaWeeklyCafe24Source'),c);
- assert(/isAuthorizedInternalRequest/.test(block)&&!/isLocalRequest|hasOperatorSession/.test(block));
- const res={};await c.metaWeeklyCafe24Source({method:'GET',headers:{},internal:false},res,q('kind=actual&since=2026-10-13&until=2026-10-19'));assert.equal(res.out.status,401);
- // Real clock: use a period that is always finished and recent relative to today.
- const until=day(new Date().toISOString().slice(0,10),-2),since=day(until,-6);
- if(!inMetaWeeklyWindow(new Date())){
-  await c.metaWeeklyCafe24Source({method:'GET',headers:{},internal:true},res,q(`kind=actual&since=${since}&until=${until}`));
-  assert.equal(res.out.status,200);assert.equal(JSON.stringify(calls),JSON.stringify([['actual',since,until,{includeAnalyticsOrders:true}]]));
+ const auth=slice('function isAuthorizedInternalRequest(req)','export function isAuthorizedOperatorRequest');
+ const calls=[],c={createMetaWeeklyCafe24SourceHandler,Buffer,env,host,json:(res,body,status=200)=>res.out={status,body},metaWeeklyReportScheduler:{running:false},
+  fetchCafe24ActualOrdersForWeeklyReport:async(...a)=>{calls.push(['actual',...a]);return raw('kept').actual(a[0],a[1]);},fetchCafe24AnalyticsForWeeklyReport:async(...a)=>{calls.push(['analytics',...a]);return raw('kept').analytics(...a);},fetchCafe24OrdersForRefundTracking:async(...a)=>{calls.push(['refund',...a]);return raw('kept').refund(...a);}};
+ runInNewContext(auth+'\n'+block.replace('const metaWeeklyCafe24Source','globalThis.metaWeeklyCafe24Source'),c);
+ return {calls,block,send:async(headers={},extra={})=>{const res={};const until=day(new Date().toISOString().slice(0,10),-2);
+  await c.metaWeeklyCafe24Source({method:'GET',headers,socket:{remoteAddress:'203.0.113.9'},...extra},res,q(`kind=actual&since=${day(until,-6)}&until=${until}`));return res.out;}};
+}
+const basic=v=>({authorization:'Basic '+Buffer.from(v).toString('base64')});
+test('fail-closed auth: no credential configured means 401 even on a loopback-bound server',async()=>{
+ for(const [env,host] of [[{CAFE24_PROXY_BASIC_AUTH:''},'127.0.0.1'],[{},'localhost'],[{},'127.0.0.1'],[{CAFE24_PROXY_BASIC_AUTH:''},'0.0.0.0']])
+  for(const headers of [{},{host:'127.0.0.1:8787'},basic(''),basic(':'),{authorization:'Basic '}]){
+   const w=wired(env,host),out=await w.send(headers);
+   assert.equal(out.status,401,JSON.stringify([env,host,headers]));assert.equal(w.calls.length,0);
+  }
+ // Configured credential: only the exact Basic value passes, whatever the bind host or Host header.
+ for(const host of ['127.0.0.1','0.0.0.0']){
+  for(const headers of [{},{host:'localhost'},basic('user:wrong'),{authorization:'Bearer user:pass'}]){const w=wired({CAFE24_PROXY_BASIC_AUTH:'user:pass'},host);assert.equal((await w.send(headers)).status,401);assert.equal(w.calls.length,0);}
+  if(!inMetaWeeklyWindow(new Date())){const w=wired({CAFE24_PROXY_BASIC_AUTH:'user:pass'},host);const out=await w.send(basic('user:pass'));assert.equal(out.status,200);
+   const until=day(new Date().toISOString().slice(0,10),-2);assert.equal(JSON.stringify(w.calls),JSON.stringify([['actual',day(until,-6),until,{includeAnalyticsOrders:true}]]));}
  }
- assert(src.indexOf('pathname === "/api/reports/meta-weekly/cafe24-source"')>0&&src.indexOf('pathname === "/api/reports/meta-weekly/cafe24-source"')<src.indexOf('pathname === "/api/reports/weekly/run"'));
- assert.equal(c.metaWeeklyCafe24Source.length,3);
- assert(/analytics: fetchCafe24AnalyticsForWeeklyReport,\s*refund: fetchCafe24OrdersForRefundTracking/.test(block));
+});
+
+test('server wiring: route before the preview route, scheduler fetchers, no local or operator-session path',()=>{
+ const {block}=wired({},'0.0.0.0');
+ assert(/Boolean\(env\.CAFE24_PROXY_BASIC_AUTH\) && isAuthorizedInternalRequest\(req\)/.test(block)&&!/isLocalRequest|hasOperatorSession|isAuthorizedOperator/.test(block));
+ assert(/actual: \(since, until\) => fetchCafe24ActualOrdersForWeeklyReport\(since, until, \{ includeAnalyticsOrders: true \}\),\s*analytics: fetchCafe24AnalyticsForWeeklyReport,\s*refund: fetchCafe24OrdersForRefundTracking/.test(block));
+ const route=src.indexOf('pathname === "/api/reports/meta-weekly/cafe24-source"');
+ assert(route>0&&route<src.indexOf('pathname === "/api/reports/weekly/run"'));
+ assert.equal(src.split('/api/reports/meta-weekly/cafe24-source').length,2);
+});
+
+test('unexpected response shapes fail with a fixed code: no raw data, no partial result (502)',async()=>{
+ const good={actual:await raw('kept').actual('2026-10-13','2026-10-19'),analytics:await raw('kept').analytics('2026-10-13','2026-10-19'),refund:await raw('kept').refund('2026-10-13','2026-10-19')};
+ const o=good.refund.orders[0],secret={billing_name:'홍길동',member_email:'buyer@example.com'};
+ const bad=[
+  ['actual',null],['actual','x'],['actual',[]],['actual',{...good.actual,source:undefined}],['actual',{...good.actual,orders:{0:{...o,...secret}}}],['actual',{...good.actual,trackingQueries:'x'}],
+  ['actual',{...good.actual,trackingQueries:[null]}],['actual',{...good.actual,analyticsOrders:{...secret}}],['actual',{...good.actual,analyticsOrdersComplete:'true'}],['actual',{...good.actual,coverage:undefined}],
+  ['actual',{...good.actual,analyticsOrdersCoverage:'COMPLETE'}],['actual',{...good.actual,trackingQueries:[{code:'meta_ssage',ok:true,complete:true,count:{n:1}}]}],
+  ['analytics',{...good.analytics,ok:false}],['analytics',{...good.analytics,data:{orderdetails:{0:{order_id:'1',...secret}}}}],['analytics',{...good.analytics,data:{orderdetails:['x']}}],
+  ['analytics',{...good.analytics,data:{orderdetails:[{order_id:'1',ad:{name:'홍길동'}}]}}],['analytics',{...good.analytics,data:{...good.analytics.data,total_count:{v:1}}}],['analytics',{...good.analytics,data:null}],
+  ['refund',{orders:[{...o,items:{...o.items}}],coverage:COMPLETE}],['refund',{orders:[{...o,items:[o.items[0],'x']}],coverage:COMPLETE}],['refund',{orders:[{...o,product_name:'p',items:[{...o.items[0],product_name:{v:'홍길동'}}]}],coverage:COMPLETE}],
+  ['refund',{orders:[{...o,actual_order_amount:'100000'}],coverage:COMPLETE}],['refund',{orders:[{...o,payment_method:[{type:'card',holder:'홍길동'}]}],coverage:COMPLETE}],
+  ['refund',{orders:[{...o,refunds:{0:{order_id:'1'}}}],coverage:COMPLETE}],['refund',{orders:[o,null],coverage:COMPLETE}],['refund',{orders:[o]}],['refund',{orders:'x',coverage:COMPLETE}]
+ ];
+ for(const [kind,result] of bad){
+  assert.throws(()=>minimizeCafe24Source(kind,result),UnexpectedCafe24SourceShape,kind+JSON.stringify(result)?.slice(0,80));
+  const h=harness({fetchers:{actual:async()=>result,analytics:async()=>result,refund:async()=>result}});
+  const r=await h.run(`kind=${kind}&since=2026-10-13&until=2026-10-19`);
+  assert.deepEqual([r.status,r.body],[502,{ok:false,error:'cafe24_source_unexpected_shape'}]);
+ }
+ assert.throws(()=>minimizeCafe24Source('orders',good.refund),UnexpectedCafe24SourceShape);
+ // Unknown fields are dropped, not an error; nulls the fetchers can return stay null.
+ assert.deepEqual(minimizeCafe24Source('refund',{orders:[{order_id:'1',order_date:'2026-10-07',items:null,future_field:{x:1},buyer:{name:'x'}}],coverage:COMPLETE,extra:'x'}),{orders:[{order_id:'1',order_date:'2026-10-07'}],coverage:COMPLETE});
 });
 
 test('response carries no personal field or value, only allowlisted report fields',async()=>{
@@ -140,9 +180,9 @@ test('response carries no personal field or value, only allowlisted report field
  assert.deepEqual(Object.keys(a).sort(),['analyticsOrders','analyticsOrdersComplete','analyticsOrdersCoverage','coverage','orders','source','trackingQueries']);
  assert.deepEqual(Object.keys(a.analyticsOrders[0]).sort(),['actual_order_amount','canceled','initial_order_amount','items','market_id','order_date','order_id','paid','payment_date','payment_method','payment_method_name']);
  assert.deepEqual(Object.keys(a.analyticsOrders[0].items[0]).sort(),['item_no','option_value','order_item_code','order_status','product_code','product_name','product_no','product_price','quantity','status_code','status_text','variant_code']);
- // Unknown nested objects and new top-level fields never pass through, even with harmless names.
- const odd=minimizeCafe24Source('refund',{orders:[{order_id:'1',order_date:'2026-10-07',items:[{product_name:{nested:'x'}}],future_field:'x',buyer:{name:'x'}}],coverage:COMPLETE,extra:'x'});
- assert.deepEqual(odd,{orders:[{order_id:'1',order_date:'2026-10-07',items:[{}]}],coverage:COMPLETE});
+ // Unknown top-level fields never pass through; an allowlisted field holding an object is an error.
+ assert.deepEqual(minimizeCafe24Source('refund',{orders:[{order_id:'1',order_date:'2026-10-07',items:[{product_name:'x',supplier:{name:'y'}}],future_field:'x',buyer:{name:'x'}}],coverage:COMPLETE,extra:'x'}),{orders:[{order_id:'1',order_date:'2026-10-07',items:[{product_name:'x'}]}],coverage:COMPLETE});
+ assert.throws(()=>minimizeCafe24Source('refund',{orders:[{order_id:'1',items:[{product_name:{nested:'x'}}]}],coverage:COMPLETE}),UnexpectedCafe24SourceShape);
 });
 
 async function sheets(file){const w=new ExcelJS.Workbook();await w.xlsx.load(await readFile(file));const out={};for(const s of w.worksheets){out[s.name]=[];s.eachRow(r=>out[s.name].push(JSON.stringify(r.values)));}return out;}

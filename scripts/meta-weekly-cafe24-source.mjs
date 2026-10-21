@@ -27,36 +27,52 @@ const REFUND_KEYS = new Set(["order_id", "refund_date", "actual_refund_amount", 
 const ANALYTICS_KEYS = new Set(["order_id", "order_date", "ad", "medium", "campaign", "content", "keyword", "order_amount"]);
 const ITEM_LISTS = ["items", "order_items", "products", "order_item"];
 
-const plain = v => v === null || ["string", "number", "boolean"].includes(typeof v) || (Array.isArray(v) && v.every(x => x === null || ["string", "number", "boolean"].includes(typeof x)));
+// Any shape other than what the scheduler fetchers return fails the whole response with a fixed code:
+// no raw passthrough and no partial result. Fields outside the allowlist are dropped.
+export class UnexpectedCafe24SourceShape extends Error {}
+const fail = () => { throw new UnexpectedCafe24SourceShape("unexpected_cafe24_source_shape"); };
+const isObject = v => v !== null && typeof v === "object" && !Array.isArray(v);
+const scalar = v => v === null || ["string", "number", "boolean"].includes(typeof v);
+const plain = v => scalar(v) || (Array.isArray(v) && v.every(scalar));
 function pick(source, keys) {
+  if (!isObject(source)) fail();
   const out = {};
-  if (!source || typeof source !== "object") return out;
-  for (const key of keys) if (Object.hasOwn(source, key) && plain(source[key])) out[key] = source[key];
+  for (const key of keys) {
+    if (!Object.hasOwn(source, key) || source[key] === undefined) continue;
+    if (!plain(source[key])) fail();
+    out[key] = source[key];
+  }
   return out;
 }
+const list = (value, map) => Array.isArray(value) ? value.map(map) : fail();
 function order(o) {
-  if (!o || typeof o !== "object") return o;
   const out = pick(o, ORDER_KEYS);
-  for (const key of ["actual_order_amount", "initial_order_amount"]) if (o[key] && typeof o[key] === "object") out[key] = pick(o[key], AMOUNT_KEYS);
-  for (const key of ITEM_LISTS) if (Array.isArray(o[key])) out[key] = o[key].map(i => pick(i, ITEM_KEYS));
-  if (Array.isArray(o.refunds)) out.refunds = o.refunds.map(r => pick(r, REFUND_KEYS));
+  for (const key of ["actual_order_amount", "initial_order_amount"]) if (o[key] != null) out[key] = pick(o[key], AMOUNT_KEYS);
+  for (const key of ITEM_LISTS) if (o[key] != null) out[key] = list(o[key], i => pick(i, ITEM_KEYS));
+  if (o.refunds != null) out.refunds = list(o.refunds, r => pick(r, REFUND_KEYS));
   return out;
 }
-const orders = list => Array.isArray(list) ? list.map(order) : list;
 // Coverage objects are built by weekly-data-completeness: scope, status and counts only.
-const coverage = c => c === undefined ? undefined : JSON.parse(JSON.stringify(c));
+const coverage = c => isObject(c) ? JSON.parse(JSON.stringify(c)) : fail();
+const query = q => ({ ...pick(q, ["code", "ok", "complete", "count"]), ...(q.coverage != null ? { coverage: coverage(q.coverage) } : {}) });
 
 export function minimizeCafe24Source(kind, result) {
-  if (!result || typeof result !== "object") return result;
-  if (kind === "actual") return { source: result.source, orders: orders(result.orders), coverage: coverage(result.coverage),
-    trackingQueries: Array.isArray(result.trackingQueries) ? result.trackingQueries.map(q => ({ ...pick(q, ["code", "ok", "complete", "count"]), ...(q?.coverage ? { coverage: coverage(q.coverage) } : {}) })) : result.trackingQueries,
-    ...("analyticsOrders" in result ? { analyticsOrders: orders(result.analyticsOrders), analyticsOrdersComplete: result.analyticsOrdersComplete, analyticsOrdersCoverage: coverage(result.analyticsOrdersCoverage) } : {}) };
-  if (kind === "analytics") {
-    const rows = result.data?.orderdetails;
-    return { ok: result.ok, coverage: coverage(result.coverage),
-      data: { orderdetails: Array.isArray(rows) ? rows.map(r => pick(r, ANALYTICS_KEYS)) : rows, ...(result.data && "total_count" in result.data ? { total_count: result.data.total_count } : {}) } };
+  if (!isObject(result)) fail();
+  if (kind === "actual") {
+    if (typeof result.source !== "string") fail();
+    const out = { source: result.source, orders: list(result.orders, order), trackingQueries: list(result.trackingQueries, query), coverage: coverage(result.coverage) };
+    if (!("analyticsOrders" in result)) return out;
+    if (typeof result.analyticsOrdersComplete !== "boolean") fail();
+    return { ...out, analyticsOrders: list(result.analyticsOrders, order), analyticsOrdersComplete: result.analyticsOrdersComplete, analyticsOrdersCoverage: coverage(result.analyticsOrdersCoverage) };
   }
-  return { orders: orders(result.orders), coverage: coverage(result.coverage) };
+  if (kind === "analytics") {
+    if (result.ok !== true || !isObject(result.data)) fail();
+    const data = { orderdetails: list(result.data.orderdetails, r => pick(r, ANALYTICS_KEYS)) };
+    if (result.data.total_count !== undefined) data.total_count = scalar(result.data.total_count) ? result.data.total_count : fail();
+    return { ok: true, coverage: coverage(result.coverage), data };
+  }
+  if (kind === "refund") return { orders: list(result.orders, order), coverage: coverage(result.coverage) };
+  fail();
 }
 
 const dayMs = d => Date.parse(`${d}T00:00:00Z`);
@@ -72,10 +88,11 @@ export function validateCafe24SourceQuery(params, now = new Date()) {
   return { kind, since, until };
 }
 
-// Tuesday 10:00-10:59 KST: the scheduled Meta report window, never shared with this route.
+// Tuesday 09:50-11:00 KST: the scheduled Meta report window (10:00-10:59) plus a margin before it,
+// so a call started just before 10:00 cannot overlap the first scheduled attempt.
 export function inMetaWeeklyWindow(now = new Date()) {
-  const kst = new Date(now.getTime() + 9 * 3600000);
-  return kst.getUTCDay() === 2 && kst.getUTCHours() === 10;
+  const kst = new Date(now.getTime() + 9 * 3600000), minute = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  return kst.getUTCDay() === 2 && minute >= 9 * 60 + 50 && minute < 11 * 60;
 }
 
 export function createMetaWeeklyCafe24SourceHandler({ authorized, json, fetchers, isReportRunning, now = () => new Date(), minIntervalMs = MIN_INTERVAL_MS }) {
@@ -84,17 +101,19 @@ export function createMetaWeeklyCafe24SourceHandler({ authorized, json, fetchers
     if (req.method !== "GET") return json(res, { ok: false, error: "method_not_allowed" }, 405);
     if (!authorized(req)) return json(res, { ok: false, error: "Unauthorized" }, 401);
     const at = now();
-    const query = validateCafe24SourceQuery(url.searchParams, at);
-    if (query.error) return json(res, { ok: false, error: query.error }, 400);
+    const request = validateCafe24SourceQuery(url.searchParams, at);
+    if (request.error) return json(res, { ok: false, error: request.error }, 400);
     if (inMetaWeeklyWindow(at) || isReportRunning()) return json(res, { ok: false, error: "meta_weekly_report_window" }, 503);
     if (busy || at.getTime() - lastAt < minIntervalMs) return json(res, { ok: false, error: "rate_limited" }, 429);
     busy = true; lastAt = at.getTime();
     try {
-      const result = await fetchers[query.kind](query.since, query.until);
-      return json(res, { ok: true, kind: query.kind, since: query.since, until: query.until, result: minimizeCafe24Source(query.kind, result) });
-    } catch {
+      let result;
+      try { result = await fetchers[request.kind](request.since, request.until); }
       // Upstream messages can carry request details; only a fixed code leaves this route.
-      return json(res, { ok: false, error: "cafe24_source_failed" }, 502);
+      catch { return json(res, { ok: false, error: "cafe24_source_failed" }, 502); }
+      try { result = minimizeCafe24Source(request.kind, result); }
+      catch { return json(res, { ok: false, error: "cafe24_source_unexpected_shape" }, 502); }
+      return json(res, { ok: true, kind: request.kind, since: request.since, until: request.until, result });
     } finally { busy = false; }
   };
 }
