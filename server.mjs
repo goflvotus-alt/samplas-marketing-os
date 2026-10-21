@@ -2541,7 +2541,7 @@ function isLocalRequest(req) {
 // - operator login (checks SAMPLAS_OPERATOR_BASIC_AUTH itself)
 // - OAuth provider redirects (cross-site navigation, so no SameSite=Strict cookie; they verify state)
 // The /api/ai-audit/ prefix has its own AI_AUDIT_SECRET check and never accepts the session or Basic.
-const PUBLIC_API_PATHS = new Set(["/api/operator/session", "/api/cafe24/oauth/callback", "/api/meta/oauth/callback"]);
+const PUBLIC_API_PATHS = new Set(["/api/operator/session", "/api/cafe24/oauth/start", "/api/cafe24/oauth/callback", "/api/meta/oauth/callback"]);
 
 function hasOperatorSession(req) {
   const cookies = Object.fromEntries(String(req.headers.cookie || "").split(";").map((part) => part.trim().split("=")).filter(([key, value]) => key && value));
