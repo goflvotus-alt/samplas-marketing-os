@@ -25,7 +25,7 @@ import ExcelJS from "exceljs";
 import { seoulDateKey, previousMondayToSundayRange, previousWeekRange, wowChange } from "./naver-ads-weekly-report.mjs";
 
 import { buildActualProductsSold } from "./meta-actual-products-sold.mjs";
-import {scheduledMetaPublication,reviewMetaPublication,reconcileMetaPublication,publicationRecord,readIssuedMetaReport,inspectIssuedStorage,storeIssuedMetaReport} from './meta-issued-report.mjs';
+import {scheduledMetaPublication,reviewMetaPublication,reconcileMetaPublication,publicationRecord,readIssuedMetaReport,inspectIssuedStorage,storeIssuedMetaReport,trackIssuedRefunds} from './meta-issued-report.mjs';
 import { metaOnePage } from "./weekly-onepage-report.mjs";
 import { analyzeMetaLevels, writeDecisionSheet, addExecutiveRead, addWowFormatting, addPerformanceFormatting } from "./weekly-report-analysis.mjs";
 
@@ -55,7 +55,7 @@ function levelOk(data) {
   return Boolean(data) && data.ok !== false && Array.isArray(data.rows);
 }
 
-export function buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil, actualOrders, actualAnalytics }) {
+export function buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil, actualOrders, actualAnalytics, adGrades = false }) {
   const campaignCurrent = current?.campaign;
   const currentOk = levelOk(campaignCurrent);
 
@@ -100,7 +100,8 @@ export function buildWeeklyMetaReportModel({ current, previous, since, until, pr
       analytics: actualAnalytics,
       metaAds: current?.ad?.rows || [],
       since,
-      until
+      until,
+      adGrades
     }),
     raw: currentOk ? current : null
   };
@@ -262,7 +263,8 @@ export async function buildWeeklyMetaReportWorkbook(model, { onePage = false } =
     "actual_paid_amount",
     "analytics_order_amount",
     "order_status",
-    "attribution_note"
+    "attribution_note",
+    ...(model.actualProducts?.summary?.grades ? ["attribution_grade", "matched_ad_id", "amount_status"] : [])
   ];
   setupSheet(actual,cols.map(key=>({header:key=== "product_code"?"SKU/product_code":key==="option_size"?"option/size":key,key,width:["ad_mapping","attribution_note"].includes(key)?65:22})));
   if(!model.actualProducts?.available)actual.addRow({attribution_note:"UNAVAILABLE — "+(model.actualProducts?.reason||"Cafe24 actual orders not supplied; no Meta revenue substitution.")});
@@ -281,8 +283,46 @@ export async function buildWeeklyMetaReportWorkbook(model, { onePage = false } =
     const summary = workbook.addWorksheet('ISSUED_COMPARISON');
     summary.addRows([['전주 기간',model.previousSince,model.previousUntil],['발행 당시 주문 수',!issuedOk?U:c.issuedOrderCount??'UNAVAILABLE'],['발행 당시 매출',!issuedOk?U:c.issuedRevenue??'UNAVAILABLE'],['후속 환불 조정',!issuedOk||!prevOk?U:c.refundAdjustment??'UNAVAILABLE'],['현재 기준 순매출',!prevOk?U:c.currentRevenue??'UNAVAILABLE'],['발행 기준일',c.issuedAt??'UNAVAILABLE'],['발행본 종류',c.issuedKind??'UNAVAILABLE'],['현재 조회 기준일',c.asOf],['검증 결과',c.status]]);
   }
+  if (model.attribution) buildAttributionSheet(workbook, model);
+  if (model.refundTracking) buildRefundTrackingSheet(workbook, model.refundTracking);
   buildRawSheet(workbook, model);
   return workbook;
+}
+
+const GRADE_LABEL = { G1_AD_ID: "광고 ID 유입 확인", G2_AD_NAME: "광고명 후보 (합산 안 함)" };
+// Meta click/view purchases per ad next to Cafe24 orders; candidates are counted, never summed.
+function buildAttributionSheet(workbook, model) {
+  const sheet = workbook.addWorksheet("META_ATTRIBUTION");
+  setupSheet(sheet, [["adId", "광고 ID"], ["adName", "광고명"], ["clickPurchases", "Meta 클릭 구매 (7일)"], ["clickValue", "Meta 클릭 매출"], ["viewPurchases", "Meta 노출 구매 (1일)"], ["viewValue", "Meta 노출 매출"], ["g1", `Cafe24 ${GRADE_LABEL.G1_AD_ID}`], ["g1Revenue", "확인 매출 (정상+클레임)"], ["g2", GRADE_LABEL.G2_AD_NAME]].map(([key, header]) => ({ key, header, width: 20 })));
+  const a = model.attribution, ok = a.completeness === "COMPLETE", U = "미검증";
+  const rows = model.actualProducts?.available ? model.actualProducts.rows.filter((r, i, all) => all.findIndex(x => x.order_id === r.order_id) === i) : [];
+  for (const ad of model.ads || []) {
+    const split = a.ads?.[ad.adId], mine = grade => rows.filter(r => r.attribution_grade === grade && r.matched_ad_id === ad.adId);
+    sheet.addRow({ adId: ad.adId, adName: ad.adName, clickPurchases: ok ? split?.click.purchases ?? 0 : U, clickValue: ok ? split?.click.value ?? 0 : U, viewPurchases: ok ? split?.view.purchases ?? 0 : U, viewValue: ok ? split?.view.value ?? 0 : U,
+      g1: model.actualProducts?.available ? mine("G1_AD_ID").length : U, g1Revenue: model.actualProducts?.available ? mine("G1_AD_ID").reduce((s, r) => s + Number(r.actual_paid_amount || 0), 0) : U, g2: model.actualProducts?.available ? mine("G2_AD_NAME").length : U });
+  }
+  if (ok) sheet.addRow({ adId: "합계", clickPurchases: a.totals.click.purchases, clickValue: a.totals.click.value, viewPurchases: a.totals.view.purchases, viewValue: a.totals.view.value });
+  else sheet.addRow({ adId: `미검증 — ${(a.reasons || []).join(", ")}` });
+  sheet.addRow({ adId: "노출 구매는 클릭이 없어 Cafe24 주문과 연결할 수 없는 구조입니다. G1은 Cafe24 Analytics의 광고 ID 유입 기록이며 Meta 개별 구매 이벤트와 일대일 대응이 아닙니다." });
+  for (const key of ["clickValue", "viewValue", "g1Revenue"]) sheet.getColumn(key).numFmt = WON_FMT;
+}
+
+// Recent issued weeks re-read by order number; issued files are never modified. "이번 반영액" is what this
+// report adds on top of what earlier issued reports already adjusted (refund ledger), so nothing twice.
+const LEDGER_LABEL = { NEW: "최초 반영", PREVIOUSLY_REPORTED: "이전 반영", UNKNOWN: "미확인 (합산 안 함)", LEDGER_UNVERIFIED: "장부 미검증 (합산 안 함)" };
+function buildRefundTrackingSheet(workbook, t) {
+  const sheet = workbook.addWorksheet("REFUND_TRACKING");
+  setupSheet(sheet, [["period", "발행 기간"], ["kind", "발행본 종류"], ["orderId", "주문번호"], ["issuedAmount", "발행 금액"], ["currentAmount", "현재 금액"], ["adjustment", "누적 조정액"], ["refundDate", "취소·환불일"], ["status", "검증 결과"], ["ledger", "장부 판정"], ["applied", "이번 반영액"]].map(([key, header]) => ({ key, header, width: 20 })));
+  if (t.error) sheet.addRow({ period: `미검증 — ${t.error}` });
+  if (t.ledgerError) sheet.addRow({ period: `정정 장부 미검증 — ${t.ledgerError} · 이번 보고서는 새 정정을 반영하지 않음` });
+  for (const p of t.periods || []) {
+    const period = `${p.since} ~ ${p.until}`;
+    if (!p.rows.length) { sheet.addRow({ period, kind: p.kind, status: p.error ? `미검증 — ${p.error}` : p.status }); continue; }
+    for (const r of p.rows) sheet.addRow({ period, kind: p.kind, orderId: r.orderId, issuedAmount: r.issuedAmount, currentAmount: r.currentAmount, adjustment: r.adjustment, refundDate: r.refundDate, status: r.status,
+      ledger: r.ledger === "PREVIOUSLY_REPORTED" && r.reportedIn ? `이전 반영 (${r.reportedIn} 발행본)` : LEDGER_LABEL[r.ledger] || r.ledger, applied: r.applied ?? null });
+  }
+  sheet.addRow({ period: `최근 ${t.weeks || 8}주 발행 주문 · 이번 반영액 = 누적 조정액 − 이전 발행본 장부 반영액 · 미확인은 합계 제외 · 직전 주는 ISSUED_COMPARISON과 같은 대조 결과` });
+  for (const key of ["issuedAmount", "currentAmount", "adjustment", "applied"]) sheet.getColumn(key).numFmt = WON_FMT;
 }
 
 // ---------------------------------------------------------------------------
@@ -330,11 +370,19 @@ export async function writeMetaWeeklyReportFile(workbook, { since, until, output
   return finalPath;
 }
 
+// Click (7d_click) + view (1d_view) must add back up to the weekly Meta totals, else the split is not shown.
+export function checkAttributionSplit(split, summary) {
+  if (!split || split.completeness !== "COMPLETE" || !split.totals) return { completeness: "UNAVAILABLE", reasons: split?.reasons || ["ATTRIBUTION_REQUEST_FAILED"], ads: {} };
+  const { click, view } = split.totals, cents = v => Math.round(Number(v || 0) * 100);
+  const matches = click.purchases + view.purchases === Number(summary?.purchases) && cents(click.value) + cents(view.value) === cents(summary?.purchaseValue);
+  return matches ? split : { ...split, completeness: "MISMATCH", reasons: ["CLICK_PLUS_VIEW_NOT_EQUAL_TOTAL"] };
+}
+
 // ---------------------------------------------------------------------------
 // Orchestrator
 // ---------------------------------------------------------------------------
 
-export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, onePage = false, requireCompleteData = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, fetchAccountTotals, outputDir, env = process.env, saveReport, publicationMode = referenceDateKey && onePage && requireCompleteData ? 'auto' : 'draft', now = () => new Date() } = {}) {
+export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, onePage = false, requireCompleteData = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, fetchAccountTotals, fetchAttribution, fetchRefundOrders, adGrades = requireCompleteData, outputDir, env = process.env, saveReport, publicationMode = referenceDateKey && onePage && requireCompleteData ? 'auto' : 'draft', now = () => new Date() } = {}) {
   // The existing scheduler supplies referenceDateKey + strict onePage; library calls remain drafts.
   const generatedAt = now().toISOString();
   if (typeof fetchByLevel !== "function") throw new Error("generateWeeklyMetaAdsReport requires fetchByLevel(since, until, level)");
@@ -388,7 +436,8 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, on
     previousSince,
     previousUntil,
     actualOrders,
-    actualAnalytics
+    actualAnalytics,
+    adGrades
   });
   if (!model.ok) {
     return { ok: false, since, until, error: model.error, filePath: null };
@@ -403,7 +452,7 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, on
       previousOrders = await fetchActualOrders(previousSince, previousUntil, { includeAnalyticsOrders: true });
       previousAnalytics = await fetchActualAnalytics(previousSince, previousUntil);
     } catch { /* Explicitly fail below rather than save an incomplete report. */ }
-    model.previousActualProducts = buildActualProductsSold({ data: previousOrders, analytics: previousAnalytics, metaAds: previous.ad.rows, since: previousSince, until: previousUntil });
+    model.previousActualProducts = buildActualProductsSold({ data: previousOrders, analytics: previousAnalytics, metaAds: previous.ad.rows, since: previousSince, until: previousUntil, adGrades });
     if (!model.previousActualProducts.available) return { ok: false, since, until, error: "Previous Cafe24 actual attribution data unavailable; report was not saved.", filePath: null };
   }
 
@@ -422,6 +471,12 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, on
     for (const [name, s, u] of [['current', since, until], ['previous', previousSince, previousUntil]]) {
       try { accountTotals[name] = await fetchAccountTotals(s, u); } catch { accountTotals[name] = null; }
     }
+  }
+  // Supplementary views: a failure is shown as 미검증 in its own section and never blocks publication.
+  if (requireCompleteData && fetchAttribution) model.attribution = checkAttributionSplit(await Promise.resolve().then(() => fetchAttribution(since, until)).catch(() => null), model.summary);
+  if (requireCompleteData && fetchRefundOrders) {
+    try { model.refundTracking = await trackIssuedRefunds({ outputDir: issuedOutputDir, before: since, weeks: 8, fetchOrders: fetchRefundOrders, asOf: now().toISOString(), previous: { since: previousSince, comparison } }); }
+    catch (error) { model.refundTracking = { error: String(error?.message || error), periods: [] }; }
   }
   const review = reviewMetaPublication({model,current,previous,actualOrders,actualAnalytics,previousOrders,previousAnalytics,comparison,accountTotals});
   if (scheduled && review.result === 'FAIL') return {ok:false,since,until,filePath:null,publication:null,review,comparison,error:'AUTO_REVIEW_FAILED'};
