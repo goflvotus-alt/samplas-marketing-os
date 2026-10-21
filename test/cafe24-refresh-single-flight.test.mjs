@@ -238,3 +238,19 @@ test('T9 raw refresh is called only inside single-flight; all four callers use s
     ['  // Cafe24 에러 응답은 엔드포인트','  const skip =']
   ])assert.match(slice(source,start,end),/await refreshCafe24TokenSingleFlight\(\)/);
 });
+
+test('every reauth marker call passes the refresh token used by the failed OAuth request',()=>{
+  const verify = code => {
+    const body = code.replace(/async function markCafe24ReauthRequired\([^)]*\)/, '');
+    const calls = [...body.matchAll(/\bmarkCafe24ReauthRequired\s*\(([^)]*)\)/g)];
+    assert(calls.length > 0);
+    for (const [,args] of calls) {
+      assert.deepEqual(args.split(',').map(arg=>arg.trim()), ['refreshError','record.refreshToken']);
+    }
+  };
+  verify(source);
+  // Prove the static guard rejects a missing argument and a token read after the failed request.
+  for (const args of ['refreshError','refreshError, latest.refreshToken']) {
+    assert.throws(()=>verify(source.replace('markCafe24ReauthRequired(refreshError, record.refreshToken)',`markCafe24ReauthRequired(${args})`)));
+  }
+});
