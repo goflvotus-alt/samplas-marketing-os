@@ -47,6 +47,7 @@ import {
 import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
 import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs";
 import { runWeeklyReportPreview, handleWeeklyReportPreview } from "./scripts/weekly-report-manual.mjs";
+import { createMetaWeeklyCafe24SourceHandler } from "./scripts/meta-weekly-cafe24-source.mjs";
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
 import { getVeilFoundStatus, runVeilFoundPublisher, fetchInstagramFeed, veilFoundConfig } from "./scripts/veil-found-publisher.mjs";
 import { runVeilSoldOutAudit } from "./scripts/veil-found-soldout-audit.mjs";
@@ -192,6 +193,20 @@ async function runVeilFoundScheduledCheck() {
     veilFoundPublisherScheduler.running = false;
   }
 }
+
+// Read-only Cafe24 source for an off-Production Meta weekly rehearsal: the scheduler's own fetchers
+// with the scheduler's arguments (no canonical cache; tokens refresh only in this process).
+// Requires the configured internal credential: no loopback-host fallback when it is unset.
+const metaWeeklyCafe24Source = createMetaWeeklyCafe24SourceHandler({
+  authorized: req => Boolean(env.CAFE24_PROXY_BASIC_AUTH) && isAuthorizedInternalRequest(req),
+  json,
+  isReportRunning: () => metaWeeklyReportScheduler.running,
+  fetchers: {
+    actual: (since, until) => fetchCafe24ActualOrdersForWeeklyReport(since, until, { includeAnalyticsOrders: true }),
+    analytics: fetchCafe24AnalyticsForWeeklyReport,
+    refund: fetchCafe24OrdersForRefundTracking
+  }
+});
 
 const server = isMainModule ? createServer(async (req, res) => {
   try {
@@ -355,6 +370,7 @@ const server = isMainModule ? createServer(async (req, res) => {
       );
       return json(res, data);
     }
+    if (url.pathname === "/api/reports/meta-weekly/cafe24-source") return metaWeeklyCafe24Source(req, res, url);
     if (url.pathname === "/api/reports/weekly/run") {
       return handleWeeklyReportPreview(req, res, {
         authorized: isAuthorizedInternalRequest, readBody: readJsonBody, json,
