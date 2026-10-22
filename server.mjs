@@ -1465,6 +1465,7 @@ const server = isMainModule ? createServer(async (req, res) => {
   }
 }).listen(port, host, () => {
   console.log(`SAMPLAS Marketing OS running at http://${host}:${port}`);
+  console.log("[META_CREATIVE_IDENTITY]", JSON.stringify({ pageId: env.FACEBOOK_PAGE_ID || null, instagramBusinessAccountId: env.INSTAGRAM_BUSINESS_ACCOUNT_ID || null }));
   // Cafe24 write probes and NEW COLLECTION reads are manual-only; neither runs at boot.
   runMetaCatalogReadProbe().catch((error) => {
     console.error("[META_CATALOG_READ_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
