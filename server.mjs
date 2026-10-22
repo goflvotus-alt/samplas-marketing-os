@@ -297,7 +297,9 @@ const server = isMainModule ? createServer(async (req, res) => {
         "community-09.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/60c8230c-2243-4a76-80f1-71268d255dd2.jpg",
         "community-10.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/cf1999c7-90c5-4fa2-b2a2-9c3b30822da3.jpg",
         "staff-slideshow.mp4": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/12e313cc-aa36-42ba-b15c-58e2ae16984b.mp4",
-        "community-slideshow.mp4": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/6af4a81b-6efb-45d3-96c5-8550cd918aa6.mp4"
+        "community-slideshow.mp4": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/6af4a81b-6efb-45d3-96c5-8550cd918aa6.mp4",
+        "staff-animated.gif": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/bf582054-ec03-445d-ab43-fa57103f214d.gif",
+        "community-animated.gif": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/7982b3ea-3655-421a-954f-e8f263bd706d.gif"
       }[key];
       if (!media) return json(res, { ok: false, error: "Not found" }, 404);
       const upstream = await fetch(media);
