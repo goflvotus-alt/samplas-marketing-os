@@ -1466,6 +1466,9 @@ const server = isMainModule ? createServer(async (req, res) => {
 }).listen(port, host, () => {
   console.log(`SAMPLAS Marketing OS running at http://${host}:${port}`);
   console.log("[META_CREATIVE_IDENTITY]", JSON.stringify({ pageId: env.FACEBOOK_PAGE_ID || null, instagramBusinessAccountId: env.INSTAGRAM_BUSINESS_ACCOUNT_ID || null }));
+  runMeantimeCreativeVideoUploadProbe().catch((error) => {
+    console.error("[MEANTIME_VIDEO_UPLOAD]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
+  });
   // Cafe24 write probes and NEW COLLECTION reads are manual-only; neither runs at boot.
   runMetaCatalogReadProbe().catch((error) => {
     console.error("[META_CATALOG_READ_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
@@ -8599,6 +8602,79 @@ async function runMetaCatalogReadProbe() {
       error: safeErrorMessage(error),
       status: error.status || null,
       code: error.code || null
+    }));
+  }
+}
+
+
+async function graphUploadAdVideoFromUrl({ sourceUrl, title }) {
+  const accessToken = await resolveMetaAccessToken();
+  if (!accessToken) throw new Error("META_ACCESS_TOKEN이 없습니다.");
+  const rawAccountId = String(cleanAdAccountId() || "").replace(/^act_/, "");
+  if (!/^\d+$/.test(rawAccountId)) throw new Error("META_AD_ACCOUNT_ID가 올바르지 않습니다.");
+
+  const sourceResponse = await fetch(sourceUrl);
+  if (!sourceResponse.ok) throw new Error(`video source fetch failed ${sourceResponse.status}`);
+  const bytes = Buffer.from(await sourceResponse.arrayBuffer());
+  if (!bytes.length) throw new Error("video source is empty");
+
+  const form = new FormData();
+  form.append("access_token", accessToken);
+  form.append("title", title);
+  form.append("source", new Blob([bytes], { type: "video/mp4" }), `${title.replace(/[^a-z0-9_-]+/gi, "_")}.mp4`);
+
+  const response = await fetch(`https://graph.facebook.com/${graphVersion}/act_${rawAccountId}/advideos`, {
+    method: "POST",
+    body: form
+  });
+  const body = await response.json();
+  if (!response.ok || body.error || !body.id) {
+    const error = new Error(body.error?.message || `Meta video upload failed ${response.status}`);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+  return { id: String(body.id), size: bytes.length };
+}
+
+async function runMeantimeCreativeVideoUploadProbe() {
+  if (env.MEANTIME_CREATIVE_VIDEO_UPLOAD !== "on") return;
+  const markerFile = join(workDir, "meantime-creative-video-upload.json");
+  try {
+    const existing = JSON.parse(await readFile(markerFile, "utf8"));
+    if (existing?.staffVideoId && existing?.communityVideoId) {
+      console.log("[MEANTIME_VIDEO_UPLOAD]", JSON.stringify({ ok: true, skipped: true, ...existing }));
+      return;
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") console.warn("[MEANTIME_VIDEO_UPLOAD]", safeErrorMessage(error));
+  }
+
+  try {
+    const staff = await graphUploadAdVideoFromUrl({
+      sourceUrl: "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/12e313cc-aa36-42ba-b15c-58e2ae16984b.mp4",
+      title: "MEANTIME STAFF OUTFITS SLIDESHOW"
+    });
+    const community = await graphUploadAdVideoFromUrl({
+      sourceUrl: "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/6af4a81b-6efb-45d3-96c5-8550cd918aa6.mp4",
+      title: "MEANTIME COMMUNITY OUTFITS SLIDESHOW"
+    });
+    const result = {
+      staffVideoId: staff.id,
+      communityVideoId: community.id,
+      staffBytes: staff.size,
+      communityBytes: community.size,
+      uploadedAt: new Date().toISOString()
+    };
+    await writeFile(markerFile, JSON.stringify(result, null, 2), { mode: 0o600 });
+    console.log("[MEANTIME_VIDEO_UPLOAD]", JSON.stringify({ ok: true, ...result }));
+  } catch (error) {
+    console.error("[MEANTIME_VIDEO_UPLOAD]", JSON.stringify({
+      ok: false,
+      error: safeErrorMessage(error),
+      status: error.status || null,
+      code: error.body?.error?.code || null,
+      subcode: error.body?.error?.error_subcode || null
     }));
   }
 }
