@@ -236,6 +236,36 @@ const server = isMainModule ? createServer(async (req, res) => {
       res.end();
       return;
     }
+    if (url.pathname.startsWith("/api/meta-creative-media/")) {
+      const key = decodeURIComponent(url.pathname.slice("/api/meta-creative-media/".length));
+      const media = {
+        "community-01.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/02a53fd7-74be-403c-8a1c-b017ac634958.jpg",
+        "community-02.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/2b5df70b-09d9-4cde-a447-460501ed8f33.jpg",
+        "community-03.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/0a8f58d2-5f19-412e-b878-90cfcd366c9b.jpg",
+        "community-04.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/b0e3db52-ef72-4dc5-973a-1de8253044b9.jpg",
+        "community-05.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/efb31939-53fb-47cc-acd0-b5b83e62847f.jpg",
+        "community-06.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/acea8443-b4ac-4dce-8063-177410199b31.jpg",
+        "community-07.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/cdbc35f6-4cab-4d53-b51b-f325b1859974.jpg",
+        "community-08.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/35e8df0c-76ec-46c3-8e16-cd315c1d28b0.jpg",
+        "community-09.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/60c8230c-2243-4a76-80f1-71268d255dd2.jpg",
+        "community-10.jpg": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/cf1999c7-90c5-4fa2-b2a2-9c3b30822da3.jpg",
+        "staff-slideshow.mp4": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/12e313cc-aa36-42ba-b15c-58e2ae16984b.mp4",
+        "community-slideshow.mp4": "https://d2ol7oe51mr4n9.cloudfront.net/user_2zG0bl06CWwL9LZYC2n40idIMsH/6af4a81b-6efb-45d3-96c5-8550cd918aa6.mp4"
+      }[key];
+      if (!media) return json(res, { ok: false, error: "Not found" }, 404);
+      const upstream = await fetch(media);
+      if (!upstream.ok) return json(res, { ok: false, error: "Media unavailable" }, 502);
+      const contentType = upstream.headers.get("content-type") || (key.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
+      const bytes = Buffer.from(await upstream.arrayBuffer());
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Content-Length": String(bytes.length),
+        "Cache-Control": "public, max-age=3600"
+      });
+      res.end(bytes);
+      return;
+    }
+
     if (url.pathname === "/api/status") {
       const integrations = integrationStatus();
       const cafe24Token = await cafe24TokenDiagnostics();
@@ -2617,7 +2647,7 @@ function hasOperatorSession(req) {
 // API_READ_AUTH=off is the emergency rollback switch for this gate (route-level write checks stay).
 export function isApiRequestAllowed(req, pathname, { readAuth = env.API_READ_AUTH } = {}) {
   if (readAuth === "off") return true;
-  if (PUBLIC_API_PATHS.has(pathname) || pathname.startsWith("/api/ai-audit/")) return true;
+  if (PUBLIC_API_PATHS.has(pathname) || pathname.startsWith("/api/ai-audit/") || pathname.startsWith("/api/meta-creative-media/")) return true;
   return isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req);
 }
 
