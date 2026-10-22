@@ -1394,7 +1394,7 @@ const server = isMainModule ? createServer(async (req, res) => {
   }
 }).listen(port, host, () => {
   console.log(`SAMPLAS Marketing OS running at http://${host}:${port}`);
-  // Cafe24 product writes are manual-only; never start a write probe at boot.
+  // Cafe24 write probes and NEW COLLECTION reads are manual-only; neither runs at boot.
   runMetaCatalogReadProbe().catch((error) => {
     console.error("[META_CATALOG_READ_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
   });
@@ -7533,10 +7533,41 @@ function buildCafe24MetaSyncAuthorizeUrl() {
 async function cafe24MetaSyncAccessToken() {
   const record = await readCafe24MetaSyncTokenRecord();
   if (!record?.accessToken) throw new Error("Cafe24 Meta Sync access token이 없습니다. 전용 OAuth 인증이 필요합니다.");
-  if (record.expiresAt && Date.parse(record.expiresAt) <= Date.now()) {
-    throw new Error("Cafe24 Meta Sync access token이 만료됐습니다. 전용 OAuth 재인증이 필요합니다.");
+  if (!record.expiresAt || Date.parse(record.expiresAt) > Date.now() + 60_000) return record.accessToken;
+  if (!record.refreshToken) throw new Error("Cafe24 Meta Sync refresh token이 없습니다. 전용 OAuth 재인증이 필요합니다.");
+  const required = ["CAFE24_MALL_ID", "CAFE24_META_SYNC_CLIENT_ID", "CAFE24_META_SYNC_CLIENT_SECRET"];
+  const missing = required.filter((key) => !env[key]);
+  if (missing.length) throw new Error(`Cafe24 Meta Sync token 갱신에 필요한 값이 없습니다: ${missing.join(", ")}`);
+  const credentials = Buffer.from(`${env.CAFE24_META_SYNC_CLIENT_ID}:${env.CAFE24_META_SYNC_CLIENT_SECRET}`).toString("base64");
+  const params = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: record.refreshToken
+  });
+  const response = await fetch(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/oauth/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: params.toString()
+  });
+  const body = await response.json();
+  if (!response.ok || body.error || !body.access_token) {
+    const message = body.error_description || body.error?.message || body.message || `Cafe24 Meta Sync refresh failed ${response.status}`;
+    throw new Error(message);
   }
-  return record.accessToken;
+  const saved = await writeCafe24MetaSyncTokenRecord({
+    ...record,
+    status: "active",
+    accessToken: body.access_token,
+    refreshToken: body.refresh_token || record.refreshToken,
+    expiresAt: body.expires_at || null,
+    scopes: Array.isArray(body.scopes) ? body.scopes : record.scopes || cafe24MetaSyncScopes(),
+    updatedAt: new Date().toISOString(),
+    lastRefreshAt: new Date().toISOString(),
+    lastError: null
+  });
+  return saved.accessToken;
 }
 
 async function cafe24MetaSyncProductRequest(path, { method = "GET", body } = {}) {
@@ -7593,6 +7624,42 @@ async function resendCafe24ProductForMeta(productNo) {
     before,
     responseProductNo: updated?.product?.product_no || normalized
   };
+}
+
+
+async function runCafe24NewCollectionSinceProbe() {
+  const since = String(env.CAFE24_META_SYNC_NEW_COLLECTION_SINCE || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) return;
+  try {
+    const productNos = [];
+    const until = todayKey();
+    for (let offset = 0; offset <= 5000; offset += 100) {
+      const body = await cafe24MetaSyncProductRequest(
+        `/products?shop_no=1&created_start_date=${encodeURIComponent(since)}&created_end_date=${encodeURIComponent(until)}&limit=100&offset=${offset}&sort=created_date&order=asc&fields=product_no,product_name,created_date`
+      );
+      const page = Array.isArray(body?.products) ? body.products : [];
+      for (const product of page) {
+        if (Number.isInteger(Number(product.product_no))) productNos.push(Number(product.product_no));
+      }
+      if (page.length < 100) break;
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 75));
+    }
+    console.log("[CAFE24_NEW_COLLECTION_SINCE]", JSON.stringify({
+      ok: true,
+      since,
+      count: productNos.length,
+      minProductNo: productNos.length ? Math.min(...productNos) : null,
+      maxProductNo: productNos.length ? Math.max(...productNos) : null,
+      productNos
+    }));
+  } catch (error) {
+    console.error("[CAFE24_NEW_COLLECTION_SINCE]", JSON.stringify({
+      ok: false,
+      since,
+      error: safeErrorMessage(error),
+      status: error.status || null
+    }));
+  }
 }
 
 async function runCafe24MetaSyncStartupProbe() {
