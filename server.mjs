@@ -236,6 +236,53 @@ const server = isMainModule ? createServer(async (req, res) => {
       res.end();
       return;
     }
+    if (url.pathname.startsWith("/api/meta-creative-upload/")) {
+      const expectedToken = String(env.MEANTIME_CREATIVE_UPLOAD_TOKEN || "");
+      const suppliedToken = String(req.headers["x-upload-token"] || "");
+      if (!expectedToken || suppliedToken !== expectedToken) {
+        return json(res, { ok: false, error: "Unauthorized" }, 401);
+      }
+      if (req.method !== "PUT") return json(res, { ok: false, error: "Method not allowed" }, 405);
+
+      const key = decodeURIComponent(url.pathname.slice("/api/meta-creative-upload/".length));
+      const spec = {
+        "staff-slideshow.mp4": { field: "staffVideoId", title: "MEANTIME STAFF OUTFITS SLIDESHOW" },
+        "community-slideshow.mp4": { field: "communityVideoId", title: "MEANTIME COMMUNITY OUTFITS SLIDESHOW" }
+      }[key];
+      if (!spec) return json(res, { ok: false, error: "Not found" }, 404);
+
+      const chunks = [];
+      let total = 0;
+      for await (const chunk of req) {
+        total += chunk.length;
+        if (total > 20 * 1024 * 1024) return json(res, { ok: false, error: "File too large" }, 413);
+        chunks.push(chunk);
+      }
+      const bytes = Buffer.concat(chunks);
+      if (!bytes.length) return json(res, { ok: false, error: "Empty file" }, 400);
+
+      const stateFile = join(workDir, "meantime-creative-video-upload.json");
+      let state = {};
+      try { state = JSON.parse(await readFile(stateFile, "utf8")); } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+
+      if (state[spec.field]) {
+        return json(res, { ok: true, reused: true, videoId: state[spec.field] });
+      }
+
+      const uploaded = await graphUploadAdVideoBuffer({ bytes, title: spec.title });
+      state = {
+        ...state,
+        [spec.field]: uploaded.id,
+        [`${spec.field}Bytes`]: uploaded.size,
+        updatedAt: new Date().toISOString()
+      };
+      await writeFile(stateFile, JSON.stringify(state, null, 2), { mode: 0o600 });
+      console.log("[MEANTIME_VIDEO_UPLOAD]", JSON.stringify({ ok: true, key, videoId: uploaded.id, bytes: uploaded.size }));
+      return json(res, { ok: true, videoId: uploaded.id });
+    }
+
     if (url.pathname.startsWith("/api/meta-creative-media/")) {
       const key = decodeURIComponent(url.pathname.slice("/api/meta-creative-media/".length));
       const media = {
@@ -2676,7 +2723,7 @@ function hasOperatorSession(req) {
 // API_READ_AUTH=off is the emergency rollback switch for this gate (route-level write checks stay).
 export function isApiRequestAllowed(req, pathname, { readAuth = env.API_READ_AUTH } = {}) {
   if (readAuth === "off") return true;
-  if (PUBLIC_API_PATHS.has(pathname) || pathname.startsWith("/api/ai-audit/") || pathname.startsWith("/api/meta-creative-media/")) return true;
+  if (PUBLIC_API_PATHS.has(pathname) || pathname.startsWith("/api/ai-audit/") || pathname.startsWith("/api/meta-creative-media/") || pathname.startsWith("/api/meta-creative-upload/")) return true;
   return isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req);
 }
 
@@ -8606,6 +8653,32 @@ async function runMetaCatalogReadProbe() {
   }
 }
 
+
+async function graphUploadAdVideoBuffer({ bytes, title }) {
+  const accessToken = await resolveMetaAccessToken();
+  if (!accessToken) throw new Error("META_ACCESS_TOKEN이 없습니다.");
+  const rawAccountId = String(cleanAdAccountId() || "").replace(/^act_/, "");
+  if (!/^\d+$/.test(rawAccountId)) throw new Error("META_AD_ACCOUNT_ID가 올바르지 않습니다.");
+  if (!Buffer.isBuffer(bytes) || !bytes.length) throw new Error("video buffer is empty");
+
+  const form = new FormData();
+  form.append("access_token", accessToken);
+  form.append("title", title);
+  form.append("source", new Blob([bytes], { type: "video/mp4" }), `${title.replace(/[^a-z0-9_-]+/gi, "_")}.mp4`);
+
+  const response = await fetch(`https://graph.facebook.com/${graphVersion}/act_${rawAccountId}/advideos`, {
+    method: "POST",
+    body: form
+  });
+  const body = await response.json();
+  if (!response.ok || body.error || !body.id) {
+    const error = new Error(body.error?.message || `Meta video upload failed ${response.status}`);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+  return { id: String(body.id), size: bytes.length };
+}
 
 async function graphUploadAdVideoFromUrl({ sourceUrl, title }) {
   const accessToken = await resolveMetaAccessToken();
