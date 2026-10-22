@@ -226,7 +226,10 @@ const server = isMainModule ? createServer(async (req, res) => {
     // Default deny for every /api/ route (2026-10-07): business data is private. Every /api request needs a
     // loopback request, internal Basic auth or an operator session; route-level checks still apply.
     if (url.pathname.startsWith("/api/") && !isApiRequestAllowed(req, url.pathname)) {
-      return json(res, { ok: false, error: "Unauthorized" }, 401);
+      // Distinguish session expiry from route-specific authorization failures.
+      // The browser must never re-prompt for an unrelated 401.
+      res.setHeader("X-Samplas-Auth", "operator-session-required");
+      return json(res, { ok: false, error: "Unauthorized", code: "OPERATOR_SESSION_REQUIRED" }, 401);
     }
     if (url.pathname === "/") {
       return serveFile(res, join(outputDir, "samplas-marketing-os.html"));
