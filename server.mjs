@@ -7620,9 +7620,10 @@ async function runCafe24NewCollectionSinceProbe() {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) return;
   try {
     const productNos = [];
+    const until = todayKey();
     for (let offset = 0; offset <= 5000; offset += 100) {
       const body = await cafe24MetaSyncProductRequest(
-        `/products?shop_no=1&created_start_date=${encodeURIComponent(since)}&limit=100&offset=${offset}&sort=created_date&order=asc&fields=product_no,product_name,created_date`
+        `/products?shop_no=1&created_start_date=${encodeURIComponent(since)}&created_end_date=${encodeURIComponent(until)}&limit=100&offset=${offset}&sort=created_date&order=asc&fields=product_no,product_name,created_date`
       );
       const page = Array.isArray(body?.products) ? body.products : [];
       for (const product of page) {
