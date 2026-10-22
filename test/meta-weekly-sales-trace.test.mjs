@@ -79,3 +79,27 @@ test('new scheduled adapters use existing product breakdown and GET-only Cafe24 
  assert.doesNotMatch(block,/X-Cafe24-Api-Version|cafe24OrdersApiVersion\(\)/);
  for(const name of ['fetchItemPayments: fetchCafe24ItemPaymentsForWeeklyReport','fetchMetaProducts: fetchMetaProductsForWeeklyReport','fetchAdTracking: fetchMetaAdTrackingForWeeklyReport'])assert(code.includes(name));
 });
+test('product grouping preserves each ad and reconciles 14 account / 11 product / 3 unbroken-down purchases',async()=>{
+ const rows=[{ad_id:'a',ad_name:'Ad A',product_id:'12.P000000A',purchaseCount:7},{ad_id:'a',product_id:'12.P000000A',purchaseCount:2},{ad_id:'b',ad_name:'Ad B',product_id:'12.P000000A',purchaseCount:2}];
+ const m=buildWeeklySalesTrace({...scope,ads:[{adId:'a',adName:'Ad A',purchases:9},{adId:'b',adName:'Ad B',purchases:2},{adId:'c',adName:'Ad C',purchases:3}],metaSummary:{purchases:14},metaProducts:{rows,completeness:'COMPLETE'}});
+ assert.equal(m.metaProducts.length,2);assert.deepEqual(m.metaProducts.map(r=>[r.adId,r.adName,r.metaPurchases]),[['a','Ad A',9],['b','Ad B',2]]);
+ assert.equal(m.summary.metaAccountPurchases,14);assert.equal(m.summary.metaProductPurchases,11);assert.equal(m.metaAdDifferences.reduce((s,r)=>s+r.metaPurchases,0),3);
+ const wb=new ExcelJS.Workbook();addWeeklySalesTraceSheets(wb,m);const saved=new ExcelJS.Workbook();await saved.xlsx.load(await wb.xlsx.writeBuffer());const sh=saved.getWorksheet('META_PRODUCTS');
+ assert(sh.getRow(1).values.includes('Meta 귀속 구매 (광고 노출 상품 기준 · 실제 판매 상품 아님)'));assert(sh.getRow(1).values.includes('광고 ID'));assert(sh.getRow(1).values.includes('광고명'));
+ assert(sh.getRows(2,sh.rowCount-1).some(r=>r.values.includes('product_id 없음 / 상품별 분해 불가')));
+});
+test('same product number with a different variant is PRODUCT_NO_ONLY without actual sales matching',()=>{
+ const m=buildWeeklySalesTrace({...scope,actualOrders:source([order('a',[item('a-1','[B] A',2)],180)]),metaProducts:{completeness:'COMPLETE',rows:[{ad_id:'a',product_id:'12.OTHER',purchaseCount:1}]}});
+ assert.equal(m.metaProducts[0].match,'PRODUCT_NO_ONLY');assert.equal(m.metaProducts[0].actualQuantity,null);assert.equal(m.metaProducts[0].actualAmount,null);assert.equal(m.summary.matchedPurchaseEvents,0);
+});
+test('missing or contradictory ad evidence never becomes an asserted missing-product count',()=>{
+ for(const [total,complete] of [[undefined,'COMPLETE'],[2,'PARTIAL'],[0,'COMPLETE']]){
+  const m=buildWeeklySalesTrace({...scope,ads:[{adId:'a',purchases:total}],metaProducts:{completeness:complete,rows:[{ad_id:'a',product_id:'12.P000000A',purchaseCount:1}]}});
+  assert.equal(m.metaAdDifferences[0].metaPurchases,null);assert.match(m.metaAdDifferences[0].note,/원인 확정 불가/);
+ }
+});
+test('summary explicitly labels the Cafe24 source snapshot time',()=>{
+ const wb=new ExcelJS.Workbook();wb.addWorksheet('SUMMARY').columns=[{key:'label'},{key:'current'},{key:'previous'},{key:'change'}];
+ addWeeklySalesTraceSheets(wb,buildWeeklySalesTrace({...scope,actualOrders:source([])}));
+ assert(JSON.stringify(wb.model).includes('Cafe24 조회 시점 상태 (source snapshot time)'));assert(!JSON.stringify(wb.model).includes('조회 현재 상태'));
+});
