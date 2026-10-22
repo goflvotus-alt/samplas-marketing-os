@@ -48,6 +48,7 @@ import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mj
 import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs";
 import { runWeeklyReportPreview, handleWeeklyReportPreview } from "./scripts/weekly-report-manual.mjs";
 import { createMetaWeeklyCafe24SourceHandler } from "./scripts/meta-weekly-cafe24-source.mjs";
+import {fetchWeeklyItemPayments} from './scripts/meta-weekly-sales-trace.mjs';
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
 import { getVeilFoundStatus, runVeilFoundPublisher, fetchInstagramFeed, veilFoundConfig } from "./scripts/veil-found-publisher.mjs";
 import { runVeilSoldOutAudit } from "./scripts/veil-found-soldout-audit.mjs";
@@ -8792,7 +8793,7 @@ async function graphGetRawUrl(fullUrl) {
 
 // 캠페인 목록/Insights처럼 계정 규모에 따라 여러 페이지로 나뉠 수 있는 응답을 모두 모읍니다.
 // 안전장치로 최대 페이지 수를 제한합니다(계정이 비정상적으로 커도 무한 루프에 빠지지 않도록).
-async function graphGetAllPages(path, params = {}, { maxPages = 10 } = {}) {
+async function graphGetAllPages(path, params = {}, { maxPages = 10, requireComplete = false } = {}) {
   const results = [];
   let body = await graphGet(path, params);
   results.push(...(body.data || []));
@@ -8802,6 +8803,7 @@ async function graphGetAllPages(path, params = {}, { maxPages = 10 } = {}) {
     results.push(...(body.data || []));
     pages += 1;
   }
+  if(requireComplete&&body.paging?.next)throw new Error('META_WEEKLY_PAGE_LIMIT');
   return results;
 }
 
@@ -8836,14 +8838,14 @@ async function fetchMetaAccountTotals(adAccountId, since, until) {
   return { spend, purchaseValue, purchases, roas: spend ? purchaseValue / spend : null };
 }
 
-async function fetchMetaProductBreakdownRows(adAccountId, since, until, level) {
+async function fetchMetaProductBreakdownRows(adAccountId, since, until, level, options = {}) {
   return graphGetAllPages(`${adAccountId}/insights`, {
     fields: metaAdsFieldsForLevel(level).join(","),
     level,
     breakdowns: "product_id",
     time_range: JSON.stringify({ since, until }),
     limit: 200
-  });
+  },options);
 }
 
 async function buildMetaAdsProducts(since, until, options = {}) {
@@ -9588,6 +9590,38 @@ export async function fetchCafe24OrdersForRefundTracking(since, until) {
   return cafe24GetOrders(since, until, { limit: 1000, strictOrders: true });
 }
 
+// Supplemental reporting reads never refresh tokens or enrich/write the product registry.
+export async function fetchCafe24ItemPaymentsForWeeklyReport(since, until, {actualOrders} = {}) {
+  const orders=actualOrders?.analyticsOrders;
+  if(!Array.isArray(orders)||!actualOrders.analyticsOrdersComplete)return {completeness:'UNAVAILABLE',rows:[],errors:[{reason:'ALL_ORDERS_UNVERIFIED'}]};
+  const codes=orders.flatMap(o=>cafe24OrderItems(o).map(i=>i.order_item_code)).filter(Boolean);
+  if(codes.length>1000)return {completeness:'UNAVAILABLE',rows:[],errors:[{reason:'ITEM_PAYMENT_LIMIT'}]};
+  const token=await readCafe24TokenRecord();
+  if(!token||token.status!=='active'||!token.accessToken||!Number.isFinite(Date.parse(token.expiresAt))||Date.parse(token.expiresAt)-Date.now()<5*60000)return {completeness:'UNAVAILABLE',rows:[],errors:[{reason:'TOKEN_REFRESH_PROHIBITED'}]};
+  return fetchWeeklyItemPayments({codes,get:async(path,params)=>{
+    const url=new URL(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin${path}`);
+    for(const [key,value]of Object.entries(params))url.searchParams.set(key,value);
+    // Use the OAuth app's default version: synthetic Orders floor and obsolete defaults are rejected.
+    const response=await fetch(url,{method:'GET',headers:{Authorization:`Bearer ${token.accessToken}`},signal:AbortSignal.timeout(20000)});
+    const body=await response.json();
+    return response.ok?body:{error:{code:response.status,message:body?.error?.message||''}};
+  }});
+}
+
+export async function fetchMetaProductsForWeeklyReport(since, until) {
+  const rows=await fetchMetaProductBreakdownRows(cleanAdAccountId(),since,until,'ad',{requireComplete:true});
+  return {rows:rows.filter(row=>actionValue(row.actions,'purchase')>0),observedRows:rows.length,completeness:'COMPLETE'};
+}
+
+export async function fetchMetaAdTrackingForWeeklyReport(since, until, {ads=[]} = {}) {
+  const ids=[...new Set(ads.map(ad=>ad.adId).filter(Boolean))],rows=[];
+  for(let i=0;i<ids.length;i+=100){
+    const body=await graphGet('',{ids:ids.slice(i,i+100).join(','),fields:'id,name,creative{url_tags}'});
+    for(const id of ids.slice(i,i+100)){if(!body[id]?.id)throw new Error('META_WEEKLY_AD_TRACKING_INCOMPLETE');rows.push(body[id]);}
+  }
+  return {rows,completeness:'COMPLETE'};
+}
+
 // Query provenance is internal metadata; never fabricate Cafe24 response fields.
 const META_WEEKLY_TRACKING_CODES = ['meta_meantime_look', 'meta_ssage', 'meta_adv_catalog', 'meta_adv_image', 'meta_adv_video'];
 export async function fetchCafe24ActualOrdersForWeeklyReport(since, until, { includeAnalyticsOrders = false } = {}) {
@@ -9667,6 +9701,9 @@ async function runMetaWeeklyReportCheck() {
       fetchAccountTotals: fetchMetaAccountTotalsForWeeklyReport,
       fetchAttribution: fetchMetaAttributionForWeeklyReport,
       fetchRefundOrders: fetchCafe24OrdersForRefundTracking,
+      fetchItemPayments: fetchCafe24ItemPaymentsForWeeklyReport,
+      fetchMetaProducts: fetchMetaProductsForWeeklyReport,
+      fetchAdTracking: fetchMetaAdTrackingForWeeklyReport,
       env,
       saveReport: destination.mode === "dropbox"
         ? (workbook, { since, until }) => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: `${destination.dir.replace(/\/+$/, "")}/META_ADS_WEEKLY_${since}_${until}.xlsx`, env })
