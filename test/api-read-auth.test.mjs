@@ -7,17 +7,18 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { isApiRequestAllowed } from "../server.mjs";
+process.env.CAFE24_PROXY_BASIC_AUTH ??= "FAKE_TEST:FAKE_TEST";
+const { isApiRequestAllowed } = await import("../server.mjs");
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const basic = (value) => `Basic ${Buffer.from(value).toString("base64")}`;
 const fakeReq = (headers = {}, remoteAddress = "10.0.0.5") => ({ headers, socket: { remoteAddress } });
 
 test("gate decision: public allowlist, AI audit prefix, loopback needs a loopback socket, rollback switch", () => {
-  for (const path of ["/api/operator/session", "/api/cafe24/oauth/callback", "/api/meta/oauth/callback", "/api/ai-audit/health"]) {
+  for (const path of ["/api/operator/session", "/api/cafe24/oauth/callback", "/api/cafe24-meta-sync/oauth/callback", "/api/meta/oauth/callback", "/api/ai-audit/health"]) {
     assert.equal(isApiRequestAllowed(fakeReq(), path, { readAuth: undefined }), true, path);
   }
-  for (const path of ["/api/sales/total", "/api/intelligence/clients", "/api/brand-master", "/api/status", "/api/cafe24/oauth/start"]) {
+  for (const path of ["/api/sales/total", "/api/intelligence/clients", "/api/brand-master", "/api/status", "/api/cafe24/oauth/start", "/api/cafe24-meta-sync/oauth/start"]) {
     assert.equal(isApiRequestAllowed(fakeReq(), path, { readAuth: undefined }), false, path);
   }
   // A forged local Host header from a remote socket is not local.
@@ -55,7 +56,7 @@ test("HTTP: anonymous reads are refused; Basic, operator session and /healthz wo
       child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`server exit ${code}`)); });
     });
     assert.equal((await call(port, "/healthz")).status, 200);
-    for (const path of ["/api/brand-master", "/api/intelligence/clients?since=2026-09-01&until=2026-09-30", "/api/status", "/api/sales/total"]) {
+    for (const path of ["/api/brand-master", "/api/intelligence/clients?since=2026-09-01&until=2026-09-30", "/api/status", "/api/sales/total", "/api/cafe24/oauth/start", "/api/cafe24-meta-sync/oauth/start"]) {
       assert.equal((await call(port, path)).status, 401, `anonymous ${path}`);
     }
     assert.equal((await call(port, "/api/brand-master", { headers: { authorization: basic("proxy:wrong") } })).status, 401);
