@@ -426,6 +426,15 @@ async function fetchWithOperatorSession(url, init) {
   return (await ensureOperatorSession()) ? fetch(url, { ...init, signal: AbortSignal.timeout(120000) }) : response;
 }
 
+async function startCafe24Reauth() {
+  try {
+    const response = await fetchWithOperatorSession("/api/diagnostics/cafe24-oauth-config", { cache: "no-store" });
+    if (response.ok) window.location.href = "/api/cafe24/oauth/start";
+  } catch {
+    // 로그인 취소, 인증 실패, 네트워크 실패 시 현재 화면을 유지한다.
+  }
+}
+
 async function fetchJson(url, timeoutMs = 8000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -19392,6 +19401,12 @@ function renderEntityOverviewSection() {
 }
 
 function bind() {
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest('a[href="/api/cafe24/oauth/start"]');
+    if (!link) return;
+    event.preventDefault();
+    void startCafe24Reauth();
+  });
   $("#instagramRefreshBtn")?.addEventListener("click", refreshInstagramMonthlyData);
   $$("[data-refresh]").forEach((button) => {
     button.addEventListener("click", () => refreshDataCenterCard(button.dataset.refresh));
@@ -19958,9 +19973,7 @@ function bind() {
   $("#refreshStoriesBtn")?.addEventListener("click", renderStoryInsights);
   // 같은 탭에서 이동한다 — Cafe24 로그인/동의 후 서버가 "/"로 리다이렉트하므로 그대로
   // 이 탭으로 돌아온다. (2026-07-08 Cafe24 재인증 흐름 개선)
-  $("#syncFixBtn")?.addEventListener("click", () => {
-    window.location.href = "/api/cafe24/oauth/start";
-  });
+  $("#syncFixBtn")?.addEventListener("click", startCafe24Reauth);
   $("#healthRefreshBtn")?.addEventListener("click", refreshApiHealthCenter);
   $("#operationsRange")?.addEventListener("change", (event) => {
     operationsRange = event.target.value || "month";
