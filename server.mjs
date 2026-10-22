@@ -1400,6 +1400,9 @@ const server = isMainModule ? createServer(async (req, res) => {
   runCafe24MetaSyncStartupProbe().catch((error) => {
     console.error("[CAFE24_META_SYNC_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
   });
+  runCafe24NewCollectionSinceProbe().catch((error) => {
+    console.error("[CAFE24_NEW_COLLECTION_SINCE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
+  });
   runMetaCatalogReadProbe().catch((error) => {
     console.error("[META_CATALOG_READ_PROBE]", JSON.stringify({ ok: false, error: safeErrorMessage(error) }));
   });
@@ -7578,6 +7581,41 @@ async function resendCafe24ProductForMeta(productNo) {
     before,
     responseProductNo: updated?.product?.product_no || normalized
   };
+}
+
+
+async function runCafe24NewCollectionSinceProbe() {
+  const since = String(env.CAFE24_META_SYNC_NEW_COLLECTION_SINCE || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) return;
+  try {
+    const productNos = [];
+    for (let offset = 0; offset <= 5000; offset += 100) {
+      const body = await cafe24MetaSyncProductRequest(
+        `/products?shop_no=1&created_start_date=${encodeURIComponent(since)}&limit=100&offset=${offset}&sort=created_date&order=asc&fields=product_no,product_name,created_date`
+      );
+      const page = Array.isArray(body?.products) ? body.products : [];
+      for (const product of page) {
+        if (Number.isInteger(Number(product.product_no))) productNos.push(Number(product.product_no));
+      }
+      if (page.length < 100) break;
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 75));
+    }
+    console.log("[CAFE24_NEW_COLLECTION_SINCE]", JSON.stringify({
+      ok: true,
+      since,
+      count: productNos.length,
+      minProductNo: productNos.length ? Math.min(...productNos) : null,
+      maxProductNo: productNos.length ? Math.max(...productNos) : null,
+      productNos
+    }));
+  } catch (error) {
+    console.error("[CAFE24_NEW_COLLECTION_SINCE]", JSON.stringify({
+      ok: false,
+      since,
+      error: safeErrorMessage(error),
+      status: error.status || null
+    }));
+  }
 }
 
 async function runCafe24MetaSyncStartupProbe() {
