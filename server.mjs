@@ -257,11 +257,36 @@ const server = isMainModule ? createServer(async (req, res) => {
       if (!upstream.ok) return json(res, { ok: false, error: "Media unavailable" }, 502);
       const contentType = upstream.headers.get("content-type") || (key.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
       const bytes = Buffer.from(await upstream.arrayBuffer());
+      const range = String(req.headers.range || "");
+      if (range && key.endsWith(".mp4")) {
+        const match = range.match(/^bytes=(\d*)-(\d*)$/);
+        if (match) {
+          const start = match[1] ? Number(match[1]) : 0;
+          const end = match[2] ? Math.min(Number(match[2]), bytes.length - 1) : bytes.length - 1;
+          if (Number.isFinite(start) && Number.isFinite(end) && start <= end && start < bytes.length) {
+            res.writeHead(206, {
+              "Content-Type": contentType,
+              "Content-Length": String(end - start + 1),
+              "Content-Range": `bytes ${start}-${end}/${bytes.length}`,
+              "Accept-Ranges": "bytes",
+              "Cache-Control": "public, max-age=3600"
+            });
+            if (req.method === "HEAD") return res.end();
+            res.end(bytes.subarray(start, end + 1));
+            return;
+          }
+        }
+        res.writeHead(416, { "Content-Range": `bytes */${bytes.length}` });
+        res.end();
+        return;
+      }
       res.writeHead(200, {
         "Content-Type": contentType,
         "Content-Length": String(bytes.length),
+        "Accept-Ranges": key.endsWith(".mp4") ? "bytes" : "none",
         "Cache-Control": "public, max-age=3600"
       });
+      if (req.method === "HEAD") return res.end();
       res.end(bytes);
       return;
     }
