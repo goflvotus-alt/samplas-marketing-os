@@ -7521,10 +7521,41 @@ function buildCafe24MetaSyncAuthorizeUrl() {
 async function cafe24MetaSyncAccessToken() {
   const record = await readCafe24MetaSyncTokenRecord();
   if (!record?.accessToken) throw new Error("Cafe24 Meta Sync access token이 없습니다. 전용 OAuth 인증이 필요합니다.");
-  if (record.expiresAt && Date.parse(record.expiresAt) <= Date.now()) {
-    throw new Error("Cafe24 Meta Sync access token이 만료됐습니다. 전용 OAuth 재인증이 필요합니다.");
+  if (!record.expiresAt || Date.parse(record.expiresAt) > Date.now() + 60_000) return record.accessToken;
+  if (!record.refreshToken) throw new Error("Cafe24 Meta Sync refresh token이 없습니다. 전용 OAuth 재인증이 필요합니다.");
+  const required = ["CAFE24_MALL_ID", "CAFE24_META_SYNC_CLIENT_ID", "CAFE24_META_SYNC_CLIENT_SECRET"];
+  const missing = required.filter((key) => !env[key]);
+  if (missing.length) throw new Error(`Cafe24 Meta Sync token 갱신에 필요한 값이 없습니다: ${missing.join(", ")}`);
+  const credentials = Buffer.from(`${env.CAFE24_META_SYNC_CLIENT_ID}:${env.CAFE24_META_SYNC_CLIENT_SECRET}`).toString("base64");
+  const params = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: record.refreshToken
+  });
+  const response = await fetch(`https://${env.CAFE24_MALL_ID}.cafe24api.com/api/v2/oauth/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: params.toString()
+  });
+  const body = await response.json();
+  if (!response.ok || body.error || !body.access_token) {
+    const message = body.error_description || body.error?.message || body.message || `Cafe24 Meta Sync refresh failed ${response.status}`;
+    throw new Error(message);
   }
-  return record.accessToken;
+  const saved = await writeCafe24MetaSyncTokenRecord({
+    ...record,
+    status: "active",
+    accessToken: body.access_token,
+    refreshToken: body.refresh_token || record.refreshToken,
+    expiresAt: body.expires_at || null,
+    scopes: Array.isArray(body.scopes) ? body.scopes : record.scopes || cafe24MetaSyncScopes(),
+    updatedAt: new Date().toISOString(),
+    lastRefreshAt: new Date().toISOString(),
+    lastError: null
+  });
+  return saved.accessToken;
 }
 
 async function cafe24MetaSyncProductRequest(path, { method = "GET", body } = {}) {
