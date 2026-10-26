@@ -1,9 +1,9 @@
 // Private operator import. Raw Sheets rows live only in server memory; public responses are counts.
 // Reuses the SESSION reader, historical parser, mergeSync and participants.json CAS. No new storage.
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { SessionError, SESSION_ID_PATTERN } from './session-store.mjs';
-import { hmacKeyReady, parseSheetRows, mergeSync, participantSummary, FORM_HEADERS, SESSION001_HEADERS } from './session-participants.mjs';
+import { hmacKeyReady, parseSheetRows, mergeSync, participantSummary, FORM_HEADERS, SESSION001_HEADERS, SESSION002_HEADERS } from './session-participants.mjs';
 import { readSheetRows, sheetsConfigured } from './session-sheets.mjs';
 
 // SESSION 001's response sheet is pinned by the server. Its id is configuration (SESSION001_SHEET_ID), never source:
@@ -13,6 +13,14 @@ export function session001Source(env){
  const sheetId=String(env.SESSION001_SHEET_ID??'').trim();
  if(!/^[\w-]{20,100}$/.test(sheetId))fail(503,'session001_sheet_not_configured');
  return {sheetId,sheetRange:SESSION001_RANGE,profile:'session-001'};
+}
+// Pin the verified 002 connection without publishing its private sheet id or adding environment settings.
+export const SESSION002_RANGE="'Form Responses 1'!A1:R10002";
+export function session002Source(doc){
+ const sheetId=doc.form.sheetId;
+ if(typeof sheetId!=='string'||createHash('sha256').update(sheetId).digest('hex')!=='e8514828af6130216d334c2dbdeb54e3a748e1f96e116f5f65b03d24a42c13b7')fail(403,'import_source_not_allowed');
+ if(canonicalRange(doc.form.sheetRange)!==SESSION002_RANGE)fail(409,'import_source_changed');
+ return {sheetId,sheetRange:SESSION002_RANGE,profile:'session-002'};
 }
 const TTL=10*60*1000;
 const fail=(status,code)=>{throw new SessionError(status,code,code);};
@@ -25,25 +33,26 @@ const seal=(env,claims)=>{const payload=Buffer.from(JSON.stringify(claims)).toSt
 const summary=doc=>{const {syncError,...counts}=participantSummary(doc);return counts;};
 const validateActor=actor=>{if(actor?.kind!=='web'||typeof actor.id!=='string'||!actor.id)fail(403,'operator_required');};
 function canonicalRange(value) {
- const match=typeof value==='string'&&value.match(/^(?:'([^'\r\n]{1,80})'|([^'!\r\n]{1,80}))!A(?:1)?:(H|J)(?:10002)?$/);
+ const match=typeof value==='string'&&value.match(/^(?:'([^'\r\n]{1,80})'|([^'!\r\n]{1,80}))!A(?:1)?:(H|J|R)(?:10002)?$/);
  if(!match)fail(400,'invalid_import_source');
  return "'"+(match[1]||match[2])+"'!A1:"+match[3]+'10002';
 }
 function sourceFor(env,id,doc,input){
  if(!SESSION_ID_PATTERN.test(String(id)))fail(400,'invalid_session_id');
  let source=input;
- const pinned=id==='session-001'?session001Source(env):null;
+ const pinned=id==='session-001'?session001Source(env):id==='session-002'?session002Source(doc):null;
  if(source===undefined)source=pinned||{sheetId:doc.form.sheetId,sheetRange:doc.form.sheetRange,profile:'standard'};
  if(!object(source)||Object.keys(source).some(k=>!['sheetId','sheetRange','profile'].includes(k)))fail(400,'invalid_import_source');
  const {sheetId,profile='standard'}=source;
  const sheetRange=canonicalRange(source.sheetRange);
  // Bounded, complete A1 read plus a sentinel row: never silently truncate a response sheet.
- if(typeof sheetId!=='string'||!/^[\w-]{20,100}$/.test(sheetId)||typeof sheetRange!=='string'||!/^'[^'\r\n]{1,80}'!A1:(H|J)10002$/.test(sheetRange)||!['standard','session-001'].includes(profile))fail(400,'invalid_import_source');
+ if(typeof sheetId!=='string'||!/^[\w-]{20,100}$/.test(sheetId)||typeof sheetRange!=='string'||!/^'[^'\r\n]{1,80}'!A1:(H|J|R)10002$/.test(sheetRange)||!['standard','session-001','session-002'].includes(profile))fail(400,'invalid_import_source');
  if(profile==='session-001'&&!sheetRange.endsWith('!A1:J10002'))fail(400,'invalid_import_source');
+ if(profile==='session-002'&&sheetRange!==SESSION002_RANGE)fail(400,'invalid_import_source');
  if(profile==='standard'&&!sheetRange.endsWith('!A1:H10002'))fail(400,'invalid_import_source');
  const normalized={sheetId,sheetRange,profile};
  if(pinned&&!isDeepStrictEqual(normalized,pinned))fail(403,'import_source_not_allowed');
- if(!id.startsWith('test-')&&id!=='session-001'&&(profile!=='standard'||sheetId!==doc.form.sheetId||(doc.form.sheetRange&&doc.form.sheetRange.includes('!')&&sheetRange!==canonicalRange(doc.form.sheetRange))))fail(403,'import_source_not_allowed');
+ if(!id.startsWith('test-')&&id!=='session-001'&&id!=='session-002'&&(profile!=='standard'||sheetId!==doc.form.sheetId||(doc.form.sheetRange&&doc.form.sheetRange.includes('!')&&sheetRange!==canonicalRange(doc.form.sheetRange))))fail(403,'import_source_not_allowed');
  if(doc.form.sheetId&&doc.form.sheetId!==sheetId)fail(409,'import_source_changed');
  return normalized;
 }
@@ -74,15 +83,15 @@ export function createParticipantImportService(store,{env=process.env,fetchImpl=
   let rows;
   try {rows=await readRows({env,sheetId:source.sheetId,range:source.sheetRange,fetchImpl});}
   catch(e){const allowed=['sheets_auth_failed','sheets_network_failed','sheet_not_found','sheets_failed'];fail(e instanceof SessionError&&e.status===404?404:502,allowed.includes(e?.code)?e.code:'sheets_failed');}
-  if(!Array.isArray(rows)||rows.length>10001||rows.some(r=>!Array.isArray(r)||r.length>10||r.some(c=>!['string','number','boolean'].includes(typeof c)&&c!==null)))fail(409,'invalid_sheet_rows');
+  if(!Array.isArray(rows)||rows.length>10001||rows.some(r=>!Array.isArray(r)||r.length>(source.profile==='session-002'?18:10)||r.some(c=>!['string','number','boolean'].includes(typeof c)&&c!==null)))fail(409,'invalid_sheet_rows');
   // Refuse empty input rather than marking every stored applicant removed.
   const rawResponses=rows.slice(1).filter(r=>r.some(c=>String(c??'').trim())).length;
   if(!rawResponses)fail(409,'empty_import');
-  const headers=source.profile==='session-001'?SESSION001_HEADERS:FORM_HEADERS;
+  const headers=source.profile==='session-001'?SESSION001_HEADERS:source.profile==='session-002'?SESSION002_HEADERS:FORM_HEADERS;
   const actual=rows[0]?.map(c=>String(c??'').trim());
-  if(!actual||actual.length!==headers.length||new Set(actual).size!==actual.length||!headers.every(h=>actual.includes(h)))fail(409,'header_changed');
+  if(!actual||actual.length!==headers.length||(source.profile==='session-002'?!headers.every((h,i)=>rows[0][i]===h):new Set(actual).size!==actual.length||!headers.every(h=>actual.includes(h))))fail(409,'header_changed');
   let parsed;
-  try {parsed=parseSheetRows(rows,env,{sessionId:source.profile==='session-001'?'session-001':undefined});}
+  try {parsed=parseSheetRows(rows,env,{sessionId:source.profile==='standard'?undefined:source.profile});}
   catch(e){fail(e instanceof SessionError?e.status:400,e?.code==='header_changed'?'header_changed':'invalid_sheet_rows');}
   const unique=new Set(parsed.people.map(p=>p.responseKey)).size;
   if(!unique)fail(409,'empty_import');

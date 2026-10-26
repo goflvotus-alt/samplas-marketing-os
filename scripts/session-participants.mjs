@@ -47,9 +47,28 @@ export const SESSION001_HEADERS = [
 ];
 const SESSION001_FIELDS = ["submittedAt", "name", "phone", "instagram", "attendanceAvailability", "familiarity", "guestQuestion", "otherTopics", "recordingConsent", "interviewInterest"];
 
-function parseSession001Rows(rows, env) {
+export const SESSION002_HEADERS = [
+  'Timestamp', '이름', '연락처', 'Instagram ID', '이메일',
+  '이번 SESSION 002에 신청한 이유를 자유롭게 적어주세요.',
+  'KANGJUNGSEOK 강정석 대표님께 직접 묻고 싶은 내용이 있다면 적어주세요.',
+  '개인정보 수집 및 이용에 동의하시나요?',
+  '이름 / 닉네임', '연락처', '인스타 아이디',
+  '2026년 11월 1일(일) 13:00–15:00 SESSION 002에 참석 가능하신가요?',
+  'SAMPLAS를 알게 된 지 얼마나 되었나요?',
+  '이번 SESSION 002에서 가장 궁금한 이야기는 무엇인가요?',
+  '이번 SESSION 002에서 함께 이야기해보고 싶은 내용이 있다면 자유롭게 남겨주세요.',
+  '촬영 및 콘텐츠 활용에 동의하시나요?',
+  'SESSION 종료 후 짧은 인터뷰에 참여할 의향이 있으신가요?',
+  'KANGJUNGSEOK 강정석 대표님께 직접 묻고 싶은 질문이 있다면 남겨주세요.'
+];
+const SESSION002_FIELDS = ['submittedAt', ...Array(7).fill(null), 'name', 'phone', 'instagram',
+  'attendanceAvailability', 'familiarity', 'discussionTopics', 'otherTopics', 'recordingConsent', 'interviewInterest', 'guestQuestion'];
+
+function parseSession001Rows(rows, env, profile = "session-001") {
   const header = rows[0].map(h => String(h ?? "").trim());
-  const col = Object.fromEntries(SESSION001_HEADERS.map((h, i) => [SESSION001_FIELDS[i], header.indexOf(h)]));
+  const col = profile === "session-002"
+    ? Object.fromEntries(SESSION002_FIELDS.flatMap((field, i) => field ? [[field, i]] : []))
+    : Object.fromEntries(SESSION001_HEADERS.map((h, i) => [SESSION001_FIELDS[i], header.indexOf(h)]));
   const people = [], byIdentity = new Map();
   let skippedInvalid = 0, responseCount = 0, duplicateResponses = 0;
   for (const [i, row] of rows.slice(1).entries()) {
@@ -58,12 +77,13 @@ function parseSession001Rows(rows, env) {
     const digits = phoneDigits(get("phone")), instagram = normalizeInstagram(get("instagram"));
     if (!get("name").trim() || digits.length < 9 || !get("submittedAt").trim()) { skippedInvalid++; continue; }
     responseCount++;
-    const responseKey = keyed(env, "session001-response", digits + "|" + instagram);
+    const responseKey = keyed(env, profile === "session-001" ? "session001-response" : "session002-response", digits + "|" + instagram);
     const existing = byIdentity.get(responseKey);
     const person = {
       responseKey, phoneKey: keyed(env, "phone", digits), emailKey: null,
       response: { submittedAt: get("submittedAt"), name: get("name"), phone: formatPhone(digits), phoneMasked: maskPhone(digits), emailMasked: "",
-        instagram, motivation: "", guestQuestion: get("guestQuestion"), consent: null, sourceProfile: "session-001",
+        instagram, motivation: "", guestQuestion: get("guestQuestion"), consent: null, sourceProfile: profile,
+        ...(profile === "session-002" ? { discussionTopics: get("discussionTopics") } : {}),
         attendanceAvailability: get("attendanceAvailability"), familiarity: get("familiarity"),
         otherTopics: get("otherTopics"), recordingConsent: get("recordingConsent"), interviewInterest: get("interviewInterest"),
         sourceRows: [i + 2], additionalResponses: [] }
@@ -132,6 +152,12 @@ export function parseSheetRows(rows, env, { sessionId } = {}) {
   if (!hmacKeyReady(env)) throw new SessionError(503, "participants_sync_disabled", "SESSION_PARTICIPANT_HMAC_KEY is not set");
   if (!Array.isArray(rows) || !rows.length) return { people: [], skippedNoConsent: 0, skippedInvalid: 0 };
   const header = rows[0].map((h) => String(h ?? "").trim());
+  if (sessionId === "session-002") {
+    // Duplicate 연락처 headers are intentional: current answers belong to I:R, never B:H.
+    if (header.length !== SESSION002_HEADERS.length || !SESSION002_HEADERS.every((h, i) => rows[0][i] === h))
+      throw new SessionError(409, "header_changed", "SESSION 002 response headers changed");
+    return parseSession001Rows(rows, env, "session-002");
+  }
   if (sessionId === "session-001" && header.length === SESSION001_HEADERS.length &&
       new Set(header).size === header.length && SESSION001_HEADERS.every(h => header.includes(h))) return parseSession001Rows(rows, env);
   const missing = FORM_HEADERS.filter((h) => !header.includes(h));
