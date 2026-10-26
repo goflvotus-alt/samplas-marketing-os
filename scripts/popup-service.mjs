@@ -12,7 +12,7 @@ import { getDropboxAccessToken, asciiSafeJson } from "./dropbox-report-uploader.
 import { POPUP_PROJECTS_DROPBOX_PATH, listPopupProjectFolders, downloadPopupJsonWithRev, uploadPopupJson } from "./popup-dropbox-store.mjs";
 import { randomUUID } from "node:crypto";
 import { PopupError, PROJECT_SUBFOLDERS, newProject, applyChanges, appendChangeLog, projectSummary, redactProject, kstToday,
-  validateProjectName, sameName, effectiveStatus } from "./popup-projects.mjs";
+  validateProjectName, sameName, effectiveStatus, staffBoardView, applyStaffBoard } from "./popup-projects.mjs";
 
 const API = "https://api.dropboxapi.com/2/files/";
 const REMOVED_ROOT = POPUP_PROJECTS_DROPBOX_PATH.replace(/\/PROJECTS$/, "/_DELETED/PROJECTS");
@@ -268,6 +268,25 @@ export function createPopupService({ env = process.env, fetchImpl = fetch, now =
         if (p.status === "ARCHIVED") { p.status = p.statusBeforeArchive || "PLANNING"; delete p.statusBeforeArchive; changes.push(`status: ARCHIVED → ${p.status}`); }
         return changes;
       } });
+    },
+
+    async staffBoard(ref) {
+      const { folder, project } = await resolve(ref);
+      return { name: project.name ?? folder.name, id: project.id ?? null, start: project.start ?? null, end: project.end ?? null,
+        version: project.version ?? null, updatedAt: project.updatedAt ?? null, staffBoard: staffBoardView(project), webUrl: view(folder, project).webUrl };
+    },
+
+    // Only staffBoard changes; the dates and sites not named keep their stored staff.
+    async updateStaffBoard(ref, expectedVersion, { assignments, addToPool }, { actor, opId }) {
+      let poolAdded = [];
+      const result = await mutate(ref, expectedVersion, { actor, opId, op: "update_staff_board", change: (p) => {
+        const applied = applyStaffBoard(p, { assignments, addToPool });
+        poolAdded = applied.poolAdded;
+        return applied.changes;
+      } });
+      return { ...(result.verified ? { verified: true } : {}), ...(result.unchanged ? { unchanged: true } : {}), ...(result.replayed ? { replayed: true } : {}),
+        name: result.project.name, version: result.version, updatedAt: result.project.updatedAt ?? null, changed: result.changed, poolAdded,
+        staffBoard: staffBoardView(result.project), webUrl: result.project.webUrl };
     },
 
     async history(ref) {

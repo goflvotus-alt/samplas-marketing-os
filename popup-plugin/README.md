@@ -5,6 +5,10 @@
 It forwards MCP JSON-RPC to Marketing OS `POST /api/ai-audit/popup/mcp` (`scripts/popup-mcp.mjs`).
 
 - **Tools** come from Marketing OS `tools/list`. Adding or changing a tool needs a Render deploy only, not a Sites redeploy.
+- **STAFF BOARD:**
+  - `getPopupStaffBoard` reads the web app's STAFF BOARD.
+  - `updatePopupStaffBoard` saves placements for the dates given. It is version-checked and keeps every other date.
+  - Both write the same `staffBoard` field the web app's drag and drop uses.
 - **Compatible:** `listPopupProjects`, `getPopupProject` and `updatePopupProject` keep their names. `updatePopupProject` still accepts the old `{name, body: {project, expectedVersion}}` form.
 - **Secret:** the site's existing `SAMPLAS_INTERNAL_TOKEN`, sent as `x-samplas-internal-token`. It is never logged or returned.
 - **Owner check:** an authenticated ChatGPT user (`oai-authenticated-user-id`) is required for every method except `initialize`/`ping`. When `POPUP_PLUGIN_OWNER_IDS` is set, only those ids are allowed.

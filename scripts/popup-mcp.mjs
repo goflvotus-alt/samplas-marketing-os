@@ -4,7 +4,7 @@
 // tools/call unchanged, so new tools ship with a Render deploy only.
 // Writes: POPUP_MCP_WRITES = "on" (default) | "test-only" (projects named TEST-*) | "off".
 import { createPopupService } from "./popup-service.mjs";
-import { PopupError, PROJECT_STATUSES, TASK_GROUPS, TASK_PRIORITIES, ASSET_STATUSES, REPORT_STATUSES, OPERATIONS, TEMPLATES } from "./popup-projects.mjs";
+import { PopupError, PROJECT_STATUSES, TASK_GROUPS, TASK_PRIORITIES, ASSET_STATUSES, REPORT_STATUSES, OPERATIONS, TEMPLATES, STAFF_SITES } from "./popup-projects.mjs";
 
 export const POPUP_MCP_PATH = "/api/ai-audit/popup/mcp";
 const protocols = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -55,8 +55,15 @@ export const POPUP_TOOLS = [
     inputSchema: strict({ name, expectedVersion, mode: { enum: ["trash", "remove"], default: "trash" }, confirmName: str("remove only: exact project name"), opId }, ["name", "expectedVersion"]), annotations: DESTRUCTIVE },
   { name: "restorePopupProject", description: `Restore a project: moves a removed folder back from _DELETED/PROJECTS, takes a trashed project out of trash, and returns an ARCHIVED project to its previous status. ${RULES}`,
     inputSchema: strict({ name: str("Project name, id, or removedFolder from listPopupProjects includeRemoved"), expectedVersion: { ...expectedVersion, description: "version from getPopupProject (not needed for a removed folder)" }, opId }, ["name"]), annotations: WRITE }
+,
+  { name: "getPopupStaffBoard", description: "Read a project's STAFF BOARD (the web app's 근무표): STAFF POOL, and per date the staff at 본점 and VEIL, plus the project version and last change time. stored:false means no board was saved yet and the pool is the app's default.",
+    inputSchema: strict({ name }, ["name"]), annotations: READ },
+  { name: "updatePopupStaffBoard", description: `Save staff placements on the STAFF BOARD. assignments: {"YYYY-MM-DD": {"본점": [names], "VEIL": [names]}}. For each date given, only the sites given are replaced (an empty list clears that site); every other date and site stays as it is. Names not in the STAFF POOL are added to it. One person can be in only one place per date (duplicate_staff_assignment). Copy names exactly as the user wrote them; never drop, merge or rename anyone. ${RULES}`,
+    inputSchema: strict({ name, expectedVersion,
+      assignments: { type: "object", description: "Dates (YYYY-MM-DD) to set, each with 본점 and/or VEIL lists", additionalProperties: strict(Object.fromEntries(STAFF_SITES.map((site) => [site, { type: "array", items: { type: "string" }, description: `Staff at ${site}` }]))) },
+      addToPool: { type: "array", items: { type: "string" }, description: "Optional: names to add to the STAFF POOL without placing them" }, opId }, ["name", "expectedVersion", "assignments"]), annotations: WRITE }
 ];
-const WRITE_TOOLS = new Set(["createPopupProject", "updatePopupProject", "deletePopupProject", "restorePopupProject"]);
+const WRITE_TOOLS = new Set(["createPopupProject", "updatePopupProject", "deletePopupProject", "restorePopupProject", "updatePopupStaffBoard"]);
 
 function assertWritable(env, args) {
   const mode = env.POPUP_MCP_WRITES || "on";
@@ -76,6 +83,8 @@ export async function callPopupTool(toolName, args, { env, service, actor }) {
   switch (toolName) {
     case "listPopupProjects": return { status: 200, body: { ok: true, ...(await service.list(args)) } };
     case "getPopupProject": return { status: 200, body: { ok: true, project: await service.get(args.name, { includeFiles: args.includeFiles !== false }) } };
+    case "getPopupStaffBoard": return { status: 200, body: { ok: true, ...(await service.staffBoard(args.name)) } };
+    case "updatePopupStaffBoard": return { status: 200, body: { ok: true, ...(await service.updateStaffBoard(args.name, args.expectedVersion, args, { actor, opId: args.opId })) } };
     case "getPopupProjectHistory": return { status: 200, body: { ok: true, ...(await service.history(args.name)) } };
     case "createPopupProject": {
       const result = await service.create(args, { actor });
