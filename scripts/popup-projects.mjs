@@ -370,3 +370,73 @@ export function applyChanges(project, { patch, operations = [] }, { now, actor }
 export function appendChangeLog(project, entry) {
   project.changeLog = [...(Array.isArray(project.changeLog) ? project.changeLog : []), entry].slice(-CHANGELOG_MAX);
 }
+
+// STAFF BOARD: the same popup.json field the web app's drag & drop writes.
+// staffBoard = { pool: [name], assignments: { "YYYY-MM-DD": { VEIL: [name], 본점: [name] } } }
+export const STAFF_SITES = ["VEIL", "본점"];
+// Same as POPUP_DIRECTOR_LITE 3 app.js STAFF_POOL: what the web app shows when a project has no stored board.
+export const DEFAULT_STAFF_POOL = ["민준", "병구", "우혁", "윤재", "준희", "애림", "민철"];
+const STAFF_POOL_MAX = 100;
+const STAFF_DATES_MAX = 62;
+
+function staffName(value, field) {
+  if (typeof value !== "string") throw bad(`${field} must be a name`);
+  const name = value.normalize("NFC").trim();
+  if (!name || name.length > 40 || /[\u0000-\u001f\u007f]/.test(name)) throw bad(`${field}: a name must be 1-40 characters`);
+  return name;
+}
+
+export function staffBoardView(project) {
+  const stored = Boolean(project.staffBoard && typeof project.staffBoard === "object");
+  const board = stored ? project.staffBoard : { pool: DEFAULT_STAFF_POOL, assignments: {} };
+  const assignments = {};
+  for (const date of Object.keys(board.assignments || {}).sort()) {
+    assignments[date] = Object.fromEntries(STAFF_SITES.map((site) => [site, [...(board.assignments[date]?.[site] || [])]]));
+  }
+  return { pool: [...(board.pool || [])], assignments, sites: STAFF_SITES, stored };
+}
+
+// Replaces only the sites named for the dates named; every other date and site is kept as stored.
+// Names not in the pool are added to it. One person can be in only one place per date.
+export function applyStaffBoard(project, { assignments, addToPool = [] }) {
+  if (!assignments || typeof assignments !== "object" || Array.isArray(assignments)) throw bad("assignments must be an object of dates");
+  if (!Array.isArray(addToPool)) throw bad("addToPool must be a list of names");
+  const dates = Object.keys(assignments).sort();
+  if (!dates.length && !addToPool.length) throw bad("assignments needs at least one date");
+  if (dates.length > STAFF_DATES_MAX) throw bad(`at most ${STAFF_DATES_MAX} dates per call`);
+  const pool = [...staffBoardView(project).pool];
+  const board = structuredClone(project.staffBoard?.assignments || {});
+  const changes = [], poolAdded = [];
+  const toPool = (name) => {
+    if (pool.includes(name)) return;
+    if (pool.length >= STAFF_POOL_MAX) throw bad(`STAFF POOL can hold at most ${STAFF_POOL_MAX} names`);
+    pool.push(name);
+    poolAdded.push(name);
+  };
+  for (const [i, name] of addToPool.entries()) toPool(staffName(name, `addToPool[${i}]`));
+  for (const date of dates) {
+    if (!isDate(date)) throw bad(`assignments: ${date} is not a YYYY-MM-DD date`);
+    const raw = assignments[date];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw bad(`assignments.${date} must be an object with 본점 and/or VEIL`);
+    const day = only(Object.fromEntries(Object.entries(raw).map(([site, names]) => [site.normalize("NFC").trim(), names])), STAFF_SITES, `assignments.${date}`);
+    const before = Object.fromEntries(STAFF_SITES.map((site) => [site, [...(board[date]?.[site] || [])]]));
+    const after = structuredClone(before);
+    for (const site of STAFF_SITES) {
+      if (day[site] === undefined) continue;
+      if (!Array.isArray(day[site])) throw bad(`assignments.${date}.${site} must be a list of names`);
+      after[site] = day[site].map((name, i) => staffName(name, `assignments.${date}.${site}[${i}]`));
+    }
+    const everyone = STAFF_SITES.flatMap((site) => after[site]);
+    const twice = everyone.find((name, i) => everyone.indexOf(name) !== i);
+    if (twice) throw new PopupError(400, "duplicate_staff_assignment", `${twice} is placed twice on ${date}; one person can be in only one place per day`, { date, staff: twice });
+    everyone.forEach(toPool);
+    for (const site of STAFF_SITES) {
+      if (JSON.stringify(before[site]) !== JSON.stringify(after[site])) changes.push(`staff ${date} ${site}: ${before[site].join(", ") || "-"} → ${after[site].join(", ") || "-"}`);
+    }
+    if (everyone.length) board[date] = after;
+    else delete board[date];
+  }
+  if (poolAdded.length) changes.unshift(`staff pool added: ${poolAdded.join(", ")}`);
+  if (changes.length) project.staffBoard = { ...(project.staffBoard || {}), pool, assignments: board };
+  return { changes, poolAdded };
+}

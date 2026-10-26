@@ -34,6 +34,7 @@ function fakeDropbox() {
       }
       case "files/upload": {
         state.uploads++;
+        if (state.beforeUpload) { const f = state.beforeUpload; state.beforeUpload = null; f(); }
         const n = nodes.get(arg.path.toLowerCase());
         if (state.failNextUpload) { const f = state.failNextUpload; state.failNextUpload = null; if (f === "lost") { put(arg.path, init.body); } throw new Error("socket hang up"); }
         if (arg.mode[".tag"] === "add" && n) return reply(409, { error_summary: "path/conflict/file/" });
@@ -213,4 +214,105 @@ test("bad input is refused before any write", async () => {
   }
   assert.equal((await call("updatePopupProject", { name: "SUNDAY OFF CLUB", expectedVersion: 90, operations: [{ type: "add_task", task: { title: "x", group: "없음" } }] })).httpStatus, 400);
   assert.equal(db.uploads, before);
+});
+
+// STAFF BOARD tools. AE has no stored board yet (the web app then shows the default pool).
+const AE = { id: "ae-1", name: "TEST-AE", start: "2026-11-06", end: "2026-11-08", version: 9, updatedAt: "2026-10-26T08:43:14.518Z",
+  tasks: [{ id: "a1", date: "2026-10-30", title: "VMD 그래픽 전달", group: "VMD", required: true, done: false, owner: "", memo: "" }],
+  assets: [], notes: [{ id: "n1", date: "2026-10-26", title: "회의", body: "행거" }], changeLog: [{ at: "2026-10-26T08:43:14.518Z", by: "chatgpt:x", op: "update", changes: ["note added: 회의"], version: 9 }] };
+const AE_TABLE = {
+  "2026-11-06": { "본점": ["민준", "병구", "명석", "애림", "준희"], VEIL: ["우혁"] },
+  "2026-11-07": { "본점": ["민준", "병구", "윤재", "영은", "준희"], VEIL: ["우혁"] },
+  "2026-11-08": { "본점": ["병구", "윤재", "준희"], VEIL: ["우혁"] } };
+function staffSetup(ae = AE) {
+  const s = setup();
+  s.db.put(`${ROOT}/PROJECTS/TEST-AE/popup.json`, JSON.stringify(ae, null, 2));
+  s.stored = () => JSON.parse(s.db.nodes.get(`${ROOT}/PROJECTS/TEST-AE/popup.json`.toLowerCase()).body);
+  return s;
+}
+
+test("tools/list exposes getPopupStaffBoard (read) and updatePopupStaffBoard (write)", async () => {
+  const tools = (await popupRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }, {})).result.tools;
+  const get = tools.find((t) => t.name === "getPopupStaffBoard"), put = tools.find((t) => t.name === "updatePopupStaffBoard");
+  assert.equal(get.annotations.readOnlyHint, true); assert.deepEqual(get.inputSchema.required, ["name"]);
+  assert.equal(put.annotations.readOnlyHint, false); assert.deepEqual(put.inputSchema.required, ["name", "expectedVersion", "assignments"]);
+  assert.deepEqual(Object.keys(put.inputSchema.properties.assignments.additionalProperties.properties).sort(), ["VEIL", "본점"].sort());
+});
+
+test("AE table: read, save, read back exactly; pool gains new names; nothing else changes", async () => {
+  const { db, call, stored, socUnchanged } = staffSetup();
+  const before = await call("getPopupStaffBoard", { name: "TEST-AE" });
+  assert.equal(before.ok, true); assert.equal(before.version, 9); assert.equal(before.staffBoard.stored, false);
+  assert.deepEqual(before.staffBoard.pool, ["민준", "병구", "우혁", "윤재", "준희", "애림", "민철"]); assert.deepEqual(before.staffBoard.assignments, {});
+
+  const saved = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments: AE_TABLE });
+  assert.equal(saved.ok, true); assert.equal(saved.verified, true); assert.equal(saved.version, 10);
+  assert.deepEqual(saved.poolAdded, ["명석", "영은"]);
+  assert.ok(saved.changed.includes("staff 2026-11-06 본점: - → 민준, 병구, 명석, 애림, 준희"));
+
+  const after = await call("getPopupStaffBoard", { name: "TEST-AE" });
+  assert.equal(after.staffBoard.stored, true); assert.equal(after.version, 10);
+  for (const [date, day] of Object.entries(AE_TABLE)) for (const site of ["본점", "VEIL"]) assert.deepEqual(after.staffBoard.assignments[date][site], day[site], `${date} ${site}`);
+  assert.deepEqual(Object.keys(after.staffBoard.assignments), Object.keys(AE_TABLE));
+  assert.deepEqual(after.staffBoard.pool, ["민준", "병구", "우혁", "윤재", "준희", "애림", "민철", "명석", "영은"]);
+
+  const doc = stored();
+  for (const key of Object.keys(AE)) if (!["version", "updatedAt", "changeLog"].includes(key)) assert.deepEqual(doc[key], AE[key], key);
+  assert.deepEqual(doc.changeLog.slice(0, 1), AE.changeLog);
+  assert.equal(doc.changeLog.at(-1).op, "update_staff_board"); assert.equal(doc.changeLog.at(-1).by, "chatgpt:test");
+  // web app shape: both sites on every stored date
+  assert.deepEqual(Object.keys(doc.staffBoard.assignments["2026-11-08"]), ["VEIL", "본점"]);
+  socUnchanged();
+
+  // same table again: nothing to write
+  const again = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 10, assignments: AE_TABLE });
+  assert.equal(again.unchanged, true); assert.equal(again.version, 10);
+});
+
+test("only the dates and sites named change; other dates are kept; an empty list clears a site", async () => {
+  const board = { pool: ["민준", "병구", "우혁"], assignments: { "2026-11-01": { VEIL: ["민준"], "본점": ["병구"] }, "2026-11-06": { VEIL: ["우혁"], "본점": ["민준"] } } };
+  const { call, stored } = staffSetup({ ...AE, staffBoard: board });
+  const r = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments: { "2026-11-06": { "본점": ["병구", "민준"] } } });
+  assert.equal(r.verified, true);
+  const doc = stored().staffBoard;
+  assert.deepEqual(doc.assignments["2026-11-01"], board.assignments["2026-11-01"]);
+  assert.deepEqual(doc.assignments["2026-11-06"], { VEIL: ["우혁"], "본점": ["병구", "민준"] });
+  assert.deepEqual(r.poolAdded, []);
+  const cleared = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 10, assignments: { "2026-11-01": { VEIL: [], "본점": [] } } });
+  assert.equal(cleared.verified, true); assert.equal(stored().staffBoard.assignments["2026-11-01"], undefined);
+  assert.deepEqual(stored().staffBoard.assignments["2026-11-06"], { VEIL: ["우혁"], "본점": ["병구", "민준"] });
+});
+
+test("duplicates, bad input and disabled writes are refused before any upload", async () => {
+  const { db, call } = staffSetup();
+  const uploads = db.uploads;
+  const dup = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments: { "2026-11-06": { "본점": ["민준", "병구"], VEIL: ["민준"] } } });
+  assert.equal(dup.error, "duplicate_staff_assignment"); assert.equal(dup.httpStatus, 400); assert.equal(dup.staff, "민준");
+  const twiceSameSite = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments: { "2026-11-06": { VEIL: ["우혁", "우혁"] } } });
+  assert.equal(twiceSameSite.error, "duplicate_staff_assignment");
+  for (const assignments of [{ "2026-13-01": { VEIL: ["a"] } }, { "2026-11-06": { "성수": ["a"] } }, { "2026-11-06": { VEIL: "민준" } }, { "2026-11-06": { VEIL: [""] } }, { "2026-11-06": null }, {}]) {
+    const r = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments });
+    assert.equal(r.httpStatus, 400, JSON.stringify(assignments));
+  }
+  const off = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments: AE_TABLE }, { POPUP_MCP_WRITES: "off" });
+  assert.equal(off.error, "mcp_writes_disabled");
+  assert.equal(db.uploads, uploads);
+});
+
+test("stale version and a concurrent save both answer 409; the newer data is never overwritten", async () => {
+  const { db, call, stored } = staffSetup();
+  const stale = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 8, assignments: AE_TABLE });
+  assert.equal(stale.error, "version_conflict"); assert.equal(stale.currentVersion, 9);
+  // Someone (e.g. the web app) saves between our read and our upload.
+  db.beforeUpload = () => db.put(`${ROOT}/PROJECTS/TEST-AE/popup.json`, JSON.stringify({ ...AE, version: 10, notes: [...AE.notes, { id: "n2", title: "web" }] }));
+  const raced = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments: AE_TABLE });
+  assert.equal(raced.error, "version_conflict"); assert.equal(raced.httpStatus, 409); assert.equal(raced.currentVersion, 10);
+  assert.equal(stored().version, 10); assert.equal(stored().notes.length, 2); assert.equal(stored().staffBoard, undefined);
+});
+
+test("updatePopupStaffBoard with the same opId is applied once", async () => {
+  const { call } = staffSetup();
+  const first = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments: AE_TABLE, opId: "staff-ae-1106-08" });
+  const retry = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments: AE_TABLE, opId: "staff-ae-1106-08" });
+  assert.equal(first.version, 10); assert.equal(retry.replayed, true); assert.equal(retry.version, 10);
 });
