@@ -42,7 +42,10 @@ import {
   saveWeeklyReportToDropbox,
   isDropboxConfigured,
   resolvePlatformDropboxDestination,
-  saveWeeklyReportToDropboxAtPath
+  saveWeeklyReportToDropboxAtPath,
+  dropboxWeeklyReportDir,
+  saveWeeklyFailureNoticeToDropbox,
+  weeklyFailureNoticeText
 } from "./scripts/dropbox-report-uploader.mjs";
 import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
 import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs";
@@ -1527,6 +1530,8 @@ const server = isMainModule ? createServer(async (req, res) => {
   // (2026-07-08 Instagram 자동 동기화 기능 추가)
   runInstagramBackgroundSync();
   setInterval(runInstagramBackgroundSync, instagramSyncScheduler.intervalMs);
+  runInstagramDailyFollowerSnapshot();
+  setInterval(runInstagramDailyFollowerSnapshot, instagramFollowerSnapshotScheduler.intervalMs);
   if (env.SEEDING_CANDIDATES_ENABLED === "true") setInterval(runSeedingCandidateCheck, 60000);
   // Seeding upload verification is manual-only.
   // Tagged-media auto sync remains implemented but intentionally disabled because
@@ -9308,6 +9313,29 @@ async function runInstagramBackgroundSync() {
   }
 }
 
+// Daily 10:xx KST follower snapshot into the same store the weekly report reads. The weekly
+// delta needs a snapshot from 7 days earlier (±2h); before this it was captured only by the
+// Tuesday report itself, so one failed week left the next week's delta N/A.
+const instagramFollowerSnapshotScheduler = { intervalMs: 15 * 60 * 1000, lastDate: null, lastError: null };
+
+async function runInstagramDailyFollowerSnapshot() {
+  const now = new Date();
+  if (now.getUTCHours() !== 1) return; // KST = UTC+9, so 10:00-10:59 KST
+  const day = seoulDateKey(now);
+  const igId = env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
+  if (!igId || instagramFollowerSnapshotScheduler.lastDate === day) return;
+  try {
+    const identity = await graphGet(igId, { fields: "id,followers_count" });
+    const snapshot = await captureWeeklyFollowers(join(workDir, "instagram-weekly-followers.json"), { accountId: igId, followers: identity.followers_count, capturedAt: now.toISOString() });
+    if (!snapshot.current) throw new Error(snapshot.reason);
+    instagramFollowerSnapshotScheduler.lastDate = day;
+    instagramFollowerSnapshotScheduler.lastError = null;
+  } catch (error) {
+    instagramFollowerSnapshotScheduler.lastError = safeErrorMessage(error);
+    await logApiError("instagram_daily_follower_snapshot", error, {});
+  }
+}
+
 // Naver Search Ads Weekly Report: same in-process poll-and-check pattern as
 // instagramSyncScheduler above (no Render Cron / external scheduler exists in this
 // project — see render.yaml, only a single web service is defined). Polling every 15
@@ -9414,6 +9442,27 @@ async function buildNewBrandsResponse(asOf = new Date(), { coverage = false } = 
   return attachCoverage(result, { cafe24ByCode, naverIndex, aliasesByCode });
 }
 
+// Last failed attempt of a Tuesday window: the reason goes beside the reports as
+// <PREFIX>_<since>_<until>_FAILED.txt so a missing week is never silent. Add-only; never throws.
+async function uploadWeeklyFailureNotice({ platform, prefix, tag, destination, now, error }) {
+  if (destination?.mode !== "dropbox" || !destination.dir) return;
+  const { since, until } = previousTuesdayToMondayRange(seoulDateKey(now));
+  try {
+    const saved = await saveWeeklyFailureNoticeToDropbox({
+      targetPath: `${destination.dir.replace(/\/+$/, "")}/${prefix}_${since}_${until}_FAILED.txt`,
+      text: weeklyFailureNoticeText({ platform, since, until, error, at: now.toISOString() }),
+      env
+    });
+    console.log(`[${tag}] failure notice ${saved.uploaded ? "saved" : "already exists"} ${saved.filePath}`);
+  } catch (noticeError) {
+    await logApiError(`${platform}_weekly_failure_notice`, noticeError, { since, until });
+  }
+}
+
+// Naver/Instagram poll every 15 minutes inside 10:00-10:59 KST, so exactly one poll lands in 10:45-10:59.
+// ponytail: a restart after 10:45 skips the notice for that week; persist attempt state if that matters.
+const isLastWeeklyPoll = (now) => now.getUTCMinutes() >= 45;
+
 const naverWeeklyReportScheduler = {
   intervalMs: 15 * 60 * 1000, // 15분
   running: false,
@@ -9439,9 +9488,11 @@ async function fetchNaverAdsPerformanceForWeeklyReport(since, until) {
 
 async function runNaverWeeklyReportCheck() {
   if (naverWeeklyReportScheduler.running) return;
-  if (!isWeeklyNaverReportDue(new Date(), naverWeeklyReportScheduler.lastRunSinceKey)) return;
+  const now = new Date();
+  if (!isWeeklyNaverReportDue(now, naverWeeklyReportScheduler.lastRunSinceKey)) return;
   naverWeeklyReportScheduler.running = true;
-  naverWeeklyReportScheduler.lastAttemptAt = new Date().toISOString();
+  naverWeeklyReportScheduler.lastAttemptAt = now.toISOString();
+  let destination = null, failed = false;
   try {
     // Production (Dropbox credentials configured) uploads to Dropbox; Local (no Dropbox
     // credentials at all) keeps writing to NAVER_ADS_WEEKLY_REPORT_DIR exactly as before —
@@ -9452,7 +9503,7 @@ async function runNaverWeeklyReportCheck() {
     // block below for all the "don't mark this week complete" bookkeeping, and happens
     // before generateWeeklyNaverAdsReport is ever called, so neither a Dropbox upload nor
     // a local write is attempted in this state.
-    const destination = resolveWeeklyReportDestination(env);
+    destination = { ...resolveWeeklyReportDestination(env), dir: dropboxWeeklyReportDir(env) };
     if (destination.mode === "misconfigured") {
       throw new Error(`Dropbox is partially configured — missing: ${destination.missing.join(", ")}. Refusing to fall back to local storage.`);
     }
@@ -9479,13 +9530,22 @@ async function runNaverWeeklyReportCheck() {
     } else {
       // Does not mark lastRunSinceKey — an unavailable-credentials/data week should be
       // retried on the next poll within the same Tuesday 10:00-10:59 KST window rather
-      // than being silently skipped for the whole week.
+      // than being silently skipped for the whole week. Persisted like a thrown error so
+      // the reason survives a restart.
       naverWeeklyReportScheduler.lastError = result.error;
+      failed = true;
+      await logApiError("naver_weekly_report", new Error(result.error), { since: result.since, until: result.until });
     }
   } catch (error) {
     naverWeeklyReportScheduler.lastError = safeErrorMessage(error);
+    failed = true;
     await logApiError("naver_weekly_report", error, {});
   } finally {
+    if (failed) {
+      const last = isLastWeeklyPoll(now);
+      console.log(`[NAVER_ADS_WEEKLY_REPORT] attempt at ${now.toISOString()} failed: ${naverWeeklyReportScheduler.lastError}; ${last ? "no retry left this week" : "next poll in 15 minutes"}`);
+      if (last) await uploadWeeklyFailureNotice({ platform: "naver", prefix: "NAVER_ADS_WEEKLY", tag: "NAVER_ADS_WEEKLY_REPORT", destination, now, error: naverWeeklyReportScheduler.lastError });
+    }
     naverWeeklyReportScheduler.running = false;
   }
 }
@@ -9648,8 +9708,9 @@ async function runMetaWeeklyReportCheck() {
   };
   metaWeeklyReportScheduler.running = true;
   metaWeeklyReportScheduler.lastAttemptAt = now.toISOString();
+  let destination = null, failed = false;
   try {
-    const destination = resolvePlatformDropboxDestination(env, {
+    destination = resolvePlatformDropboxDestination(env, {
       dirEnvKey: "DROPBOX_META_WEEKLY_REPORT_DIR",
       defaultDir: "/SAMPLAS WORK/병구 작업/메타 광고/리포트"
     });
@@ -9681,13 +9742,16 @@ async function runMetaWeeklyReportCheck() {
       console.log(`[META_ADS_WEEKLY_REPORT] saved ${result.filePath}`);
     } else {
       metaWeeklyReportScheduler.lastError = result.error;
+      failed = true;
       countFailure();
     }
   } catch (error) {
     metaWeeklyReportScheduler.lastError = safeErrorMessage(error);
+    failed = true;
     countFailure();
     await logApiError("meta_weekly_report", error, {});
   } finally {
+    if (failed && slot + 1 >= META_WEEKLY_RETRY_SLOTS) await uploadWeeklyFailureNotice({ platform: "meta", prefix: "META_ADS_WEEKLY", tag: "META_ADS_WEEKLY_REPORT", destination, now, error: metaWeeklyReportScheduler.lastError });
     metaWeeklyReportScheduler.running = false;
   }
 }
@@ -9750,11 +9814,13 @@ export async function buildInstagramRangeDataForWeeklyReport(since, until) {
 
 async function runInstagramWeeklyReportCheck() {
   if (instagramWeeklyReportScheduler.running) return;
-  if (!isWeeklyNaverReportDue(new Date(), instagramWeeklyReportScheduler.lastRunSinceKey)) return;
+  const now = new Date();
+  if (!isWeeklyNaverReportDue(now, instagramWeeklyReportScheduler.lastRunSinceKey)) return;
   instagramWeeklyReportScheduler.running = true;
-  instagramWeeklyReportScheduler.lastAttemptAt = new Date().toISOString();
+  instagramWeeklyReportScheduler.lastAttemptAt = now.toISOString();
+  let destination = null, failed = false;
   try {
-    const destination = resolvePlatformDropboxDestination(env, {
+    destination = resolvePlatformDropboxDestination(env, {
       dirEnvKey: "DROPBOX_INSTAGRAM_WEEKLY_REPORT_DIR",
       defaultDir: "/SAMPLAS WORK/병구 작업/인스타그램 리포트"
     });
@@ -9777,11 +9843,19 @@ async function runInstagramWeeklyReportCheck() {
       console.log(`[INSTAGRAM_WEEKLY_REPORT] saved ${result.filePath}`);
     } else {
       instagramWeeklyReportScheduler.lastError = result.error;
+      failed = true;
+      await logApiError("instagram_weekly_report", new Error(result.error), { since: result.since, until: result.until });
     }
   } catch (error) {
     instagramWeeklyReportScheduler.lastError = safeErrorMessage(error);
+    failed = true;
     await logApiError("instagram_weekly_report", error, {});
   } finally {
+    if (failed) {
+      const last = isLastWeeklyPoll(now);
+      console.log(`[INSTAGRAM_WEEKLY_REPORT] attempt at ${now.toISOString()} failed: ${instagramWeeklyReportScheduler.lastError}; ${last ? "no retry left this week" : "next poll in 15 minutes"}`);
+      if (last) await uploadWeeklyFailureNotice({ platform: "instagram", prefix: "INSTAGRAM_WEEKLY", tag: "INSTAGRAM_WEEKLY_REPORT", destination, now, error: instagramWeeklyReportScheduler.lastError });
+    }
     instagramWeeklyReportScheduler.running = false;
   }
 }

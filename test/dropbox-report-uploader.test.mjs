@@ -13,7 +13,9 @@ import {
   dropboxUploadFile,
   saveWeeklyReportToDropbox,
   saveWeeklyReportToDropboxAtPath,
-  resolvePlatformDropboxDestination
+  resolvePlatformDropboxDestination,
+  weeklyFailureNoticeText,
+  saveWeeklyFailureNoticeToDropbox
 } from "../scripts/dropbox-report-uploader.mjs";
 
 const FAKE_ENV = {
@@ -308,4 +310,24 @@ test("saveWeeklyReportToDropboxAtPath: an upload failure (e.g. insufficient spac
     () => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: "/x/META_ADS_WEEKLY_2026-09-22_2026-09-28.xlsx", env: FAKE_ENV, fetchImpl }),
     /insufficient_space/
   );
+});
+
+test("failure notice: uploads reason text add-only and never touches an existing notice", async () => {
+  const targetPath = "/SAMPLAS WORK/병구 작업/네이버 광고 리포트/NAVER_ADS_WEEKLY_2026-10-20_2026-10-26_FAILED.txt";
+  const text = weeklyFailureNoticeText({ platform: "naver", since: "2026-10-20", until: "2026-10-26", error: "Naver Search Ads request timed out", at: "2026-10-27T01:45:00.000Z" });
+  assert.match(text, /period: 2026-10-20 ~ 2026-10-26/);
+  assert.match(text, /reason: Naver Search Ads request timed out/);
+
+  const fresh = makeFetchMock();
+  const saved = await saveWeeklyFailureNoticeToDropbox({ targetPath, text, env: FAKE_ENV, fetchImpl: fresh.fetchImpl });
+  assert.equal(saved.uploaded, true);
+  const upload = fresh.calls.find((c) => c.url.includes("files/upload"));
+  assert.equal(upload.options.body.toString("utf8"), text);
+  assert.match(upload.options.headers["Dropbox-API-Arg"], /"mode":"add","autorename":false/);
+  assert.doesNotMatch(text, /FAKE_/);
+
+  const existing = makeFetchMock({ existsResult: "exists" });
+  const again = await saveWeeklyFailureNoticeToDropbox({ targetPath, text, env: FAKE_ENV, fetchImpl: existing.fetchImpl });
+  assert.equal(again.alreadyExists, true);
+  assert.equal(existing.calls.some((c) => c.url.includes("files/upload")), false);
 });
