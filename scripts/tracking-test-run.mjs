@@ -1,7 +1,7 @@
 // One-off tracking test (PR-1): collect one real KST day from Meta Ads, Instagram, Naver Ads and
 // Cafe24 (actual orders + Meta tracking-code orders) and save the result to a separate test path.
 //
-// Run inside the live Render instance (Render Shell), never imported by server.mjs:
+// Run inside the live Render instance: started by the server's one-shot scheduler below, or manually from Render Shell:
 //   node scripts/tracking-test-run.mjs --date 2026-10-27 [--at 2026-10-28T01:00:00Z] [--no-upload]
 //
 // Operational data is read, never written:
@@ -285,9 +285,10 @@ const trackingTestDir = (env, date) => resolve(env.TRACKING_TEST_DIR || join(env
 // so it survives restarts and deploys. Only a TRACKING_TEST_<date>_run*.done marker (written after the
 // local files AND the Dropbox upload succeeded) marks the run as done; a partial save is retried with a new stamp.
 // Render instances with a persistent disk never overlap (no zero-downtime deploy), so no cross-process lock.
-// Window: runAt .. runAt + 6h; outside it nothing runs. At most 3 attempts per server process.
+// Window: runAt .. runAt + 6h; outside it nothing runs. At most 3 attempts per server process, 15 minutes apart
+// after a failed attempt; a child that runs longer than 30 minutes is killed and counts as failed.
 export function createTrackingTestScheduler({ env = process.env, now = () => new Date(), spawnImpl = spawn, log = console.log } = {}) {
-  const state = { running: false, attempts: 0, logged: "" };
+  const state = { running: false, attempts: 0, logged: "", retryAt: 0 };
   const once = (key, line) => { if (state.logged !== key) { state.logged = key; log(`[TRACKING_TEST] ${line}`); } };
   return async function tick() {
     if (state.running) return;
@@ -303,13 +304,31 @@ export function createTrackingTestScheduler({ env = process.env, now = () => new
     if (t < runAt) return once("armed", `armed date=${schedule.date} runAt=${new Date(runAt).toISOString()}`);
     if (t > runAt + 6 * 3600000) return once("missed", `missed window date=${schedule.date} runAt=${new Date(runAt).toISOString()}`);
     if (state.attempts >= 3) return once("gave-up", `gave up after 3 attempts date=${schedule.date}`);
+    if (t < state.retryAt) return;
     state.running = true; state.attempts += 1;
-    await mkdir(dir, { recursive: true });
-    const out = await open(join(dir, "run.log"), "a");
-    log(`[TRACKING_TEST] start attempt=${state.attempts} date=${schedule.date}`);
-    const child = spawnImpl(process.execPath, [fileURLToPath(import.meta.url), "--date", schedule.date], { env, stdio: ["ignore", out.fd, out.fd] });
-    child.on("exit", (code) => { state.running = false; out.close().catch(() => {}); log(`[TRACKING_TEST] exit code=${code} date=${schedule.date}`); });
-    child.on("error", () => { state.running = false; out.close().catch(() => {}); });
+    let out = null, timer = null;
+    const finish = (code) => {
+      if (!state.running) return;
+      state.running = false;
+      clearTimeout(timer);
+      if (code !== 0) state.retryAt = now().getTime() + 15 * 60000;
+      out?.close().catch(() => {});
+      log(`[TRACKING_TEST] exit code=${code} attempt=${state.attempts} date=${schedule.date}`);
+    };
+    try {
+      await mkdir(dir, { recursive: true });
+      out = await open(join(dir, "run.log"), "a");
+      log(`[TRACKING_TEST] start attempt=${state.attempts} date=${schedule.date}`);
+      // ponytail: fixed 256MB heap cap for the child; raise it if the run ever hits the limit.
+      const child = spawnImpl(process.execPath, ["--max-old-space-size=256", fileURLToPath(import.meta.url), "--date", schedule.date], { env, stdio: ["ignore", out.fd, out.fd] });
+      timer = setTimeout(() => child.kill?.("SIGKILL"), 30 * 60000);
+      timer.unref?.();
+      child.on("exit", (code) => finish(code ?? -1));
+      child.on("error", () => finish(-1));
+    } catch (error) {
+      log(`[TRACKING_TEST] start failed: ${error.message}`);
+      finish(-1);
+    }
   };
 }
 

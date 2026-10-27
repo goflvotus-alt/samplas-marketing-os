@@ -158,10 +158,14 @@ test("scheduler: armed before runAt, runs once in window, done after a saved res
   clock = new Date("2026-10-28T01:00:30Z");
   await tick(); await tick(); // second tick while running must not spawn again
   assert.equal(spawned.length, 1);
-  assert.deepEqual(spawned[0].args.slice(1), ["--date", "2026-10-27"]);
-  // Partial save (JSON without .done, e.g. Dropbox upload failed): retried.
+  assert.deepEqual(spawned[0].args.slice(2), ["--date", "2026-10-27"]);
+  // Partial save (JSON without .done, e.g. Dropbox upload failed): retried after 15 minutes, not before.
   spawned[0].child.emit("exit", 1);
   await write(join(work, "tracking-test", "2026-10-27", "TRACKING_TEST_2026-10-27_run20261028T010012.json"), "{}");
+  clock = new Date("2026-10-28T01:10:00Z");
+  await tick();
+  assert.equal(spawned.length, 1);
+  clock = new Date("2026-10-28T01:16:00Z");
   await tick();
   assert.equal(spawned.length, 2);
   spawned[1].child.emit("exit", 0);
@@ -193,4 +197,21 @@ test("scheduler: missed window and future dates never spawn", async () => {
   await createTrackingTestScheduler({ env: { WORK_DIR: work }, now: () => new Date("2026-10-28T01:00:30Z"), spawnImpl, log: (l) => logs.push(l) })();
   assert.match(logs.at(-1), /schedule unreadable/);
   assert.equal(spawned, 0);
+});
+
+test("scheduler: a setup failure does not lock it; the next attempt still runs", async () => {
+  const { createTrackingTestScheduler } = await import("../scripts/tracking-test-run.mjs");
+  const { writeFile: write, mkdir: mk } = await import("node:fs/promises");
+  const work = await mkdtemp(join(tmpdir(), "tracking-setup-"));
+  await mk(join(work, "tracking-test"), { recursive: true });
+  await write(join(work, "tracking-test", "schedule.json"), JSON.stringify({ date: "2026-10-27", runAt: "2026-10-28T01:00:00Z" }));
+  let clock = new Date("2026-10-28T01:00:30Z"), calls = 0;
+  const logs = [];
+  const spawnImpl = () => { calls += 1; if (calls === 1) throw new Error("spawn EAGAIN"); return { on() {}, kill() {} }; };
+  const tick = createTrackingTestScheduler({ env: { WORK_DIR: work }, now: () => clock, spawnImpl, log: (l) => logs.push(l) });
+  await tick();
+  assert.ok(logs.some((l) => /start failed: spawn EAGAIN/.test(l)));
+  clock = new Date("2026-10-28T01:16:00Z");
+  await tick();
+  assert.equal(calls, 2);
 });
