@@ -1,0 +1,151 @@
+{
+ "note": "Real Production April 2026 orders, whitelisted non-personal fields, synthetic ids. Pre-fix product allocation 0 each; residual 16,800 + 9,600 = 26,400.",
+ "orders": [
+  {
+   "order_date": "2026-04-01T15:52:20+09:00",
+   "payment_date": "2026-04-01T15:49:25+09:00",
+   "paid": "T",
+   "canceled": "F",
+   "cancel_date": null,
+   "return_confirmed_date": null,
+   "payment_method": [
+    "card"
+   ],
+   "payment_method_name": [
+    "신용카드"
+   ],
+   "payment_amount": "19800.00",
+   "actual_order_amount": {
+    "order_price_amount": "56000.00",
+    "shipping_fee": "3000.00",
+    "points_spent_amount": "0.00",
+    "credits_spent_amount": "0.00",
+    "coupon_discount_price": "0.00",
+    "coupon_shipping_fee_amount": "0.00",
+    "membership_discount_amount": "0.00",
+    "shipping_fee_discount_amount": "0.00",
+    "set_product_discount_amount": "0.00",
+    "app_discount_amount": "0.00",
+    "point_incentive_amount": "0.00",
+    "total_amount_due": "0.00",
+    "payment_amount": "19800.00",
+    "market_other_discount_amount": "0.00",
+    "tax": null
+   },
+   "initial_order_amount": {
+    "order_price_amount": "56000.00",
+    "shipping_fee": "3000.00",
+    "points_spent_amount": "0.00",
+    "credits_spent_amount": "0.00",
+    "coupon_discount_price": "0.00",
+    "coupon_shipping_fee_amount": "0.00",
+    "membership_discount_amount": "0.00",
+    "shipping_fee_discount_amount": "0.00",
+    "set_product_discount_amount": "0.00",
+    "app_discount_amount": "0.00",
+    "point_incentive_amount": "0.00",
+    "total_amount_due": "0.00",
+    "payment_amount": "19800.00",
+    "market_other_discount_amount": "0.00",
+    "tax": null
+   },
+   "order_id": "SAMPLE-20260401-088",
+   "items": [
+    {
+     "order_status": "N40",
+     "status_text": "배송완료",
+     "product_no": 8669,
+     "product_code": "P0000MVL",
+     "quantity": 2,
+     "product_price": "28000.00",
+     "option_price": "0.00",
+     "additional_discount_price": "39200.00",
+     "coupon_discount_price": "0.00",
+     "app_item_discount_amount": null,
+     "market_discount_amount": "0.00",
+     "payment_amount": null
+    }
+   ]
+  },
+  {
+   "order_date": "2026-04-29T04:44:49+09:00",
+   "payment_date": "2026-04-29T04:44:49+09:00",
+   "paid": "T",
+   "canceled": "M",
+   "cancel_date": "2026-05-01T11:27:10+09:00",
+   "return_confirmed_date": "2026-05-01T11:27:10+09:00",
+   "payment_method": [
+    "card"
+   ],
+   "payment_method_name": [
+    "신용카드"
+   ],
+   "payment_amount": "9600.00",
+   "actual_order_amount": {
+    "order_price_amount": "48000.00",
+    "shipping_fee": "0.00",
+    "points_spent_amount": "0.00",
+    "credits_spent_amount": "0.00",
+    "coupon_discount_price": "0.00",
+    "coupon_shipping_fee_amount": "0.00",
+    "membership_discount_amount": "0.00",
+    "shipping_fee_discount_amount": "0.00",
+    "set_product_discount_amount": "0.00",
+    "app_discount_amount": "0.00",
+    "point_incentive_amount": "0.00",
+    "total_amount_due": "0.00",
+    "payment_amount": "9600.00",
+    "market_other_discount_amount": "0.00",
+    "tax": null
+   },
+   "initial_order_amount": {
+    "order_price_amount": "96000.00",
+    "shipping_fee": "0.00",
+    "points_spent_amount": "0.00",
+    "credits_spent_amount": "0.00",
+    "coupon_discount_price": "0.00",
+    "coupon_shipping_fee_amount": "0.00",
+    "membership_discount_amount": "0.00",
+    "shipping_fee_discount_amount": "0.00",
+    "set_product_discount_amount": "0.00",
+    "app_discount_amount": "0.00",
+    "point_incentive_amount": "0.00",
+    "total_amount_due": "0.00",
+    "payment_amount": "19200.00",
+    "market_other_discount_amount": "0.00",
+    "tax": null
+   },
+   "order_id": "SAMPLE-20260429-041",
+   "items": [
+    {
+     "order_status": "N40",
+     "status_text": "배송완료",
+     "product_no": 5484,
+     "product_code": "P0000ICY",
+     "quantity": 1,
+     "product_price": "48000.00",
+     "option_price": "0.00",
+     "additional_discount_price": "76800.00",
+     "coupon_discount_price": "0.00",
+     "app_item_discount_amount": null,
+     "market_discount_amount": "0.00",
+     "payment_amount": null
+    },
+    {
+     "order_status": "R40",
+     "status_text": "반품완료",
+     "product_no": 5484,
+     "product_code": "P0000ICY",
+     "quantity": 1,
+     "product_price": "48000.00",
+     "option_price": "0.00",
+     "additional_discount_price": "0.00",
+     "coupon_discount_price": "0.00",
+     "app_item_discount_amount": "0.00",
+     "market_discount_amount": "0.00",
+     "payment_amount": null
+    }
+   ]
+  }
+ ]
+}

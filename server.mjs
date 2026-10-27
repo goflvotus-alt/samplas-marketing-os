@@ -4526,26 +4526,28 @@ export function allocateCanonicalPaidSalesForOrder(order = {}) {
   if (!activeItems.length) {
     return { activeItems: [], orderPaidAmount, shippingAmount, allocatedProductPaidAmount: 0, difference: orderPaidAmount - shippingAmount, matched: orderPaidAmount === shippingAmount };
   }
-  if (allocatablePaidAmount === 0 || totalDirectNetAmount <= 0) {
-    return {
-      activeItems: activeItems.map((row) => ({ ...row, paidAmount: 0, discountAmount: row.grossAmount, discountRate: row.grossAmount > 0 ? 100 : null })),
-      orderPaidAmount,
-      shippingAmount,
-      allocatedProductPaidAmount: 0,
-      difference: 0,
-      matched: true
-    };
-  }
+  // Weights: direct net; when every surviving item nets to 0 but money remains, surviving gross;
+  // when gross is 0 too, the last surviving item takes it all. Claimed items are already filtered out.
+  const totalGrossAmount = activeItems.reduce((total, row) => total + row.grossAmount, 0);
+  const weightOf = totalDirectNetAmount > 0 ? (row) => row.directNetAmount
+    : totalGrossAmount > 0 ? (row) => row.grossAmount
+      : (row, index) => (index === activeItems.length - 1 ? 1 : 0);
+  const totalWeight = activeItems.reduce((total, row, index) => total + weightOf(row, index), 0);
   let allocated = 0;
-  let largestIndex = 0;
   activeItems.forEach((row, index) => {
-    if (row.directNetAmount > activeItems[largestIndex].directNetAmount) largestIndex = index;
-    const paidAmount = Math.round(allocatablePaidAmount * (row.directNetAmount / totalDirectNetAmount));
-    row.paidAmount = paidAmount;
-    allocated += paidAmount;
+    row.paidAmount = Math.round(allocatablePaidAmount * (weightOf(row, index) / totalWeight));
+    allocated += row.paidAmount;
   });
-  const residue = allocatablePaidAmount - allocated;
-  activeItems[largestIndex].paidAmount = Math.max(0, Number(activeItems[largestIndex].paidAmount || 0) + residue);
+  // Rounding residue goes to the largest-weight item (first on ties); a negative residue that would
+  // push it below 0 carries to the next largest, so items stay >= 0 and the sum is exact.
+  let residue = allocatablePaidAmount - allocated;
+  const byWeight = activeItems.map((row, index) => index).sort((a, b) => weightOf(activeItems[b], b) - weightOf(activeItems[a], a));
+  for (const index of byWeight) {
+    if (residue === 0) break;
+    const applied = Math.max(residue, -activeItems[index].paidAmount);
+    activeItems[index].paidAmount += applied;
+    residue -= applied;
+  }
   const allocatedProductPaidAmount = activeItems.reduce((total, row) => total + Number(row.paidAmount || 0), 0);
   activeItems.forEach((row) => {
     row.discountAmount = Math.round(row.grossAmount - Number(row.paidAmount || 0));
