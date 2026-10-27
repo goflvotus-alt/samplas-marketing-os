@@ -14,7 +14,8 @@
 // Output: new files only (Dropbox mode "add", local flag "wx"); official weekly reports are untouched.
 // Every item is OK, FAILED or NOT_COLLECTED. 0 is OK only when the source response was complete.
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, open } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ExcelJS from "exceljs";
@@ -259,12 +260,44 @@ export async function buildTrackingWorkbook(report) {
   return workbook;
 }
 
+const trackingTestDir = (env, date) => resolve(env.TRACKING_TEST_DIR || join(env.WORK_DIR || "work", "tracking-test", date));
+
+// Durable one-shot trigger, polled by server.mjs every minute. It is armed only by
+// WORK_DIR/tracking-test/schedule.json ({"date":"YYYY-MM-DD","runAt":"<ISO>"}) on the persistent disk,
+// so it survives restarts and deploys. A saved TRACKING_TEST_<date>_run*.json marks the run as done.
+// Window: runAt .. runAt + 6h; outside it nothing runs. At most 3 attempts per server process.
+export function createTrackingTestScheduler({ env = process.env, now = () => new Date(), spawnImpl = spawn, log = console.log } = {}) {
+  const state = { running: false, attempts: 0, logged: "" };
+  const once = (key, line) => { if (state.logged !== key) { state.logged = key; log(`[TRACKING_TEST] ${line}`); } };
+  return async function tick() {
+    if (state.running) return;
+    const schedule = await readJsonFile(join(resolve(env.WORK_DIR || "work"), "tracking-test", "schedule.json")).catch(() => null);
+    if (!schedule) return;
+    const runAt = Date.parse(schedule.runAt);
+    try { assertPastKstDate(schedule.date, new Date(Number.isFinite(runAt) ? runAt : NaN)); } catch (error) { return once("invalid", `schedule invalid: ${error.message}`); }
+    const dir = trackingTestDir(env, schedule.date);
+    const files = await readdir(dir).catch(() => []);
+    if (files.some((f) => f.startsWith(`TRACKING_TEST_${schedule.date}_run`) && f.endsWith(".json"))) return once("done", `done date=${schedule.date}`);
+    const t = now().getTime();
+    if (t < runAt) return once("armed", `armed date=${schedule.date} runAt=${new Date(runAt).toISOString()}`);
+    if (t > runAt + 6 * 3600000) return once("missed", `missed window date=${schedule.date} runAt=${new Date(runAt).toISOString()}`);
+    if (state.attempts >= 3) return once("gave-up", `gave up after 3 attempts date=${schedule.date}`);
+    state.running = true; state.attempts += 1;
+    await mkdir(dir, { recursive: true });
+    const out = await open(join(dir, "run.log"), "a");
+    log(`[TRACKING_TEST] start attempt=${state.attempts} date=${schedule.date}`);
+    const child = spawnImpl(process.execPath, [fileURLToPath(import.meta.url), "--date", schedule.date], { env, stdio: ["ignore", out.fd, out.fd] });
+    child.on("exit", (code) => { state.running = false; out.close().catch(() => {}); log(`[TRACKING_TEST] exit code=${code} date=${schedule.date}`); });
+    child.on("error", () => { state.running = false; out.close().catch(() => {}); });
+  };
+}
+
 export async function saveTrackingReport(report, { env = process.env, upload = true, fetchImpl = fetch } = {}) {
   const stamp = report.startedAt.replace(/[-:]/g, "").slice(0, 13); // 20261028T0100
   const base = `TRACKING_TEST_${report.date}_run${stamp}`;
   const json = Buffer.from(JSON.stringify(report, null, 2));
   const xlsx = Buffer.from(await (await buildTrackingWorkbook(report)).xlsx.writeBuffer());
-  const localDir = resolve(env.TRACKING_TEST_DIR || join(env.WORK_DIR || "work", "tracking-test", report.date));
+  const localDir = trackingTestDir(env, report.date);
   await mkdir(localDir, { recursive: true });
   await writeFile(join(localDir, `${base}.json`), json, { flag: "wx" });
   await writeFile(join(localDir, `${base}.xlsx`), xlsx, { flag: "wx" });

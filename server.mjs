@@ -117,6 +117,7 @@ import { classifyProductCategory } from "./scripts/category-classification-rules
 // "같은 경과일"로 정규화하는 순수 날짜 계산만 담당(판매 계산 로직 없음, docs/reports/
 // NEXT-CROSS-BRAND-PARTIAL-PERIOD-plan.md §6 그대로 구현).
 import { resolveCrossBrandPeriodCutoff } from "./scripts/cross-brand-period-cutoff.mjs";
+import { createTrackingTestScheduler } from "./scripts/tracking-test-run.mjs";
 
 const root = resolve(".");
 const outputDir = join(root, "outputs");
@@ -1561,6 +1562,9 @@ const server = isMainModule ? createServer(async (req, res) => {
   setInterval(runVeilFoundScheduledCheck, veilFoundPublisherScheduler.intervalMs);
   // One-time uploads are separately opt-in; existing Friday automation is unchanged.
   if(env.VEIL_FOUND_ONCE_ENABLED === "true") setInterval(()=>veilControl.tick().catch(()=>console.error("[VEIL_FOUND_ONCE] check failed; inspect history")),60000);
+  // One-off tracking test: armed only by WORK_DIR/tracking-test/schedule.json, runs as a child process.
+  const trackingTestTick = createTrackingTestScheduler({ env });
+  setInterval(() => trackingTestTick().catch(() => console.error("[TRACKING_TEST] check failed")), 60000);
 }) : null;
 
 server?.on("error", (error) => {

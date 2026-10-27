@@ -106,3 +106,46 @@ test("save writes new local files only and refuses to overwrite", async () => {
   assert.deepEqual((await readdir(dir)).sort(), saved.files.sort());
   await assert.rejects(saveTrackingReport(report, { env: { TRACKING_TEST_DIR: dir }, upload: false }), /EEXIST/);
 });
+
+test("scheduler: armed before runAt, runs once in window, done after a saved result", async () => {
+  const { createTrackingTestScheduler } = await import("../scripts/tracking-test-run.mjs");
+  const { writeFile: write, mkdir: mk } = await import("node:fs/promises");
+  const { EventEmitter } = await import("node:events");
+  const work = await mkdtemp(join(tmpdir(), "tracking-sched-"));
+  await mk(join(work, "tracking-test"), { recursive: true });
+  await write(join(work, "tracking-test", "schedule.json"), JSON.stringify({ date: "2026-10-27", runAt: "2026-10-28T01:00:00Z" }));
+  let clock = new Date("2026-10-28T00:59:00Z");
+  const logs = [], spawned = [];
+  const spawnImpl = (cmd, args) => { const child = new EventEmitter(); spawned.push({ args, child }); return child; };
+  const tick = createTrackingTestScheduler({ env: { WORK_DIR: work }, now: () => clock, spawnImpl, log: (l) => logs.push(l) });
+  await tick();
+  assert.equal(spawned.length, 0);
+  assert.match(logs.at(-1), /armed date=2026-10-27 runAt=2026-10-28T01:00:00.000Z/);
+  clock = new Date("2026-10-28T01:00:30Z");
+  await tick(); await tick(); // second tick while running must not spawn again
+  assert.equal(spawned.length, 1);
+  assert.deepEqual(spawned[0].args.slice(1), ["--date", "2026-10-27"]);
+  spawned[0].child.emit("exit", 0);
+  await write(join(work, "tracking-test", "2026-10-27", "TRACKING_TEST_2026-10-27_run20261028T0100.json"), "{}");
+  await tick();
+  assert.equal(spawned.length, 1);
+  assert.match(logs.at(-1), /done date=2026-10-27/);
+
+});
+
+test("scheduler: missed window and future dates never spawn", async () => {
+  const { createTrackingTestScheduler } = await import("../scripts/tracking-test-run.mjs");
+  const { writeFile: write, mkdir: mk } = await import("node:fs/promises");
+  const work = await mkdtemp(join(tmpdir(), "tracking-miss-"));
+  await mk(join(work, "tracking-test"), { recursive: true });
+  const file = join(work, "tracking-test", "schedule.json");
+  const logs = []; let spawned = 0;
+  const spawnImpl = () => { spawned += 1; return { on() {} }; };
+  await write(file, JSON.stringify({ date: "2026-10-27", runAt: "2026-10-28T01:00:00Z" }));
+  await createTrackingTestScheduler({ env: { WORK_DIR: work }, now: () => new Date("2026-10-28T07:01:00Z"), spawnImpl, log: (l) => logs.push(l) })();
+  assert.match(logs.at(-1), /missed window/);
+  await write(file, JSON.stringify({ date: "2026-10-28", runAt: "2026-10-28T01:00:00Z" })); // day not complete at runAt
+  await createTrackingTestScheduler({ env: { WORK_DIR: work }, now: () => new Date("2026-10-28T01:00:30Z"), spawnImpl, log: (l) => logs.push(l) })();
+  assert.match(logs.at(-1), /schedule invalid/);
+  assert.equal(spawned, 0);
+});
