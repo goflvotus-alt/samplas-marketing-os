@@ -23,7 +23,10 @@ function fakeFetch(overrides = {}) {
       if (level === "campaign") return reply({ data: [] });
       return reply({ data: [{ ad_id: "a1", actions: [{ action_type: "purchase", "7d_click": "2", "1d_view": "1" }], action_values: [{ action_type: "purchase", "7d_click": "50000", "1d_view": "10000" }] }] });
     }
-    if (url.pathname.endsWith("/ig1/insights")) return reply({ data: [{ name: "reach", total_value: { value: 1200 } }, { name: "views", total_value: { value: 3000 } }] });
+    if (url.pathname.endsWith("/ig1/insights")) {
+      const values = { reach: 1200, profile_views: 40, website_clicks: 5, views: 3000 };
+      return reply({ data: url.searchParams.get("metric").split(",").map((name) => ({ name, total_value: { value: values[name] } })) });
+    }
     if (url.pathname.endsWith("/ig1")) return reply({ followers_count: 5000, media_count: 10 });
     if (url.pathname === "/api/intelligence/naver/ads/performance") return reply({ ok: true, summary: { spend: 0, impressions: 0 }, campaigns: [] });
     if (url.pathname === "/api/cafe24/refresh-token") return reply({ ok: true });
@@ -63,6 +66,8 @@ test("complete responses: zeros are OK, adgroups NOT_COLLECTED, tracking summed 
   assert.ok(calls.every((c) => c.method === "GET"));
   assert.ok(!calls.some((c) => c.url.pathname === "/api/cafe24/orders" || c.url.pathname === "/api/cafe24/refresh-token"));
   // Instagram uses exact KST day boundaries.
+  assert.deepEqual(items["instagram:account_reach"].metrics, { reach: 1200 });
+  assert.deepEqual(items["instagram:account_totals"].metrics, { profile_views: 40, website_clicks: 5, views: 3000 });
   const ig = calls.find((c) => c.url.pathname.endsWith("/ig1/insights")).url.searchParams;
   assert.deepEqual([ig.get("since"), ig.get("until")], [String(Date.parse("2026-10-27T00:00:00+09:00") / 1000), String(Date.parse("2026-10-28T00:00:00+09:00") / 1000)]);
 });
@@ -84,7 +89,8 @@ test("failures are FAILED, never 0: Graph error, Naver not ok, Cafe24 error; att
 test("expiring Cafe24 token is refreshed only through the server loopback route", async () => {
   let refreshed = false;
   const { impl, calls } = fakeFetch({ "/api/cafe24/refresh-token": () => { refreshed = true; return reply({ ok: true }); } });
-  const readJson = async (p) => (p.endsWith("cafe24-token-store.json") ? (refreshed ? fresh : { accessToken: "old", expiresAt: "2026-10-28T01:05:00Z" }) : null);
+  // Cafe24 format without offset is KST: 10:05 KST = 5 minutes after NOW, so it must refresh.
+  const readJson = async (p) => (p.endsWith("cafe24-token-store.json") ? (refreshed ? fresh : { accessToken: "old", expiresAt: "2026-10-28T10:05:00.000" }) : null);
   const items = byKey(await collectTrackingDay({ date: "2026-10-27", env: { ...env, META_ACCESS_TOKEN: "meta" }, fetchImpl: impl, readJson, now: NOW }));
   const refresh = calls.filter((c) => c.url.pathname === "/api/cafe24/refresh-token");
   assert.equal(refresh.length, 1);
@@ -103,6 +109,13 @@ test("save writes new local files only and refuses to overwrite", async () => {
   const dir = await mkdtemp(join(tmpdir(), "tracking-test-"));
   const report = await run(fakeFetch().impl);
   const saved = await saveTrackingReport(report, { env: { TRACKING_TEST_DIR: dir }, upload: false });
-  assert.deepEqual((await readdir(dir)).sort(), saved.files.sort());
+  assert.deepEqual((await readdir(dir)).sort(), [...saved.files, saved.files[0].replace(".json", ".done")].sort());
   await assert.rejects(saveTrackingReport(report, { env: { TRACKING_TEST_DIR: dir }, upload: false }), /EEXIST/);
+});
+
+test("upload without Dropbox config fails and leaves no done marker", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "tracking-nodbx-"));
+  const report = await run(fakeFetch().impl);
+  await assert.rejects(saveTrackingReport(report, { env: { TRACKING_TEST_DIR: dir }, upload: true }), /Dropbox is not configured/);
+  assert.ok(!(await readdir(dir)).some((f) => f.endsWith(".done")));
 });

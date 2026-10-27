@@ -115,21 +115,26 @@ async function collectMeta(ctx) {
 
 async function collectInstagram(ctx) {
   const igId = ctx.metaRecord?.instagramBusinessAccountId || ctx.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
-  if (!ctx.metaToken || !igId) return ["account_total", "followers"].map((item) => failed("instagram", item, !ctx.metaToken ? "META_TOKEN_MISSING" : "INSTAGRAM_BUSINESS_ACCOUNT_ID_MISSING"));
+  if (!ctx.metaToken || !igId) return ["account_reach", "account_totals", "followers"].map((item) => failed("instagram", item, !ctx.metaToken ? "META_TOKEN_MISSING" : "INSTAGRAM_BUSINESS_ACCOUNT_ID_MISSING"));
   const graph = graphClient({ env: ctx.env, fetchImpl: ctx.fetchImpl, token: ctx.metaToken });
   // KST day boundaries as unix seconds (Graph "day" buckets are Pacific time, so use total_value over the exact range).
   const since = Date.parse(`${ctx.date}T00:00:00+09:00`) / 1000, until = since + 86400;
   const results = [];
-  try {
-    const body = await graph.get(`${igId}/insights`, { metric: "reach,views,profile_views,website_clicks,accounts_engaged,total_interactions", metric_type: "total_value", period: "day", since: String(since), until: String(until) });
-    if (!Array.isArray(body.data)) throw new Error("Graph response has no data array");
-    const metrics = {};
-    for (const m of body.data) {
-      if (!m.total_value || !Object.hasOwn(m.total_value, "value")) throw new Error(`metric ${m.name} has no total_value`);
-      metrics[m.name] = Number(m.total_value.value);
-    }
-    results.push(ok("instagram", "account_total", metrics, { basis: "account unique reach and totals for the KST day" }));
-  } catch (error) { results.push(failed("instagram", "account_total", error)); }
+  // Metric sets the server already reads in production; each set is its own item so one failure never hides the other.
+  for (const [item, metric] of [["account_reach", "reach"], ["account_totals", "profile_views,website_clicks,views"]]) {
+    try {
+      const body = await graph.get(`${igId}/insights`, { metric, metric_type: "total_value", period: "day", since: String(since), until: String(until) });
+      if (!Array.isArray(body.data)) throw new Error("Graph response has no data array");
+      const metrics = {};
+      for (const m of body.data) {
+        if (!m.total_value || !Object.hasOwn(m.total_value, "value")) throw new Error(`metric ${m.name} has no total_value`);
+        metrics[m.name] = Number(m.total_value.value);
+      }
+      const missing = metric.split(",").filter((name) => !Object.hasOwn(metrics, name));
+      if (missing.length) throw new Error(`metrics missing: ${missing.join(",")}`);
+      results.push(ok("instagram", item, metrics, { basis: item === "account_reach" ? "account unique reach for the KST day" : "account totals for the KST day" }));
+    } catch (error) { results.push(failed("instagram", item, error)); }
+  }
   try {
     const body = await graph.get(igId, { fields: "followers_count,media_count" });
     if (typeof body.followers_count !== "number") throw new Error("followers_count missing");
@@ -155,7 +160,9 @@ async function collectNaver(ctx) {
 
 // ---------- Cafe24 (direct GET; refresh only through the server) ----------
 
-const needsRefresh = (record, now) => !record?.accessToken || !(Date.parse(record.expiresAt) - now.getTime() > 10 * 60 * 1000);
+// Same rule as server.mjs normalizeCafe24ExpiresAt: Cafe24 times without an offset are KST.
+const cafe24ExpiresAt = (value) => typeof value === "string" ? Date.parse(/(Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}+09:00`) : NaN;
+const needsRefresh = (record, now) => !record?.accessToken || !(cafe24ExpiresAt(record.expiresAt) - now.getTime() > 10 * 60 * 1000);
 
 async function cafe24Token(ctx, { force = false } = {}) {
   let record = await ctx.readJson(ctx.cafe24TokenFile);
@@ -260,7 +267,7 @@ export async function buildTrackingWorkbook(report) {
 }
 
 export async function saveTrackingReport(report, { env = process.env, upload = true, fetchImpl = fetch } = {}) {
-  const stamp = report.startedAt.replace(/[-:]/g, "").slice(0, 13); // 20261028T0100
+  const stamp = report.startedAt.replace(/[-:]/g, "").slice(0, 15); // 20261028T010012
   const base = `TRACKING_TEST_${report.date}_run${stamp}`;
   const json = Buffer.from(JSON.stringify(report, null, 2));
   const xlsx = Buffer.from(await (await buildTrackingWorkbook(report)).xlsx.writeBuffer());
@@ -269,12 +276,16 @@ export async function saveTrackingReport(report, { env = process.env, upload = t
   await writeFile(join(localDir, `${base}.json`), json, { flag: "wx" });
   await writeFile(join(localDir, `${base}.xlsx`), xlsx, { flag: "wx" });
   const saved = { localDir, files: [`${base}.json`, `${base}.xlsx`], dropbox: null };
-  if (upload && isDropboxConfigured(env)) {
+  if (upload) {
+    if (!isDropboxConfigured(env)) throw new Error("Dropbox is not configured; refusing to report a local-only save as uploaded.");
     const dir = `${(env.TRACKING_TEST_DROPBOX_DIR || DEFAULT_DROPBOX_TEST_DIR).replace(/\/+$/, "")}/tracking-${report.date}`;
     const accessToken = await getDropboxAccessToken({ env, fetchImpl });
     saved.dropbox = [];
-    for (const [name, buffer] of [[`${base}.json`, json], [`${base}.xlsx`, xlsx]]) saved.dropbox.push((await dropboxUploadFile(`${dir}/${name}`, buffer, { accessToken, fetchImpl })).pathDisplay);
+    // XLSX first, JSON last: a JSON in Dropbox means its XLSX is there too.
+    for (const [name, buffer] of [[`${base}.xlsx`, xlsx], [`${base}.json`, json]]) saved.dropbox.push((await dropboxUploadFile(`${dir}/${name}`, buffer, { accessToken, fetchImpl })).pathDisplay);
   }
+  // Written only after every save step succeeded; the scheduler treats only this marker as "done".
+  await writeFile(join(localDir, `${base}.done`), JSON.stringify(saved), { flag: "wx" });
   return saved;
 }
 
