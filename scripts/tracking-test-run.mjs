@@ -71,7 +71,8 @@ function graphClient({ env, fetchImpl, token }) {
     for (let pages = 1; body.paging?.next; pages += 1) {
       if (pages >= GRAPH_MAX_PAGES) throw new Error("PAGE_LIMIT");
       body = await fetchJson(fetchImpl, body.paging.next);
-      rows.push(...(body.data || []));
+      if (!Array.isArray(body.data)) throw new Error("Graph page has no data array");
+      rows.push(...body.data);
     }
     return rows;
   };
@@ -93,7 +94,8 @@ async function collectMeta(ctx) {
   try {
     // Empty data from a successful response means no delivery that day: a real 0.
     const [row] = await graph.all(`${account}/insights`, { level: "account", fields: "spend,impressions,clicks,reach,actions,action_values", time_range });
-    results.push(ok("meta", "account", { spend: Number(row?.spend || 0), impressions: Number(row?.impressions || 0), clicks: Number(row?.clicks || 0), reach: Number(row?.reach || 0), purchases: purchase(row?.actions), purchaseValue: purchase(row?.action_values) }));
+    const { timezone_name: accountTimezone = null } = await graph.get(account, { fields: "timezone_name" });
+    results.push(ok("meta", "account", { spend: Number(row?.spend || 0), impressions: Number(row?.impressions || 0), clicks: Number(row?.clicks || 0), reach: Number(row?.reach || 0), purchases: purchase(row?.actions), purchaseValue: purchase(row?.action_values) }, { basis: `Meta time_range uses the ad account time zone: ${accountTimezone}` }));
   } catch (error) { results.push(failed("meta", "account", error)); }
   try {
     const rows = await graph.all(`${account}/insights`, { level: "campaign", fields: "campaign_id,campaign_name,spend,impressions,clicks,actions,action_values", time_range, limit: 200 });
@@ -150,6 +152,8 @@ async function collectNaver(ctx) {
   try {
     const body = await fetchJson(ctx.fetchImpl, `${ctx.serverBase}/api/intelligence/naver/ads/performance?since=${ctx.date}&until=${ctx.date}`);
     if (body.ok !== true || !Array.isArray(body.campaigns) || !body.summary) throw new Error(body.error || "Incomplete Naver performance response");
+    const nulls = Object.keys(body.summary).filter((k) => body.summary[k] === null);
+    if (nulls.length) throw new Error(`Naver summary incomplete (null: ${nulls.join(",")})`);
     results.push(ok("naver", "campaigns", { ...body.summary, campaignCount: body.campaigns.length }, {
       rows: body.campaigns.map((c) => ({ campaignId: c.campaignId, campaignName: c.campaignName, spend: c.spend, impressions: c.impressions, clicks: c.clicks, conversions: c.conversions, conversionValue: c.conversionValue }))
     }));
@@ -176,6 +180,13 @@ async function cafe24Token(ctx, { force = false } = {}) {
   return record.accessToken;
 }
 
+// Same rule as server.mjs cafe24OrdersApiVersion: inflow_path needs 2025-07-01 or later.
+export function cafe24OrdersApiVersion(env) {
+  if (env.CAFE24_ORDERS_API_VERSION) return env.CAFE24_ORDERS_API_VERSION;
+  const configured = env.CAFE24_API_VERSION || env.CAFE24_ADMIN_API_VERSION || "2025-06-01";
+  return configured < "2025-07-01" ? "2025-07-01" : configured;
+}
+
 async function cafe24Orders(ctx, inflowPath) {
   const url = new URL(`https://${ctx.env.CAFE24_MALL_ID}.cafe24api.com/api/v2/admin/orders`);
   url.searchParams.set("start_date", ctx.date);
@@ -186,7 +197,7 @@ async function cafe24Orders(ctx, inflowPath) {
   for (let offset = 0; offset < CAFE24_MAX; offset += CAFE24_PAGE) {
     url.searchParams.set("limit", String(CAFE24_PAGE));
     url.searchParams.set("offset", String(offset));
-    const page = async (token) => fetchJson(ctx.fetchImpl, url, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "X-Cafe24-Api-Version": ctx.env.CAFE24_API_VERSION || ctx.env.CAFE24_ADMIN_API_VERSION || "2025-06-01" } });
+    const page = async (token) => fetchJson(ctx.fetchImpl, url, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "X-Cafe24-Api-Version": cafe24OrdersApiVersion(ctx.env) } });
     let body;
     try { body = await page(await cafe24Token(ctx)); } catch (error) {
       if (error.status !== 401) throw error;
@@ -284,8 +295,9 @@ export async function saveTrackingReport(report, { env = process.env, upload = t
     // XLSX first, JSON last: a JSON in Dropbox means its XLSX is there too.
     for (const [name, buffer] of [[`${base}.xlsx`, xlsx], [`${base}.json`, json]]) saved.dropbox.push((await dropboxUploadFile(`${dir}/${name}`, buffer, { accessToken, fetchImpl })).pathDisplay);
   }
-  // Written only after every save step succeeded; the scheduler treats only this marker as "done".
-  await writeFile(join(localDir, `${base}.done`), JSON.stringify(saved), { flag: "wx" });
+  // Written only after every save step succeeded and nothing FAILED; the scheduler treats only this marker as "done".
+  // A FAILED run is still saved (evidence of the failure) but stays retryable.
+  if (report.result !== "FAILED") await writeFile(join(localDir, `${base}.done`), JSON.stringify(saved), { flag: "wx" });
   return saved;
 }
 
@@ -302,6 +314,7 @@ async function main(argv) {
   const report = await collectTrackingDay({ date });
   const saved = await saveTrackingReport(report, { upload: !argv.includes("--no-upload") });
   console.log(`[TRACKING_TEST] ${JSON.stringify({ date, result: report.result, counts: report.counts, items: report.items.map((i) => `${i.platform}:${i.item}=${i.status}`), saved })}`);
+  if (report.result === "FAILED") process.exitCode = 2;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

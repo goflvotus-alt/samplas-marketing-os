@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assertPastKstDate, collectTrackingDay, saveTrackingReport, TRACKING_CODES } from "../scripts/tracking-test-run.mjs";
+import { assertPastKstDate, cafe24OrdersApiVersion, collectTrackingDay, saveTrackingReport, TRACKING_CODES } from "../scripts/tracking-test-run.mjs";
 
 // Synthetic responses only; production never reads these values.
 const NOW = () => new Date("2026-10-28T01:00:00Z"); // 10:00 KST
@@ -23,6 +23,7 @@ function fakeFetch(overrides = {}) {
       if (level === "campaign") return reply({ data: [] });
       return reply({ data: [{ ad_id: "a1", actions: [{ action_type: "purchase", "7d_click": "2", "1d_view": "1" }], action_values: [{ action_type: "purchase", "7d_click": "50000", "1d_view": "10000" }] }] });
     }
+    if (url.pathname.endsWith("/act_1")) return reply({ timezone_name: "Asia/Seoul" });
     if (url.pathname.endsWith("/ig1/insights")) {
       const values = { reach: 1200, profile_views: 40, website_clicks: 5, views: 3000 };
       return reply({ data: url.searchParams.get("metric").split(",").map((name) => ({ name, total_value: { value: values[name] } })) });
@@ -56,6 +57,7 @@ test("complete responses: zeros are OK, adgroups NOT_COLLECTED, tracking summed 
   const items = byKey(report);
   assert.equal(items["meta:account"].status, "OK");
   assert.equal(items["meta:account"].metrics.spend, 0);
+  assert.match(items["meta:account"].basis, /Asia\/Seoul/);
   assert.equal(items["naver:campaigns"].status, "OK");
   assert.equal(items["naver:adgroups"].status, "NOT_COLLECTED");
   assert.deepEqual(items["cafe24:actual_orders"].metrics, { orderCount: 2, activeOrderCount: 2, canceledOrRefundedCount: 0, paidAmount: 50000 });
@@ -118,4 +120,23 @@ test("upload without Dropbox config fails and leaves no done marker", async () =
   const report = await run(fakeFetch().impl);
   await assert.rejects(saveTrackingReport(report, { env: { TRACKING_TEST_DIR: dir }, upload: true }), /Dropbox is not configured/);
   assert.ok(!(await readdir(dir)).some((f) => f.endsWith(".done")));
+});
+
+test("Naver null totals are FAILED, not OK; Cafe24 orders API version follows the server minimum", async () => {
+  const { impl, calls } = fakeFetch({ "/api/intelligence/naver": () => reply({ ok: true, summary: { spend: null, impressions: 10 }, campaigns: [] }) });
+  const items = byKey(await run(impl));
+  assert.deepEqual([items["naver:campaigns"].status, items["naver:campaigns"].reason], ["FAILED", "Naver summary incomplete (null: spend)"]);
+  assert.equal(cafe24OrdersApiVersion({}), "2025-07-01");
+  assert.equal(cafe24OrdersApiVersion({ CAFE24_API_VERSION: "2026-03-01" }), "2026-03-01");
+  assert.equal(cafe24OrdersApiVersion({ CAFE24_ORDERS_API_VERSION: "2025-12-01", CAFE24_API_VERSION: "2026-03-01" }), "2025-12-01");
+  assert.ok(calls.filter((c) => c.url.pathname === "/api/v2/admin/orders").length > 0);
+});
+
+test("a FAILED result is saved but not marked done", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "tracking-failed-"));
+  const { impl } = fakeFetch({ "/api/intelligence/naver": () => reply({ ok: false, error: "down" }) });
+  const report = await run(impl);
+  assert.equal(report.result, "FAILED");
+  const saved = await saveTrackingReport(report, { env: { TRACKING_TEST_DIR: dir }, upload: false });
+  assert.deepEqual((await readdir(dir)).sort(), saved.files.sort());
 });
