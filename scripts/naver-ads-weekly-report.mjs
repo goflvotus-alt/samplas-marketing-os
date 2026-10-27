@@ -1,4 +1,4 @@
-import { reconcileAdgroupCoverage, assertNoReportPlaceholders } from "./naver-weekly-adgroup-integrity.mjs";
+import { verifyAdgroupSection, naverWeeklyReview, assertNoReportPlaceholders } from "./naver-weekly-adgroup-integrity.mjs";
 // Naver Search Ads Weekly Report generator.
 //
 // Data collection is NOT reimplemented here: this module only ever consumes an
@@ -146,6 +146,7 @@ export function buildWeeklyReportModel({ current, previous, since, until, previo
       }))
     : [];
 
+  const adgroupCheck = verifyAdgroupSection(current?.adgroups, campaigns);
   const model = {
     since,
     until,
@@ -157,8 +158,10 @@ export function buildWeeklyReportModel({ current, previous, since, until, previo
     previousSummary,
     wow,
     campaigns,
-    // Weekly detail is optional. Campaign totals retain the original source semantics.
-    adgroups: reconcileAdgroupCoverage(current?.adgroups, campaigns) || { available: false, reason: "주간 광고그룹 상세가 제공되지 않았습니다." },
+    // Weekly detail is optional. Campaign totals retain the original source semantics; an
+    // adgroup integrity failure fails only that section and makes the report PARTIAL.
+    adgroups: adgroupCheck.adgroups,
+    review: currentOk ? naverWeeklyReview(adgroupCheck.section) : null,
     keywords: { available: false, reason: "Naver Ads Phase 1 client only fetches campaign-level data (/ncc/campaigns + /stats); keyword level (/ncc/keywords) is not implemented." },
     previousAdgroups: previous?.adgroups || null,
     searchDemand: current?.searchDemand || { available: false, top10: [], rising5: [], reason: "검색 수요 Snapshot 미제공" },
@@ -327,6 +330,12 @@ export async function buildWeeklyReportWorkbook(model) {
   workbook.creator = "SAMPLAS Marketing OS";
   workbook.created = new Date();
   naverOnePage(workbook, model);
+  // Same hidden evidence sheet as the Meta report: chunked JSON, read back by joining column A.
+  if (model.review) {
+    const evidence = workbook.addWorksheet("ISSUE_EVIDENCE", { state: "veryHidden" });
+    const encoded = JSON.stringify({ schemaVersion: 1, policy: model.review.policy, since: model.since, until: model.until, previousSince: model.previousSince, previousUntil: model.previousUntil, review: model.review });
+    for (let i = 0; i < encoded.length; i += 30000) evidence.addRow([encoded.slice(i, i + 30000)]);
+  }
   assertNoReportPlaceholders(workbook);
   return workbook;
 }

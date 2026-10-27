@@ -227,3 +227,25 @@ export function resolvePlatformDropboxDestination(env, { dirEnvKey, defaultDir =
   if (credsMissing.length === 0 && dir) return { mode: "dropbox", dir };
   return { mode: "local" };
 }
+
+// Failure notice for a week whose report could not be published: reason text only (no
+// payloads, no credentials). Add-only like the reports — an existing notice is never touched.
+export function weeklyFailureNoticeText({ platform, since, until, error, at }) {
+  return [
+    "SAMPLAS WEEKLY REPORT FAILED",
+    `platform: ${platform}`,
+    `period: ${since} ~ ${until} (KST, Tue-Mon)`,
+    `lastAttemptAt: ${at}`,
+    `reason: ${String(error || "unknown").slice(0, 1000)}`,
+    "No report was published for this period. Missing values were not replaced with 0 or sample data.",
+    ""
+  ].join("\n");
+}
+
+export async function saveWeeklyFailureNoticeToDropbox({ targetPath, text, env = process.env, fetchImpl = fetch } = {}) {
+  const accessToken = await getDropboxAccessToken({ env, fetchImpl });
+  const existing = await dropboxFileExists(targetPath, { accessToken, fetchImpl });
+  if (existing.exists) return { filePath: targetPath, uploaded: false, alreadyExists: true };
+  const uploaded = await dropboxUploadFile(targetPath, Buffer.from(text, "utf8"), { accessToken, fetchImpl });
+  return { filePath: targetPath, uploaded: true, alreadyExists: false, size: uploaded.size };
+}

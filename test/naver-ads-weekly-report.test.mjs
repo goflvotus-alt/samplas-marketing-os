@@ -154,8 +154,9 @@ test("7b. CTR cells use standard Excel percentage ratios, not percentage-point n
 test("8. Excel generation — workbook opens, 3 visible decision sheets and hidden audit sheets exist, expected headers exist", async () => {
   const model = buildWeeklyReportModel({ current: currentPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
   const workbook = await buildWeeklyReportWorkbook(model);
-  const names = workbook.worksheets.map((sheet) => sheet.name);
-  assert.deepEqual(names, ["REPORT"]);
+  // One visible page; the review evidence is a veryHidden sheet like the Meta report.
+  assert.deepEqual(workbook.worksheets.filter((sheet) => sheet.state !== "veryHidden").map((sheet) => sheet.name), ["REPORT"]);
+  assert.equal(workbook.getWorksheet("ISSUE_EVIDENCE").state, "veryHidden");
   const campaignHeaders = workbook.getWorksheet("REPORT").getRow(33).values.filter(Boolean);
   for (const expected of ["캠페인", "광고비", "노출", "클릭", "CTR", "CPC", "전환", "전환매출", "CPA", "ROAS"]) {
     assert.ok(campaignHeaders.includes(expected), `missing CAMPAIGNS header: ${expected}`);

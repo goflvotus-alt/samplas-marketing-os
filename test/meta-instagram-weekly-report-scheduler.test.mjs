@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
+import { weeklyFailureNoticeText } from "../scripts/dropbox-report-uploader.mjs";
 import { isWeeklyNaverReportDue, seoulDateKey, previousTuesdayToMondayRange } from "../scripts/naver-ads-weekly-report.mjs";
 
 // Same source-extraction technique as test/naver-weekly-report-scheduler.test.mjs: pull the
@@ -22,13 +23,17 @@ function section(start, end) {
 // sitting textually between them — a real `export` keyword there is a SyntaxError inside a vm
 // script (same pitfall documented in test/naver-weekly-report-scheduler.test.mjs), so each
 // slice is built from two disjoint pieces that skip over that export function entirely.
+// Shared failure-notice helpers (defined above the Naver scheduler) are prepended to each slice.
+const noticeHelpers = section("// Last failed attempt of a Tuesday window", "const naverWeeklyReportScheduler = {");
 const metaSchedulerSource = [
+  noticeHelpers,
   section("const metaWeeklyReportScheduler = {", "// Thin adapter: reuses the existing buildMetaAdsSummaryWithCache"),
   section("async function runMetaWeeklyReportCheck()", "// Instagram Weekly Report scheduler"),
   "function __getMetaSchedulerState() { return { ...metaWeeklyReportScheduler }; }"
 ].join("\n");
 
 const instagramSchedulerSource = [
+  noticeHelpers,
   section("const instagramWeeklyReportScheduler = {", "// Thin adapter over the existing buildInstagramRangeData"),
   section("async function runInstagramWeeklyReportCheck()", "// TEMPORARY diagnostic"),
   "function __getInstagramSchedulerState() { return { ...instagramWeeklyReportScheduler }; }"
@@ -41,6 +46,8 @@ function freshMetaContext(overrides = {}) {
   const context = {
     Date: clockAt("2026-09-29T01:00:00Z"), // Tuesday 10:00 KST
     env: {},
+    weeklyFailureNoticeText,
+    saveWeeklyFailureNoticeToDropbox: async () => { throw new Error("unexpected failure notice"); },
     isWeeklyNaverReportDue: () => true,
     resolvePlatformDropboxDestination: () => ({ mode: "dropbox", dir: "/SAMPLAS WORK/병구 작업/메타 광고/리포트" }),
     saveWeeklyReportToDropboxAtPath: async () => ({ uploaded: true }),
@@ -65,7 +72,11 @@ function freshMetaContext(overrides = {}) {
 
 function freshInstagramContext(overrides = {}) {
   const context = {
+    Date: clockAt("2026-09-29T01:00:00Z"), // Tuesday 10:00 KST
     env: {},
+    previousTuesdayToMondayRange: () => ({ since: "2026-09-22", until: "2026-09-28" }),
+    weeklyFailureNoticeText,
+    saveWeeklyFailureNoticeToDropbox: async () => { throw new Error("unexpected failure notice"); },
     isWeeklyNaverReportDue: () => true,
     resolvePlatformDropboxDestination: () => ({ mode: "local" }),
     saveWeeklyReportToDropboxAtPath: async () => ({ uploaded: true }),
@@ -311,3 +322,38 @@ test("isolation: a Meta scheduler exception does not touch the Instagram schedul
   assert.equal(ctx.__getMetaSchedulerState().lastRunSinceKey,null);
   assert.equal(ctx.__getMetaSchedulerState().intervalMs,60000);
  });
+
+// --- Failure persistence + failure notice ---
+
+test("Instagram: ok:false is persisted and the 10:45 KST poll leaves one FAILED notice", async () => {
+  const logged = [], notices = [];
+  const opts = (iso) => ({
+    Date: clockAt(iso),
+    resolvePlatformDropboxDestination: () => ({ mode: "dropbox", dir: "/SAMPLAS WORK/병구 작업/인스타그램 리포트" }),
+    generateWeeklyInstagramReport: async () => ({ ok: false, since: "2026-09-22", until: "2026-09-28", error: "Graph API 인증 실패 (code 190)" }),
+    logApiError: async (source, error) => { logged.push(`${source}: ${error.message}`); },
+    saveWeeklyFailureNoticeToDropbox: async (args) => { notices.push(args); return { uploaded: true, filePath: args.targetPath }; }
+  });
+  await freshInstagramContext(opts("2026-09-29T01:00:00Z")).runInstagramWeeklyReportCheck();
+  assert.equal(notices.length, 0);
+  await freshInstagramContext(opts("2026-09-29T01:45:00Z")).runInstagramWeeklyReportCheck();
+  assert.deepEqual(logged, ["instagram_weekly_report: Graph API 인증 실패 (code 190)", "instagram_weekly_report: Graph API 인증 실패 (code 190)"]);
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].targetPath, "/SAMPLAS WORK/병구 작업/인스타그램 리포트/INSTAGRAM_WEEKLY_2026-09-22_2026-09-28_FAILED.txt");
+  assert.match(notices[0].text, /platform: instagram/);
+});
+
+test("Meta: only the third slot (10:30 KST) failure leaves a FAILED notice", async () => {
+  const notices = [];
+  const ctx = freshMetaContext({
+    generateWeeklyMetaAdsReport: async () => ({ ok: false, since: "2026-09-22", until: "2026-09-28", error: "Incomplete Meta performance or Cafe24 actual attribution data; report was not saved." }),
+    saveWeeklyFailureNoticeToDropbox: async (args) => { notices.push(args); return { uploaded: true, filePath: args.targetPath }; }
+  });
+  for (const iso of ["2026-09-29T01:00:00Z", "2026-09-29T01:15:00Z"]) { ctx.Date = clockAt(iso); await ctx.runMetaWeeklyReportCheck(); }
+  assert.equal(notices.length, 0);
+  ctx.Date = clockAt("2026-09-29T01:30:00Z");
+  await ctx.runMetaWeeklyReportCheck();
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].targetPath, "/SAMPLAS WORK/병구 작업/메타 광고/리포트/META_ADS_WEEKLY_2026-09-22_2026-09-28_FAILED.txt");
+  assert.match(notices[0].text, /reason: Incomplete Meta performance/);
+});

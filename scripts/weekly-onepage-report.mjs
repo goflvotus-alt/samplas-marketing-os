@@ -166,21 +166,29 @@ export function instagramOnePage(workbook,model) {
  notes(s,[`SOURCE: Instagram Graph API · 기간별 콘텐츠 (캐시 기준) · ${model.since} – ${model.until}`,`계정 지표: 요청 주간 Graph total_value. 팔로워: ${note} · ${followers.reason||'현재 수집 기록 없음'}. ${Object.entries(current.reasons||{}).map(([k,v])=>`${k}: ${v}`).join(' / ')}`,`게시물 Reach 합계 ${number(sum.reach,'명')}은 중복 포함 수치입니다. 계정 주간 고유 도달로 사용하거나 합산 비교하지 않습니다.`,`참여율 = 실제 참여 ÷ 해당 콘텐츠 도달. 도달 0·누락 시 N/A. Story ${model.stories===null?'주간 기록 미제공 (데이터 부족).':'확보 기록만 표시 · 전체 기간 coverage 불완전.'}`,`상세 ${Math.min(rows.length,8)} / ${number(rows.length,'건')} 표시 (날짜순). 확대는 동일 포맷 내 실측 반응을 확인한 콘텐츠 반복 테스트입니다.`,'콘텐츠별 프로필 방문·팔로우 기여는 미측정이므로 제외했습니다. 0은 실측값, N/A는 미제공입니다.']);
  return s;
 }
+// Row 4 banner: PASS only when campaign and adgroup sections both verified; otherwise PARTIAL with the section reason.
+function naverBanner(s,review){
+ if(!review)return;
+ const issue=review.issues[0],label={FAILED:'검증 실패',PARTIAL:'부분 확인',UNAVAILABLE:'조회 불가'}[issue?.status];
+ const text=review.result==='PASS'?'검증 PASS · 캠페인·광고그룹 통계 대조 완료':`PARTIAL · 캠페인 성과 검증 완료 · 광고그룹 상세 ${label} — ${issue.detail}`;
+ box(s,4,1,12,text,{size:10,bold:true,color:review.result==='PASS'?C.green:C.white,bg:review.result==='PASS'?C.pale:C.bad,height:30});
+}
 export function naverOnePage(workbook,model) {
  const s=base(workbook,model,'NAVER SEARCH ADS WEEKLY REPORT'),sum=model.summary||{},prev=model.previousSummary||{};
  cards(s,[{label:'광고비',value:sum.spend,unit:'원',note:'예산 투입 · 단독 우열 판단 불가'},{label:'클릭',value:sum.clicks,unit:'건'},{label:'CPC',value:sum.cpc,unit:'원'},{label:'전환',value:sum.conversions,unit:'건'},{label:'전환매출',value:sum.conversionValue,unit:'원'},{label:'ROAS',value:sum.roas,unit:'x',note:'플랫폼 귀속 전환 성과'}]);
  const metrics=[['광고비','spend','원'],['노출','impressions','회'],['클릭','clicks','건'],['CTR','ctr','%'],['CPC','cpc','원'],['전환','conversions','건'],['전환율','conversionRate','%'],['전환매출','conversionValue','원'],['CPA','cpa','원'],['ROAS','roas','x']].map(([label,key,unit])=>({label,current:metricPresent(sum[key])?sum[key]/(unit==='%'?100:1):null,previous:metricPresent(prev[key])?prev[key]/(unit==='%'?100:1):null,unit,inverse:['cpc','cpa'].includes(key),neutral:['spend','ctr','impressions','clicks'].includes(key),note:key==='ctr'?'클릭 효율 · 전환과 함께 판단':key==='spend'?'투입 비용 · 단독 우열 판단 불가':undefined}));
  comparison(s,metrics);
+ naverBanner(s,model.review);
  const campaigns=model.campaigns||[],allActions=naverActions(model),scheduled=allActions.slice(0,3),top=(model.adgroups?.available?model.adgroups.rows:campaigns).slice().sort((a,b)=>(b.spend||0)-(a.spend||0));
  if(allActions.length>3)scheduled[2]={...scheduled[2],action:'광고 상품의 재고·옵션과 검색어 품질을 점검합니다. 키워드 상세는 현재 소스에서 미제공입니다.',success:'구매 가능·검색 품질 확인'};
  judgments(s,[['이번 주 판단',naverVerdict(model)],['유입 / 전환',`클릭 ${number(prev.clicks,'건')} → ${number(sum.clicks,'건')} · 전환 ${number(prev.conversions,'건')} → ${number(sum.conversions,'건')}. CTR 단독으로 확대하지 않습니다.`],['성과 단위 / 예산',`${model.adgroups?.available?'광고그룹 실측':'캠페인 fallback'} 기준. 전환 0은 추적·랜딩 확인 후 축소 검토. 소수 전환만으로 증액하지 않습니다.`],['다음 주 방향',scheduled[0]?.action||'집계와 전환 추적을 점검합니다.']]);
  const rows=top.map(r=>[r.canonicalBrandName||r.name||r.campaignName||r.campaignId||'N/A',measured(r.spend,'원'),measured(r.impressions,'회'),measured(r.clicks,'건'),measured(metricPresent(r.ctr)?r.ctr/100:null,'%'),measured(r.cpc,'원'),measured(r.conversions,'건'),measured(metricPresent(r.conversionRate)?r.conversionRate/100:null,'%'),measured(r.conversionValue,'원'),measured(r.cpa,'원'),measured(r.roas,'x'),r.statsAvailable===false?'데이터 부족':naverDecision(r,model)]);
  detail(s,[model.adgroups?.available?'광고그룹':'캠페인','광고비','노출','클릭','CTR','CPC','전환','전환율','전환매출','CPA','ROAS','판단'],rows);
- s.getCell('A32').value='03  브랜드 / 광고그룹 성과';
+ s.getCell('A32').value=model.adgroups?.verification==='FAILED'?'03  광고그룹 상세 · 검증 실패 — 아래는 검증된 캠페인 성과':'03  브랜드 / 광고그룹 성과';
  for(let row=34;row<=41;row++)s.getRow(row).height=24;
  searchDemandTables(s,model.searchDemand);actions(s,scheduled,56,'06');
  s.pageSetup.printArea='A1:L69';
- notes(s,[`SOURCE: Naver Search Ads · 기간별 캠페인 통계 · ${model.since} – ${model.until}`,model.adgroups?.available?`SOURCE: /ncc/adgroups + 광고그룹 ID별 /stats. 실측 ${model.adgroups.coverage?.successful??0}/${model.adgroups.coverage?.total??rows.length} · N/A ${model.adgroups.coverage?.unavailable??0}. 정확히 resolve된 canonical 이름만 표시.`:`광고그룹 조회 불가 → 실제 캠페인 fallback: ${model.adgroups?.reason||'상세 미제공'}`,'CTR·CVR는 클릭·전환 효율입니다. ROAS는 광고비 대비 전환매출 배수, CPA·CPC는 전환·클릭당 비용입니다.','전환·매출은 플랫폼 귀속 성과입니다. 실제 주문 실결제액으로 간주하지 않습니다. 0과 N/A를 구분합니다.',`상세 ${Math.min(rows.length,8)} / ${number(rows.length,'건')} 표시. 전체 광고그룹 확인 금액 ${number(model.adgroups.coverage?.knownSpend,'원')} / 캠페인 ${number(sum.spend,'원')} · 미확인 차액 ${number(model.adgroups.coverage?.difference,'원')}. 누락은 0으로 대체하지 않습니다.`,`검색 수요: ${model.searchDemand?.source||'Naver Keyword Tool 월간 검색량의 주간 Snapshot 비교'}. 광고 전환과 별개. 정확한 브랜드 키워드만 사용; <10/누락은 N/A. 수집 ${model.searchDemand?.observedAt||'N/A'} · 미확보 ${(model.searchDemand?.unavailable||[]).length}개.`],61);
+ notes(s,[`SOURCE: Naver Search Ads · 기간별 캠페인 통계 · ${model.since} – ${model.until}`,model.adgroups?.available?`SOURCE: /ncc/adgroups + 광고그룹 ID별 /stats. 실측 ${model.adgroups.coverage?.successful??0}/${model.adgroups.coverage?.total??rows.length} · N/A ${model.adgroups.coverage?.unavailable??0}. 정확히 resolve된 canonical 이름만 표시.`:`${model.adgroups?.verification==='FAILED'?'광고그룹 검증 실패 → 검증된 캠페인 fallback':'광고그룹 조회 불가 → 실제 캠페인 fallback'}: ${model.adgroups?.reason||'상세 미제공'}`,'CTR·CVR는 클릭·전환 효율입니다. ROAS는 광고비 대비 전환매출 배수, CPA·CPC는 전환·클릭당 비용입니다.','전환·매출은 플랫폼 귀속 성과입니다. 실제 주문 실결제액으로 간주하지 않습니다. 0과 N/A를 구분합니다.',`상세 ${Math.min(rows.length,8)} / ${number(rows.length,'건')} 표시. 전체 광고그룹 확인 금액 ${number(model.adgroups.coverage?.knownSpend,'원')} / 캠페인 ${number(sum.spend,'원')} · 미확인 차액 ${number(model.adgroups.coverage?.difference,'원')}. 누락은 0으로 대체하지 않습니다.`,`검색 수요: ${model.searchDemand?.source||'Naver Keyword Tool 월간 검색량의 주간 Snapshot 비교'}. 광고 전환과 별개. 정확한 브랜드 키워드만 사용; <10/누락은 N/A. 수집 ${model.searchDemand?.observedAt||'N/A'} · 미확보 ${(model.searchDemand?.unavailable||[]).length}개.`],61);
  return s;
 }
 

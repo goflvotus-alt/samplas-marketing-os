@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
+import { previousTuesdayToMondayRange } from "../scripts/naver-ads-weekly-report.mjs";
+import { weeklyFailureNoticeText } from "../scripts/dropbox-report-uploader.mjs";
 
 // Source-extraction pattern already used across this repo's test suite (e.g.
 // test/naver-ads-read-only.test.mjs, test/server-advertising-route-forwarding.test.mjs):
@@ -26,13 +28,22 @@ function section(start, end) {
 // through them too would pull in `export` keywords (SyntaxError in a vm script) and
 // unrelated identifiers this test never mocks. Naver's own scheduler code is unchanged.
 const schedulerSource = [
-  section("const naverWeeklyReportScheduler = {", "// Meta Ads Weekly Report scheduler"),
+  // The shared failure-notice helpers sit right above the Naver scheduler.
+  section("// Last failed attempt of a Tuesday window", "// Meta Ads Weekly Report scheduler"),
   "function __getSchedulerState() { return { ...naverWeeklyReportScheduler }; }"
 ].join("\n");
 
+// The scheduler reads `new Date()`; pinned to Tuesday 10:00 KST unless a test overrides it.
+const clockAt = (iso) => { const t = Date.parse(iso); return class extends Date { constructor(...a) { super(...(a.length ? a : [t])); } static now() { return t; } }; };
+
 function freshContext(overrides = {}) {
   const context = {
+    Date: clockAt("2026-09-29T01:00:00Z"),
     env: {},
+    dropboxWeeklyReportDir: () => "/SAMPLAS WORK/병구 작업/네이버 광고 리포트",
+    previousTuesdayToMondayRange,
+    weeklyFailureNoticeText,
+    saveWeeklyFailureNoticeToDropbox: async () => { throw new Error("unexpected failure notice"); },
     URL,
     capturingResponse: () => ({}),
     handleNaverAdsReadOnlyRoute: async () => {},
@@ -164,4 +175,67 @@ test("a concurrent poll while already running is a no-op (running flag guard)", 
   assert.equal(concurrentCalls, 1);
   releaseFirstCall();
   await firstCall;
+});
+
+// --- Failure persistence + failure notice (2026-10-20 / 10-27: two weeks lost with no trace) ---
+
+const unavailable = async () => ({ ok: false, since: "2026-09-22", until: "2026-09-28", error: "Naver Search Ads request timed out", filePath: null });
+
+test("ok:false is persisted through logApiError (survives restart), not only kept in memory", async () => {
+  const logged = [], notices = [];
+  const ctx = freshContext({
+    generateWeeklyNaverAdsReport: unavailable,
+    logApiError: async (source, error, context) => { logged.push({ source, message: error.message, context }); },
+    saveWeeklyFailureNoticeToDropbox: async (args) => { notices.push(args); return { uploaded: true, filePath: args.targetPath }; }
+  });
+  await ctx.runNaverWeeklyReportCheck();
+  assert.deepEqual(JSON.parse(JSON.stringify(logged)), [{ source: "naver_weekly_report", message: "Naver Search Ads request timed out", context: { since: "2026-09-22", until: "2026-09-28" } }]);
+  assert.equal(ctx.__getSchedulerState().lastRunSinceKey, null);
+  assert.equal(notices.length, 0, "10:00 is not the last poll; no notice yet");
+});
+
+test("last poll (10:45 KST) failure uploads one FAILED notice with the reason beside the reports", async () => {
+  const notices = [];
+  const ctx = freshContext({
+    Date: clockAt("2026-09-29T01:45:00Z"),
+    generateWeeklyNaverAdsReport: unavailable,
+    saveWeeklyFailureNoticeToDropbox: async (args) => { notices.push(args); return { uploaded: true, filePath: args.targetPath }; }
+  });
+  await ctx.runNaverWeeklyReportCheck();
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].targetPath, "/SAMPLAS WORK/병구 작업/네이버 광고 리포트/NAVER_ADS_WEEKLY_2026-09-22_2026-09-28_FAILED.txt");
+  assert.match(notices[0].text, /reason: Naver Search Ads request timed out/);
+  assert.equal(ctx.__getSchedulerState().lastRunSinceKey, null);
+});
+
+test("thrown errors at the last poll also leave a notice; a notice upload failure never throws", async () => {
+  const logged = [];
+  const ctx = freshContext({
+    Date: clockAt("2026-09-29T01:50:00Z"),
+    generateWeeklyNaverAdsReport: async () => { throw new Error("Dropbox upload failed (HTTP 503)"); },
+    logApiError: async (source) => { logged.push(source); },
+    saveWeeklyFailureNoticeToDropbox: async () => { throw new Error("Dropbox upload failed (HTTP 503)"); }
+  });
+  await ctx.runNaverWeeklyReportCheck();
+  assert.deepEqual(logged, ["naver_weekly_report", "naver_weekly_failure_notice"]);
+  assert.equal(ctx.__getSchedulerState().running, false);
+});
+
+test("success at the last poll uploads no notice; local mode never uploads a notice", async () => {
+  const notices = [];
+  const record = async (args) => { notices.push(args); return { uploaded: true, filePath: args.targetPath }; };
+  const ok = freshContext({
+    Date: clockAt("2026-09-29T01:45:00Z"),
+    generateWeeklyNaverAdsReport: async () => ({ ok: true, since: "2026-09-22", until: "2026-09-28", filePath: "/x.xlsx" }),
+    saveWeeklyFailureNoticeToDropbox: record
+  });
+  await ok.runNaverWeeklyReportCheck();
+  const local = freshContext({
+    Date: clockAt("2026-09-29T01:45:00Z"),
+    resolveWeeklyReportDestination: () => ({ mode: "local" }),
+    generateWeeklyNaverAdsReport: unavailable,
+    saveWeeklyFailureNoticeToDropbox: record
+  });
+  await local.runNaverWeeklyReportCheck();
+  assert.equal(notices.length, 0);
 });
