@@ -45,7 +45,7 @@ test("Clients 'this month' ends at the ECOUNT as-of date; explicit ranges keep p
   const probe = createServer(); probe.listen(0, "127.0.0.1"); await once(probe, "listening");
   const port = probe.address().port; await new Promise((resolve) => probe.close(resolve));
   const child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: dir, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" } });
+    env: { ...process.env, ECOUNT_AUTO_SYNC: "off", WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" } });
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("server start timeout")), 15000);

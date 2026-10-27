@@ -5,14 +5,16 @@
 //   NEW-only AUTO_SAFE (enforced server-side)                 5. lightweight read-only checks
 //   (refresh provenance, brand-master, brands/new, pending-brands). /api/inventory/overview is
 //   never called here: its full 14,746-row computation restarted the Render instance.
-// Usage: node scripts/run-ecount-product-sync-and-publish.mjs [--dry-run]
+// Usage: node scripts/run-ecount-product-sync-and-publish.mjs [--dry-run | --mirror-only]
 // --dry-run: no ECOUNT call, no upload, Production refresh with ?dryRun=1 (no writes).
-import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
+// --mirror-only: Production GETs only, then the local brand/policy mirror (see runMirrorOnly).
+import { readFile, writeFile, unlink, mkdir, rename, copyFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { syncEcountInventory } from "./sync-ecount-inventory.mjs";
 import { readEcountProductMaster, PRODUCT_MASTER_FILE } from "./ecount-product-master.mjs";
 import { loadEnv, uploadWorkSnapshots, renderBaseUrl, renderAuthHeaders } from "./upload-work-snapshots-to-render.mjs";
+import { buildBrandSourcingMaster, loadInputs } from "./build-brand-sourcing-master.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const PUBLISH_FILES = Object.freeze(["ecount-inventory/latest.json", "ecount-inventory/diagnostic.json", PRODUCT_MASTER_FILE]);
@@ -83,8 +85,108 @@ export function summarizePending(refresh) {
   return { approved, failed, needsReview, blocked };
 }
 
-// sync/upload/production are injected so tests run without ECOUNT or Render.
-export async function runEcountSyncAndPublish({ workDir, sync, upload, production, dryRun = false, log = () => {}, verifyAttempts = 3, retryDelayMs = 5000, sleep }) {
+// Production is canonical for brands and their policies. After a verified publish, the local files
+// that /api/intelligence/commercial-policy reads are replaced with Production's, so the local API
+// (and the ECOUNT Chrome extension that calls it) sees every brand Production onboarded.
+export const MIRROR_FILES = Object.freeze(["brand-master.json", "brand-sourcing-master.json", "brand-commercial-policy.json"]);
+
+// All files or none: temp files are written and parsed first, the current files are backed up,
+// and a failed rename restores the ones already replaced.
+// ponytail: a process crash between two renames can still leave a mix; the next run rewrites all three.
+export async function replaceFilesTogether(workDir, files, { renameFile = rename } = {}) {
+  const stamp = `${process.pid}-${Date.now()}`;
+  const entries = Object.entries(files).map(([name, data]) => {
+    const file = join(workDir, name);
+    return { file, text: `${JSON.stringify(data, null, 2)}\n`, temp: `${file}.mirror-${stamp}.tmp`, backup: `${file}.mirror-${stamp}.bak`, hadOriginal: false };
+  });
+  try {
+    for (const entry of entries) {
+      await writeFile(entry.temp, entry.text, { flag: "wx" });
+      JSON.parse(await readFile(entry.temp, "utf8"));
+    }
+    for (const entry of entries) {
+      try { await copyFile(entry.file, entry.backup); entry.hadOriginal = true; } catch (error) { if (error?.code !== "ENOENT") throw error; }
+    }
+    const replaced = [];
+    try {
+      for (const entry of entries) { await renameFile(entry.temp, entry.file); replaced.push(entry); }
+    } catch (error) {
+      for (const entry of replaced.reverse()) {
+        if (entry.hadOriginal) await rename(entry.backup, entry.file);
+        else await unlink(entry.file);
+      }
+      throw error;
+    }
+  } finally {
+    for (const entry of entries) {
+      await unlink(entry.temp).catch(() => {});
+      await unlink(entry.backup).catch(() => {});
+    }
+  }
+}
+
+// Reads only existing Production GET routes. brand-sourcing-master has no raw read route, so it is
+// rebuilt from Production's brand master and the product master this run just published, and must
+// then give Production's sourcing_type for every brand; any difference fails closed.
+export async function mirrorProductionBrandPolicy({ workDir, production }) {
+  const master = await production("GET", "/api/brand-master");
+  const policyStore = await production("GET", "/api/intelligence/commercial-policy");
+  const brands = master?.brands;
+  const codes = Array.isArray(brands) ? brands.map((brand) => brand?.brand_code) : [];
+  if (!codes.length || (master.brandCount !== undefined && master.brandCount !== codes.length)) throw new Error("Production brand-master가 비어 있거나 개수가 맞지 않습니다.");
+  if (codes.some((code) => typeof code !== "string" || !code) || new Set(codes).size !== codes.length || brands.some((brand) => typeof brand.brand_name !== "string")) {
+    throw new Error("Production brand-master의 brand_code/brand_name이 비었거나 중복됩니다.");
+  }
+  const policies = policyStore?.policies;
+  const policyCodes = Array.isArray(policies) ? policies.map((policy) => policy?.brand_code) : null;
+  if (!policyCodes || policyCodes.length !== policyStore.count || policyCodes.some((code) => !code) || new Set(policyCodes).size !== policyCodes.length) {
+    throw new Error("Production commercial policy 형식이 다르거나 brand_code가 중복됩니다.");
+  }
+  const brandMaster = { updatedAt: master.updatedAt ?? null, brands: brands.map(({ sourcing_type: _sourcingType, ...brand }) => brand) };
+  const sourcing = buildBrandSourcingMaster({ ...(await loadInputs(workDir)), brandMaster });
+  const derived = new Map(sourcing.brands.map((brand) => [brand.brand_code, brand.sourcing_type ?? null]));
+  const mismatched = brands.filter((brand) => (derived.get(brand.brand_code) ?? null) !== (brand.sourcing_type ?? null)).map((brand) => brand.brand_code);
+  if (sourcing.brands.length !== brands.length || mismatched.length) throw new Error(`sourcing이 Production과 다릅니다 (${mismatched.length}): ${mismatched.slice(0, 5).join(", ")}`);
+  // Local file metadata (schemaVersion, source) is kept; summary and policies are Production's.
+  const commercialPolicy = { ...((await readJsonOrNull(join(workDir, "brand-commercial-policy.json"))) || {}), summary: policyStore.summary ?? null, policies };
+  const files = { "brand-master.json": brandMaster, "brand-sourcing-master.json": sourcing, "brand-commercial-policy.json": commercialPolicy };
+  await replaceFilesTogether(workDir, files);
+  for (const [name, data] of Object.entries(files)) {
+    if (JSON.stringify(await readJson(join(workDir, name))) !== JSON.stringify(data)) throw new Error(`로컬 ${name} 확인 실패`);
+  }
+  return { files: [...MIRROR_FILES], brands: codes.length, policies: policies.length };
+}
+
+// --mirror-only: no ECOUNT call, no upload, no pending refresh. Production is only read (any other
+// method is refused), then the local brand/policy mirror runs under the same lock as a full run.
+export async function runMirrorOnly({ workDir, production, log = () => {} }) {
+  const result = { ok: false, mirrorOnly: true, stage: "start" };
+  const readOnly = (method, path) => {
+    if (method !== "GET") throw new Error(`mirror-only: Production ${method} ${path} 호출 금지`);
+    return production(method, path);
+  };
+  const release = await acquireLock(workDir);
+  try {
+    result.stage = "mirror";
+    log("[mirror-only] Production 브랜드 정책 읽기 → 로컬 반영…");
+    result.mirror = { ok: true, ...(await mirrorProductionBrandPolicy({ workDir, production: readOnly })) };
+    result.ok = true;
+    result.stage = "done";
+  } catch (error) {
+    result.mirror = { ok: false, error: error?.status ? productionErrorMessage(error) : String(error?.message || error).slice(0, 300) };
+    result.error = result.mirror.error;
+  } finally {
+    await release();
+  }
+  return result;
+}
+
+const formatMirrorOnlySummary = (r) => r.ok
+  ? `MIRROR ONLY COMPLETE (Production 읽기만)\n\nLocal brand mirror: ${r.mirror.brands} brands · ${r.mirror.policies} policies 반영`
+  : `MIRROR ONLY FAILED — 로컬 파일은 바뀌지 않았습니다.\n\n${r.error}`;
+
+// sync/upload/production/mirror are injected so tests run without ECOUNT or Render.
+export async function runEcountSyncAndPublish({ workDir, sync, upload, production, mirror = null, dryRun = false, log = () => {}, verifyAttempts = 3, retryDelayMs = 5000, sleep }) {
   const result = { ok: false, dryRun, stage: "start" };
   const release = await acquireLock(workDir);
   try {
@@ -161,6 +263,18 @@ export async function runEcountSyncAndPublish({ workDir, sync, upload, productio
     }
     result.verification.failures = failures;
     result.ok = !result.onboarding.error && failures.length === 0;
+    // Only a verified, non-dry run is mirrored; a mirror failure fails the run (Production is not rolled back).
+    if (result.ok && !dryRun && mirror) {
+      result.stage = "mirror";
+      log("[6/6] Production 브랜드 정책을 로컬로 반영…");
+      try {
+        result.mirror = { ok: true, ...(await mirror()) };
+      } catch (error) {
+        result.mirror = { ok: false, error: error?.status ? productionErrorMessage(error) : String(error?.message || error).slice(0, 300) };
+        failures.push(`Local brand mirror: ${result.mirror.error}`);
+        result.ok = false;
+      }
+    }
     result.stage = "done";
     return result;
   } catch (error) {
@@ -203,18 +317,19 @@ export function formatSummary(r) {
   lines.push("", `Production product master: ${v.provenance?.source ?? "-"} ${n(v.provenance?.count)} (${v.provenance?.at ?? "-"}) ${v.provenance?.ok ? "로컬과 일치" : "확인 실패"}`);
   lines.push(`Production brand master: ${v.brandMaster?.error || `${n(v.brandMaster?.brands)} brands`}`);
   lines.push(`Production NEW BRANDS (90일): ${v.newBrands?.error || `${v.newBrands?.count} — ${(v.newBrands?.brands || []).join(", ")}`}`);
+  if (r.mirror) lines.push(`Local brand mirror: ${r.mirror.ok ? `${n(r.mirror.brands)} brands · ${n(r.mirror.policies)} policies 반영` : `실패 — ${r.mirror.error}`}`);
   if (v.failures?.length) lines.push("", "Verification failed:", ...v.failures.map((f) => `- ${f}`));
   return lines.join("\n");
 }
 
 async function main() {
-  const { result, summary } = await runEcountProductSyncFromEnv({ dryRun: process.argv.includes("--dry-run"), log: (line) => console.log(line) });
+  const { result, summary } = await runEcountProductSyncFromEnv({ dryRun: process.argv.includes("--dry-run"), mirrorOnly: process.argv.includes("--mirror-only"), log: (line) => console.log(line) });
   console.log(`\n${summary}\n`);
   if (!result.ok) process.exitCode = 1;
 }
 
 // Wiring shared by the CLI/.command and the local Marketing OS helper route.
-export async function runEcountProductSyncFromEnv({ dryRun = false, log = () => {} } = {}) {
+export async function runEcountProductSyncFromEnv({ dryRun = false, mirrorOnly = false, log = () => {} } = {}) {
   const env = await loadEnv();
   const workDir = join(root, "work");
   const production = async (method, path, body) => {
@@ -229,12 +344,17 @@ export async function runEcountProductSyncFromEnv({ dryRun = false, log = () => 
     }
     return parsed;
   };
+  if (mirrorOnly) {
+    const result = await runMirrorOnly({ workDir, production, log });
+    return { result, summary: formatMirrorOnlySummary(result) };
+  }
   const result = await runEcountSyncAndPublish({
     workDir,
     dryRun,
     sync: () => syncEcountInventory({ env, outDir: join(workDir, "ecount-inventory") }),
     upload: (relativePaths) => uploadWorkSnapshots({ relativePaths, overwrite: true, env, workDir }),
     production,
+    mirror: () => mirrorProductionBrandPolicy({ workDir, production }),
     log
   });
   return { result, summary: formatSummary(result) };

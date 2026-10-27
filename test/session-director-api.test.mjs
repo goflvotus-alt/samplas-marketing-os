@@ -130,7 +130,7 @@ test("server.mjs: the session routes ignore the generic /api credentials and loo
   const port = probe.address().port; await new Promise((r) => probe.close(r));
   const root = fileURLToPath(new URL("..", import.meta.url));
   const child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: dir, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: "http://127.0.0.1:9", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "",
+    env: { ...process.env, ECOUNT_AUTO_SYNC: "off", WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: "http://127.0.0.1:9", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "",
       AI_AUDIT_SECRET: "audit-secret", SESSION_WEB_SECRET: "", SESSION_MCP_SECRET: "", SESSION_OPERATOR_EMAILS: "" } });
   try {
     await new Promise((resolve, reject) => {

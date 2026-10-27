@@ -205,7 +205,7 @@ test("authenticated HTTP bulk refresh onboards NEW only; reassignment needs expl
     await writeFile(join(dir, "cafe24-product-catalog.json"), JSON.stringify({ products: sources.products }));
     for (const [name, value] of Object.entries({ "brand-commercial-policy.json": { policies: [] }, "brand-sourcing-master.json": { brands: [] }, "product-registry-review-queue.json": { entries: [] } })) await writeFile(join(dir, name), JSON.stringify(value));
     child = spawn(process.execPath, [fileURLToPath(new URL("../server.mjs", import.meta.url))], { cwd: dir,
-      env: { ...process.env, WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, CAFE24_PROXY_BASIC_AUTH: "test:only", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" }, stdio: ["ignore", "pipe", "pipe"] });
+      env: { ...process.env, ECOUNT_AUTO_SYNC: "off", WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, CAFE24_PROXY_BASIC_AUTH: "test:only", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" }, stdio: ["ignore", "pipe", "pipe"] });
     child.stderr.resume();
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error("server timeout")), 15000);

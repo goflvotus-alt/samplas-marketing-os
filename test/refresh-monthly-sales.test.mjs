@@ -192,7 +192,7 @@ test("integrity rejects total mismatch and invalid coverage", () => {
 
 test("importing server.mjs does not start the HTTP server", async () => {
   const child = spawn(process.execPath, ["--input-type=module", "-e", "await import('./server.mjs'); console.log('IMPORTED')"], {
-    cwd: new URL("..", import.meta.url), stdio: ["ignore", "pipe", "pipe"]
+    cwd: new URL("..", import.meta.url), env: { ...process.env, ECOUNT_AUTO_SYNC: "off" }, stdio: ["ignore", "pipe", "pipe"]
   });
   let stdout = "";
   let stderr = "";
