@@ -47,7 +47,7 @@ test("HTTP: anonymous reads are refused; Basic, operator session and /healthz wo
   const probe = createServer(); probe.listen(0, "127.0.0.1"); await once(probe, "listening");
   const port = probe.address().port; await new Promise((resolve) => probe.close(resolve));
   const child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: dir, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASIC_AUTH: "proxy:correct", SAMPLAS_OPERATOR_BASIC_AUTH: "op:correct",
+    env: { ...process.env, ECOUNT_AUTO_SYNC: "off", WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASIC_AUTH: "proxy:correct", SAMPLAS_OPERATOR_BASIC_AUTH: "op:correct",
       API_READ_AUTH: "", CAFE24_PROXY_BASE_URL: "", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "", DROPBOX_REFRESH_TOKEN: "", NAVER_ADS_API_KEY: "" } });
   try {
     await new Promise((resolve, reject) => {

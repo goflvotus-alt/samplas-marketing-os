@@ -99,7 +99,7 @@ import { createIdentitySplitRunner, checkSplitReadBack, createSplitTokenRegistry
 import { planInternalRekey, previewInternalRekey, createIdentityRekeyRunner } from "./scripts/identity-rekey.mjs";
 import { refreshBrandSourcingMaster } from "./scripts/build-brand-sourcing-master.mjs";
 import { syncEcountInventory, REQUIRED_ENV_KEYS as ECOUNT_REQUIRED_ENV_KEYS } from "./scripts/sync-ecount-inventory.mjs";
-import { createEcountAutoSync } from "./scripts/ecount-auto-sync.mjs";
+import { createEcountAutoSync, isEcountAutoSyncDue, nextEcountAutoSyncAt, readEcountAutoSyncStatus, kstDateKey as ecountKstDateKey } from "./scripts/ecount-auto-sync.mjs";
 import { buildNewBrands, onboardingDates } from "./scripts/new-brands.mjs";
 import { attachCoverage, summarizeCafe24Products } from "./scripts/new-brand-coverage.mjs";
 import { createLocalEcountProductSyncRoute } from "./scripts/local-ecount-helper.mjs";
@@ -9346,44 +9346,99 @@ async function runInstagramDailyFollowerSnapshot() {
 // minutes only ever costs a Date check; the actual Naver fetch only runs once
 // isWeeklyNaverReportDue() confirms it's Tuesday 10:00-10:59 KST AND this week's report
 // (keyed by its `since` date) hasn't already been generated.
-// ECOUNT product master auto-sync. Onboarding is NEW-only: inactive-code reassignment
-// stays a manual review. Status (attempt/success dates) lives in WORK_DIR so restarts never
-// repeat a day's attempt; failures keep the canonical inventory (see scripts/ecount-auto-sync.mjs).
-const ecountAutoSync = createEcountAutoSync({
+// ECOUNT product master auto-sync (ECOUNT_AUTO_SYNC=on, daily 04:00 KST). The job is the same runner
+// as the "ECOUNT 상품 최신화" button and the .command file: one file lock, local sync, Production
+// upload, Production pending refresh (NEW-only, enforced server-side) and Production verification.
+// Status (attempt/success dates) lives in WORK_DIR so restarts never repeat a day's attempt.
+export function createProductionEcountAutoSync({ workDir, runPublish, refreshSourcing, now = () => new Date() }) {
+  let published = null;
+  const autoSync = createEcountAutoSync({
+    workDir,
+    now,
+    sync: async () => {
+      published = null;
+      const { result } = await runPublish();
+      if (!result?.ok) {
+        const reason = result?.error || result?.onboarding?.error || (result?.verification?.failures || []).join("; ") || "unknown error";
+        throw new Error(`${result?.stage || "start"}: ${reason}`);
+      }
+      published = result;
+      return { productCount: result.productMaster?.totalProducts ?? null, productPagination: { pageCount: result.productMaster?.pageCount ?? null, duplicateCount: result.productMaster?.duplicateCount ?? null } };
+    },
+    // Onboarding already ran on Production inside the runner; this only reports it.
+    onboard: async () => {
+      const onboarding = published?.onboarding || {};
+      return {
+        approvedCount: onboarding.approved?.length ?? 0,
+        approved: (onboarding.approved || []).map((entry) => ({ brandCode: entry.brandCode ?? null, brandName: entry.brandName ?? null })),
+        error: onboarding.failed?.length ? onboarding.failed.map((entry) => `${entry.id}: ${entry.error}`).join("; ").slice(0, 500) : null
+      };
+    },
+    refreshSourcing
+  });
+  // A full ECOUNT product sync already ran today (button, .command or an earlier run): the product
+  // master's fetchedAt is the evidence every path shares, so the scheduler does not repeat the day.
+  // The button stays available for an intentional refresh at any time.
+  async function productMasterSyncedOn(day) {
+    try {
+      const { fetchedAt } = JSON.parse(await readFile(join(workDir, PRODUCT_MASTER_FILE), "utf8"));
+      return Boolean(fetchedAt) && ecountKstDateKey(new Date(fetchedAt)) === day;
+    } catch (error) {
+      if (error?.code === "ENOENT") return false;
+      throw error;
+    }
+  }
+  async function check() {
+    const at = now();
+    if (!isEcountAutoSyncDue(at, await readEcountAutoSyncStatus(workDir))) return { ok: false, skipped: "not-due" };
+    if (await productMasterSyncedOn(ecountKstDateKey(at))) return { ok: false, skipped: "synced-today" };
+    return autoSync.run();
+  }
+  async function getStatus() {
+    const status = await autoSync.getStatus();
+    const today = ecountKstDateKey(now());
+    if (status.lastAttemptDate === today || !(await productMasterSyncedOn(today))) return status;
+    return { ...status, syncedTodayBy: "product-master", nextScheduledAt: nextEcountAutoSyncAt(now(), { lastAttemptDate: today }) };
+  }
+  return { run: autoSync.run, check, getStatus };
+}
+
+// The Production runner always works on <repo>/work with the repo .env (ECOUNT and Render
+// credentials). A server started on any other WORK_DIR (tests, scratch copies) is not that
+// runtime, so it must never start the runner: no scheduler, no button, no forced run.
+export const ECOUNT_RUNNER_WORK_DIR = join(dirname(fileURLToPath(import.meta.url)), "work");
+export const isCanonicalEcountRuntime = (dir) => resolve(dir) === resolve(ECOUNT_RUNNER_WORK_DIR);
+const ecountRunnerAllowed = isCanonicalEcountRuntime(workDir);
+const runEcountRunner = async (options) => {
+  if (!ecountRunnerAllowed) throw new Error(`non-canonical runtime (WORK_DIR ${workDir}): ECOUNT/Production runner disabled`);
+  return (await import("./scripts/run-ecount-product-sync-and-publish.mjs")).runEcountProductSyncFromEnv(options);
+};
+
+const ecountAutoSync = createProductionEcountAutoSync({
   workDir,
-  sync: () => syncEcountInventory({ env, outDir: join(workDir, "ecount-inventory") }),
-  onboard: async () => {
-    const pending = await refreshPendingBrandsUnattended(workDir, () => loadCurrentPendingBrandSources(null, currentMonth()),
-      { buildCompatibility: buildIntelligenceBrandRegistry });
-    const entries = pending.onboarding || [];
-    const failed = entries.filter((entry) => !entry.ok);
-    return {
-      approvedCount: entries.length - failed.length,
-      approved: entries.filter((entry) => entry.ok).map((entry) => ({ brandCode: entry.candidate?.canonicalBrandCode || null, brandName: entry.candidate?.rawBrandName || null })),
-      error: failed.length ? failed.map((entry) => `${entry.id}: ${entry.error}`).join("; ").slice(0, 500) : null
-    };
-  },
+  runPublish: () => runEcountRunner({ log: (line) => console.log(`[ECOUNT_AUTO_SYNC] ${line}`) }),
   refreshSourcing: () => refreshBrandSourcingMaster(workDir)
 });
 
-const ecountAutoSyncEnabled = env.ECOUNT_AUTO_SYNC === "on";
+const ecountAutoSyncConfigured = env.ECOUNT_AUTO_SYNC === "on";
+const ecountAutoSyncEnabled = ecountAutoSyncConfigured && ecountRunnerAllowed;
 
 // Marketing OS "ECOUNT 상품 최신화" button → this route on the office Mac's local server.
 // Disabled on Render (no fallback that lets Render call ECOUNT); see scripts/local-ecount-helper.mjs.
 const localEcountProductSync = createLocalEcountProductSyncRoute({
-  enabled: !env.RENDER,
+  enabled: !env.RENDER && ecountRunnerAllowed,
   allowedOrigins: [`http://127.0.0.1:${port}`, `http://localhost:${port}`, (env.RENDER_DASHBOARD_URL || "https://samplas-marketing-os.onrender.com").replace(/\/$/, "")],
-  run: async (options) => (await import("./scripts/run-ecount-product-sync-and-publish.mjs")).runEcountProductSyncFromEnv(options)
+  run: (options) => runEcountRunner(options)
 });
 
 // Read-only view: credential presence is reported as booleans only, never values.
 async function ecountAutoSyncStatus() {
-  return { ...(await ecountAutoSync.getStatus()), enabled: ecountAutoSyncEnabled, credentialsConfigured: ECOUNT_REQUIRED_ENV_KEYS.every((key) => Boolean(env[key])) };
+  return { ...(await ecountAutoSync.getStatus()), enabled: ecountAutoSyncEnabled, configured: ecountAutoSyncConfigured, canonicalRuntime: ecountRunnerAllowed, credentialsConfigured: ECOUNT_REQUIRED_ENV_KEYS.every((key) => Boolean(env[key])) };
 }
 
 async function runEcountAutoSyncCheck() {
   try {
-    const result = await ecountAutoSync.run();
+    const result = await ecountAutoSync.check();
     if (result.ok) console.log(`[ECOUNT_AUTO_SYNC] products ${result.status.lastProductCount}, onboarded ${result.status.lastOnboardingApprovedCount}`);
     else if (result.error) await logApiError("ecount_auto_sync", new Error(result.error), {});
   } catch (error) {

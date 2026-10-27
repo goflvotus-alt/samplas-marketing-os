@@ -81,7 +81,9 @@ test("server wiring: route is local-only, reuses the one-click runner, and is no
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   const block = server.slice(server.indexOf("const localEcountProductSync = createLocalEcountProductSyncRoute"), server.indexOf("});", server.indexOf("const localEcountProductSync = createLocalEcountProductSyncRoute")));
   assert.match(block, /enabled: !env\.RENDER/);
-  assert.match(block, /runEcountProductSyncFromEnv\(options\)/);
+  assert.match(block, /enabled: !env\.RENDER && ecountRunnerAllowed/);
+  assert.match(block, /run: \(options\) => runEcountRunner\(options\)/);
+  assert.match(server, /\.runEcountProductSyncFromEnv\(options\);/);
   assert.match(server, /url\.pathname === "\/api\/ecount\/product-sync"\) \{\n\s+return localEcountProductSync\(req, res, \{ isLocal: isLocalRequest\(req\) \}\);/);
 });
 

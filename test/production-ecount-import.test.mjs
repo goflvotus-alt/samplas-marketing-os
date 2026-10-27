@@ -33,7 +33,7 @@ function httpCall(port, path, { headers = {}, body = "" } = {}) {
 
 async function withServer(overrides, run) {
   const port = nextPort++;
-  const childEnv = { ...process.env, HOST: "127.0.0.1", PORT: String(port), ...overrides };
+  const childEnv = { ...process.env, ECOUNT_AUTO_SYNC: "off", HOST: "127.0.0.1", PORT: String(port), ...overrides };
   if (overrides.SAMPLAS_OPERATOR_BASIC_AUTH === undefined) delete childEnv.SAMPLAS_OPERATOR_BASIC_AUTH;
   const child = spawn(process.execPath, ["server.mjs"], { cwd: root, env: childEnv, stdio: ["ignore", "pipe", "pipe"] });
   try {
@@ -55,8 +55,8 @@ async function withServer(overrides, run) {
 test("unattended brand onboarding after ECOUNT import and in the daily auto-sync is NEW-only", () => {
   const importHook = server.slice(server.indexOf("async function importEcountOfflineSalesUpload"), server.indexOf("brandOnboarding\n    };"));
   assert.match(importHook, /refreshPendingBrandsUnattended\(\s*workDir,/);
-  const autoSync = server.slice(server.indexOf("const ecountAutoSync = createEcountAutoSync"), server.indexOf("async function runEcountAutoSyncCheck"));
-  assert.match(autoSync, /refreshPendingBrandsUnattended\(workDir,/);
+  const autoSync = server.slice(server.indexOf("const ecountAutoSync = createProductionEcountAutoSync"), server.indexOf("async function runEcountAutoSyncCheck"));
+  assert.match(autoSync, /runPublish: \(\) => runEcountRunner\(/); // runEcountProductSyncFromEnv; NEW-only is enforced by Production's refresh (UNATTENDED_AUTO_APPROVE_ACTIONS)
   // No server path may hard-code an unrestricted autoApprove; only the explicit, payload-driven refresh route remains.
   assert.doesNotMatch(server, /autoApprove:\s*true/);
 });

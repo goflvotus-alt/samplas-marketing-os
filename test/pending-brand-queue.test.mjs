@@ -415,7 +415,7 @@ test("real HTTP read/refresh contract: auth, pure GET, missing canonical and gra
     for (const name of ["product-registry.json", "product-registry-review-queue.json", "brand-commercial-policy.json", "brand-sourcing-master.json"]) await writeFile(join(dir, name), JSON.stringify({ entries: [], brands: [] }));
     await writeFile(join(dir, "brand-master.json"), JSON.stringify(canonical));
     await writeFile(join(dir, "cafe24-product-catalog.json"), JSON.stringify({ products: [{ ...newBrand, product_no: 1, product_name: "[New Brand] item" }] }));
-    child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: dir, env: { ...process.env, WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, CAFE24_PROXY_BASIC_AUTH: "test:only", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" }, stdio: ["ignore", "pipe", "pipe"] });
+    child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: dir, env: { ...process.env, ECOUNT_AUTO_SYNC: "off", WORK_DIR: dir, HOST: "127.0.0.1", PORT: String(port), CAFE24_PROXY_BASE_URL: `http://127.0.0.1:${proxy.address().port}`, CAFE24_PROXY_BASIC_AUTH: "test:only", META_ACCESS_TOKEN: "", INSTAGRAM_ACCESS_TOKEN: "" }, stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
     child.stderr.on("data", c => stderr += c);
     await new Promise((resolve, reject) => {
