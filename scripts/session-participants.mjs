@@ -19,7 +19,8 @@ import { SessionError } from "./session-store.mjs";
 export const PARTICIPANT_SCHEMA_VERSION = 1;
 export const DEFAULT_CAPACITY = 15;
 export const STATUSES = ["applied", "confirmed", "waitlisted", "cancelled", "no_show"];
-export const NOTICES = ["none", "sent", "replied"];
+// available / unavailable: the person answered the notice (참석 가능·불가 회신). "replied" stays for answers recorded before.
+export const NOTICES = ["none", "sent", "replied", "available", "unavailable"];
 export const PARTICIPANT_OPERATIONS = ["set_capacity", "set_participant_form", "update_participant", "check_in", "undo_check_in"];
 const LOG_LIMIT = 500;
 const MIN_HMAC_KEY = 32;
@@ -289,8 +290,9 @@ export function applyParticipantOperations(current, operations, { actor, now = n
 
 export function participantSummary(doc) {
   const counts = Object.fromEntries(STATUSES.map((s) => [s, 0]));
-  for (const p of doc.people) counts[p.ops.status]++;
-  return { capacity: doc.capacity, total: doc.people.length, ...counts, checkedIn: doc.people.filter((p) => p.ops.checkedInAt).length,
+  const notices = Object.fromEntries(NOTICES.map((n) => [n, 0]));
+  for (const p of doc.people) { counts[p.ops.status]++; notices[Object.hasOwn(notices, p.ops.notice) ? p.ops.notice : "none"]++; }
+  return { capacity: doc.capacity, total: doc.people.length, ...counts, notices, checkedIn: doc.people.filter((p) => p.ops.checkedInAt).length,
     duplicates: doc.people.filter((p) => p.duplicateOf.length).length, removedFromSheet: doc.people.filter((p) => p.removedFromSheet).length,
     lastSyncAt: doc.sync.lastSuccessAt, syncError: doc.sync.lastError };
 }
