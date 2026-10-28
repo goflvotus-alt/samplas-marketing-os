@@ -49,9 +49,9 @@ async function proposeTag({ graph, item, brand, getCafe24Product, catalogId }) {
   })).data).filter((r) => parseMetaContentId(r.retailer_id).cafe24ProductNo === top.productNo);
   // Brand narrows the search only. It is never the evidence that picks the product. Every row of the group
   // must carry the brand as the name's leading tag ("[TAEGLOBAL : ...] ..."), not just contain the word.
-  const brandTag = new RegExp(`^\\[${brand.replace(/[^A-Z0-9]/g, "\\$&")}(\\s|:|\\])`);
+  const brandTag = new RegExp(`^\\[${brand.replace(/\s/g, "").replace(/[^A-Z0-9]/g, "\\$&")}(:|\\])`);
   if (!rows.length) reasons.push("meta_product_not_found");
-  else if (!rows.every((r) => brandTag.test(String(r.name || "").toUpperCase()))) reasons.push("brand_mismatch");
+  else if (!rows.every((r) => brandTag.test(String(r.name || "").toUpperCase().replace(/\s/g, "")))) reasons.push("brand_mismatch");
   const cafe24 = await getCafe24Product(top.productNo);
   if (!cafe24 || Number(cafe24.productNo) !== top.productNo) reasons.push("cafe24_not_found");
   else if (cafe24.selling !== "T" || cafe24.display !== "T") reasons.push("cafe24_not_selling_or_hidden");
