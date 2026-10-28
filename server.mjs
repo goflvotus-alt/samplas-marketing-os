@@ -172,8 +172,8 @@ const veilControl=createVeilControl({env,workDir,soldOutAudit:({number})=>{
   return runVeilSoldOutAudit({number,fetchFeed:()=>fetchInstagramFeed({config}),loadBrandMaster:readBrandMasterFile,listBrandProducts:fetchCafe24BrandProducts,listVariants:fetchCafe24ProductVariantsWithInventory});
 }});
 // Instagram shopping tags for web-scheduled @samplaskr feed posts (scripts/instagram-product-tag-runner.mjs).
-// Records live in WORK_DIR; READY is read only. Tag POSTs need INSTAGRAM_PRODUCT_TAG_WRITES=on plus the
-// record's approval; the UPLOADED move needs INSTAGRAM_FEED_UPLOADED_MOVE=on plus its approval.
+// Records live in WORK_DIR. Feed folders are only read, in READY or UPLOADED: the upload automation alone
+// moves them. Tag POSTs need INSTAGRAM_PRODUCT_TAG_WRITES=on plus the record's approval.
 // The 10-minute autorun is off unless INSTAGRAM_PRODUCT_TAG_AUTORUN=on.
 const productTags = createProductTagService({
   graph: createGraphClient({ getToken: () => resolveMetaAccessToken() }),
@@ -1610,7 +1610,7 @@ const server = isMainModule ? createServer(async (req, res) => {
   setInterval(runVeilFoundScheduledCheck, veilFoundPublisherScheduler.intervalMs);
   // One-time uploads are separately opt-in; existing Friday automation is unchanged.
   if(env.VEIL_FOUND_ONCE_ENABLED === "true") setInterval(()=>veilControl.tick().catch(()=>console.error("[VEIL_FOUND_ONCE] check failed; inspect history")),60000);
-  // Shopping tags autorun: off unless INSTAGRAM_PRODUCT_TAG_AUTORUN=on (writes and moves have their own gates).
+  // Shopping tags autorun: off unless INSTAGRAM_PRODUCT_TAG_AUTORUN=on (writes have their own gate).
   if (env.INSTAGRAM_PRODUCT_TAG_AUTORUN === "on") setInterval(() => productTags.tick().catch(() => console.error("[PRODUCT_TAGS] tick failed")), 10 * 60 * 1000);
   // One-off tracking test: armed only by WORK_DIR/tracking-test/schedule.json, runs as a child process.
   const trackingTestTick = createTrackingTestScheduler({ env });

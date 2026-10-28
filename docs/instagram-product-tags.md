@@ -70,40 +70,26 @@ READY images carry no product data. Slides are never matched to products by name
 
 ## Feed post pipeline (runner)
 
-Publishing stays with the Instagram web scheduling. The runner never publishes, re-posts or deletes a post, and a tag problem never leads to a re-post.
+Roles:
+- Publishing stays with the Instagram web scheduling. The runner never publishes, re-posts or deletes a post.
+- The upload automation alone moves `READY/<folder>` to `UPLOADED/<yyyymmdd-HHMMSS> <folder>`, and it alone uses the Chrome on CDP 9333.
+- The runner never moves, writes or deletes feed files, and it uses no browser. A tag problem never holds publishing or the move.
 
-1. A person registers the scheduled post: `POST /api/instagram-product-tags/posts` with `{ folderName, slotIso, caption | captionSha256, slideCount, acceptUnverifiedVariantApproval, moveToUploaded }`. Both approvals default to false.
+Steps:
+1. A person registers the scheduled post: `POST /api/instagram-product-tags/posts` with `{ folderName, slotIso, caption | captionSha256, slideCount, acceptUnverifiedVariantApproval }`. The approval defaults to false.
 2. Publish check (`findPublishedMedia`, ported from the verify-feed-post check used for the 10/27-28 posts). The account must be @samplaskr, and exactly one of the 25 newest posts must have the caption hash. It must have gone live at or after the slot (5 minutes early allowed) and have `slideCount` slides. Results: `SCHEDULED` (before the slot), `NOT_FOUND`, `MISMATCH` or `PUBLISHED` with the media id.
-3. READY `manifest.json` and `product-tags.json` are downloaded (read only). The manifest item count must equal `slideCount`.
+3. The folder is found where it is now. `READY/<folder>` is checked first. If it is not there, the runner uses the one `UPLOADED` folder named `<yyyymmdd-HHMMSS> <folder>`. Two matches give `uploaded_folder_ambiguous`, and no match gives `folder_not_found`. Both are review. `manifest.json` and `product-tags.json` are downloaded from that folder (Dropbox `list_folder` and `download` only). The manifest item count must equal `slideCount`. The record keeps where the files were read (`files.location`, `files.path`).
 4. `buildTagPlan` runs on the published media id: owner check, children in manifest order, existing tags, and the approval and stock rule.
-5. When the plan is `PENDING`, `applyTagPlan` sends only absent product ids, then `verifyTagPlan` reads them back. This needs all of the following:
+5. When the plan is `PENDING`, `applyTagPlan` sends only absent product ids, then `verifyTagPlan` reads them back. This needs both of the following:
    - the record approval `acceptUnverifiedVariantApproval`
    - env `INSTAGRAM_PRODUCT_TAG_WRITES=on`
-6. Partial failure: a tag whose POST failed is planned again on the next run, while verified tags are `already_tagged`. After `MAX_WRITE_RUNS` (3) runs that sent tags, the post goes to `TAG_REVIEW_REQUIRED` (`max_write_runs`).
-7. Move (`decideMove`): the post must be `PUBLISHED`, and the tags `TAG_VERIFIED` or `NO_TAGS`. The target is `UPLOADED/<yyyymmdd-HHMMSS KST> <folder>`, made with one Dropbox `move_v2` and `autorename: false`. The move needs all of the following:
-   - the record approval `moveToUploaded`
-   - env `INSTAGRAM_FEED_UPLOADED_MOVE=on`
+6. Partial failure: a tag whose POST failed is planned again on the next run, wherever the folder is by then, while verified tags are `already_tagged`. After `MAX_WRITE_RUNS` (3) runs that sent tags, the post goes to `TAG_REVIEW_REQUIRED` (`max_write_runs`). If a run fails after a POST, the record keeps the write count and the tag states.
 
-If a run fails after a POST or during the move, the record keeps what that run did: the write count, the tag states and `MOVE_UNCERTAIN`. On the next run a `MOVE_UNCERTAIN` record is settled first. If the target exists in Dropbox the record becomes `MOVED`. If neither the source nor the target exists, the record is left for a person.
-
-The record is `WORK_DIR/instagram-product-tags/posts/<folder>.json`. It holds `publish`, `tags` (per tag: slide, product, state, reason, approval), `move` and `lastError`, each kept separately. One run per folder at a time. A `MOVED` record is never run again.
+`TAG_VERIFIED` and `NO_TAGS` are final: the record is not run again. The record is `WORK_DIR/instagram-product-tags/posts/<folder>.json`. It holds `publish`, `tags` (per tag: slide, product, state, reason, approval), `files` and `lastError`, each kept separately. One run per folder at a time.
 
 Routes, all with internal auth:
 - `GET /api/instagram-product-tags/posts` lists the records; add `?folder=` for one record.
 - `POST /api/instagram-product-tags/posts` registers a post.
 - `POST /api/instagram-product-tags/run` with `{ folderName }` runs one post now.
 
-Autorun every 10 minutes, off unless `INSTAGRAM_PRODUCT_TAG_AUTORUN=on`. It runs open records whose slot has passed. It stops looking for a post still `NOT_FOUND` 48 hours after its slot.
-
-## UPLOADED move rule (implemented by `decideMove`)
-
-| Post state | Tag state | Move? |
-|---|---|---|
-| PUBLISHED confirmed (permalink + caption hash + slide count) | `TAG_VERIFIED` | Move. The statuses stay in the runner record. |
-| PUBLISHED confirmed | a `product-tags.json` with no tags (`NO_TAGS`) | Move. |
-| PUBLISHED confirmed | no `product-tags.json` | Keep in READY (`product_tags_missing`). |
-| PUBLISHED confirmed | `TAG_REVIEW_REQUIRED` | Keep in READY. The tags still need work, and the folder is the working copy. The runner record says `PUBLISHED`, so the post is never posted twice. |
-| PUBLISHED confirmed | API error (preflight, Graph 5xx, token) | Keep in READY. Retry the plan and verify later. Never POST again before a read-back. |
-| Publish not confirmed (not found, mismatch, still SCHEDULED) | any | Keep in READY. Do not tag. Tags need the published media id. |
-
-A move is always the last step, after the read-back. The source of truth for "published" is the Graph media read: shortcode, permalink, owner @samplaskr and timestamp.
+Autorun every 10 minutes, off unless `INSTAGRAM_PRODUCT_TAG_AUTORUN=on`. It runs records that are not final and whose slot has passed. It stops looking for a post still `NOT_FOUND` 48 hours after its slot.

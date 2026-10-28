@@ -1,13 +1,17 @@
 // Feed post -> product tags pipeline for @samplaskr posts scheduled on Instagram web.
 // Publishing stays with the existing web scheduling; this runner never publishes, re-posts or deletes.
 //
-// One record per READY folder, kept in the runner's own state store (never in READY):
+// The upload automation alone moves READY/<folder> to UPLOADED/<yyyymmdd-HHMMSS> <folder>. This runner never
+// moves, writes or deletes feed files: it finds the folder where it is now (READY first, then UPLOADED) and
+// only reads it, so tags work before and after the move, and a tag problem never holds the upload.
+//
+// One record per folder, kept in the runner's own state store:
 //   publish: SCHEDULED | NOT_FOUND | MISMATCH | PUBLISHED (Graph read of the @samplaskr feed)
 //   tags:    TAG_STATES of instagram-product-tags.mjs, plus NO_TAGS (product-tags.json lists no tags)
-//   move:    HELD | READY_TO_MOVE | MOVE_UNCERTAIN | MOVED (READY/<folder> -> UPLOADED/<yyyymmdd-HHMMSS> <folder>)
-// Order per run: find the published media -> read READY manifest.json + product-tags.json (read only) ->
-// buildTagPlan -> applyTagPlan (gated) -> verifyTagPlan -> move decision -> move (gated).
-// Anything unclear holds the post: missing mapping is TAG_REVIEW_REQUIRED, never a guess.
+//   files:   where manifest.json / product-tags.json were read (READY or UPLOADED) on the last run
+// Order per run: find the published media -> read manifest.json + product-tags.json -> buildTagPlan ->
+// applyTagPlan (gated) -> verifyTagPlan. TAG_VERIFIED and NO_TAGS are final.
+// Anything unclear holds the tags: a missing mapping is TAG_REVIEW_REQUIRED, never a guess.
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -27,7 +31,7 @@ export const captionSha256 = (caption) => createHash("sha256").update(String(cap
 export const isFeedFolderName = (name) => FOLDER_RE.test(String(name || "")) && !String(name).includes("..");
 
 // What a person registers once the post is scheduled. Approvals are per post and default to off.
-export function newPostRecord({ folderName, slotIso, caption, captionSha256: sha, slideCount, acceptUnverifiedVariantApproval = false, moveToUploaded = false }) {
+export function newPostRecord({ folderName, slotIso, caption, captionSha256: sha, slideCount, acceptUnverifiedVariantApproval = false }) {
   const problems = [];
   if (!isFeedFolderName(folderName)) problems.push("folder_name");
   if (!Number.isFinite(Date.parse(slotIso))) problems.push("slot_iso");
@@ -36,8 +40,8 @@ export function newPostRecord({ folderName, slotIso, caption, captionSha256: sha
   if (!Number.isInteger(slideCount) || slideCount < 1 || slideCount > 20) problems.push("slide_count");
   if (problems.length) return { ok: false, problems };
   return { ok: true, record: { schemaVersion: 1, folderName, slotIso: new Date(slotIso).toISOString(), captionSha256: hash, slideCount,
-    approvals: { acceptUnverifiedVariantApproval: acceptUnverifiedVariantApproval === true, moveToUploaded: moveToUploaded === true },
-    publish: { state: "SCHEDULED" }, tags: { state: "PENDING", writeRuns: 0 }, move: { state: "HELD" } } };
+    approvals: { acceptUnverifiedVariantApproval: acceptUnverifiedVariantApproval === true },
+    publish: { state: "SCHEDULED" }, tags: { state: "PENDING", writeRuns: 0 } } };
 }
 
 // Publish check, ported from the verify-feed-post prototype used for the 10/27-28 scheduled posts:
@@ -66,42 +70,27 @@ const summarize = (plan) => {
   return { state: tags.some((t) => t.state === "TAG_REVIEW_REQUIRED") ? "TAG_REVIEW_REQUIRED" : plan.state, reason: plan.reason ?? null, tags };
 };
 
-const kstStamp = (ms) => new Date(ms + 9 * 3600e3).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
-
-// Move only once publishing is confirmed and the tags are verified (or the mapping says there are none).
-export function decideMove(record, { now = Date.now(), feedDir = FEED_DIR_DEFAULT } = {}) {
-  if (record.move?.state === "MOVED") return record.move;
-  if (record.publish?.state !== "PUBLISHED") return { state: "HELD", reason: `publish:${record.publish?.state}` };
-  if (!["TAG_VERIFIED", "NO_TAGS"].includes(record.tags?.state)) return { state: "HELD", reason: `tags:${record.tags?.state}` };
-  return { state: "READY_TO_MOVE", from: `${feedDir}/READY/${record.folderName}`, to: `${feedDir}/UPLOADED/${kstStamp(now)} ${record.folderName}` };
-}
+export const isTagJobDone = (record) => ["TAG_VERIFIED", "NO_TAGS"].includes(record?.tags?.state);
 
 const running = new Set();
 
-// readReady(folderName) -> { manifest, mapping } (null for a missing file). moveFolder(from, to) moves in Dropbox;
-// pathExists(path) settles a move that failed ambiguously (MOVE_UNCERTAIN) before anything else runs.
-// Writes need record.approvals.acceptUnverifiedVariantApproval, write:true and INSTAGRAM_PRODUCT_TAG_WRITES=on;
-// the move needs record.approvals.moveToUploaded, move:true and INSTAGRAM_FEED_UPLOADED_MOVE=on.
-export async function runTagJob({ record, graph, readReady, getCafe24Product, moveFolder, pathExists, write = false, move = false, env = process.env, now = Date.now(), feedDir = FEED_DIR_DEFAULT, expected = SAMPLAS_META }) {
+// readFeedFolder(folderName) -> { location, path, manifest, mapping } (null for a missing file).
+// Writes need record.approvals.acceptUnverifiedVariantApproval, write:true and INSTAGRAM_PRODUCT_TAG_WRITES=on.
+export async function runTagJob({ record, graph, readFeedFolder, getCafe24Product, write = false, env = process.env, now = Date.now(), expected = SAMPLAS_META }) {
   const rec = structuredClone(record);
-  if (rec.move?.state === "MOVED") return { record: rec, step: "done" };
+  if (isTagJobDone(rec)) return { record: rec, step: "done" };
   if (running.has(rec.folderName)) return { record: rec, step: "already_running" };
   running.add(rec.folderName);
   try {
     const at = new Date(now).toISOString();
-    // A move that failed ambiguously may still have happened: if its target exists, it did.
-    if (rec.move?.state === "MOVE_UNCERTAIN") {
-      if (!pathExists) return { record: rec, step: "move_uncertain" };
-      if (await pathExists(rec.move.to)) { rec.move = { ...rec.move, state: "MOVED", movedAt: at }; return { record: rec, step: "move_reconciled" }; }
-      if (!(await pathExists(rec.move.from))) return { record: rec, step: "move_uncertain" };
-    }
     if (rec.publish?.state !== "PUBLISHED") {
       rec.publish = { ...(await findPublishedMedia(graph, rec, { now, expected })), checkedAt: at };
       if (rec.publish.state !== "PUBLISHED") return { record: rec, step: "publish" };
     }
-    const { manifest, mapping } = await readReady(rec.folderName);
+    const { location, path, manifest, mapping, reason } = await readFeedFolder(rec.folderName);
+    rec.files = { location: location ?? null, path: path ?? null, checkedAt: at };
     const tagCount = list(mapping?.slides).reduce((n, s) => n + list(s?.tags).length, 0);
-    if (!manifest) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "manifest_missing", checkedAt: at };
+    if (!manifest) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: reason || "manifest_missing", checkedAt: at };
     else if (list(manifest.items).length !== rec.slideCount) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "manifest_slide_count", checkedAt: at };
     else if (!mapping) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "product_tags_missing", checkedAt: at };
     else if (tagCount === 0 && !validateMapping(mapping, manifest).length) rec.tags = { ...rec.tags, state: "NO_TAGS", reason: null, tags: [], checkedAt: at };
@@ -121,15 +110,9 @@ export async function runTagJob({ record, graph, readReady, getCafe24Product, mo
       rec.tags = { ...summarize(plan), applyReason, writeRuns: writeRuns + (wrote ? 1 : 0), checkedAt: at };
       if (rec.tags.state === "PENDING" && rec.tags.writeRuns >= MAX_WRITE_RUNS) Object.assign(rec.tags, { state: "TAG_REVIEW_REQUIRED", reason: "max_write_runs" });
     }
-    rec.move = decideMove(rec, { now, feedDir });
-    if (rec.move.state === "READY_TO_MOVE" && move === true && rec.approvals?.moveToUploaded === true && env.INSTAGRAM_FEED_UPLOADED_MOVE === "on" && moveFolder) {
-      rec.move = { ...rec.move, state: "MOVE_UNCERTAIN" };
-      await moveFolder(rec.move.from, rec.move.to);
-      rec.move = { ...rec.move, state: "MOVED", movedAt: at };
-    }
     return { record: rec, step: "tags" };
   } catch (error) {
-    // Keep what this run learned (publish state, tags already sent, an attempted move) for the next run.
+    // Keep what this run learned (publish state, tags already sent) for the next run.
     error.partialRecord = rec;
     throw error;
   } finally {
@@ -137,32 +120,39 @@ export async function runTagJob({ record, graph, readReady, getCafe24Product, mo
   }
 }
 
-// READY reads and the UPLOADED move in Dropbox. READY files are only downloaded, never written.
+// Feed folder reads in Dropbox: list_folder and download only. The folder is looked up
+// where it is now: READY/<folder>, else the one UPLOADED entry named "<yyyymmdd-HHMMSS> <folder>".
 export function createFeedDropbox({ getToken, fetchImpl = fetch, feedDir = FEED_DIR_DEFAULT }) {
-  const call = async (url, arg, body) => fetchImpl(url, { method: "POST", headers: { Authorization: `Bearer ${await getToken()}`,
-    ...(body === undefined ? { "Dropbox-API-Arg": asciiSafeJson(arg) } : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  const auth = async () => ({ Authorization: `Bearer ${await getToken()}` });
   const download = async (path) => {
-    const response = await call("https://content.dropboxapi.com/2/files/download", { path });
+    const response = await fetchImpl("https://content.dropboxapi.com/2/files/download", { method: "POST", headers: { ...(await auth()), "Dropbox-API-Arg": asciiSafeJson({ path }) } });
     const text = await response.text();
     if (response.status === 409 && /not_found/.test(text)) return null;
     if (!response.ok) throw new Error(`Dropbox download failed (${response.status})`);
     try { return JSON.parse(text); } catch { throw new Error(`Dropbox file is not JSON: ${path.split("/").pop()}`); }
   };
+  const listFolders = async (path) => {
+    const names = [];
+    let url = "https://api.dropboxapi.com/2/files/list_folder", body = { path, recursive: false, include_deleted: false };
+    for (;;) {
+      const response = await fetchImpl(url, { method: "POST", headers: { ...(await auth()), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!response.ok) throw new Error(`Dropbox list failed (${response.status})`);
+      const page = await response.json();
+      names.push(...list(page.entries).filter((e) => e[".tag"] === "folder").map((e) => e.name));
+      if (!page.has_more) return names;
+      url = "https://api.dropboxapi.com/2/files/list_folder/continue"; body = { cursor: page.cursor };
+    }
+  };
+  const read = async (location, path) => ({ location, path, manifest: await download(`${path}/manifest.json`), mapping: await download(`${path}/product-tags.json`) });
   return {
-    async readReady(folderName) {
+    async readFeedFolder(folderName) {
       if (!isFeedFolderName(folderName)) throw new Error("invalid folder name");
-      const dir = `${feedDir}/READY/${folderName}`;
-      return { manifest: await download(`${dir}/manifest.json`), mapping: await download(`${dir}/product-tags.json`) };
-    },
-    async pathExists(path) {
-      const response = await call("https://api.dropboxapi.com/2/files/get_metadata", undefined, { path });
-      if (response.ok) return true;
-      if (response.status === 409 && /not_found/.test(await response.text())) return false;
-      throw new Error(`Dropbox metadata failed (${response.status})`);
-    },
-    async moveFolder(from, to) {
-      const response = await call("https://api.dropboxapi.com/2/files/move_v2", undefined, { from_path: from, to_path: to, autorename: false, allow_ownership_transfer: false });
-      if (!response.ok) throw new Error(`Dropbox move failed (${response.status})`);
+      const ready = await read("READY", `${feedDir}/READY/${folderName}`);
+      if (ready.manifest) return ready;
+      const hits = (await listFolders(`${feedDir}/UPLOADED`)).filter((n) => n.endsWith(` ${folderName}`) && /^\d{8}-\d{6} /.test(n));
+      if (hits.length > 1) return { location: "UPLOADED", path: null, manifest: null, mapping: null, reason: "uploaded_folder_ambiguous" };
+      if (!hits.length) return { location: null, path: null, manifest: null, mapping: null, reason: "folder_not_found" };
+      return read("UPLOADED", `${feedDir}/UPLOADED/${hits[0]}`);
     }
   };
 }
@@ -178,13 +168,13 @@ export function createPostStore(dir) {
 }
 
 // Server side: register, run one folder, or tick over every open record (autorun).
-// Write and move flags come from each record's approvals plus the env gates checked in runTagJob.
-export function createProductTagService({ graph, dropbox, getCafe24Product, store, env = process.env, now = () => Date.now(), feedDir = FEED_DIR_DEFAULT }) {
+// Tag writes need each record's approval plus the env gate checked in runTagJob.
+export function createProductTagService({ graph, dropbox, getCafe24Product, store, env = process.env, now = () => Date.now() }) {
   const run = async (folderName) => {
     const record = await store.get(folderName);
     if (!record) return { ok: false, error: "not_registered" };
     try {
-      const out = await runTagJob({ record, graph, readReady: dropbox.readReady, moveFolder: dropbox.moveFolder, pathExists: dropbox.pathExists, getCafe24Product, write: true, move: true, env, now: now(), feedDir });
+      const out = await runTagJob({ record, graph, readFeedFolder: dropbox.readFeedFolder, getCafe24Product, write: true, env, now: now() });
       if (out.step !== "already_running") await store.put({ ...out.record, lastError: null });
       return { ok: true, step: out.step, record: out.record };
     } catch (error) {
@@ -209,7 +199,7 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
       for (const name of await store.list()) {
         const r = await store.get(name);
         // Skip finished posts, posts not due yet, and posts still missing two days after their slot.
-        if (!r || r.move?.state === "MOVED" || Date.parse(r.slotIso) > now()) continue;
+        if (!r || isTagJobDone(r) || Date.parse(r.slotIso) > now()) continue;
         if (r.publish?.state === "NOT_FOUND" && now() - Date.parse(r.slotIso) > 48 * 3600e3) continue;
         out.push({ folderName: name, ...(await run(name)) });
       }

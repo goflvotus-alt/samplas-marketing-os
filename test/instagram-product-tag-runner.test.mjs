@@ -5,18 +5,18 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GraphError, SAMPLAS_META, toTagCafe24View } from "../scripts/instagram-product-tags.mjs";
-import { captionSha256, createFeedDropbox, createPostStore, createProductTagService, decideMove, findPublishedMedia, MAX_WRITE_RUNS, newPostRecord, runTagJob } from "../scripts/instagram-product-tag-runner.mjs";
+import { captionSha256, createFeedDropbox, createPostStore, createProductTagService, findPublishedMedia, MAX_WRITE_RUNS, newPostRecord, runTagJob } from "../scripts/instagram-product-tag-runner.mjs";
 
 const IG = SAMPLAS_META.igUserId;
 const CATALOG = SAMPLAS_META.catalogId;
 const CAPTION = "@tae_global 26AW RELEASE NOW";
 const SLOT = "2026-10-28T11:00:00.000Z";
 const AFTER = Date.parse(SLOT) + 10 * 60e3;
-const ON = { INSTAGRAM_PRODUCT_TAG_WRITES: "on", INSTAGRAM_FEED_UPLOADED_MOVE: "on" };
+const ON = { INSTAGRAM_PRODUCT_TAG_WRITES: "on" };
 const manifest = { folderName: "TAEGLOBAL-26AW", items: [{ order: 1, savedAsset: "assets/01.jpg" }, { order: 2, savedAsset: "assets/02.jpg" }] };
 const mapping = (tags = [[1, [{ productNo: 101, metaProductId: "P101", x: 0.5, y: 0.5, approved: true }]]]) => ({ schemaVersion: 1, folderName: "TAEGLOBAL-26AW", post: { mediaId: null },
   slides: tags.map(([order, t]) => ({ order, savedAsset: `assets/0${order}.jpg`, tags: t })) });
-const record = (over = {}) => ({ ...newPostRecord({ folderName: "TAEGLOBAL-26AW", slotIso: SLOT, caption: CAPTION, slideCount: 2, acceptUnverifiedVariantApproval: true, moveToUploaded: true, ...over }).record });
+const record = (over = {}) => ({ ...newPostRecord({ folderName: "TAEGLOBAL-26AW", slotIso: SLOT, caption: CAPTION, slideCount: 2, acceptUnverifiedVariantApproval: true, ...over }).record });
 
 function fakeGraph({ feed, username = "samplaskr", postFailures = [] } = {}) {
   const state = { tags: { c1: [], c2: [] }, posts: [] };
@@ -50,13 +50,15 @@ function fakeGraph({ feed, username = "samplaskr", postFailures = [] } = {}) {
 }
 const variant = (code, quantity) => ({ variant_code: code, selling: "T", display: "T", inventories: [{ use_inventory: "T", display_soldout: "T", quantity }] });
 const cafe24 = async (no) => toTagCafe24View({ product_no: no, selling: "T", display: "T" }, [variant("BK", 2)]);
-const ready = (m = mapping(), man = manifest) => async () => ({ manifest: man, mapping: m });
-const job = (graph, over = {}) => runTagJob({ record: record(), graph, readReady: ready(), getCafe24Product: cafe24, now: AFTER, ...over });
+const READY_PATH = "/F/READY/TAEGLOBAL-26AW";
+const UPLOADED_PATH = "/F/UPLOADED/20261028-201500 TAEGLOBAL-26AW";
+const ready = (m = mapping(), man = manifest, location = "READY", path = READY_PATH) => async () => ({ location, path, manifest: man, mapping: m });
+const job = (graph, over = {}) => runTagJob({ record: record(), graph, readFeedFolder: ready(), getCafe24Product: cafe24, now: AFTER, ...over });
 
 test("post record: validated input, caption hashed, approvals off unless given", () => {
   const r = newPostRecord({ folderName: "TAEGLOBAL-26AW", slotIso: SLOT, caption: ` ${CAPTION}\r\n`, slideCount: 7 });
   assert.equal(r.record.captionSha256, captionSha256(CAPTION));
-  assert.deepEqual(r.record.approvals, { acceptUnverifiedVariantApproval: false, moveToUploaded: false });
+  assert.deepEqual(r.record.approvals, { acceptUnverifiedVariantApproval: false });
   assert.deepEqual(newPostRecord({ folderName: "../READY", slotIso: "x", slideCount: 21 }).problems, ["folder_name", "slot_iso", "caption_sha256", "slide_count"]);
 });
 
@@ -74,102 +76,96 @@ test("publish check: scheduled, not found, wrong account, duplicate, early, slid
   assert.deepEqual(await check([post()]), { state: "PUBLISHED", mediaId: "m1", permalink: undefined, timestamp: "2026-10-28T11:01:00+0000" });
 });
 
-test("not published yet: nothing read from READY, no tag request", async () => {
+test("not published yet: no feed folder read, no tag request", async () => {
   const { graph, state } = fakeGraph({ feed: [] });
   let reads = 0;
-  const out = await job(graph, { now: Date.parse(SLOT) - 1, readReady: async () => { reads++; return {}; }, write: true, env: ON });
+  const out = await job(graph, { now: Date.parse(SLOT) - 1, readFeedFolder: async () => { reads++; return {}; }, write: true, env: ON });
   assert.deepEqual([out.step, out.record.publish.state, reads, state.posts.length], ["publish", "SCHEDULED", 0, 0]);
 });
 
-test("missing or short READY inputs hold the post; an empty mapping means no tags and may move", async () => {
+test("missing or short feed inputs hold the tags; an empty mapping means no tags (final)", async () => {
   const { graph } = fakeGraph();
-  const hold = async (readReady) => (await job(graph, { readReady })).record;
+  const hold = async (readFeedFolder) => (await job(graph, { readFeedFolder })).record;
   assert.equal((await hold(ready(null))).tags.reason, "product_tags_missing");
-  assert.equal((await hold(async () => ({ manifest: null, mapping: mapping() }))).tags.reason, "manifest_missing");
+  assert.equal((await hold(async () => ({ location: null, path: null, manifest: null, mapping: null, reason: "folder_not_found" }))).tags.reason, "folder_not_found");
   assert.equal((await hold(ready(mapping(), { ...manifest, items: manifest.items.slice(0, 1) }))).tags.reason, "manifest_slide_count");
-  assert.equal((await hold(ready(null))).move.state, "HELD");
   const none = await hold(ready(mapping([])));
-  assert.deepEqual([none.tags.state, none.move.state], ["NO_TAGS", "READY_TO_MOVE"]);
-  assert.match(none.move.to, /\/UPLOADED\/20261028-\d{6} TAEGLOBAL-26AW$/);
+  assert.deepEqual([none.tags.state, none.files.location, "move" in none], ["NO_TAGS", "READY", false]);
+  assert.equal((await runTagJob({ record: none, graph, readFeedFolder: async () => { throw new Error("must not read"); }, getCafe24Product: cafe24, now: AFTER })).step, "done");
 });
 
-test("writes off: plan stays PENDING with the reason, nothing sent, folder held", async () => {
+test("writes off: plan stays PENDING with the reason, nothing sent", async () => {
   const { graph, state } = fakeGraph();
   for (const [write, env, approve] of [[false, ON, true], [true, {}, true], [true, ON, false]]) {
-    const out = await runTagJob({ record: record({ acceptUnverifiedVariantApproval: approve }), graph, readReady: ready(), getCafe24Product: cafe24, now: AFTER, write, env });
-    assert.deepEqual([out.record.tags.state, out.record.move.state], ["PENDING", "HELD"]);
+    const out = await runTagJob({ record: record({ acceptUnverifiedVariantApproval: approve }), graph, readFeedFolder: ready(), getCafe24Product: cafe24, now: AFTER, write, env });
+    assert.equal(out.record.tags.state, "PENDING");
   }
-  const blocked = await runTagJob({ record: record({ acceptUnverifiedVariantApproval: false }), graph, readReady: ready(), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
+  const blocked = await runTagJob({ record: record({ acceptUnverifiedVariantApproval: false }), graph, readFeedFolder: ready(), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
   assert.equal(blocked.record.tags.applyReason, "variant_approval_unverified");
   assert.equal(state.posts.length, 0);
 });
 
-test("full path: publish found, tags sent, read back, then moved; re-run does nothing", async () => {
+test("full path: publish found, tags sent and read back; re-run does nothing; files never moved", async () => {
   const { graph, state } = fakeGraph();
-  const moves = [];
   const m = mapping([[1, [{ productNo: 101, metaProductId: "P101", x: 0.25, y: 0.4, approved: true }]], [2, [{ productNo: 102, metaProductId: "P102", x: 0.6, y: 0.7, approved: true }]]]);
-  const out = await job(graph, { readReady: ready(m), write: true, move: true, env: ON, moveFolder: async (from, to) => moves.push([from, to]) });
+  const out = await job(graph, { readFeedFolder: ready(m), write: true, env: ON });
   assert.deepEqual(state.posts, [{ child: "c1", tags: ["P101"] }, { child: "c2", tags: ["P102"] }]);
-  assert.deepEqual([out.record.publish.state, out.record.tags.state, out.record.tags.writeRuns, out.record.move.state], ["PUBLISHED", "TAG_VERIFIED", 1, "MOVED"]);
+  assert.deepEqual([out.record.publish.state, out.record.tags.state, out.record.tags.writeRuns], ["PUBLISHED", "TAG_VERIFIED", 1]);
   assert.deepEqual(out.record.tags.tags.map((t) => t.approval.variant), ["APPROVED_IN_READBACK", "APPROVED_IN_READBACK"]);
-  assert.deepEqual(moves, [[out.record.move.from, out.record.move.to]]);
-  assert.ok(out.record.move.from.endsWith("/READY/TAEGLOBAL-26AW"));
-  const again = await runTagJob({ record: out.record, graph, readReady: ready(m), getCafe24Product: cafe24, now: AFTER, write: true, move: true, env: ON, moveFolder: async () => moves.push("x") });
-  assert.deepEqual([again.step, state.posts.length, moves.length], ["done", 2, 1]);
+  const again = await runTagJob({ record: out.record, graph, readFeedFolder: ready(m), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
+  assert.deepEqual([again.step, state.posts.length], ["done", 2]);
 });
 
-test("move needs the record approval, move:true and INSTAGRAM_FEED_UPLOADED_MOVE=on", async () => {
-  for (const [over, move, env] of [[{ moveToUploaded: false }, true, ON], [{}, false, ON], [{}, true, { INSTAGRAM_PRODUCT_TAG_WRITES: "on" }]]) {
-    let moved = 0;
-    const out = await runTagJob({ record: record(over), graph: fakeGraph().graph, readReady: ready(mapping([])), getCafe24Product: cafe24, now: AFTER, write: true, move, env, moveFolder: async () => moved++ });
-    assert.deepEqual([out.record.move.state, moved], ["READY_TO_MOVE", 0]);
-  }
-  assert.equal(decideMove({ publish: { state: "PUBLISHED" }, tags: { state: "TAG_REVIEW_REQUIRED" } }).reason, "tags:TAG_REVIEW_REQUIRED");
+test("folder already moved to UPLOADED by the upload automation: tags still applied from there", async () => {
+  const { graph, state } = fakeGraph();
+  const out = await job(graph, { readFeedFolder: ready(mapping(), manifest, "UPLOADED", UPLOADED_PATH), write: true, env: ON });
+  assert.deepEqual([out.record.files.location, out.record.files.path, out.record.tags.state, state.posts.length], ["UPLOADED", UPLOADED_PATH, "TAG_VERIFIED", 1]);
+});
+
+test("moved between runs: first run in READY fails one tag, second run finds UPLOADED and finishes", async () => {
+  const { graph, state } = fakeGraph({ postFailures: [new GraphError(400, { error: { code: 100 } })] });
+  const m = mapping([[1, [{ productNo: 101, metaProductId: "P101", x: 0.5, y: 0.5, approved: true }]], [2, [{ productNo: 102, metaProductId: "P102", x: 0.5, y: 0.5, approved: true }]]]);
+  const first = await job(graph, { readFeedFolder: ready(m), write: true, env: ON });
+  assert.deepEqual([first.record.files.location, first.record.tags.state], ["READY", "TAG_REVIEW_REQUIRED"]);
+  const second = await runTagJob({ record: first.record, graph, readFeedFolder: ready(m, manifest, "UPLOADED", UPLOADED_PATH), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
+  assert.deepEqual([second.record.files.location, second.record.tags.state, state.posts.map((p) => p.tags)], ["UPLOADED", "TAG_VERIFIED", [["P101"], ["P102"], ["P101"]]]);
 });
 
 test("partial failure: verified tag kept, failed one retried next run, run cap holds the post", async () => {
   const { graph, state } = fakeGraph({ postFailures: [new GraphError(400, { error: { code: 100 } })] });
   const m = mapping([[1, [{ productNo: 101, metaProductId: "P101", x: 0.5, y: 0.5, approved: true }]], [2, [{ productNo: 102, metaProductId: "P102", x: 0.5, y: 0.5, approved: true }]]]);
-  const first = await job(graph, { readReady: ready(m), write: true, env: ON });
+  const first = await job(graph, { readFeedFolder: ready(m), write: true, env: ON });
   assert.deepEqual(first.record.tags.tags.map((t) => `${t.productId}:${t.state}:${t.reason}`), ["P101:TAG_REVIEW_REQUIRED:post_failed:100", "P102:TAG_VERIFIED:null"]);
-  assert.equal(first.record.move.state, "HELD");
-  const second = await runTagJob({ record: first.record, graph, readReady: ready(m), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
+  const second = await runTagJob({ record: first.record, graph, readFeedFolder: ready(m), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
   assert.deepEqual(state.posts.map((p) => p.tags), [["P101"], ["P102"], ["P101"]]);
   assert.deepEqual([second.record.tags.state, second.record.tags.writeRuns], ["TAG_VERIFIED", 2]);
 
-  const capped = await runTagJob({ record: { ...first.record, tags: { ...first.record.tags, writeRuns: MAX_WRITE_RUNS } }, graph: fakeGraph().graph, readReady: ready(m), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
+  const capped = await runTagJob({ record: { ...first.record, tags: { ...first.record.tags, writeRuns: MAX_WRITE_RUNS } }, graph: fakeGraph().graph, readFeedFolder: ready(m), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
   assert.deepEqual([capped.record.tags.state, capped.record.tags.reason], ["TAG_REVIEW_REQUIRED", "max_write_runs"]);
 });
 
-test("error after a POST keeps the partial record; an ambiguous move is settled by the target path", async () => {
+test("error after a POST keeps the partial record for the next run", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ptag-"));
   const store = createPostStore(dir);
   const { graph, state } = fakeGraph();
   const get = graph.get;
   let failReadback = true;
   graph.get = async (path, params) => { if (failReadback && state.posts.length && path.endsWith("/product_tags")) throw new Error("read-back down"); return get(path, params); };
-  let target = false, moveCalls = 0, reads = 0;
-  const dropbox = { readReady: async () => { reads++; return { manifest, mapping: mapping() }; }, pathExists: async (p) => (p.includes("/UPLOADED/") ? target : true),
-    moveFolder: async () => { moveCalls++; target = true; throw new Error("move response lost"); } };
-  const svc = createProductTagService({ graph, dropbox, getCafe24Product: cafe24, store, env: ON, now: () => AFTER });
+  const svc = createProductTagService({ graph, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, store, env: ON, now: () => AFTER });
   await store.put(record());
   assert.equal((await svc.run("TAEGLOBAL-26AW")).error, "read-back down");
   const partial = await store.get("TAEGLOBAL-26AW");
   assert.deepEqual([partial.publish.state, partial.tags.writeRuns, partial.tags.tags[0].state], ["PUBLISHED", 1, "PRODUCT_TAGGING"]);
   failReadback = false;
-  assert.equal((await svc.run("TAEGLOBAL-26AW")).error, "move response lost");
-  const uncertain = await store.get("TAEGLOBAL-26AW");
-  assert.deepEqual([uncertain.tags.state, uncertain.move.state, state.posts.length], ["TAG_VERIFIED", "MOVE_UNCERTAIN", 1]);
-  const readsBefore = reads;
-  const settled = await svc.run("TAEGLOBAL-26AW");
-  assert.deepEqual([settled.step, settled.record.move.state, moveCalls, reads - readsBefore], ["move_reconciled", "MOVED", 1, 0]);
+  const next = await svc.run("TAEGLOBAL-26AW");
+  assert.deepEqual([next.record.tags.state, state.posts.length], ["TAG_VERIFIED", 1]);
 });
 
 test("same folder twice at once: second run does nothing", async () => {
   const { graph, state } = fakeGraph();
   let release;
-  const slow = () => new Promise((r) => { release = () => r({ manifest, mapping: mapping() }); });
-  const a = job(graph, { readReady: slow, write: true, env: ON });
+  const slow = () => new Promise((r) => { release = () => r({ location: "READY", path: READY_PATH, manifest, mapping: mapping() }); });
+  const a = job(graph, { readFeedFolder: slow, write: true, env: ON });
   await new Promise((r) => setTimeout(r, 0));
   assert.equal((await job(graph, { write: true, env: ON })).step, "already_running");
   release();
@@ -177,19 +173,23 @@ test("same folder twice at once: second run does nothing", async () => {
   assert.equal(state.posts.length, 1);
 });
 
-test("Dropbox: READY files only downloaded, missing file is null, move is one move_v2", async () => {
+test("Dropbox: READY first, else the one UPLOADED folder; list and download only", async () => {
   const calls = [];
-  const fetchImpl = async (url, init) => {
-    calls.push([url, init.headers["Dropbox-API-Arg"] || init.body]);
-    if (url.endsWith("/download")) return /product-tags/.test(init.headers["Dropbox-API-Arg"]) ? { ok: false, status: 409, text: async () => '{"error_summary":"path/not_found/"}' } : { ok: true, status: 200, text: async () => JSON.stringify(manifest) };
-    return { ok: true, status: 200, text: async () => "{}" };
-  };
-  const box = createFeedDropbox({ getToken: async () => "T", fetchImpl });
-  assert.deepEqual(await box.readReady("TAEGLOBAL-26AW"), { manifest, mapping: null });
-  await assert.rejects(box.readReady("../x"), /invalid folder name/);
-  await box.moveFolder("/a/READY/X", "/a/UPLOADED/1 X");
-  assert.deepEqual(calls.map((c) => c[0].split("/2/")[1]), ["files/download", "files/download", "files/move_v2"]);
-  assert.equal(JSON.parse(calls[2][1]).autorename, false);
+  const box = (uploaded, readyHas = false) => createFeedDropbox({ getToken: async () => "T", feedDir: "/F", fetchImpl: async (url, init) => {
+    calls.push(url.split("/2/")[1]);
+    if (url.endsWith("/list_folder")) return { ok: true, status: 200, json: async () => ({ entries: uploaded.map((name) => ({ ".tag": "folder", name })), has_more: false }) };
+    const path = JSON.parse(init.headers["Dropbox-API-Arg"]).path;
+    const found = (readyHas && path.startsWith("/F/READY/")) || (path.startsWith("/F/UPLOADED/") && path.endsWith("manifest.json"));
+    return found ? { ok: true, status: 200, text: async () => JSON.stringify(manifest) } : { ok: false, status: 409, text: async () => '{"error_summary":"path/not_found/"}' };
+  } });
+  const r1 = await box([], true).readFeedFolder("TAEGLOBAL-26AW");
+  assert.deepEqual([r1.location, r1.path], ["READY", "/F/READY/TAEGLOBAL-26AW"]);
+  const r2 = await box(["20261027-162640 SUNDAY-OFF-CLUB-26AW", "20261028-201500 TAEGLOBAL-26AW", "TAEGLOBAL-26AW copy", "x TAEGLOBAL-26AW"]).readFeedFolder("TAEGLOBAL-26AW");
+  assert.deepEqual([r2.location, r2.path, r2.mapping], ["UPLOADED", UPLOADED_PATH, null]);
+  assert.equal((await box(["20261028-201500 TAEGLOBAL-26AW", "20261029-101500 TAEGLOBAL-26AW"]).readFeedFolder("TAEGLOBAL-26AW")).reason, "uploaded_folder_ambiguous");
+  assert.equal((await box([]).readFeedFolder("TAEGLOBAL-26AW")).reason, "folder_not_found");
+  await assert.rejects(box([]).readFeedFolder("../x"), /invalid folder name/);
+  assert.deepEqual([...new Set(calls)].sort(), ["files/download", "files/list_folder"]);
 });
 
 test("service: register once, run unknown folder, errors recorded, tick skips future and finished posts", async () => {
@@ -197,14 +197,15 @@ test("service: register once, run unknown folder, errors recorded, tick skips fu
   const store = createPostStore(dir);
   let now = AFTER;
   const { graph } = fakeGraph();
-  const svc = createProductTagService({ graph, dropbox: { readReady: ready(mapping([])), moveFolder: async () => {} }, getCafe24Product: cafe24, store, env: {}, now: () => now });
+  const svc = createProductTagService({ graph, dropbox: { readFeedFolder: ready(mapping([])) }, getCafe24Product: cafe24, store, env: {}, now: () => now });
   const input = { folderName: "TAEGLOBAL-26AW", slotIso: SLOT, caption: CAPTION, slideCount: 2 };
   assert.equal((await svc.register(input)).ok, true);
   assert.deepEqual((await svc.register(input)).problems, ["already_registered"]);
   assert.equal((await svc.register({ ...input, folderName: "B", slotIso: "2099-01-01T00:00:00Z" })).ok, true);
   assert.deepEqual(await svc.run("NOPE"), { ok: false, error: "not_registered" });
   const ticked = await svc.tick();
-  assert.deepEqual(ticked.map((t) => [t.folderName, t.record.tags.state, t.record.move.state]), [["TAEGLOBAL-26AW", "NO_TAGS", "READY_TO_MOVE"]]);
+  assert.deepEqual(ticked.map((t) => [t.folderName, t.record.tags.state]), [["TAEGLOBAL-26AW", "NO_TAGS"]]);
+  assert.deepEqual(await svc.tick(), [], "final records and future slots are skipped");
   assert.equal(JSON.parse(await readFile(join(dir, "TAEGLOBAL-26AW.json"), "utf8")).publish.state, "PUBLISHED");
   const broken = createProductTagService({ graph: { get: async () => { throw new Error("graph down"); } }, dropbox: {}, getCafe24Product: cafe24, store, env: {}, now: () => now });
   const failed = await broken.run("B");
@@ -212,11 +213,12 @@ test("service: register once, run unknown folder, errors recorded, tick skips fu
   assert.equal((await store.get("B")).lastError.message, "graph down");
 });
 
-test("server wiring: internal auth, autorun off by default, READY never written", async () => {
+test("server wiring: internal auth, autorun off by default, feed files never written or moved", async () => {
   const src = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   const block = src.slice(src.indexOf('if (url.pathname === "/api/instagram-product-tags/posts"'), src.indexOf('if (url.pathname === "/api/cafe24/brands")'));
   assert.match(block, /if \(!isAuthorizedInternalRequest\(req\)\) return json\(res, \{ error: "Unauthorized" \}, 401\);/);
   assert.match(src, /if \(env\.INSTAGRAM_PRODUCT_TAG_AUTORUN === "on"\) setInterval\(\(\) => productTags\.tick\(\)/);
   const runner = await readFile(new URL("../scripts/instagram-product-tag-runner.mjs", import.meta.url), "utf8");
-  assert.equal(/files\/upload|files\/delete/.test(runner), false, "runner never uploads to or deletes from Dropbox");
+  assert.equal(/files\/(upload|delete|move|copy|create_folder)/.test(runner), false, "runner never writes, moves or deletes feed files");
+  assert.equal(/INSTAGRAM_FEED_UPLOADED_MOVE|9333|chromium|playwright/i.test(runner + block), false, "no move gate, no Chrome");
 });
