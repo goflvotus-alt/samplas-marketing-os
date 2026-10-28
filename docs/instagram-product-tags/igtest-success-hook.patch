@@ -1,0 +1,76 @@
+--- a/run2.mjs
++++ b/run2.mjs
+@@ -4,6 +4,15 @@
+ const b = await chromium.connectOverCDP('http://localhost:9333');
+ const ctx = b.contexts()[0];
+ const page = ctx.pages().find(p => p.url().includes(process.env.TAB || 'instagram.com')) || ctx.pages()[0];
+-try { await (await import(pathToFileURL(process.argv[2]).href)).default(page, ctx); }
++try {
++  const result = await (await import(pathToFileURL(process.argv[2]).href)).default(page, ctx);
++  if (process.env.SAMPLAS_IG_REGISTRATION_HOOK && ['schedule-success', 'schedule-verification'].includes(result?.kind)) {
++    try {
++      const observer = await import(pathToFileURL(process.env.SAMPLAS_IG_REGISTRATION_HOOK).href);
++      const registration = await observer.default(result);
++      console.log('REGISTRATION', JSON.stringify(registration));
++    } catch { console.error('REGISTRATION_HOOK_ERROR: review registration state; never reschedule'); }
++  }
++}
+ catch (e) { console.error('STEP_ERROR', e.message.split('\n')[0]); }
+ process.exit(0);
+--- a/f3.mjs
++++ b/f3.mjs
+@@ -1,5 +1,6 @@
+ // APPROVED by user: re-verify, then click 예약 once on the TAEGLOBAL draft. Aborts on any mismatch.
+ import { findTab, verify } from './tg.mjs';
++import { createHash } from 'node:crypto';
+ export default async (page, ctx) => {
+   const S = process.env.S;
+   const tab = await findTab(ctx);
+@@ -9,12 +10,18 @@
+   if (!v.r.ok) { console.log('ABORT preflight mismatch'); return; }
+   const btn = tab.locator('[role="dialog"]').last().locator('div[role="button"]', { hasText: /^예약$/ });
+   await btn.click();
++  const clickedAt = new Date().toISOString();
++  let confirmed = false;
+   console.log('clicked 예약 at', new Date().toISOString());
+   for (let i = 0; i < 12; i++) {
+     await tab.waitForTimeout(2500);
+     const t = (await tab.locator('[role="dialog"]').allInnerTexts().catch(() => [])).join(' || ').replace(/\n/g, ' | ');
+     console.log(i, t.slice(0, 220));
+-    if (/예약되었|예약됨|공유되었|오류|문제|다시 시도/.test(t)) break;
++    if (/오류|문제|다시 시도/.test(t)) break;
++    if (/게시물이 예약되었습니다|게시물 예약됨/.test(t)) { confirmed = true; break; }
+   }
+   await tab.screenshot({ path: S + '/f3.png' });
++  return { kind: 'schedule-success', ok: confirmed && v.r.ok, account: v.r.account ? 'samplaskr' : null,
++    captionSha256: createHash('sha256').update(v.got.normalize('NFC').replace(/\r\n/g, '\n').trim()).digest('hex'),
++    slotText: v.sched, at: clickedAt };
+ };
+--- a/nt6.mjs
++++ b/nt6.mjs
+@@ -1,5 +1,6 @@
+ // Read-only: for each scheduled thumbnail, open edit modal in fresh tab, read caption/location/time, all slide sizes, order vs originals (full-frame diff). Tab closed (discard).
+ import fs from 'node:fs';
++import { createHash } from 'node:crypto';
+ const SRC = process.env.N + '/src';
+ export default async (page, ctx) => {
+   const cap = fs.readFileSync(process.env.S + '/caption-final.txt', 'utf8').trim();
+@@ -10,6 +11,7 @@
+   const n = await probe.locator('main img[alt="예약된 게시물 썸네일"]').count();
+   console.log('CAL thumbs', n, 'tae mentions', (cal.match(/@tae_global/g) || []).length, '| 8pm', (cal.match(/오후 8:00/g) || []).length);
+   await probe.close();
++  const observations = [];
+   for (const t of (process.env.ONLY ? [+process.env.ONLY] : [...Array(n).keys()])) {
+     const p = await ctx.newPage();
+     await p.goto('https://www.instagram.com/scheduled_content/', { waitUntil: 'domcontentloaded' }); await p.waitForTimeout(7000);
+@@ -38,6 +40,10 @@
+       return out;
+     }, { served: list.map(x => x.src), origs });
+     console.log(`POST ${t}`, JSON.stringify({ sizes: list.map(x => x.w + 'x' + x.h), order: match, captionMatch: got === cap, captionLen: got.length, location: loc, sched: (txt.match(/날짜 (.*?) 예약된 콘텐츠 삭제/) || [])[1] }));
++    observations.push({ sizes: list.map(x => x.w + 'x' + x.h), order: match, captionMatch: got === cap,
++      captionSha256: createHash('sha256').update(got.normalize('NFC').replace(/\r\n/g, '\n').trim()).digest('hex'),
++      sched: (txt.match(/날짜 (.*?) 예약된 콘텐츠 삭제/) || [])[1] });
+     await p.close();
+   }
++  return { kind: 'schedule-verification', complete: !process.env.ONLY && observations.length === n, calendarCount: n, observations };
+ };

@@ -1,0 +1,143 @@
+{
+  "at": "2026-10-28T15:21:13.658Z",
+  "mode": "read-only production snapshots + isolated local replay; no production registration",
+  "production": {
+    "recordState": "TAG_VERIFIED",
+    "writeRuns": 1,
+    "mediaId": "17909311497575689"
+  },
+  "images": [
+    {
+      "slide": 1,
+      "savedAsset": "assets/01.jpg",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "50fea372cf8858d8811013ba240c16122d7e5aec949561eddfdfb75eda7e2af0"
+    },
+    {
+      "slide": 2,
+      "savedAsset": "assets/02.jpg",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "927145104aa7cb3e0c2ef05ecc784defb523a7bad71170a1f7b8b4c1453d0242"
+    },
+    {
+      "slide": 3,
+      "savedAsset": "assets/03.jpg",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "71de93e524063b58bcbe7204684534afa20dd974369e5db35a15410afed24ca3"
+    },
+    {
+      "slide": 4,
+      "savedAsset": "assets/04.jpg",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "32e5f943fc79b15f1e997839fc8826281dc26a7ffa6d92f5b343783573401371"
+    },
+    {
+      "slide": 5,
+      "savedAsset": "assets/05.jpg",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "5d1a3a3556f5b6e39d321d8c4a478331292a1b5b2a64aa79ea0d824db8337ba8"
+    },
+    {
+      "slide": 6,
+      "savedAsset": "assets/06.jpg",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "791adf12b92518048d4a2c26078508c9a68d45a024668ae5b40b0f059b0b6892"
+    },
+    {
+      "slide": 7,
+      "savedAsset": "assets/07.jpg",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "6bcf230c74d947fd587e080ee995e68db303ce111df79b30acf400cd1c8087f2"
+    }
+  ],
+  "products": [
+    {
+      "productNo": 15570,
+      "metaProductId": "28840522035586978",
+      "variantCode": "P0000XAW000F",
+      "cafe24OnlyM": true,
+      "metaOnlyM": true,
+      "otherOptionsUnavailable": 3,
+      "referenceImageHttp": 200,
+      "referenceImageBytes": 146369,
+      "referenceImageSha256": "15186263c46bd6179d93913f7a24c6c888ce05af57ee4dfcab66633230f8c2d4"
+    },
+    {
+      "productNo": 15568,
+      "metaProductId": "28945118551841223",
+      "variantCode": "P0000XAU000B",
+      "cafe24OnlyM": true,
+      "metaOnlyM": true,
+      "otherOptionsUnavailable": 3,
+      "referenceImageHttp": 200,
+      "referenceImageBytes": 155026,
+      "referenceImageSha256": "e2315689793acca0d2dfafbab3ba1854cd9c27ed3b87bf76e5d4ffe02d7ec129"
+    },
+    {
+      "productNo": 15567,
+      "metaProductId": "38787412537572516",
+      "variantCode": "P0000XAT000B",
+      "cafe24OnlyM": true,
+      "metaOnlyM": true,
+      "otherOptionsUnavailable": 3,
+      "referenceImageHttp": 200,
+      "referenceImageBytes": 143432,
+      "referenceImageSha256": "d60f008a976238cb836d93a7606eaa8cb49b36f15fb4fc7ec93c9496d8347bdc"
+    },
+    {
+      "productNo": 15573,
+      "metaProductId": "28378636105098089",
+      "variantCode": "P0000XAZ000F",
+      "cafe24OnlyM": true,
+      "metaOnlyM": true,
+      "otherOptionsUnavailable": 3,
+      "referenceImageHttp": 200,
+      "referenceImageBytes": 121784,
+      "referenceImageSha256": "c7061709be618e59f271bc4eff0945d1d55f3ab5edccb921d437349b92c3dcb1"
+    }
+  ],
+  "modelEvaluation": {
+    "state": "BLOCKED",
+    "reason": "No local OPENAI_API_KEY; Production key names UNVERIFIED (no plugin read operation, no browser login)",
+    "actualCalls": 0,
+    "actualCostUsd": 0,
+    "accuracy": null,
+    "missed": null,
+    "falsePositives": null,
+    "uncertain": null
+  },
+  "graph": {
+    "localToken": "expired/code190",
+    "freshIgGroupApproval": "UNVERIFIED",
+    "freshChildProductTags": "UNVERIFIED",
+    "catalog": "connected catalog read refreshed"
+  },
+  "replay": {
+    "mapping": {
+      "source": "historical manually verified Claude findings, NOT image API output",
+      "expectedMappings": 7,
+      "matchedMappings": 7
+    },
+    "registration": {
+      "state": "REGISTERED",
+      "destination": "isolated local service only"
+    },
+    "planGate": {
+      "state": "TAG_REVIEW_REQUIRED",
+      "reason": "vision_no_safe_candidates",
+      "approvedTags": 0,
+      "posts": 0
+    },
+    "existingVerifiedPost": {
+      "step": "done",
+      "posts": 0
+    }
+  }
+}

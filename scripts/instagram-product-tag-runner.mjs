@@ -106,7 +106,13 @@ async function prepareVisualMapping({ rec, read, analyzeImages, graph, getCafe24
     }
     await checkpoint(rec);
   }
-  const out = await buildAutoMapping({ graph, findings: rec.analysis.findings, manifest: read.manifest, getCafe24Product, expected, now });
+  let out;
+  try { out = await buildAutoMapping({ graph, findings: rec.analysis.findings, manifest: read.manifest, getCafe24Product, expected, now }); }
+  catch {
+    rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "candidate_validation_unavailable", checkedAt: at };
+    await checkpoint(rec);
+    return;
+  }
   if (!out.ok) {
     rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "invalid_vision_findings", checkedAt: at };
     return;
@@ -115,7 +121,10 @@ async function prepareVisualMapping({ rec, read, analyzeImages, graph, getCafe24
   for (const slide of out.mapping.slides) for (const tag of slide.tags) {
     if (tag.status !== "PROPOSED") continue;
     const key = `${tag.productNo}:${tag.metaProductId}`;
-    if (!checked.has(key)) checked.set(key, await checkTagCandidate(graph, { ...expected, productNo: tag.productNo, metaProductId: tag.metaProductId, cafe24: await getCafe24Product(tag.productNo) }));
+    if (!checked.has(key)) {
+      try { checked.set(key, await checkTagCandidate(graph, { ...expected, productNo: tag.productNo, metaProductId: tag.metaProductId, cafe24: await getCafe24Product(tag.productNo) })); }
+      catch { checked.set(key, { ok: false, reason: "candidate_validation_unavailable" }); }
+    }
     const candidate = checked.get(key);
     if (candidate.ok) { tag.approval = candidate.product.approval; picks.push({ order: slide.order, productNo: tag.productNo }); }
     else Object.assign(tag, { status: "TAG_REVIEW_REQUIRED", reason: candidate.reason });

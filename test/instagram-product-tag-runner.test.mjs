@@ -411,3 +411,12 @@ test('vision manifest identity and caption/hash conflicts fail closed',async()=>
   assert.equal(out.record.tags.reason,'vision_manifest_invalid');
  }
 });
+
+test('automatic candidate API errors hold as TAG_REVIEW_REQUIRED without POST',async()=>{
+ for(const phase of ['mapping','approval']) {
+  const {graph,state}=fakeGraph();const get=graph.get.bind(graph);
+  graph.get=async(path,p)=>{if((phase==='mapping' && path.endsWith('/products')) || (phase==='approval' && path.endsWith('/catalog_product_search')))throw new Error('upstream unavailable');return get(path,p);};
+  const out=await runTagJob({record:newPostRecord(autoInput).record,graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on'},write:true,analyzeImages:visual});
+  assert.equal(out.record.tags.state,'TAG_REVIEW_REQUIRED');assert.equal(state.posts.length,0);
+ }
+});

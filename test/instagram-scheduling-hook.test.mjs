@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {captionSha256} from '../scripts/instagram-product-tag-runner.mjs';
+import {createSchedulingRegistrationHook} from '../scripts/instagram-scheduling-registration-hook.mjs';
+const config={folderName:'TAEGLOBAL-26AW',slotIso:'2026-10-28T11:00:00Z',captionSha256:captionSha256('test caption'),slideCount:7,dimensions:Array(7).fill('1080x1350'),autoTag:{brand:'TAEGLOBAL'},acceptUnverifiedVariantApproval:true};
+const success={kind:'schedule-success',ok:true,account:'samplaskr',captionSha256:config.captionSha256,slotText:'2026년 10월 28일 (수) 시간 08 : 00 PM',at:'2026-10-28T03:32:25.924Z'};
+const observed={captionSha256:config.captionSha256,captionMatch:true,sched:'2026년 10월 28일 (수) 시간 08 : 00 PM',sizes:Array(7).fill('1080x1350'),order:Array.from({length:7},(_,i)=>[i+1,0])};
+const verification={kind:'schedule-verification',complete:true,calendarCount:1,observations:[observed]};
+const options=async()=>({config,stateDir:await mkdtemp(join(tmpdir(),'schedule-hook-')),baseUrl:'https://example.com',authorization:'Basic mock'});
+
+test('actual f3 → nt6 result contract registers only after both; success idempotent',async()=>{
+ const o=await options();const calls=[];const hook=createSchedulingRegistrationHook({...o,fetchImpl:async(u,i)=>{calls.push(JSON.parse(i.body));return {ok:true,json:async()=>({ok:true})};}});
+ assert.equal((await hook.observe(verification)).state,'AWAITING_SCHEDULE_SUCCESS');assert.equal(calls.length,0);
+ await hook.observe(success);assert.equal(calls.length,0);
+ assert.equal((await hook.observe(verification)).state,'REGISTERED');assert.equal(calls.length,1);
+ assert.equal(calls[0].slideCount,7);assert.equal(calls[0].captionSha256,config.captionSha256);
+ assert.equal((await hook.observe(verification)).state,'REGISTERED');assert.equal(calls.length,1);
+});
+
+test('missing success, duplicate calendar match, wrong slot/order/caption/dimensions never register',async()=>{
+ for(const v of [{...verification,complete:false},{...verification,calendarCount:2,observations:[observed,observed]},...['sched','captionSha256','sizes','order'].map(k=>({...verification,observations:[{...observed,[k]:k==='sched'?'2026년 10월 29일 시간 08 : 00 PM':k==='sizes'?['1080x1080']:k==='order'?[[2,0]]:'wrong'}]}))]) {
+  const hook=createSchedulingRegistrationHook({...await options(),fetchImpl:()=>assert.fail('registration forbidden')});await hook.observe(success);
+  assert.equal((await hook.observe(v)).state,'VERIFICATION_FAILED');
+ }
+});
+
+test('API failure is durable; no automatic retry or schedule changes; explicit registration-only recovery',async()=>{
+ const o=await options();let calls=0;
+ const fetchImpl=async()=>{calls++;return calls===1?{ok:false,json:async()=>({error:'down'})}:{ok:true,json:async()=>({ok:true})};};
+ const h=createSchedulingRegistrationHook({...o,fetchImpl});await h.observe(success);
+ assert.equal((await h.observe(verification)).state,'REGISTRATION_FAILED');assert.equal(calls,1);
+ const saved=JSON.parse(await readFile(join(o.stateDir,'TAEGLOBAL-26AW.json'),'utf8'));
+ assert.equal(saved.receipt.verified.order,true);assert.equal(saved.registrationAttempts,1);assert.ok(!JSON.stringify(saved).includes('Basic mock'));
+ const restarted=createSchedulingRegistrationHook({...o,fetchImpl});
+ assert.equal((await restarted.observe(verification)).state,'REGISTRATION_FAILED');assert.equal(calls,1);
+ assert.equal((await restarted.retryRegistration()).state,'REGISTERED');assert.equal(calls,2);
+});
+
+test('uncertain transport/interrupted REGISTERING holds for explicit recovery; outbox checkpoint precedes API',async()=>{
+ const o=await options();let calls=0;
+ const h=createSchedulingRegistrationHook({...o,fetchImpl:async()=>{calls++;const r=JSON.parse(await readFile(join(o.stateDir,'TAEGLOBAL-26AW.json'),'utf8'));assert.equal(r.state,'REGISTERING');throw new Error('network');}});
+ await h.observe(success);assert.equal((await h.observe(verification)).state,'REGISTRATION_OUTCOME_UNKNOWN');
+ await h.observe(verification);assert.equal(calls,1);
+});
+
+test('outbox refuses Dropbox/feed locations and changed receipt identity',async()=>{
+ const o=await options();
+ for(const stateDir of ['/Users/test/Dropbox/state','/tmp/READY/state','/tmp/UPLOADED/state'])assert.throws(()=>createSchedulingRegistrationHook({...o,stateDir}),/invalid_hook_config/);
+ const h=createSchedulingRegistrationHook(o);await h.observe(success);
+ const conflict=createSchedulingRegistrationHook({...o,config:{...config,slotIso:'2026-10-29T11:00:00Z'}});
+ await assert.rejects(()=>conflict.observe(verification),/registration_config_changed/);
+});
