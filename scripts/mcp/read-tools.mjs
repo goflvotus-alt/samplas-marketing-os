@@ -288,6 +288,7 @@ export const READ_TOOLS = [
     title: "Store inventory",
     description: "ECOUNT store inventory overview. view=summary (default) gives totals, coverage and negative inventory; view=items gives a page of SKUs; view=brands gives the per-brand rollup (with status=negative_review: brands that have negative stock, most negative units first). Use brandKey values from view=brands to filter items.",
     input: object({
+      store: oneOf(["APGUJEONG", "VAIL"], { description: "view=items only: nonzero warehouse stock, including negative. Company stockQuantity/status and summaries stay unchanged. VAIL displays as VEIL." }),
       view: oneOf(["summary", "items", "brands"], { default: "summary" }),
       status: oneOf(["in_stock", "depleted_candidate", "negative_review", "unknown", "qqq_estimated_sale", "location_unknown"]),
       brandKey: text(200, { description: "brandKey exactly as returned by view=brands" }),
@@ -296,9 +297,10 @@ export const READ_TOOLS = [
       limit: int(1, 100, { default: 20 }),
       offset: int(0, undefined, { default: 0 })
     }),
-    async run({ view, status, brandKey, search, sort, limit, offset }, up) {
+    async run({ view, status, brandKey, search, sort, limit, offset, store }, up) {
+      if (store && view !== "items") throw new ToolError("VALIDATION_FAILED", "store is supported only for view=items; warehouse totals are in summary.warehouseStock");
       const upstreamLimit = view === "items" ? limit : 1;
-      const body = await up.getJson("/api/inventory/overview", { status, brand: brandKey, search, sort, limit: upstreamLimit, offset: view === "items" ? offset : 0 });
+      const body = await up.getJson("/api/inventory/overview", { status, brand: brandKey, search, sort, store, limit: upstreamLimit, offset: view === "items" ? offset : 0 });
       const cov = body.coverage || {};
       const notes = [];
       if (cov.stockUnknownItems) notes.push(`stock known for ${cov.stockKnownItems} of ${cov.totalItems} items; ${cov.stockUnknownItems} unknown`);
@@ -310,7 +312,8 @@ export const READ_TOOLS = [
       } else if (view === "items") {
         data = {
           itemsTotal: body.itemsTotal, offset: body.offset, limit: body.limit,
-          items: (body.items || []).map((i) => pick(i, ["brandKey", "brandName", "productName", "prodCd", "stockQuantity", "status", "recentSalesQty", "lastSaleDate", "salesPrice", "daysOfSupply"]))
+          ...(store ? { storeFilter: store, filterScope: "items" } : {}),
+          items: (body.items || []).map((i) => pick(i, ["brandKey", "brandName", "productName", "prodCd", "stockQuantity", "stockByWarehouse", "status", "recentSalesQty", "lastSaleDate", "salesPrice", "daysOfSupply"]))
         };
       } else {
         let rows = body.brandRollup || [];

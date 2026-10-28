@@ -22,7 +22,7 @@ function ecount({ products = codes(12_000), loginError = false, failProductPage 
       const rows = products.filter(c => !body.FROM_PROD_CD || (c >= body.FROM_PROD_CD && c <= body.TO_PROD_CD)).slice(0, 10_000);
       return { httpStatus: 200, body: { Data: { Result: rows.map(c => ({ PROD_CD: c, PROD_DES: `BRAND / ${c}`, IN_PRICE: "500", OUT_PRICE: "1000" })) } } };
     }
-    if (url.includes("GetListInventoryBalanceStatus")) return { httpStatus: 200, body: { Data: { Result: [{ PROD_CD: "P000001", BAL_QTY: "2" }] } } };
+    if (url.includes("GetListInventoryBalanceStatus")) return { httpStatus: 200, body: { Data: { Result: [{ PROD_CD: "P000001", BAL_QTY: body.WH_CD === "200" ? "0" : "2" }] } } };
     throw new Error(`unexpected ${url}`);
   };
 }
