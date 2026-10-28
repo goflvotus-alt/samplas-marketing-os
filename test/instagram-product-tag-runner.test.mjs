@@ -122,43 +122,101 @@ test("folder already moved to UPLOADED by the upload automation: tags still appl
   assert.deepEqual([out.record.files.location, out.record.files.path, out.record.tags.state, state.posts.length], ["UPLOADED", UPLOADED_PATH, "TAG_VERIFIED", 1]);
 });
 
-test("moved between runs: first run in READY fails one tag, second run finds UPLOADED and finishes", async () => {
-  const { graph, state } = fakeGraph({ postFailures: [new GraphError(400, { error: { code: 100 } })] });
+test("uncertain POST survives a folder move and manual rerun without another POST", async () => {
+  const { graph, state } = fakeGraph({ postFailures: [new GraphError(503, { error: { code: 2 } })] });
   const m = mapping([[1, [{ productNo: 101, metaProductId: "P101", x: 0.5, y: 0.5, approved: true }]], [2, [{ productNo: 102, metaProductId: "P102", x: 0.5, y: 0.5, approved: true }]]]);
   const first = await job(graph, { readFeedFolder: ready(m), write: true, env: ON });
-  assert.deepEqual([first.record.files.location, first.record.tags.state], ["READY", "TAG_REVIEW_REQUIRED"]);
-  const second = await runTagJob({ record: first.record, graph, readFeedFolder: ready(m, manifest, "UPLOADED", UPLOADED_PATH), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
-  assert.deepEqual([second.record.files.location, second.record.tags.state, state.posts.map((p) => p.tags)], ["UPLOADED", "TAG_VERIFIED", [["P101"], ["P102"], ["P101"]]]);
+  assert.deepEqual([first.record.files.location, first.record.tags.state], ["READY", "POST_OUTCOME_UNKNOWN"]);
+  assert.deepEqual(first.record.tags.tags.map((t) => t.state), ["POST_OUTCOME_UNKNOWN", "TAG_VERIFIED"]);
+  const second = await runTagJob({ record: first.record, graph, readFeedFolder: async () => { throw Error("held job must not replan"); }, getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
+  assert.deepEqual([second.step, second.record.tags.state, state.posts.map((p) => p.tags)], ["post_outcome_unknown", "POST_OUTCOME_UNKNOWN", [["P101"], ["P102"]]]);
 });
 
-test("partial failure: verified tag kept, failed one retried next run, run cap holds the post", async () => {
-  const { graph, state } = fakeGraph({ postFailures: [new GraphError(400, { error: { code: 100 } })] });
-  const m = mapping([[1, [{ productNo: 101, metaProductId: "P101", x: 0.5, y: 0.5, approved: true }]], [2, [{ productNo: 102, metaProductId: "P102", x: 0.5, y: 0.5, approved: true }]]]);
-  const first = await job(graph, { readFeedFolder: ready(m), write: true, env: ON });
-  assert.deepEqual(first.record.tags.tags.map((t) => `${t.productId}:${t.state}:${t.reason}`), ["P101:TAG_REVIEW_REQUIRED:post_failed:100", "P102:TAG_VERIFIED:null"]);
-  const second = await runTagJob({ record: first.record, graph, readFeedFolder: ready(m), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
-  assert.deepEqual(state.posts.map((p) => p.tags), [["P101"], ["P102"], ["P101"]]);
-  assert.deepEqual([second.record.tags.state, second.record.tags.writeRuns], ["TAG_VERIFIED", 2]);
-
-  const capped = await runTagJob({ record: { ...first.record, tags: { ...first.record.tags, writeRuns: MAX_WRITE_RUNS } }, graph: fakeGraph().graph, readFeedFolder: ready(m), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
-  assert.deepEqual([capped.record.tags.state, capped.record.tags.reason], ["TAG_REVIEW_REQUIRED", "max_write_runs"]);
+test("run cap still blocks a never-attempted pending record", async () => {
+  const { graph, state } = fakeGraph();
+  const capped = await job(graph, { record: { ...record(), tags: { state: "PENDING", writeRuns: MAX_WRITE_RUNS } }, write: true, env: ON });
+  assert.deepEqual([capped.record.tags.state, capped.record.tags.reason, state.posts.length], ["TAG_REVIEW_REQUIRED", "max_write_runs", 0]);
 });
 
-test("error after a POST keeps the partial record for the next run", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ptag-"));
-  const store = createPostStore(dir);
+test("a successful POST acknowledgement with no visible tag is held, not automatically posted again", async () => {
+  const { graph, state } = fakeGraph();
+  const post = graph.post;
+  graph.post = async (...args) => { const ack = await post(...args); state.tags.c1 = []; return ack; };
+  const first = await job(graph, { write: true, env: ON });
+  assert.equal(first.record.tags.state, "POST_OUTCOME_UNKNOWN");
+  assert.equal(first.record.tags.tags[0].reason, "readback_missing");
+  const next = await job(graph, { record: first.record, write: true, env: ON });
+  assert.equal(next.step, "post_outcome_unknown");
+  assert.equal(state.posts.length, 1);
+});
+
+test("failed POST read-back persists an explicit hold across service restarts and autorun", async () => {
+  const store = createPostStore(await mkdtemp(join(tmpdir(), "ptag-")));
   const { graph, state } = fakeGraph();
   const get = graph.get;
   let failReadback = true;
   graph.get = async (path, params) => { if (failReadback && state.posts.length && path.endsWith("/product_tags")) throw new Error("read-back down"); return get(path, params); };
-  const svc = createProductTagService({ graph, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, store, env: ON, now: () => AFTER });
+  const config = { graph, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, store, env: ON, now: () => AFTER };
   await store.put(record());
-  assert.equal((await svc.run("TAEGLOBAL-26AW")).error, "read-back down");
+  const first = await createProductTagService(config).run("TAEGLOBAL-26AW");
+  assert.equal(first.record.tags.state, "POST_OUTCOME_UNKNOWN");
   const partial = await store.get("TAEGLOBAL-26AW");
-  assert.deepEqual([partial.publish.state, partial.tags.writeRuns, partial.tags.tags[0].state], ["PUBLISHED", 1, "PRODUCT_TAGGING"]);
+  assert.deepEqual([partial.publish.state, partial.tags.writeRuns, partial.tags.tags[0].state], ["PUBLISHED", 1, "POST_OUTCOME_UNKNOWN"]);
   failReadback = false;
-  const next = await svc.run("TAEGLOBAL-26AW");
-  assert.deepEqual([next.record.tags.state, state.posts.length], ["TAG_VERIFIED", 1]);
+  const restarted = createProductTagService(config);
+  assert.deepEqual(await restarted.tick(), []);
+  assert.equal((await restarted.run("TAEGLOBAL-26AW")).step, "post_outcome_unknown");
+  assert.equal((await restarted.autoMap("TAEGLOBAL-26AW", {})).error, "post_outcome_unknown");
+  assert.equal((await restarted.approveAutoMap("TAEGLOBAL-26AW", [], "operator", "old")).error, "post_outcome_unknown");
+  assert.equal(state.posts.length, 1);
+});
+
+test("hold is durable before POST even when the final state save fails", async () => {
+  const store = createPostStore(await mkdtemp(join(tmpdir(), "ptag-")));
+  const { graph, state } = fakeGraph();
+  await store.put(record());
+  const post = graph.post;
+  graph.post = async (...args) => {
+    const checkpoint = await store.get("TAEGLOBAL-26AW");
+    assert.equal(checkpoint.tags.state, "POST_OUTCOME_UNKNOWN");
+    assert.equal(checkpoint.tags.tags[0].state, "POST_OUTCOME_UNKNOWN");
+    return post(...args);
+  };
+  const config = { graph, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, store, env: ON, now: () => AFTER };
+  const failingStore = { ...store, put: async (rec) => { if (state.posts.length) throw Error("disk unavailable"); await store.put(rec); } };
+  await assert.rejects(createProductTagService({ ...config, store: failingStore }).run("TAEGLOBAL-26AW"), /disk unavailable/);
+  assert.equal((await store.get("TAEGLOBAL-26AW")).tags.state, "POST_OUTCOME_UNKNOWN");
+  // Even a stale Graph GET that cannot see the already attempted tag must never trigger another POST.
+  state.tags.c1 = [];
+  const restarted = createProductTagService(config);
+  assert.equal((await restarted.run("TAEGLOBAL-26AW")).step, "post_outcome_unknown");
+  assert.deepEqual(await restarted.tick(), []);
+  assert.equal(state.posts.length, 1);
+});
+
+test("checkpoint write failure prevents the external POST", async () => {
+  const { graph, state } = fakeGraph();
+  const store = { get: async () => record(), put: async () => { throw Error("disk unavailable"); } };
+  const svc = createProductTagService({ graph, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, store, env: ON, now: () => AFTER });
+  await assert.rejects(svc.run("TAEGLOBAL-26AW"), /disk unavailable/);
+  assert.equal(state.posts.length, 0);
+});
+
+test("one failed final save cannot overwrite the checkpoint with the old pending record", async () => {
+  const store = createPostStore(await mkdtemp(join(tmpdir(), "ptag-")));
+  const { graph, state } = fakeGraph();
+  await store.put(record());
+  let failed = false;
+  const flaky = { ...store, put: async (rec) => {
+    if (state.posts.length && !failed) { failed = true; throw Error("final save failed once"); }
+    await store.put(rec);
+  } };
+  const config = { graph, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, store: flaky, env: ON, now: () => AFTER };
+  assert.equal((await createProductTagService(config).run("TAEGLOBAL-26AW")).error, "final save failed once");
+  assert.equal((await store.get("TAEGLOBAL-26AW")).tags.state, "TAG_VERIFIED");
+  state.tags.c1 = [];
+  assert.equal((await createProductTagService(config).run("TAEGLOBAL-26AW")).step, "done");
+  assert.equal(state.posts.length, 1);
 });
 
 test("same folder twice at once: second run does nothing", async () => {
