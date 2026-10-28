@@ -52,6 +52,7 @@ import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs"
 import { runWeeklyReportPreview, handleWeeklyReportPreview } from "./scripts/weekly-report-manual.mjs";
 import { createMetaWeeklyCafe24SourceHandler } from "./scripts/meta-weekly-cafe24-source.mjs";
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
+import { toTagCafe24View } from "./scripts/instagram-product-tags.mjs";
 import { getVeilFoundStatus, runVeilFoundPublisher, fetchInstagramFeed, veilFoundConfig } from "./scripts/veil-found-publisher.mjs";
 import { runVeilSoldOutAudit } from "./scripts/veil-found-soldout-audit.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
@@ -601,6 +602,19 @@ const server = isMainModule ? createServer(async (req, res) => {
         return json(res, { product });
       } catch (error) {
         return json(res, { error: safeErrorMessage(error) }, error.status && Number(error.status) >= 400 ? Number(error.status) : 500);
+      }
+    }
+    // Instagram product tags: per-option sellability of one product for tag decisions. Read-only,
+    // internal auth like /api/cafe24/products/*; option quantities are reduced to available true/false.
+    if (url.pathname.startsWith("/api/instagram-product-tags/cafe24/")) {
+      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      if (req.method !== "GET") return json(res, { error: "Method not allowed" }, 405);
+      const productNo = decodeURIComponent(url.pathname.slice("/api/instagram-product-tags/cafe24/".length)).trim();
+      if (!/^\d+$/.test(productNo)) return json(res, { error: "Invalid product_no" }, 400);
+      try {
+        return json(res, toTagCafe24View(await fetchCafe24ProductCatalogRow({ product_no: Number(productNo) })));
+      } catch (error) {
+        return json(res, { error: safeErrorMessage(error) }, 500);
       }
     }
     if (url.pathname === "/api/cafe24/brands") {
