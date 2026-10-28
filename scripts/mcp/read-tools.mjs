@@ -304,7 +304,7 @@ export const READ_TOOLS = [
       const cov = body.coverage || {};
       const notes = [];
       if (cov.stockUnknownItems) notes.push(`stock known for ${cov.stockKnownItems} of ${cov.totalItems} items; ${cov.stockUnknownItems} unknown`);
-      if (cov.locationUnknownItems) notes.push("store location is not available for inventory items");
+      if (cov.locationUnknownItems) notes.push(cov.locationKnownItems ? `warehouse location known for ${cov.locationKnownItems} of ${cov.totalItems} items; ${cov.locationUnknownItems} unavailable` : "store location is not available for inventory items");
       let data;
       if (view === "summary") {
         const negative = body.operations?.negativeInventory;
