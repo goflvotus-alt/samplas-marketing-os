@@ -6,6 +6,7 @@
 import { defaultSessionService, safeEqual } from "./session-director-api.mjs";
 import { SessionError, sessionProjectView, APPLICATION_FORM_SCHEMA } from "./session-store.mjs";
 import {TIMETABLE_OPERATION_SCHEMA} from './session-timetable.mjs';
+import { NOTICES, STATUSES } from "./session-participants.mjs";
 
 const protocols = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -53,7 +54,8 @@ const CUE_ITEM = { type: "object", required: ["type"], additionalProperties: fal
 const PARTICIPANT_ITEM = { type: "object", required: ["type", "participantId"], additionalProperties: false, properties: {
   type: { enum: PARTICIPANT_STATUS_OPERATIONS }, participantId: str("Participant id from getSessionParticipants"),
   patch: { type: "object", additionalProperties: false, description: "update_participant only", properties: {
-    status: { enum: ["applied", "confirmed", "waitlisted", "cancelled", "no_show"] }, notice: { enum: ["none", "sent", "replied"] }, memo: str("Operator memo, up to 1000 characters") } } } };
+    status: { enum: STATUSES, description: "confirmed = final attendance (capacity enforced); cancelled = cancel" },
+    notice: { enum: NOTICES, description: "sent = notice SMS sent; available / unavailable = the person replied they can / cannot attend; replied = older reply without the answer" }, memo: str("Operator memo, up to 1000 characters") } } } };
 export const BENEFIT_OPERATIONS = ["verify_feedback", "unverify_feedback", "mark_used", "undo_used"];
 const BENEFIT_ITEM = { type: "object", required: ["type", "participantId"], additionalProperties: false, properties: {
   type: { enum: BENEFIT_OPERATIONS }, participantId: str("Confirmed participant id from getSessionParticipants"), staff: str("Staff name recorded with the check, up to 40 characters") } };
@@ -71,7 +73,7 @@ export const SESSION_TOOLS = [
     inputSchema: strict({ id }, ["id"]), annotations: READ },
   { name: "getSessionParticipants", description: "Private operator view of one session's participants: name, Instagram, masked phone (010-****-1234), application answers, status, notice, memo and check-in, plus counts and version. Personal data: use only for running the session; never share it publicly.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
-  { name: "updateSessionParticipants", description: `Change participants by id from getSessionParticipants: update_participant {participantId, patch: {status applied|confirmed|waitlisted|cancelled|no_show, notice none|sent|replied, memo}}, check_in {participantId}, undo_check_in {participantId}. Capacity is enforced on the server. ${RULES}`,
+  { name: "updateSessionParticipants", description: `Change participants by id from getSessionParticipants: update_participant {participantId, patch: {status applied|confirmed|waitlisted|cancelled|no_show, notice none|sent|replied|available|unavailable, memo}}, check_in {participantId}, undo_check_in {participantId}. Up to 20 operations apply together or not at all (bulk change). Capacity is enforced on the server. The reply includes summary counts by status and notice. ${RULES}`,
     inputSchema: strict({ id, version: { type: "integer", minimum: 0, description: "Participants version from getSessionParticipants" },
       operations: { type: "array", minItems: 1, maxItems: 20, items: PARTICIPANT_ITEM } }, ["id", "version", "operations"]), annotations: WRITE },
   { name: "createSessionProject", description: `Create a new session from the default template (structure only; no answers are copied). ${RULES}`,
