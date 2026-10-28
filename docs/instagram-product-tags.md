@@ -107,6 +107,8 @@ Steps:
 
 Held records are excluded from autorun, and manual `/run` returns `post_outcome_unknown` without replanning or sending tags. Rebuilding or approving an auto mapping cannot clear this hold. A separate human-authorized reconciliation is required before any further POST; this patch adds no unlock/retry endpoint. Other posts retain their existing processing. No write gate is enabled by these changes.
 
+Each slide is verified with Graph GET before the next slide is sent. The first POST error, partial result or failed verification stops later slides. Unsent tags stay pending under the record's hold, even if a later GET confirms the attempted tag; they cannot resume automatically. A final GET also rechecks already verified tags.
+
 `TAG_VERIFIED` and `NO_TAGS` are final: the record is not run again. The record is `WORK_DIR/instagram-product-tags/posts/<folder>.json`. It holds `publish`, `tags` (per tag: slide, product, state, reason, approval), `files` and `lastError`, each kept separately. One run per folder at a time.
 
 Routes, all with internal auth (automap routes above):

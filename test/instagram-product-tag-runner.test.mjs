@@ -127,9 +127,9 @@ test("uncertain POST survives a folder move and manual rerun without another POS
   const m = mapping([[1, [{ productNo: 101, metaProductId: "P101", x: 0.5, y: 0.5, approved: true }]], [2, [{ productNo: 102, metaProductId: "P102", x: 0.5, y: 0.5, approved: true }]]]);
   const first = await job(graph, { readFeedFolder: ready(m), write: true, env: ON });
   assert.deepEqual([first.record.files.location, first.record.tags.state], ["READY", "POST_OUTCOME_UNKNOWN"]);
-  assert.deepEqual(first.record.tags.tags.map((t) => t.state), ["POST_OUTCOME_UNKNOWN", "TAG_VERIFIED"]);
+  assert.deepEqual(first.record.tags.tags.map((t) => t.state), ["POST_OUTCOME_UNKNOWN", "PENDING"]);
   const second = await runTagJob({ record: first.record, graph, readFeedFolder: async () => { throw Error("held job must not replan"); }, getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
-  assert.deepEqual([second.step, second.record.tags.state, state.posts.map((p) => p.tags)], ["post_outcome_unknown", "POST_OUTCOME_UNKNOWN", [["P101"], ["P102"]]]);
+  assert.deepEqual([second.step, second.record.tags.state, state.posts.map((p) => p.tags)], ["post_outcome_unknown", "POST_OUTCOME_UNKNOWN", [["P101"]]]);
 });
 
 test("run cap still blocks a never-attempted pending record", async () => {
