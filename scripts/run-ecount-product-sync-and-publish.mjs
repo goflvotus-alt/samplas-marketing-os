@@ -139,7 +139,13 @@ export async function mirrorProductionBrandPolicy({ workDir, production }) {
   }
   const policies = policyStore?.policies;
   const policyCodes = Array.isArray(policies) ? policies.map((policy) => policy?.brand_code) : null;
-  if (!policyCodes || policyCodes.length !== policyStore.count || policyCodes.some((code) => !code) || new Set(policyCodes).size !== policyCodes.length) {
+  const missingPolicyCodes = Array.isArray(policies) ? policies.filter((policy) => !policy?.brand_code) : [];
+  const presentPolicyCodes = Array.isArray(policyCodes) ? policyCodes.filter(Boolean) : [];
+  const invalidMissingPolicyCodes = missingPolicyCodes.filter((policy) => policy?.policy_status !== "UNRESOLVED");
+  const invalidPresentPolicyCodes = Array.isArray(policies)
+    ? policies.filter((policy) => policy?.brand_code != null && (typeof policy.brand_code !== "string" || !policy.brand_code.trim()))
+    : [];
+  if (!policyCodes || policyCodes.length !== policyStore.count || invalidMissingPolicyCodes.length || invalidPresentPolicyCodes.length || new Set(presentPolicyCodes).size !== presentPolicyCodes.length) {
     throw new Error("Production commercial policy 형식이 다르거나 brand_code가 중복됩니다.");
   }
   const brandMaster = { updatedAt: master.updatedAt ?? null, brands: brands.map(({ sourcing_type: _sourcingType, ...brand }) => brand) };
