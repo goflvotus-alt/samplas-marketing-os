@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "folderName": "TAEGLOBAL-26AW",
+  "mediaId": "17909311497575689",
+  "permalink": "https://www.instagram.com/p/DfCRozKmLG9/",
+  "state": "AWAITING_APPROVAL",
+  "evidence": {
+    "meta": "HANDOFF.md section 4, 2026-10-28; reused, not refreshed",
+    "cafe24ValidatedAt": "2026-10-28T11:22:01.535Z",
+    "cafe24": "STEP2 raw admin product + variants GET, evaluated by PR #45 toTagCafe24View; only M available",
+    "warning": "Historical review evidence only; regenerate and revalidate live data before approval. Not a runner record or executable product-tags.json."
+  },
+  "tags": [
+    {
+      "order": 1,
+      "savedAsset": "assets/01.jpg",
+      "childId": "18132995713685549",
+      "productNo": 15570,
+      "variantCode": "P0000XAW000F",
+      "metaProductId": "28840522035586978",
+      "x": 0.51,
+      "y": 0.33,
+      "confidence": 0.9,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 2,
+      "savedAsset": "assets/02.jpg",
+      "childId": "17912768076476946",
+      "productNo": 15570,
+      "variantCode": "P0000XAW000F",
+      "metaProductId": "28840522035586978",
+      "x": 0.42,
+      "y": 0.62,
+      "confidence": 0.9,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 3,
+      "savedAsset": "assets/03.jpg",
+      "childId": "18134430097682760",
+      "productNo": 15568,
+      "variantCode": "P0000XAU000B",
+      "metaProductId": "28945118551841223",
+      "x": 0.49,
+      "y": 0.31,
+      "confidence": 0.9,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 4,
+      "savedAsset": "assets/04.jpg",
+      "childId": "18142588351622976",
+      "productNo": 15568,
+      "variantCode": "P0000XAU000B",
+      "metaProductId": "28945118551841223",
+      "x": 0.55,
+      "y": 0.55,
+      "confidence": 0.9,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 5,
+      "savedAsset": "assets/05.jpg",
+      "childId": "18106251209368345",
+      "productNo": 15567,
+      "variantCode": "P0000XAT000B",
+      "metaProductId": "38787412537572516",
+      "x": 0.52,
+      "y": 0.31,
+      "confidence": 0.85,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 6,
+      "savedAsset": "assets/06.jpg",
+      "childId": "18037329044897376",
+      "productNo": 15567,
+      "variantCode": "P0000XAT000B",
+      "metaProductId": "38787412537572516",
+      "x": 0.57,
+      "y": 0.55,
+      "confidence": 0.85,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 7,
+      "savedAsset": "assets/07.jpg",
+      "childId": "18482158834113565",
+      "productNo": 15573,
+      "variantCode": "P0000XAZ000F",
+      "metaProductId": "28378636105098089",
+      "x": 0.51,
+      "y": 0.33,
+      "confidence": 0.9,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    }
+  ]
+}

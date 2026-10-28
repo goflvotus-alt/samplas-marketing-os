@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { evaluateOption } from "../scripts/veil-found-soldout-audit.mjs";
 import { applyTagPlan, buildTagPlan, CAFE24_MAX_AGE_MS, createGraphClient, GraphError, preflight, SAMPLAS_META, toTagCafe24View, validateMapping, verifyTagPlan, withTagStatus } from "../scripts/instagram-product-tags.mjs";
 
 const IG = SAMPLAS_META.igUserId;
@@ -62,9 +63,11 @@ const PRODUCTS = {
 // IG catalog_product_search: one entry per product group, approval per group, variants without approval.
 const group = (no, id, review, variants) => ({ product_id: id, retailer_id: `${no}.X`, review_status: review, product_variants: variants.map((v) => ({ product_id: v, variant_name: v })) });
 const SEARCH = { 101: group(101, "P101S", "approved", ["P101S", "P101"]), 102: group(102, "P102", "approved", ["P102"]), 103: group(103, "P103", "rejected", ["P103"]), 105: group(105, "P105", "approved", ["P105"]) };
-// Cafe24 as the tag route serves it: toTagCafe24View over a normalizeCafe24ProductRow-shaped row.
-const view = (no, options, over = {}) => ({ ...toTagCafe24View({ productNo: no, selling: "T", display: "T", options }), ...over });
-const cafe24 = async (no) => view(no, (PRODUCTS[no] || []).map((r) => ({ variantCode: r.retailer_id.split(".")[1], quantity: 3, soldOut: false })), no === 105 ? { selling: "F" } : {});
+// Cafe24 as the tag route serves it: toTagCafe24View over raw detail + variants (embed=inventories).
+// display_soldout "T" is the live SAMPLAS setting on every option (15195, 2026-10-28).
+const variant = (code, quantity, inv = {}, over = {}) => ({ variant_code: code, selling: "T", display: "T", inventories: [{ use_inventory: "T", display_soldout: "T", quantity, ...inv }], ...over });
+const view = (no, variants, over = {}) => ({ ...toTagCafe24View({ product_no: no, selling: "T", display: "T" }, variants), ...over });
+const cafe24 = async (no) => view(no, (PRODUCTS[no] || []).map((r) => variant(r.retailer_id.split(".")[1], 3)), no === 105 ? { selling: "F" } : {});
 const tag = (productNo, x, y, extra = {}) => ({ productNo, metaProductId: `P${productNo}`, x, y, approved: true, ...extra });
 const mapping = (slides) => ({ schemaVersion: 1, slides: slides.map(([order, tags]) => ({ order, savedAsset: `0${order}.jpg`, tags })) });
 const plan = (graph, slides, over = {}) => buildTagPlan({ graph, mapping: mapping(slides), manifest, mediaId: "m1", getCafe24Product: cafe24, ...over });
@@ -136,10 +139,13 @@ test("existing tags kept, multi-product coordinates applied, verified by read-ba
   const v = await verifyTagPlan(graph, p);
   assert.equal(v.state, "TAG_VERIFIED");
   assert.deepEqual(state.tags.c1.map((t) => [t.product_id, t.x, t.y]), [["E1", 0.9, 0.9], ["P101", 0.25, 0.4], ["P102", 0.75, 0.6]]);
-  // Second run: everything already there, no POST, existing coordinates untouched.
-  const again = await plan(graph, [[1, [tag(101, 0.3, 0.3), tag(102, 0.75, 0.6)]], [2, [tag(102, 0.5, 0.5)]]]);
+  // Second run: everything already there, no POST. A changed mapping position is review, never a move.
+  const again = await plan(graph, slides);
   assert.equal(again.state, "TAG_VERIFIED");
   assert.equal((await applyTagPlan(graph, again, GO)).reason, "plan_state:TAG_VERIFIED");
+  const moved = await plan(graph, [[1, [tag(101, 0.3, 0.3), tag(102, 0.75, 0.6)]], [2, [tag(102, 0.5, 0.5)]]]);
+  assert.equal(moved.slides[0].tags[0].reason, "existing_tag_position_differs");
+  assert.equal((await applyTagPlan(graph, moved, GO)).reason, "plan_state:TAG_REVIEW_REQUIRED");
   assert.equal(state.posts.length, 2);
   assert.equal(state.tags.c1[1].x, 0.25);
 });
@@ -165,6 +171,14 @@ test("retryable error is retried once; permanent error goes to review without re
   await applyTagPlan(permanent.graph, p2, GO);
   assert.equal(permanent.state.posts.length, 1);
   assert.deepEqual(states(await verifyTagPlan(permanent.graph, p2)), ["1:101:TAG_REVIEW_REQUIRED:post_failed:100"]);
+});
+
+test("a tag already on the slide is verified only when approved at the mapped position", async () => {
+  const at = (x, review_status = "approved") => fakeGraph({ products: PRODUCTS, tags: { c1: [{ product_id: "P101", x, y: 0.5, review_status }] } }).graph;
+  assert.deepEqual(states(await plan(at(0.5), [[1, [tag(101, 0.5, 0.5)]]])), ["1:101:TAG_VERIFIED:already_tagged"]);
+  assert.deepEqual((await plan(at(0.5), [[1, [tag(101, 0.5, 0.5)]]])).slides[0].tags[0].approval, { group: "approved", variant: "APPROVED_IN_READBACK" });
+  assert.deepEqual(states(await plan(at(0.5, "pending"), [[1, [tag(101, 0.5, 0.5)]]])), ["1:101:TAG_REVIEW_REQUIRED:existing_tag_not_approved"]);
+  assert.deepEqual(states(await plan(at(0.8), [[1, [tag(101, 0.5, 0.5)]]])), ["1:101:TAG_REVIEW_REQUIRED:existing_tag_position_differs"]);
 });
 
 test("read-back catches a lost pre-existing tag and a moved tag", async () => {
@@ -247,7 +261,7 @@ test("write-time post limit counts live tags on every slide; slide changed durin
 test("approval rule: IG search group approved, id in group variants, Meta and Cafe24 stock, exact id required", async () => {
   const products = { 201: [row("S1", "201.M"), row("S2", "201.L"), row("S3", "201.XL", "out of stock"), row("S4", "201.XS"), row("S5", "201.XXL")] };
   const search = { 201: group(201, "S1", "approved", ["S1", "S2", "S3", "S4"]) };
-  const c24 = async () => view(201, [{ variantCode: "M", quantity: 1, soldOut: false }, { variantCode: "L", quantity: 0, soldOut: false }, { variantCode: "XL", quantity: 2, soldOut: false }, { variantCode: "XXL", quantity: 2, soldOut: false }]);
+  const c24 = async () => view(201, [variant("M", 1), variant("L", 0), variant("XL", 2), variant("XXL", 2)]);
   const { graph } = fakeGraph({ products, search });
   const t = (id, x) => tag(201, x, x, { metaProductId: id });
   const p = await plan(graph, [[1, [tag(201, 0.1, 0.1, { metaProductId: null }), t("S1", 0.2), t("S2", 0.3), t("S3", 0.4), t("S4", 0.5)]], [2, [t("S5", 0.6)]]], { getCafe24Product: c24 });
@@ -319,43 +333,62 @@ test("wrong-typed list fields block instead of throwing", async () => {
   assert.deepEqual(states(p), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_not_found"]);
 });
 
-test("Cafe24 option view: only variant code and sellability leave the server", () => {
-  const row = { productNo: 15195, productName: "x", selling: "T", display: "T", inventoryQuantity: 7,
-    options: [{ variantCode: "P0000WML000C", optionSummary: "SIZE:L", quantity: 2, soldOut: false }, { variantCode: "P0000WML000D", quantity: 5, soldOut: true }, { variantCode: "P0000WML000A", quantity: 0, soldOut: false }, { variantCode: "", quantity: 9 }] };
-  const v = toTagCafe24View(row, "2026-10-28T09:00:00.000Z");
+test("Cafe24 option view: 15195 live shape, display_soldout is a setting, only code/state/sellability leave the server", () => {
+  // Shape of the live 15195 read (2026-10-28): use_inventory T and display_soldout T on all four options,
+  // stock only on L. Quantities here are placeholders; the real ones were never printed.
+  const detail = { product_no: 15195, product_name: "x", selling: "T", display: "T", sold_out: "F" };
+  const live = [variant("P0000WML000A", 0), variant("P0000WML000B", 0), variant("P0000WML000C", 2), variant("P0000WML000D", 0)];
+  const v = toTagCafe24View(detail, live, "2026-10-28T09:00:00.000Z");
   assert.deepEqual(v, { productNo: 15195, selling: "T", display: "T", fetchedAt: "2026-10-28T09:00:00.000Z", options: [
-    { variantCode: "P0000WML000C", available: true }, { variantCode: "P0000WML000D", available: false }, { variantCode: "P0000WML000A", available: false }] });
+    { variantCode: "P0000WML000A", state: "SOLD_OUT", available: false }, { variantCode: "P0000WML000B", state: "SOLD_OUT", available: false },
+    { variantCode: "P0000WML000C", state: "IN_STOCK", available: true }, { variantCode: "P0000WML000D", state: "SOLD_OUT", available: false }] });
   assert.equal(JSON.stringify(v).includes("quantity"), false);
-  // A failed Cafe24 detail read gives selling/display "F" and no options in normalizeCafe24ProductRow.
-  assert.deepEqual(toTagCafe24View({ productNo: 1, display: "F", selling: "F", options: [] }, "t").options, []);
-  assert.equal(toTagCafe24View(null, "t").selling, "F");
+  const odd = [variant("U", 0, { use_inventory: "F" }), variant("Z", 0, { display_soldout: "F" }), { variant_code: "N", selling: "T", display: "T" },
+    variant("Q", null), variant("H", 5, {}, { display: "F" }), variant("", 9), variant("S", "3")];
+  const states = toTagCafe24View(detail, odd, "t").options;
+  assert.deepEqual(states.map((o) => [o.variantCode, o.state, o.available]), [["U", "UNLIMITED", true], ["Z", "UNKNOWN", false], ["N", "UNKNOWN", false], ["Q", "UNKNOWN", false], ["H", "NOT_SELLING", false], ["S", "IN_STOCK", true]]);
+  // Same verdict as the VEIL sold-out audit for every option.
+  for (const raw of [...live, ...odd].filter((x) => x.variant_code)) assert.equal(toTagCafe24View(detail, [raw], "t").options[0].state, evaluateOption(raw).state);
+  // Except non-numeric quantities, which evaluateOption counts as stock (Number(true) is 1).
+  for (const q of [true, [1], "1x"]) assert.deepEqual(toTagCafe24View(detail, [variant("W", q)], "t").options[0], { variantCode: "W", state: "UNKNOWN", available: false });
+  assert.deepEqual(toTagCafe24View({}, undefined, "t"), { productNo: null, selling: "F", display: "F", fetchedAt: "t", options: [] });
 });
 
 test("Cafe24 data must be this product's, fresh, and name exactly one sellable option", async () => {
   const { graph } = fakeGraph({ products: PRODUCTS });
   const one = (getCafe24Product, over = {}) => plan(graph, [[1, [tag(101, 0.5, 0.5)]]], { getCafe24Product, ...over });
   const old = new Date(Date.now() - CAFE24_MAX_AGE_MS - 1000).toISOString();
-  const bk = (o = {}) => ({ variantCode: "BK", quantity: 1, soldOut: false, ...o });
+  const bk = (quantity = 1, inv, over) => variant("BK", quantity, inv, over);
   assert.deepEqual(states(await one(async () => view(102, [bk()]))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_product_mismatch"]);
   assert.deepEqual(states(await one(async () => view(101, [bk()], { fetchedAt: old }))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_stale"]);
   assert.deepEqual(states(await one(async () => view(101, [bk()], { fetchedAt: "not a date" }))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_stale"]);
   assert.deepEqual(states(await one(async () => view(101, [bk()], { fetchedAt: new Date(Date.now() + 60000).toISOString() }))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_stale"]);
   assert.deepEqual(states(await one(async () => view(101, [bk(), bk()]))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_ambiguous"]);
-  assert.deepEqual(states(await one(async () => view(101, [bk({ quantity: 0 })]))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_out_of_stock"]);
-  assert.deepEqual(states(await one(async () => view(101, [bk({ soldOut: true })]))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_out_of_stock"]);
-  assert.deepEqual(states(await one(async () => view(101, [{ variantCode: "S", quantity: 4, soldOut: false }]))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_not_found"]);
+  assert.deepEqual(states(await one(async () => view(101, [bk(0)]))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_out_of_stock"]);
+  assert.deepEqual(states(await one(async () => view(101, [bk(1, {}, { selling: "F" })]))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_out_of_stock"]);
+  assert.deepEqual(states(await one(async () => view(101, [bk(1, { use_inventory: undefined })]))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_uncertain"]);
+  assert.deepEqual(states(await one(async () => view(101, [bk(0, { display_soldout: "F" })]))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_uncertain"]);
+  assert.deepEqual(states(await one(async () => view(101, [bk(0, { use_inventory: "F" })]))), ["1:101:PENDING"]);
+  assert.deepEqual(states(await one(async () => view(101, [variant("S", 4)]))), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_not_found"]);
   assert.deepEqual(states(await one(async () => null)), ["1:101:TAG_REVIEW_REQUIRED:cafe24_not_found"]);
   assert.deepEqual(states(await one(async () => view(101, [bk()]))), ["1:101:PENDING"]);
 });
 
-test("server route: GET only, internal auth, reuses fetchCafe24ProductCatalogRow, existing Cafe24 routes untouched", async () => {
+test("server route: GET only, internal auth, raw detail + variants, existing Cafe24 routes untouched", async () => {
   const src = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
   const start = src.indexOf('if (url.pathname.startsWith("/api/instagram-product-tags/cafe24/"))');
   assert.ok(start > 0);
   const block = src.slice(start, src.indexOf('if (url.pathname === "/api/cafe24/brands")', start));
   assert.match(block, /if \(!isAuthorizedInternalRequest\(req\)\) return json\(res, \{ error: "Unauthorized" \}, 401\);/);
   assert.match(block, /req\.method !== "GET"/);
-  assert.match(block, /toTagCafe24View\(await fetchCafe24ProductCatalogRow\(\{ product_no: Number\(productNo\) \}\)\)/);
+  assert.match(block, /return json\(res, await fetchTagCafe24View\(productNo\)\);/);
+  const fn = src.slice(src.indexOf("async function fetchTagCafe24View("), src.indexOf("async function fetchCafe24ProductDiscountPrice("));
+  assert.match(fn, /Promise\.all\(\[fetchCafe24ProductDetail\(Number\(productNo\)\), fetchCafe24ProductVariantsWithInventory\(Number\(productNo\)\)\]\)/);
+  assert.match(fn, /return toTagCafe24View\(detail, variants\);/);
+  assert.equal(fn.includes("fetchCafe24ProductCatalogRow("), false);
+  assert.match(fn, /if \(env\.CAFE24_PROXY_BASE_URL\)[\s\S]*\/api\/instagram-product-tags\/cafe24\/\$\{encodeURIComponent\(productNo\)\}`, \{ headers: cafe24ProxyHeaders\(\) \}/, "proxy mode asks the Render route, not Cafe24 directly");
+  assert.match(fn, /Number\(body\.productNo\) === Number\(productNo\) && Array\.isArray\(body\.options\)\) return body;\s*throw Object\.assign\([^\n]*\{ status: 502 \}\);/, "only a tag view for this product passes; anything else is 502");
+  assert.match(src, /soldOut: String\(inv\.display_soldout \?\? variant\.sold_out \?\? "F"\)\.toUpperCase\(\) === "T"/, "shared normalizeCafe24ProductRow unchanged");
   assert.match(block, /\^\\d\+\$/);
   assert.equal(src.includes('return json(res, { product });'), true, "/api/cafe24/products/<no> response unchanged");
   process.env.CAFE24_PROXY_BASIC_AUTH ??= "FAKE_TEST:FAKE_TEST";
