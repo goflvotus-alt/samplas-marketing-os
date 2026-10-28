@@ -141,7 +141,7 @@ export async function mirrorProductionBrandPolicy({ workDir, production }) {
   const policyCodes = Array.isArray(policies) ? policies.map((policy) => policy?.brand_code) : null;
   const missingPolicyCodes = Array.isArray(policies) ? policies.filter((policy) => !policy?.brand_code) : [];
   const presentPolicyCodes = Array.isArray(policyCodes) ? policyCodes.filter(Boolean) : [];
-  const invalidMissingPolicyCodes = missingPolicyCodes.filter((policy) => policy?.policy_status !== "UNRESOLVED");
+  const invalidMissingPolicyCodes = missingPolicyCodes.filter((policy) => policy?.resolution_status !== "UNRESOLVED");
   const invalidPresentPolicyCodes = Array.isArray(policies)
     ? policies.filter((policy) => policy?.brand_code != null && (typeof policy.brand_code !== "string" || !policy.brand_code.trim()))
     : [];
