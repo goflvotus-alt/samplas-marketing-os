@@ -15,17 +15,9 @@
 //   negative_review(음수 확인 필요) KPI와 절대 같은 그룹에 넣지 않는다.
 // - stockQuantity === null은 0과 다르다. "재고 미수신"이며 재고 소진/품절/Low Stock 계산에서
 //   제외한다.
-// - 위치(매장/3PL)별 재고는 현재 ECOUNT 응답에 존재하지 않는다(투자 조사 결과, 아래 참고).
-//   따라서 이번 단계에서는 위치 수량을 임의로 만들지 않고 항상 null + "unavailable"로 둔다.
-//
-// 조사 결과 요약 (work/ecount-inventory/raw-products.json, raw-inventory.json 실측):
-// - GetBasicProductsList(품목조회) 응답에 WH_CD(창고코드) 필드가 존재하지만 10,000건 전부
-//   빈 문자열("")이다 — 이 ECOUNT 계정은 상품 마스터 단계에서 창고를 지정하지 않는다.
-// - GetListInventoryBalanceStatus(재고조회) 응답은 { PROD_CD, BAL_QTY } 두 필드뿐이며,
-//   PROD_CD당 정확히 1행만 존재한다(3,209개 distinct PROD_CD == 3,209 rows, 중복 없음).
-//   즉 이 API가 이미 창고 구분 없이 회사 전체 합계로 응답하고 있다.
-// - 이 데이터만으로는 매장 재고와 3PL 재고를 구분할 방법이 없다. 구분하려면 ECOUNT의
-//   창고별 재고조회(WH_CD 파라미터 지정) 또는 창고 마스터 목록을 추가로 확인해야 한다.
+// - 창고별 수량은 canonical sync에서 product code별 parity 검증 후 추가한다.
+//   기존 snapshot이나 미검증 수량은 위치 unavailable로 유지한다.
+//   STORE_1/OFFSITE는 기존 consumer 호환용이며 APGUJEONG/VAIL로 추정 매핑하지 않는다.
 //
 // 이 파일은 순수 계산 로직만 담는다(파일 I/O나 HTTP 서버 기동 없음).
 // intelligence-service.mjs가 이 모듈을 import해서 API 응답을 만든다.
@@ -203,14 +195,16 @@ export function isLowStockCandidate(status, stockQuantity, lowStockThreshold = D
   return status === "in_stock" && Number.isFinite(stockQuantity) && stockQuantity > 0 && stockQuantity <= lowStockThreshold;
 }
 
-// 위치별 재고 모델. 현재 ECOUNT 응답에는 위치(창고) 정보가 전혀 없으므로(조사 결과 상단 참고),
-// 항상 STORE_1/OFFSITE 모두 null + locationCoverageStatus "unavailable"을 반환한다.
-// 0으로 임의 채우지 않는다 — null(확인 불가)과 0(재고 없음 확인됨)은 다른 의미다.
-// 향후 위치 데이터 소스가 생기면 이 함수만 교체하면 된다(호출부는 변경 불필요).
-export function buildLocationInfo() {
+// Legacy location fields remain null; verified physical warehouses use their own store codes.
+// Missing or inconsistent warehouse quantities never count as known location coverage.
+export function buildLocationInfo(row) {
+  const stock = row?.stockByWarehouse;
+  const available = Number.isFinite(row?.stockQuantity) && Number.isFinite(stock?.APGUJEONG) &&
+    Number.isFinite(stock?.VAIL) && stock.APGUJEONG + stock.VAIL === row.stockQuantity;
   return {
     locations: { STORE_1: null, OFFSITE: null, UNKNOWN: null },
-    locationCoverageStatus: "unavailable"
+    stockByWarehouse: available ? { APGUJEONG: stock.APGUJEONG, VAIL: stock.VAIL } : null,
+    locationCoverageStatus: available ? "available" : "unavailable"
   };
 }
 
@@ -338,6 +332,7 @@ export function buildInventoryOverview({ ecountRows, brandRegistry, salesIndex, 
       status,
       lowStockCandidate,
       estimatedSoldQuantity,
+      stockByWarehouse: location.stockByWarehouse,
       locations: location.locations,
       locationCoverageStatus: location.locationCoverageStatus,
       purchasePrice: Number.isFinite(row.purchasePrice) ? row.purchasePrice : null,
@@ -370,7 +365,11 @@ export function buildInventoryOverview({ ecountRows, brandRegistry, salesIndex, 
     generalSkuCount: 0,
     adminCodeSkuCount: 0,
     qqqSkuCount: 0,
-    // 위치 커버리지(현재는 항상 0/전체 unavailable — 미래 대비용 필드)
+    // Warehouse totals include signed stock, separately from existing positive-stock KPIs.
+    warehouseStock: {
+      APGUJEONG: { stockQuantity: null, skuCount: 0 },
+      VAIL: { stockQuantity: null, skuCount: 0 }
+    },
     locationKnownItems: 0,
     locationUnknownItems: 0
   };
@@ -381,7 +380,14 @@ export function buildInventoryOverview({ ecountRows, brandRegistry, salesIndex, 
     else summary.generalSkuCount += 1;
 
     if (item.locationCoverageStatus === "unavailable") summary.locationUnknownItems += 1;
-    else summary.locationKnownItems += 1;
+    else {
+      summary.locationKnownItems += 1;
+      for (const store of ["APGUJEONG", "VAIL"]) {
+        const bucket = summary.warehouseStock[store];
+        bucket.stockQuantity = (bucket.stockQuantity ?? 0) + item.stockByWarehouse[store];
+        bucket.skuCount += 1;
+      }
+    }
 
     if (item.productType === "qqq") {
       if (item.status === "qqq_estimated_sale") {
@@ -497,8 +503,13 @@ export function buildInventoryOverview({ ecountRows, brandRegistry, salesIndex, 
 
 // view: "all" | "in_stock" | "depleted_candidate" | "negative_review" | "unknown" |
 //       "qqq_estimated_sale" | "location_unknown"  (Section 6 필터 목록과 1:1 대응)
-export function filterAndSortItems(items, { brand, status, search, sort } = {}) {
+export function filterAndSortItems(items, { brand, status, search, sort, store } = {}) {
   let filtered = items;
+  if (store && store !== "ALL") {
+    if (!["APGUJEONG", "VAIL"].includes(store)) throw new Error("Invalid inventory store");
+    // Item membership only: company stockQuantity/status and global summaries stay unchanged.
+    filtered = filtered.filter(item => Number.isFinite(item.stockByWarehouse?.[store]) && item.stockByWarehouse[store] !== 0);
+  }
   if (brand && brand !== "all") filtered = filtered.filter((item) => item.brandKey === brand);
   if (status && status !== "all") {
     if (status === "location_unknown") filtered = filtered.filter((item) => item.locationCoverageStatus === "unavailable");

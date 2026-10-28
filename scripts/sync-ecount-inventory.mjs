@@ -8,6 +8,7 @@
 //
 // 실행 (테스트 인증키 개발 검증 모드 — sboapi 테스트 서버로 실제 요청을 보낸다):
 //   node scripts/sync-ecount-inventory.mjs --test
+//   node scripts/sync-ecount-inventory.mjs --dry-run  (live reads, no snapshot/history writes)
 //   node scripts/sync-ecount-inventory.mjs --test --products-only   (품목조회만 실행)
 //
 // 테스트 모드는 ECOUNT 공식 절차상 "테스트 인증키 검증은 sboapi 테스트 URL에 실제 요청을
@@ -18,6 +19,7 @@ import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildProductMaster, validateProductMaster } from "./ecount-product-master.mjs";
+import { isExcludedProductCode } from "./category-classification-rules.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const outputDir = join(root, "work", "ecount-inventory");
@@ -31,9 +33,10 @@ const HOST_PREFIX_BY_MODE = {
 };
 
 function parseCliArgs(argv) {
-  const options = { test: false, productsOnly: false, outDir: null };
+  const options = { test: false, productsOnly: false, dryRun: false, outDir: null };
   for (const arg of argv) {
     if (arg === "--test") options.test = true;
+    else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--products-only") options.productsOnly = true;
     else if (arg.startsWith("--out-dir=")) options.outDir = resolve(arg.slice("--out-dir=".length));
   }
@@ -43,13 +46,14 @@ function parseCliArgs(argv) {
 async function main() {
   const cli = parseCliArgs(process.argv.slice(2));
   // --out-dir writes a scratch copy; the canonical work/ecount-inventory stays untouched.
-  const result = await syncEcountInventory({ env: await loadEnv(), mode: cli.test ? "test" : "production", productsOnly: cli.productsOnly, outDir: cli.outDir || outputDir });
-  console.log(JSON.stringify(result, null, 2));
+  const result = await syncEcountInventory({ env: await loadEnv(), mode: cli.test ? "test" : "production", productsOnly: cli.productsOnly, dryRun: cli.dryRun, outDir: cli.outDir || outputDir });
+  const { latest, ...summary } = result;
+  console.log(JSON.stringify(summary, null, 2));
 }
 
 // Full sync used by the CLI and the server scheduler. Throws on any failure before the
 // atomic replace, so the canonical files stay untouched unless everything succeeded.
-export async function syncEcountInventory({ env, mode = "production", productsOnly = false, outDir = outputDir, request = ecountRequest, delayMs, minRetainRatio = 0.9 } = {}) {
+export async function syncEcountInventory({ env, mode = "production", productsOnly = false, outDir = outputDir, request = ecountRequest, delayMs, minRetainRatio = 0.9, dryRun = false } = {}) {
   const hostPrefix = HOST_PREFIX_BY_MODE[mode];
   const diagnostic = {
     startedAt: new Date().toISOString(),
@@ -65,8 +69,6 @@ export async function syncEcountInventory({ env, mode = "production", productsOn
   const comCode = env.ECOUNT_COM_CODE;
   const userId = env.ECOUNT_USER_ID;
   const certKey = env.ECOUNT_API_CERT_KEY;
-
-  await mkdir(outDir, { recursive: true });
 
   // 1) Zone 자동 조회
   let zone;
@@ -114,7 +116,15 @@ export async function syncEcountInventory({ env, mode = "production", productsOn
   }
   diagnostic.sessionIdMasked = maskSessionId(sessionId);
 
-  // 4) 품목조회 API 호출
+  // 4) Validate company/warehouse inventory before product pagination.
+  const baseDate = todayYyyymmdd();
+  const inventoryUrl = `https://${hostPrefix}${zone}.ecount.com/OAPI/V2/InventoryBalance/GetListInventoryBalanceStatus?SESSION_ID=${encodeURIComponent(sessionId)}`;
+  const inventory = productsOnly ? null : await fetchInventoryWithWarehouses({
+    request, inventoryUrl, inventoryBody: { SESSION_ID: sessionId, BASE_DATE: baseDate, COM_CODE: comCode, USER_ID: userId, ZONE: zone },
+    diagnostic, delayMs
+  });
+
+  // 5) 품목조회 API 호출
   // 테스트 모드에서는 공식 절차상 요구되는 PROD_TYPE: "3" 을 body에 포함해 실제 요청을 보낸다.
   const productsUrl = `https://${hostPrefix}${zone}.ecount.com/OAPI/V2/InventoryBasic/GetBasicProductsList?SESSION_ID=${encodeURIComponent(sessionId)}`;
   const productsBody = mode === "test"
@@ -129,28 +139,33 @@ export async function syncEcountInventory({ env, mode = "production", productsOn
   );
   diagnostic.productPagination = pagination;
 
-  // 5) 재고조회 API 호출 — 검증 목적의 --products-only 옵션이 켜져 있으면 건너뛴다.
+  // --products-only keeps its validation-only behavior and never fetches inventory.
   if (productsOnly) {
     diagnostic.steps.push({ step: "inventory", ok: true, skipped: true, reason: "--products-only" });
     throw new Error("--products-only는 API 검증 전용입니다. 운영 재고 파일은 저장하지 않습니다.");
   }
 
-  const baseDate = todayYyyymmdd();
-  const inventoryUrl = `https://${hostPrefix}${zone}.ecount.com/OAPI/V2/InventoryBalance/GetListInventoryBalanceStatus?SESSION_ID=${encodeURIComponent(sessionId)}`;
-  const inventoryResponse = await runRequiredStep("inventory", diagnostic, () => request(inventoryUrl, {
-    SESSION_ID: sessionId,
-    BASE_DATE: baseDate,
-    COM_CODE: comCode,
-    USER_ID: userId,
-    ZONE: zone
-  }), { baseDate });
-  const rawInventory = inventoryResponse.body;
-  const inventoryList = requireResultList(rawInventory, "inventory");
-  // Same API row cap: a full page cannot be told apart from a truncated one.
-  if (inventoryList.length >= ECOUNT_PAGE_LIMIT) throw new Error(`재고조회가 ${ECOUNT_PAGE_LIMIT}건 제한에 도달해 완전성을 보장할 수 없습니다.`);
+  const { rawInventory, inventoryList, stockByProduct, parity } = inventory;
 
   // 6) JSON 저장 — PROD_CD 기준으로 품목 + 재고를 합쳐 latest.json 생성
-  const { latest, purchasePriceCount } = buildLatestRows(productList, inventoryList);
+  const { latest, purchasePriceCount } = buildLatestRows(productList, inventoryList, stockByProduct);
+  const representedCodes = new Set(latest.map(row => String(row.productCode)));
+  const unrepresentedStock = [...stockByProduct].filter(([code, quantities]) =>
+    !representedCodes.has(code) && (quantities.APGUJEONG !== 0 || quantities.VAIL !== 0));
+  // Raw company/warehouse parity already includes every code; only the explicit registry can exempt a missing master.
+  const excludedNonProducts = unrepresentedStock.filter(([code]) => isExcludedProductCode(code));
+  const missingProducts = unrepresentedStock.filter(([code]) => !isExcludedProductCode(code));
+  diagnostic.nonProductInventoryRowsExcludedFromProductMerge = {
+    count: excludedNonProducts.length,
+    rows: excludedNonProducts.slice(0, 30).map(([productCode, stockByWarehouse]) => ({
+      productCode, stockByWarehouse,
+      companyStockQuantity: stockByWarehouse.APGUJEONG + stockByWarehouse.VAIL,
+      reason: "explicit non-product/admin code"
+    })),
+    truncated: excludedNonProducts.length > 30
+  };
+  diagnostic.realProductMissingMasterCount = missingProducts.length;
+  if (missingProducts.length) throw new Error(`Warehouse stock missing from product master: ${missingProducts.slice(0, 30).map(([code]) => code).join(", ")}`);
   // Lightweight onboarding/sourcing master; written in the same atomic set as the rest.
   const productMaster = buildProductMaster(productList, pagination);
   // A sudden drop usually means a partial ECOUNT answer, not real deletions: keep canonical.
@@ -167,11 +182,11 @@ export async function syncEcountInventory({ env, mode = "production", productsOn
     purchasePriceCount
   };
   validateOutputPayloads({ rawProducts, rawInventory, latest, diagnostic, productMaster });
-  await writeInventoryOutputsAtomically(outDir, { rawProducts, rawInventory, latest, diagnostic, productMaster });
+  if (!dryRun) await writeInventoryOutputsAtomically(outDir, { rawProducts, rawInventory, latest, diagnostic, productMaster });
 
   let historySnapshot = null;
   try {
-    historySnapshot = await writeInventoryHistorySnapshot(outDir, { latest, diagnostic });
+    if (!dryRun) historySnapshot = await writeInventoryHistorySnapshot(outDir, { latest, diagnostic });
   } catch (error) {
     // history는 부가 기능이다 — 실패해도 이미 완료된 latest.json/diagnostic.json 교체를
     // 절대 되돌리지 않고, 경고만 남긴 채 정상 종료한다.
@@ -180,6 +195,11 @@ export async function syncEcountInventory({ env, mode = "production", productsOn
 
   return {
     mode,
+    dryRun,
+    warehouseParity: parity,
+    nonProductInventoryRowsExcludedFromProductMerge: diagnostic.nonProductInventoryRowsExcludedFromProductMerge,
+    realProductMissingMasterCount: diagnostic.realProductMissingMasterCount,
+    ...(dryRun ? { latest } : {}),
     productsOnly,
     outDir,
     productCount: productList.length,
@@ -188,6 +208,71 @@ export async function syncEcountInventory({ env, mode = "production", productsOn
     purchasePriceCount,
     historySnapshot: historySnapshot ? historySnapshot.file : null
   };
+}
+
+// Shared by canonical sync and read-only warehouse diagnostics; never writes files.
+export async function fetchInventoryWithWarehouses({ request, inventoryUrl, inventoryBody, diagnostic = { steps: [], errors: [] }, delayMs = 11_000 }) {
+  const baseDate = inventoryBody.BASE_DATE;
+  const companyResponse = await runRequiredStep("inventory", diagnostic, () => request(inventoryUrl, inventoryBody), { baseDate });
+  const rawInventory = companyResponse.body;
+  const inventoryList = requireResultList(rawInventory, "inventory");
+  if (inventoryList.length >= ECOUNT_PAGE_LIMIT) throw new Error("Company inventory row cap reached");
+  const warehouseLists = {};
+  const warehouseResponses = {};
+  for (const code of Object.keys(WAREHOUSE_STORES)) {
+    if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
+    const response = await runRequiredStep(`inventory_warehouse_${code}`, diagnostic, () => request(inventoryUrl, {
+      ...inventoryBody, WH_CD: code
+    }), { baseDate, warehouseCode: code });
+    warehouseLists[code] = requireResultList(response.body, `warehouse_${code}`);
+    warehouseResponses[code] = response.body;
+  }
+  const { stockByProduct, parity } = mergeWarehouseInventory(inventoryList, warehouseLists);
+  diagnostic.warehouseParity = parity;
+  rawInventory.WarehouseResults = warehouseResponses;
+  return { rawInventory, inventoryList, stockByProduct, parity };
+}
+
+export const WAREHOUSE_STORES = Object.freeze({ "100": "APGUJEONG", "200": "VAIL" });
+
+export function mergeWarehouseInventory(companyRows, warehouseRows) {
+  if (!warehouseRows || Object.keys(warehouseRows).length !== 2 ||
+      Object.keys(warehouseRows).some(code => !Object.hasOwn(WAREHOUSE_STORES, code))) {
+    throw new Error("Unknown or missing ECOUNT warehouse code");
+  }
+  const aggregate = (rows) => {
+    if (!Array.isArray(rows) || rows.length >= ECOUNT_PAGE_LIMIT) throw new Error("Invalid/capped warehouse inventory list");
+    const result = new Map();
+    for (const row of rows) {
+      const code = firstNonEmpty(row, ["PROD_CD", "PRODCD", "ProdCd"]);
+      const qty = toNumberOrNull(firstNonEmpty(row, ["BAL_QTY", "QTY", "STOCK_QTY", "BALANCE_QTY"]));
+      if (code === null || !String(code).trim() || qty === null) throw new Error("Invalid warehouse product code/quantity");
+      const key = String(code);
+      result.set(key, (result.get(key) ?? 0) + qty);
+    }
+    return result;
+  };
+  const company = aggregate(companyRows);
+  const warehouses = Object.fromEntries(Object.keys(WAREHOUSE_STORES).map(code => [code, aggregate(warehouseRows[code])]));
+  const codes = new Set([...company.keys(), ...warehouses["100"].keys(), ...warehouses["200"].keys()]);
+  const stockByProduct = new Map();
+  const mismatches = [];
+  for (const code of codes) {
+    const quantities = { APGUJEONG: warehouses["100"].get(code) ?? 0, VAIL: warehouses["200"].get(code) ?? 0 };
+    if (quantities.APGUJEONG + quantities.VAIL !== (company.get(code) ?? 0)) mismatches.push(code);
+    stockByProduct.set(code, quantities);
+  }
+  const stats = map => ({ skuCount: map.size, totalQuantity: [...map.values()].reduce((sum, qty) => sum + qty, 0) });
+  const parity = {
+    company: stats(company), warehouses: Object.fromEntries(Object.entries(warehouses).map(([code, map]) => [code, stats(map)])),
+    combined: { skuCount: new Set([...warehouses["100"].keys(), ...warehouses["200"].keys()]).size,
+      totalQuantity: stats(warehouses["100"]).totalQuantity + stats(warehouses["200"]).totalQuantity },
+    comparedSkuCount: codes.size, mismatchCount: mismatches.length
+  };
+  if (mismatches.length || parity.company.totalQuantity !== parity.combined.totalQuantity) {
+    throw new Error(`Warehouse inventory parity failed: ${JSON.stringify({ ...parity, mismatchedProductCodes: mismatches.slice(0, 30) })}`);
+  }
+  return { stockByProduct, parity };
 }
 
 // ---- helpers ----
@@ -278,7 +363,7 @@ function requireResultList(body, step) {
   return list;
 }
 
-function buildLatestRows(productList, inventoryList) {
+function buildLatestRows(productList, inventoryList, stockByProduct) {
   const stockByProdCd = new Map();
   for (const row of inventoryList) {
     const prodCd = firstNonEmpty(row, ["PROD_CD", "PRODCD", "ProdCd"]);
@@ -307,7 +392,9 @@ function buildLatestRows(productList, inventoryList) {
       barcode: firstNonEmpty(row, ["BAR_CODE", "BARCODE"]) || null,
       purchasePrice,
       salesPrice: toNumberOrNull(firstNonEmpty(row, ["OUT_PRICE", "SALE_PRICE", "SET_PRICE", "SALES_PRICE"])),
-      stockQuantity: stock && stock.hasAny ? stock.stockQuantity : null
+      stockQuantity: stock && stock.hasAny ? stock.stockQuantity : null,
+      ...(stock?.hasAny && stockByProduct?.has(String(productCode))
+        ? { stockByWarehouse: stockByProduct.get(String(productCode)) } : {})
     });
   }
   return { latest, purchasePriceCount };

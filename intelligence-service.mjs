@@ -903,6 +903,8 @@ async function handleInventoryIntelligenceHealthGet(res) {
 // 기존 /api/inventory/intelligence/health (ECOUNT↔Cafe24 데이터 정합성/품질 진단, Phase 2A/2B)와는
 // 역할이 다르며, 이 라우트를 추가하면서 그 라우트/로직은 전혀 수정하지 않았다.
 async function handleInventoryOverviewGet(url, res) {
+  const inventoryStore = url.searchParams.get("store") || "ALL";
+  if (!["ALL", "APGUJEONG", "VAIL"].includes(inventoryStore)) return json(res, { ok: false, error: "invalid_store" }, 400);
   if (!existsSync(ecountInventoryLatestFile)) {
     return json(res, {
       ok: true,
@@ -956,7 +958,8 @@ async function handleInventoryOverviewGet(url, res) {
     brand: url.searchParams.get("brand"),
     status: url.searchParams.get("status"),
     search: url.searchParams.get("search"),
-    sort: url.searchParams.get("sort")
+    sort: url.searchParams.get("sort"),
+    store: inventoryStore
   });
 
   const limitRaw = Number(url.searchParams.get("limit"));
@@ -965,9 +968,7 @@ async function handleInventoryOverviewGet(url, res) {
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : filtered.length;
   const page = filtered.slice(offset, offset + limit);
 
-  // Phase 3A-2: 운영 정책과 데이터 커버리지를 명시적으로 노출한다(하위 호환 — 기존 필드는
-  // 그대로 두고 이 두 필드만 추가함). locationMode는 현재 ECOUNT 응답에 위치(창고) 정보가
-  // 전혀 없어("조사 결과" 참고, scripts/inventory-overview-lib.mjs 상단 주석) 항상 "unavailable".
+  // Location coverage is available only for rows with validated warehouse quantities.
   const inventoryPolicy = {
     sourceOfTruth: "ECOUNT",
     cafe24InventoryUsed: false,
@@ -992,6 +993,8 @@ async function handleInventoryOverviewGet(url, res) {
     // 기준 시각(salesDataAsOf)은 서로 다른 소스다 — 하나의 timestamp처럼 섞어 보여주지
     // 않는다. salesDataAsOf는 오프라인 매출 데이터 중 가장 최신 날짜(30일 window의 기준점).
     salesDataAsOf: salesIndex.latestDataDate,
+    storeFilter: inventoryStore,
+    filterScope: "items",
     lowStockThreshold,
     inventoryPolicy,
     coverage,

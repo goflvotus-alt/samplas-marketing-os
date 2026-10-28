@@ -251,7 +251,11 @@ export function matchIndividualModelException(brand, productName) {
 
 // 실제 상품이 아닌 결제/운영 편의성 라인(할인, 퀵비 등) — Category Master 분류 대상과
 // Category Review 검수 대상 양쪽에서 제외한다. OTHER로 억지 분류하지 않는다.
-export const EXCLUDED_PRODUCT_CODES = new Set(["00000", "00001", "00002", "A0001", "MAKE001", "QQQ00262"]);
+export const EXCLUDED_PRODUCT_CODES = new Set([
+  "00000", "00001", "00002", "A0001", "MAKE001", "QQQ00262",
+  // 운영 확인된 적립금 처리용 ECOUNT 코드(실제 판매 SKU 아님): inventory parity에는 포함하고 missing-master product merge에서만 제외.
+  "적립금"
+]);
 
 export function isExcludedProductCode(productCode) {
   return EXCLUDED_PRODUCT_CODES.has(String(productCode || ""));
