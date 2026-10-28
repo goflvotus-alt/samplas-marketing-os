@@ -52,7 +52,9 @@ import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs"
 import { runWeeklyReportPreview, handleWeeklyReportPreview } from "./scripts/weekly-report-manual.mjs";
 import { createMetaWeeklyCafe24SourceHandler } from "./scripts/meta-weekly-cafe24-source.mjs";
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
-import { toTagCafe24View } from "./scripts/instagram-product-tags.mjs";
+import { createGraphClient, toTagCafe24View } from "./scripts/instagram-product-tags.mjs";
+import { createFeedDropbox, createPostStore, createProductTagService } from "./scripts/instagram-product-tag-runner.mjs";
+import { getDropboxAccessToken } from "./scripts/dropbox-report-uploader.mjs";
 import { getVeilFoundStatus, runVeilFoundPublisher, fetchInstagramFeed, veilFoundConfig } from "./scripts/veil-found-publisher.mjs";
 import { runVeilSoldOutAudit } from "./scripts/veil-found-soldout-audit.mjs";
 import { loadCanonicalCafe24OrderCache } from "./scripts/cafe24-order-cache.mjs";
@@ -169,6 +171,17 @@ const veilControl=createVeilControl({env,workDir,soldOutAudit:({number})=>{
   if(!config.token)throw Object.assign(new Error("not_configured"),{status:503});
   return runVeilSoldOutAudit({number,fetchFeed:()=>fetchInstagramFeed({config}),loadBrandMaster:readBrandMasterFile,listBrandProducts:fetchCafe24BrandProducts,listVariants:fetchCafe24ProductVariantsWithInventory});
 }});
+// Instagram shopping tags for web-scheduled @samplaskr feed posts (scripts/instagram-product-tag-runner.mjs).
+// Records live in WORK_DIR; READY is read only. Tag POSTs need INSTAGRAM_PRODUCT_TAG_WRITES=on plus the
+// record's approval; the UPLOADED move needs INSTAGRAM_FEED_UPLOADED_MOVE=on plus its approval.
+// The 10-minute autorun is off unless INSTAGRAM_PRODUCT_TAG_AUTORUN=on.
+const productTags = createProductTagService({
+  graph: createGraphClient({ getToken: () => resolveMetaAccessToken() }),
+  dropbox: createFeedDropbox({ getToken: () => getDropboxAccessToken({ env }) }),
+  getCafe24Product: (productNo) => fetchTagCafe24View(productNo),
+  store: createPostStore(join(workDir, "instagram-product-tags", "posts")),
+  env
+});
 const veilFoundPublisherScheduler = {
   intervalMs: 5 * 60 * 1000,
   running: false,
@@ -605,14 +618,35 @@ const server = isMainModule ? createServer(async (req, res) => {
       }
     }
     // Instagram product tags: per-option sellability of one product for tag decisions. Read-only,
-    // internal auth like /api/cafe24/products/*; option quantities are reduced to available true/false.
+    // internal auth like /api/cafe24/products/*; option quantities are reduced to state + available.
+    // A failed read is a 500 (502 from the proxy), never an empty option list. See fetchTagCafe24View.
     if (url.pathname.startsWith("/api/instagram-product-tags/cafe24/")) {
       if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
       if (req.method !== "GET") return json(res, { error: "Method not allowed" }, 405);
       const productNo = decodeURIComponent(url.pathname.slice("/api/instagram-product-tags/cafe24/".length)).trim();
       if (!/^\d+$/.test(productNo)) return json(res, { error: "Invalid product_no" }, 400);
       try {
-        return json(res, toTagCafe24View(await fetchCafe24ProductCatalogRow({ product_no: Number(productNo) })));
+        return json(res, await fetchTagCafe24View(productNo));
+      } catch (error) {
+        return json(res, { error: safeErrorMessage(error) }, error.status === 502 ? 502 : 500);
+      }
+    }
+    // Shopping tag records: list/get, register a scheduled post, run one folder now. Internal auth only.
+    if (url.pathname === "/api/instagram-product-tags/posts" || url.pathname === "/api/instagram-product-tags/run") {
+      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      try {
+        if (url.pathname === "/api/instagram-product-tags/run") {
+          if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
+          const out = await productTags.run(String((await readJsonBody(req))?.folderName || ""));
+          return json(res, out, out.ok ? 200 : out.error === "not_registered" ? 404 : 500);
+        }
+        if (req.method === "GET") {
+          const name = url.searchParams.get("folder");
+          return json(res, name ? (await productTags.get(name)) ?? { error: "not_registered" } : { posts: await productTags.list() });
+        }
+        if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
+        const made = await productTags.register(await readJsonBody(req));
+        return json(res, made, made.ok ? 201 : 400);
       } catch (error) {
         return json(res, { error: safeErrorMessage(error) }, 500);
       }
@@ -1576,6 +1610,8 @@ const server = isMainModule ? createServer(async (req, res) => {
   setInterval(runVeilFoundScheduledCheck, veilFoundPublisherScheduler.intervalMs);
   // One-time uploads are separately opt-in; existing Friday automation is unchanged.
   if(env.VEIL_FOUND_ONCE_ENABLED === "true") setInterval(()=>veilControl.tick().catch(()=>console.error("[VEIL_FOUND_ONCE] check failed; inspect history")),60000);
+  // Shopping tags autorun: off unless INSTAGRAM_PRODUCT_TAG_AUTORUN=on (writes and moves have their own gates).
+  if (env.INSTAGRAM_PRODUCT_TAG_AUTORUN === "on") setInterval(() => productTags.tick().catch(() => console.error("[PRODUCT_TAGS] tick failed")), 10 * 60 * 1000);
   // One-off tracking test: armed only by WORK_DIR/tracking-test/schedule.json, runs as a child process.
   const trackingTestTick = createTrackingTestScheduler({ env });
   setInterval(() => trackingTestTick().catch(() => console.error("[TRACKING_TEST] check failed")), 60000);
@@ -3450,6 +3486,21 @@ async function fetchCafe24ProductDetail(productNo) {
   const body = await cafe24FetchJson(url);
   if (body.error) throw body.error;
   return body.product || {};
+}
+
+// Shopping tags: per-option sellability of one product (see toTagCafe24View). Raw detail + variants, not
+// fetchCafe24ProductCatalogRow: its row reads display_soldout as sold out and swallows read errors.
+// Proxy mode (local runner): the Render service owns the Cafe24 token, so ask its same route.
+async function fetchTagCafe24View(productNo) {
+  if (env.CAFE24_PROXY_BASE_URL) {
+    const response = await fetch(`${env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "")}/api/instagram-product-tags/cafe24/${encodeURIComponent(productNo)}`, { headers: cafe24ProxyHeaders() });
+    const body = await response.json().catch(() => null);
+    // Only a tag view for this product passes; anything else (non-OK, non-JSON, null, error body) is a 502.
+    if (response.ok && body && Number(body.productNo) === Number(productNo) && Array.isArray(body.options)) return body;
+    throw Object.assign(new Error(typeof body?.error === "string" ? body.error : `Cafe24 proxy error ${response.status}`), { status: 502 });
+  }
+  const [detail, variants] = await Promise.all([fetchCafe24ProductDetail(Number(productNo)), fetchCafe24ProductVariantsWithInventory(Number(productNo))]);
+  return toTagCafe24View(detail, variants);
 }
 
 async function fetchCafe24ProductDiscountPrice(productNo) {

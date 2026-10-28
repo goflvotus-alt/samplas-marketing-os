@@ -13,6 +13,7 @@
 //   - x, y are 0..1 from the top-left of the image; only approved products show on the post.
 //   - Carousel slides take up to 5 tags each and 20 per post.
 import { parseMetaContentId } from "./meta-product-registry-link.mjs";
+import { evaluateOption } from "./veil-found-soldout-audit.mjs";
 
 export const TAG_STATES = ["PENDING", "PRODUCT_TAGGING", "TAG_VERIFIED", "TAG_REVIEW_REQUIRED"];
 export const MAX_TAGS_PER_SLIDE = 5;
@@ -98,15 +99,27 @@ const list = (v) => (Array.isArray(v) ? v : []);
 // Cafe24 data older than this is not used for a tag decision.
 export const CAFE24_MAX_AGE_MS = 10 * 60 * 1000;
 
-// What tagging needs from server.mjs normalizeCafe24ProductRow (via fetchCafe24ProductCatalogRow):
-// per option only the variant code and whether it can be sold now. Raw quantities stay on the server.
-export function toTagCafe24View(row, fetchedAt = new Date().toISOString()) {
+// What tagging needs from the raw Cafe24 product detail and variants (embed=inventories): per option only
+// the variant code, its state and whether it can be sold now. Raw quantities stay on the server.
+// The option state is evaluateOption() of the VEIL sold-out audit. display_soldout there is a shop setting
+// (show "sold out" when stock hits 0), not the current state; normalizeCafe24ProductRow reads it as sold
+// out, which marked in-stock options unavailable (15195 L, 2026-10-28), so that row is not used here.
+// IN_STOCK (use_inventory T, quantity > 0) and UNLIMITED (use_inventory F) can be sold. SOLD_OUT and
+// NOT_SELLING cannot, and UNKNOWN (missing inventory data) goes to review.
+export function toTagCafe24View(detail, variants, fetchedAt = new Date().toISOString()) {
   return {
-    productNo: Number(row?.productNo) || null,
-    selling: row?.selling === "T" ? "T" : "F",
-    display: row?.display === "T" ? "T" : "F",
+    productNo: Number(detail?.product_no) || null,
+    selling: detail?.selling === "T" ? "T" : "F",
+    display: detail?.display === "T" ? "T" : "F",
     fetchedAt,
-    options: list(row?.options).filter((o) => o?.variantCode).map((o) => ({ variantCode: String(o.variantCode), available: Number(o.quantity) > 0 && o.soldOut !== true }))
+    options: list(variants).filter((v) => v?.variant_code).map((v) => {
+      let { state } = evaluateOption(v);
+      // evaluateOption runs Number() on the quantity, so true or [] would count as stock. Tagging only trusts a numeric value.
+      const raw = v.inventories ?? v.inventory;
+      const q = (Array.isArray(raw) ? raw[0] : raw)?.quantity;
+      if (state === "IN_STOCK" && !(typeof q === "number" || (typeof q === "string" && /^\d+$/.test(q.trim())))) state = "UNKNOWN";
+      return { variantCode: String(v.variant_code), state, available: state === "IN_STOCK" || state === "UNLIMITED" };
+    })
   };
 }
 
@@ -116,7 +129,7 @@ export function toTagCafe24View(row, fetchedAt = new Date().toISOString()) {
 //  2. metaProductId (required, never guessed) is that group's product_id or one of its product_variants.
 //  3. The catalog item exists in the group: retailer_id "<product_no>.<variant code>" parses back to productNo.
 //  4. Stock: catalog availability "in stock", and exactly one Cafe24 option has the same variant code
-//     and is available (quantity > 0, not sold out). Cafe24 data must be this product's and fresh.
+//     and is available (IN_STOCK or UNLIMITED, see toTagCafe24View). Cafe24 data must be this product's and fresh.
 // Approval is known per group only. Per-variant approval is not exposed by the API, so it is recorded
 // as UNVERIFIED and only the read-back after tagging (product_tags review_status) confirms it.
 // cafe24: toTagCafe24View() output { productNo, selling, display, fetchedAt, options: [{ variantCode, available }] }.
@@ -144,7 +157,7 @@ export async function checkTagCandidate(graph, { catalogId, igUserId, productNo,
   const options = list(cafe24.options).filter((o) => o?.variantCode === variantCode);
   if (!options.length) return { ok: false, reason: "cafe24_option_not_found" };
   if (options.length > 1) return { ok: false, reason: "cafe24_option_ambiguous" };
-  if (options[0].available !== true) return { ok: false, reason: "cafe24_option_out_of_stock" };
+  if (options[0].available !== true) return { ok: false, reason: options[0].state === "UNKNOWN" ? "cafe24_option_uncertain" : "cafe24_option_out_of_stock" };
   return { ok: true, product: { id, retailerId: item.retailer_id, name: item.name, variantCode, approval: { group: "approved", variant: "UNVERIFIED" } } };
 }
 
@@ -201,7 +214,13 @@ export async function buildTagPlan({ graph, mapping, manifest, mediaId, getCafe2
       if (seen.has(id)) { out.tags.push({ ...base, ...review("duplicate_in_mapping") }); continue; }
       seen.add(id);
       // Re-run safety: a product already on the slide is never sent again (its position is left as is).
-      if (existingIds.has(id)) { out.tags.push({ ...base, productId: id, state: "TAG_VERIFIED", reason: "already_tagged" }); continue; }
+      // It counts as verified only when Graph shows it approved at the mapped position.
+      if (existingIds.has(id)) {
+        const got = existing.find((t) => String(t.product_id) === id);
+        const ok = isReadableTag(got) && got.review_status === "approved" && Math.abs(got.x - tag.x) <= COORD_TOLERANCE && Math.abs(got.y - tag.y) <= COORD_TOLERANCE;
+        out.tags.push({ ...base, productId: id, ...(ok ? { state: "TAG_VERIFIED", reason: "already_tagged", approval: { group: "approved", variant: "APPROVED_IN_READBACK" } } : review(got?.review_status === "approved" ? "existing_tag_position_differs" : "existing_tag_not_approved")) });
+        continue;
+      }
       const product = await checkTagCandidate(graph, { catalogId, igUserId, productNo: tag.productNo, metaProductId: id, cafe24: await getCafe24Product(tag.productNo), now: now ?? Date.now() });
       if (!product.ok) { out.tags.push({ ...base, productId: id, ...review(product.reason) }); continue; }
       out.tags.push({ ...base, productId: id, name: product.product.name, approval: product.product.approval, state: "PENDING" });
