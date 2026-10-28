@@ -1,7 +1,7 @@
 // Auto-mapping: per-slide visual findings -> a product-tags.json proposal for the tag runner.
 //
-// The visual step is not in this repo: Marketing OS has no vision model. findings come from an outside
-// analyzer (a person or a Claude session that looked at the images) and say, per garment, where it is on the
+// Visual findings come from the opt-in Render image adapter, or an outside analyzer (a person/Claude),
+// and say, per garment, where it is on the
 // slide and which Cafe24 products it looks like, with a confidence and the evidence. This module only checks
 // those candidates against Meta and Cafe24 data. It never approves: every tag comes out approved:false, and
 // a person approves tags with approveAutoTags(). Anything unclear stays TAG_REVIEW_REQUIRED.

@@ -64,7 +64,7 @@ READY images carry no product data. Without this file the runner uses the record
 
 ## Auto mapping (`scripts/instagram-product-tag-automap.mjs`)
 
-Marketing OS has no vision model. The visual step happens outside it: a person or a Claude session looks at the slides and the Cafe24 product images and writes **findings**: per slide, each garment with its x/y and Cafe24 candidates, each with a confidence (0..1) and the evidence (print, hardware, color, cut). `analyzer` names who looked.
+Legacy/manual records receive findings from outside Marketing OS. Opted-in records can instead use the Render image API described in [Claude → Render integration](instagram-product-tags/claude-render-integration.md). For the manual path: a person or a Claude session looks at the slides and the Cafe24 product images and writes **findings**: per slide, each garment with its x/y and Cafe24 candidates, each with a confidence (0..1) and the evidence (print, hardware, color, cut). `analyzer` names who looked.
 
 ```json
 { "schemaVersion": 1, "folderName": "TAEGLOBAL-26AW", "analyzer": "...",
@@ -96,7 +96,7 @@ Roles:
 - The runner never moves, writes or deletes feed files, and it uses no browser. A tag problem never holds publishing or the move.
 
 Steps:
-1. A person registers the scheduled post: `POST /api/instagram-product-tags/posts` with `{ folderName, slotIso, caption | captionSha256, slideCount, acceptUnverifiedVariantApproval }`. The approval defaults to false.
+1. The verified Claude scheduling-success adapter (or a person) registers the scheduled post: `POST /api/instagram-product-tags/posts` with `{ folderName, slotIso, caption | captionSha256, slideCount, acceptUnverifiedVariantApproval }`. The approval defaults to false.
 2. Publish check (`findPublishedMedia`, ported from the verify-feed-post check used for the 10/27-28 posts). The account must be @samplaskr, and exactly one of the 25 newest posts must have the caption hash. It must have gone live at or after the slot (5 minutes early allowed) and have `slideCount` slides. Results: `SCHEDULED` (before the slot), `NOT_FOUND`, `MISMATCH` or `PUBLISHED` with the media id.
 3. The folder is found where it is now. `READY/<folder>` is checked first. If it is not there, the runner uses the one `UPLOADED` folder named `<yyyymmdd-HHMMSS> <folder>`. Two matches give `uploaded_folder_ambiguous`, and no match gives `folder_not_found`. Both are review. `manifest.json` and `product-tags.json` are downloaded from that folder (Dropbox `list_folder` and `download` only). The manifest item count must equal `slideCount`. The record keeps where the files were read (`files.location`, `files.path`).
 4. `buildTagPlan` runs on the published media id: owner check, children in manifest order, existing tags, and the approval and stock rule.
@@ -117,3 +117,8 @@ Routes, all with internal auth (automap routes above):
 - `POST /api/instagram-product-tags/run` with `{ folderName }` runs one post now.
 
 Autorun every 10 minutes, off unless `INSTAGRAM_PRODUCT_TAG_AUTORUN=on`. It runs records that are not final and whose slot has passed. It stops looking for a post still `NOT_FOUND` 48 hours after its slot.
+
+
+## Automatic image analysis (opt-in)
+
+See [Claude scheduling → Render shopping tags](instagram-product-tags/claude-render-integration.md) for the verified success receipt, idempotent registration, image API, automatic approval policy and rollout prerequisites. Chrome and READY → UPLOADED remain exclusive to the existing upload automation. Existing manual/file mappings and PR45–48 POST safety protections are reused. No production gate is enabled by installing this code.

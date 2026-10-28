@@ -258,7 +258,7 @@ test("service: register once, run unknown folder, errors recorded, tick skips fu
   const svc = createProductTagService({ graph, dropbox: { readFeedFolder: ready(mapping([])) }, getCafe24Product: cafe24, store, env: {}, now: () => now });
   const input = { folderName: "TAEGLOBAL-26AW", slotIso: SLOT, caption: CAPTION, slideCount: 2 };
   assert.equal((await svc.register(input)).ok, true);
-  assert.deepEqual((await svc.register(input)).problems, ["already_registered"]);
+  assert.equal((await svc.register(input)).existing, true);
   assert.equal((await svc.register({ ...input, folderName: "B", slotIso: "2099-01-01T00:00:00Z" })).ok, true);
   assert.deepEqual(await svc.run("NOPE"), { ok: false, error: "not_registered" });
   const ticked = await svc.tick();
@@ -311,4 +311,103 @@ test("auto mapping: proposal held until a person approves, then tagged and verif
   await svc.autoMap("B-26AW", { ...findings, folderName: "B-26AW" });
   const b = await svc.run("B-26AW");
   assert.deepEqual([b.record.files.mappingSource, b.record.tags.state], ["folder", "NO_TAGS"]);
+});
+
+const autoInput = { folderName:'TAEGLOBAL-26AW',slotIso:SLOT,caption:CAPTION,slideCount:2,autoTag:{brand:'TAEGLOBAL'},acceptUnverifiedVariantApproval:true };
+const visual = () => ({findings:{schemaVersion:1,folderName:manifest.folderName,brand:'TAEGLOBAL',analyzer:'openai:test',slides:manifest.items.map(m=>({...m,items:[{label:'jacket',x:.5,y:.5,candidates:[{productNo:101,confidence:.95,evidence:'matching zipper and panels'}]}]}))}});
+
+test('registration is serialized/idempotent without resetting holds; conflicting identity or policy refused',async()=>{
+ const store=createPostStore(await mkdtemp(join(tmpdir(),'tag-register-')));
+ const svc=createProductTagService({store});
+ const results=await Promise.all([svc.register(autoInput),svc.register(autoInput)]);
+ assert.ok(results.every(r=>r.ok)); assert.equal(results.filter(r=>r.existing).length,1);
+ const rec=await store.get(autoInput.folderName); rec.tags.state='POST_OUTCOME_UNKNOWN';await store.put(rec);
+ assert.equal((await svc.register(autoInput)).record.tags.state,'POST_OUTCOME_UNKNOWN');
+ assert.equal((await svc.register({...autoInput,slotIso:'2026-10-30T11:00:00Z'})).ok,false);
+ assert.equal((await svc.register({...autoInput,acceptUnverifiedVariantApproval:false})).ok,false);
+ assert.equal(newPostRecord({...autoInput,autoTag:{brand:''}}).ok,false);
+});
+
+test('post-publish vision: durable checkpoint, autoapproval and cached findings; existing gates unchanged',async()=>{
+ const {graph,state}=fakeGraph();let calls=0;const saved=[];
+ const r=newPostRecord(autoInput).record;
+ const analyzeImages=async()=>{calls++;assert.equal(saved.at(-1).analysis.state,'ANALYZING');return visual();};
+ const args={record:r,graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),analyzeImages,checkpoint:async r=>saved.push(structuredClone(r)),env:{INSTAGRAM_PRODUCT_TAG_VISION:'on'}};
+ let out=await runTagJob(args);
+ assert.equal(calls,1);assert.equal(out.record.autoMapping.source.state,'APPROVED');assert.equal(out.record.analysis.state,'COMPLETE');
+ assert.equal(state.posts.length,0);assert.equal(out.record.autoMapping.slides[0].tags[0].approvedBy,'render:vision-v1');
+ out=await runTagJob({...args,record:out.record,env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on'},write:true});
+ assert.equal(calls,1);assert.equal(out.record.tags.state,'TAG_VERIFIED');assert.equal(state.posts.length,2);
+});
+
+test('vision disabled, unpublished, held, manual/file mappings never call analyzer',async()=>{
+ for(const setup of [ {env:{}}, {record:newPostRecord({...autoInput,slotIso:'2026-11-01T11:00:00Z'}).record}, {record:{...newPostRecord(autoInput).record,tags:{state:'POST_OUTCOME_UNKNOWN'}}}, {readFeedFolder:ready(mapping())} ]) {
+  await runTagJob({record:newPostRecord(autoInput).record,graph:fakeGraph({feed:setup.record?.slotIso?.startsWith('2026-11')?[]:undefined}).graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{INSTAGRAM_PRODUCT_TAG_VISION:'on'},analyzeImages:()=>assert.fail('analyzer forbidden'),...setup});
+ }
+});
+
+test('failed/interrupted analysis holds without paid retry; checkpoint failure prevents API call',async()=>{
+ const args={record:newPostRecord(autoInput).record,graph:fakeGraph().graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{INSTAGRAM_PRODUCT_TAG_VISION:'on'}};
+ let calls=0;
+ const failed=await runTagJob({...args,analyzeImages:async()=>{calls++;throw new Error('vision_http:429');}});
+ assert.equal(failed.record.analysis.state,'FAILED');assert.equal(failed.record.tags.state,'TAG_REVIEW_REQUIRED');
+ await runTagJob({...args,record:failed.record,analyzeImages:()=>assert.fail('retry')});assert.equal(calls,1);
+ await runTagJob({...args,record:{...args.record,analysis:{state:'ANALYZING'}},analyzeImages:()=>assert.fail('interrupted retry')});
+ await assert.rejects(()=>runTagJob({...args,analyzeImages:()=>assert.fail('not checkpointed'),checkpoint:async()=>{throw new Error('disk full');}}),/disk full/);
+});
+
+test('automatic approval excludes low-confidence and group-unapproved candidates',async()=>{
+ const {graph,state}=fakeGraph();const get=graph.get.bind(graph);
+ graph.get=async(path,p)=>path.endsWith('/catalog_product_search')?{data:[{product_id:'P101',retailer_id:'101.X',review_status:'pending'}]}:get(path,p);
+ const out=await runTagJob({record:newPostRecord(autoInput).record,graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on'},write:true,analyzeImages:visual});
+ assert.equal(out.record.tags.state,'TAG_REVIEW_REQUIRED');assert.equal(state.posts.length,0);
+ assert.equal(out.record.autoMapping.slides[0].tags[0].approved,false);
+});
+
+test('vision-approved jobs retain unknown POST stop and restart protection',async()=>{
+ const {graph,state}=fakeGraph({postFailures:[new GraphError(0,{})]});
+ const store=createPostStore(await mkdtemp(join(tmpdir(),'vision-held-')));let calls=0;
+ const options={graph,dropbox:{readFeedFolder:ready(null)},getCafe24Product:cafe24,store,env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on'},analyzeImages:async()=>{calls++;return visual();}};
+ const svc=createProductTagService(options);await svc.register(autoInput);
+ const out=await svc.run(autoInput.folderName);
+ assert.equal(out.record.tags.state,'POST_OUTCOME_UNKNOWN');assert.equal(state.posts.length,1);
+ const restarted=createProductTagService(options);
+ assert.deepEqual(await restarted.tick(),[]);assert.equal((await restarted.run(autoInput.folderName)).step,'post_outcome_unknown');
+ assert.equal(calls,1);assert.equal(state.posts.length,1);
+});
+
+test('automatic approval selects only safe subset and never grants variant acceptance',async()=>{
+ const {graph,state}=fakeGraph();const data=visual();
+ data.findings.slides[1].items[0].candidates[0].confidence=.6;
+ const out=await runTagJob({record:newPostRecord({...autoInput,acceptUnverifiedVariantApproval:false}).record,graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on'},write:true,analyzeImages:async()=>data});
+ assert.equal(out.record.autoMapping.slides[0].tags.length,1);assert.equal(out.record.autoMapping.slides[1].tags.length,0);
+ assert.equal(out.record.autoMapping.slides[1].skipped[0].reason,'not_selected_by_operator');
+ assert.equal(out.record.approvals.acceptUnverifiedVariantApproval,false);assert.equal(state.posts.length,0);
+});
+
+test('vision cached approval is held if manifest changes',async()=>{
+ const args={record:newPostRecord(autoInput).record,graph:fakeGraph().graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{INSTAGRAM_PRODUCT_TAG_VISION:'on'},analyzeImages:visual};
+ const out=await runTagJob(args);
+ const changed=structuredClone(manifest);changed.items[0].savedAsset='assets/replaced.jpg';
+ const held=await runTagJob({...args,record:out.record,readFeedFolder:ready(null,changed),analyzeImages:()=>assert.fail('reanalysis')});
+ assert.equal(held.record.tags.reason,'vision_manifest_changed');
+});
+
+test('Dropbox vision images: download only, bounded bytes and path scope',async()=>{
+ const calls=[];
+ const db=createFeedDropbox({getToken:async()=> 'mock',feedDir:'/F',fetchImpl:async(url,init)=>{calls.push([url,init]);return new Response(new Uint8Array([1,2,3]));}});
+ assert.match(await db.readFeedImage('/F/READY/TAEGLOBAL-26AW','assets/01.jpg'),/^data:image\/jpeg;base64,/);
+ assert.match(await db.readFeedImage('/F/UPLOADED/20261028-201500 TAEGLOBAL-26AW','assets/01.png'),/^data:image\/png;base64,/);
+ assert.ok(calls.every(([url])=>url==='https://content.dropboxapi.com/2/files/download'));
+ for(const [path,asset] of [['/elsewhere','assets/01.jpg'],['/F/READY/TAEGLOBAL-26AW','../token.json'],['/F/READY/TAEGLOBAL-26AW','assets/x/../../01.jpg']]) await assert.rejects(()=>db.readFeedImage(path,asset),/invalid_feed_image_path/);
+ const huge=createFeedDropbox({getToken:async()=> 'mock',feedDir:'/F',fetchImpl:async()=>new Response(new Uint8Array(8*1024*1024+1))});
+ await assert.rejects(()=>huge.readFeedImage('/F/READY/TAEGLOBAL-26AW','assets/01.jpg'),/feed_image_too_large/);
+});
+
+test('vision manifest identity and caption/hash conflicts fail closed',async()=>{
+ assert.deepEqual(newPostRecord({...autoInput,captionSha256:'a'.repeat(64)}).problems,['caption_hash_mismatch']);
+ for(const bad of [{...manifest,folderName:'OTHER'},{...manifest,items:[{order:2,savedAsset:'assets/01.jpg'},manifest.items[1]]}]) {
+  const out=await runTagJob({record:newPostRecord(autoInput).record,graph:fakeGraph().graph,readFeedFolder:ready(null,bad),getCafe24Product:cafe24,now:Date.now(),env:{INSTAGRAM_PRODUCT_TAG_VISION:'on'},analyzeImages:()=>assert.fail('bad manifest')});
+  assert.equal(out.record.tags.reason,'vision_manifest_invalid');
+ }
 });
