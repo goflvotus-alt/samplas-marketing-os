@@ -411,3 +411,24 @@ test("read-only verification can resolve an uncertain outcome without a second P
   assert.equal((await verifyTagPlan(graph, p)).state, "TAG_VERIFIED");
   assert.equal(state.posts.length, 1);
 });
+
+test("first uncertain POST stops all later slides, even when a later GET resolves it", async () => {
+  for (const mode of ["error-applied", "ack-missing", "read-failure"]) {
+    const f = fakeGraph({ products: PRODUCTS, postFailures: mode === "error-applied" ? [{ applyFirst: true, error: new GraphError(503, {}) }] : [] });
+    const p = await plan(f.graph, [[1, [tag(101, 0.5, 0.5)]], [2, [tag(102, 0.6, 0.6)]]]);
+    const post = f.graph.post;
+    f.graph.post = async (...args) => {
+      const ack = await post(...args);
+      if (mode === "ack-missing") f.state.tags.c1 = [];
+      if (mode === "read-failure") f.state.failTagGet = true;
+      return ack;
+    };
+    await applyTagPlan(f.graph, p, GO);
+    assert.deepEqual(f.state.posts.map((x) => x.child), ["c1"], mode);
+    assert.equal(p.slides[1].tags[0].state, "PENDING");
+    f.state.failTagGet = false;
+    assert.equal((await verifyTagPlan(f.graph, p)).state, "POST_OUTCOME_UNKNOWN");
+    await applyTagPlan(f.graph, p, GO);
+    assert.equal(f.state.posts.length, 1);
+  }
+});
