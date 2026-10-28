@@ -15,10 +15,10 @@ Tagging uses the Meta Graph API with the existing Production token (`resolveMeta
      - the catalog item is in the product_no group (`retailer_id` = `<product_no>.<variant code>`) and has `availability: "in stock"`;
      - Cafe24 has selling=T and display=T. Exactly one option has the same variant code, and that option is available (state `IN_STOCK` or `UNLIMITED`). An `UNKNOWN` option goes to review as `cafe24_option_uncertain`. The Cafe24 data must be for this product_no and no older than 10 minutes.
    - Approval is known per product group only. Per-variant approval is recorded as `UNVERIFIED`; only the read-back after tagging can set it to `APPROVED_IN_READBACK`.
-4. `applyTagPlan` is off unless `write: true`, `acceptUnverifiedVariantApproval: true` and `INSTAGRAM_PRODUCT_TAG_WRITES=on`. It reads the slide again right before the POST and sends only product ids that are absent. After an error it reads the slide again and retries only the ids still absent.
+4. `applyTagPlan` is off unless `write: true`, `acceptUnverifiedVariantApproval: true` and `INSTAGRAM_PRODUCT_TAG_WRITES=on`. It reads the slide again right before the POST and sends only product ids that are absent. Each batch is POSTed at most once. After an error it reads the slide again but never rePOSTs missing tags, including after transient errors.
 5. `verifyTagPlan` reads the tags back. Each planned tag must be present, approved and within ±0.01 of its x/y. Tags that existed before must still be there.
 
-Tag states: `PENDING`, `PRODUCT_TAGGING`, `TAG_VERIFIED`, `TAG_REVIEW_REQUIRED`. Any review item holds the whole post.
+Tag states: `PENDING`, `PRODUCT_TAGGING`, `TAG_VERIFIED`, `TAG_REVIEW_REQUIRED`, `POST_OUTCOME_UNKNOWN`. Any review item holds the whole post. An unconfirmed attempted POST is `POST_OUTCOME_UNKNOWN`, not a completed or retryable job. GET verification may confirm success; it never sends another POST.
 
 ## Cafe24 option data
 
@@ -103,7 +103,9 @@ Steps:
 5. When the plan is `PENDING`, `applyTagPlan` sends only absent product ids, then `verifyTagPlan` reads them back. This needs both of the following:
    - the record approval `acceptUnverifiedVariantApproval`
    - env `INSTAGRAM_PRODUCT_TAG_WRITES=on`
-6. Partial failure: a tag whose POST failed is planned again on the next run, wherever the folder is by then, while verified tags are `already_tagged`. After `MAX_WRITE_RUNS` (3) runs that sent tags, the post goes to `TAG_REVIEW_REQUIRED` (`max_write_runs`). If a run fails after a POST, the record keeps the write count and the tag states.
+6. Before each POST, the runner durably saves the attempted tags as `POST_OUTCOME_UNKNOWN` in its own record. A failed checkpoint prevents the POST. Successful tags still require approved, correctly positioned read-back. A missing, mismatched or unreadable result stays held, even if the POST returned success. The hold survives process restart or a failed final save. The existing `MAX_WRITE_RUNS` cap remains in place.
+
+Held records are excluded from autorun, and manual `/run` returns `post_outcome_unknown` without replanning or sending tags. Rebuilding or approving an auto mapping cannot clear this hold. A separate human-authorized reconciliation is required before any further POST; this patch adds no unlock/retry endpoint. Other posts retain their existing processing. No write gate is enabled by these changes.
 
 `TAG_VERIFIED` and `NO_TAGS` are final: the record is not run again. The record is `WORK_DIR/instagram-product-tags/posts/<folder>.json`. It holds `publish`, `tags` (per tag: slide, product, state, reason, approval), `files` and `lastError`, each kept separately. One run per folder at a time.
 

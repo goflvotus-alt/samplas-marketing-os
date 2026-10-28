@@ -15,12 +15,12 @@
 import { parseMetaContentId } from "./meta-product-registry-link.mjs";
 import { evaluateOption } from "./veil-found-soldout-audit.mjs";
 
-export const TAG_STATES = ["PENDING", "PRODUCT_TAGGING", "TAG_VERIFIED", "TAG_REVIEW_REQUIRED"];
+export const TAG_STATES = ["PENDING", "PRODUCT_TAGGING", "TAG_VERIFIED", "TAG_REVIEW_REQUIRED", "POST_OUTCOME_UNKNOWN"];
 export const MAX_TAGS_PER_SLIDE = 5;
 export const MAX_TAGS_PER_POST = 20;
 export const REQUIRED_PERMISSIONS = ["instagram_basic", "instagram_shopping_tag_products", "catalog_management"];
 const COORD_TOLERANCE = 0.01;
-// Graph codes worth one more try (temporary / rate limit); anything else goes to review.
+// Transient Graph error classification; tag POSTs are never retried.
 const RETRYABLE_CODES = new Set([1, 2, 4, 17, 32, 341, 613]);
 
 export class GraphError extends Error {
@@ -254,6 +254,7 @@ export function withTagStatus(mapping, plan) {
 
 function planState(slides) {
   const tags = slides.flatMap((s) => s.tags);
+  if (tags.some((t) => t.state === "POST_OUTCOME_UNKNOWN")) return "POST_OUTCOME_UNKNOWN";
   if (tags.some((t) => t.state === "TAG_REVIEW_REQUIRED")) return "TAG_REVIEW_REQUIRED";
   if (tags.some((t) => t.state === "PENDING")) return "PENDING";
   return "TAG_VERIFIED";
@@ -266,8 +267,9 @@ function planState(slides) {
 // Only product ids absent right now are sent, so an existing tag is never re-sent (which would move it).
 // If the slide changed since planning, or a limit or duplicate shows up, the slide goes to review.
 // After a POST error the slide is read back; ids already present count as applied, only the absent
-// ones are retried (once, for temporary errors); a failed read-back never leads to another POST.
-export async function applyTagPlan(graph, plan, { write = false, env = process.env, acceptUnverifiedVariantApproval = false, maxAttempts = 2, expected = SAMPLAS_META } = {}) {
+// ones are held. No POST is retried, even for temporary errors or a failed read-back.
+// beforePost persists the runner's hold before a request can leave the process.
+export async function applyTagPlan(graph, plan, { write = false, env = process.env, acceptUnverifiedVariantApproval = false, beforePost = async () => {}, expected = SAMPLAS_META } = {}) {
   if (write !== true || env.INSTAGRAM_PRODUCT_TAG_WRITES !== "on") return { applied: false, reason: "writes_disabled", plan };
   // Per-variant approval is never known before tagging; a person must accept that for each run.
   if (acceptUnverifiedVariantApproval !== true) return { applied: false, reason: "variant_approval_unverified", plan };
@@ -280,12 +282,13 @@ export async function applyTagPlan(graph, plan, { write = false, env = process.e
     ? ((await graph.get(`${plan.mediaId}/children`, { fields: "id" })).data || []).map((c) => String(c.id))
     : [String(media.id)]);
   const currentIds = async (slide) => new Set(((await graph.get(`${slide.mediaId}/product_tags`)).data || []).map((t) => String(t.product_id)));
-  const review = (tags, reason) => { for (const t of tags) Object.assign(t, { state: "TAG_REVIEW_REQUIRED", reason }); };
+  const review = (tags, reason, state = "TAG_REVIEW_REQUIRED") => { for (const t of tags) Object.assign(t, { state, reason }); };
   // Post-wide limit on the live state: every child's current tags plus everything still to send.
   let postTotal = 0;
   for (const id of childIds) postTotal += ((await graph.get(`${id}/product_tags`)).data || []).length;
   const toSend = plan.slides.flatMap((s) => s.tags.filter((t) => t.state === "PENDING"));
   if (postTotal + toSend.length > MAX_TAGS_PER_POST) { review(toSend, "post_tag_limit"); return { applied: false, reason: "post_tag_limit", plan }; }
+  let attempted = false;
   for (const slide of plan.slides) {
     const pending = slide.tags.filter((t) => t.state === "PENDING");
     if (!pending.length) continue;
@@ -299,43 +302,45 @@ export async function applyTagPlan(graph, plan, { write = false, env = process.e
     // ponytail: Graph has no conditional write, so a tag added by someone else between this GET and the
     // POST (milliseconds) would be moved to our x/y. Not closable via the API; tag posts from one runner only.
     for (const t of pending) t.state = "PRODUCT_TAGGING";
-    for (let attempt = 1; ; attempt++) {
-      const send = pending.filter((t) => !present.has(t.productId));
-      if (!send.length) break;
-      try {
-        await graph.post(`${slide.mediaId}/product_tags`, { updated_tags: send.map((t) => ({ product_id: t.productId, x: t.x, y: t.y })) });
-        break;
-      } catch (error) {
-        try { present = await currentIds(slide); } catch { review(send, "readback_failed"); break; }
-        const allowed = new Set([...planned, ...ids]);
-        if ([...planned].some((id) => !present.has(id)) || [...present].some((id) => !allowed.has(id))) { review(send.filter((t) => !present.has(t.productId)), "slide_changed_or_full"); break; }
-        const missing = send.filter((t) => !present.has(t.productId));
-        if (!missing.length) break;
-        if (!(error instanceof GraphError && error.retryable) || attempt >= maxAttempts) { review(missing, `post_failed:${error.code ?? error.status ?? "unknown"}`); break; }
-      }
+    await beforePost(plan);
+    attempted = true;
+    try {
+      await graph.post(`${slide.mediaId}/product_tags`, { updated_tags: pending.map((t) => ({ product_id: t.productId, x: t.x, y: t.y })) });
+    } catch (error) {
+      try { present = await currentIds(slide); } catch { review(pending, "readback_failed", "POST_OUTCOME_UNKNOWN"); continue; }
+      const allowed = new Set([...planned, ...ids]);
+      const changed = [...planned].some((id) => !present.has(id)) || [...present].some((id) => !allowed.has(id));
+      review(pending.filter((t) => !present.has(t.productId)), changed ? "slide_changed_or_full" : `post_failed:${error.code ?? error.status ?? "unknown"}`, "POST_OUTCOME_UNKNOWN");
     }
   }
-  return { applied: true, plan };
+  return { applied: attempted, plan };
 }
 
 // Read-back: every planned tag present with the planned position and approved, and every tag that was
-// there before is still there. Only then TAG_VERIFIED; anything else TAG_REVIEW_REQUIRED.
+// there before is still there. Unconfirmed attempted tags stay POST_OUTCOME_UNKNOWN.
 export async function verifyTagPlan(graph, plan) {
   for (const slide of plan.slides) {
     if (!slide.mediaId) continue;
-    const now = (await graph.get(`${slide.mediaId}/product_tags`)).data || [];
-    if (!now.every(isReadableTag)) slide.unreadable = true;
+    let now;
+    try { now = (await graph.get(`${slide.mediaId}/product_tags`)).data || []; }
+    catch {
+      for (const t of slide.tags) if (["PRODUCT_TAGGING", "POST_OUTCOME_UNKNOWN"].includes(t.state)) Object.assign(t, { state: "POST_OUTCOME_UNKNOWN", reason: "readback_failed" });
+      slide.unreadable = true;
+      continue;
+    }
+    slide.unreadable = !now.every(isReadableTag);
     const byId = new Map(now.map((t) => [String(t.product_id), t]));
     const lost = (slide.existing || []).filter((t) => !byId.has(String(t.product_id)));
-    if (lost.length) slide.lostExisting = lost.map((t) => String(t.product_id));
+    slide.lostExisting = lost.map((t) => String(t.product_id));
     for (const t of slide.tags) {
-      if (t.state !== "PRODUCT_TAGGING") continue;
+      if (!["PRODUCT_TAGGING", "POST_OUTCOME_UNKNOWN"].includes(t.state)) continue;
       const got = byId.get(t.productId);
       const ok = got && isReadableTag(got) && got.review_status === "approved" && Math.abs(got.x - t.x) <= COORD_TOLERANCE && Math.abs(got.y - t.y) <= COORD_TOLERANCE;
       // A tag shown as approved after tagging is the only per-variant approval evidence there is.
-      Object.assign(t, ok ? { state: "TAG_VERIFIED", approval: { ...t.approval, variant: "APPROVED_IN_READBACK" } } : { state: "TAG_REVIEW_REQUIRED", reason: got ? "readback_mismatch" : "readback_missing" });
+      Object.assign(t, ok ? { state: "TAG_VERIFIED", reason: null, approval: { ...t.approval, variant: "APPROVED_IN_READBACK" } } : { state: "POST_OUTCOME_UNKNOWN", reason: t.reason ?? (got ? "readback_mismatch" : "readback_missing") });
     }
   }
-  const state = plan.slides.some((s) => s.lostExisting?.length || s.unreadable) ? "TAG_REVIEW_REQUIRED" : planState(plan.slides);
+  const tagState = planState(plan.slides);
+  const state = tagState === "POST_OUTCOME_UNKNOWN" ? tagState : plan.slides.some((s) => s.lostExisting?.length || s.unreadable) ? "TAG_REVIEW_REQUIRED" : tagState;
   return { ...plan, state };
 }

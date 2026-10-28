@@ -159,18 +159,20 @@ test("ambiguous response (applied, then error) is resolved by re-GET without a s
   assert.equal(state.tags.c1.length, 1);
 });
 
-test("retryable error is retried once; permanent error goes to review without retry", async () => {
+test("POST errors are read back and held without retry, including transient errors", async () => {
   const transient = fakeGraph({ products: PRODUCTS, postFailures: [{ error: new GraphError(500, { error: { code: 2 } }) }] });
   const p1 = await plan(transient.graph, [[1, [tag(101, 0.5, 0.5)]]]);
   await applyTagPlan(transient.graph, p1, GO);
-  assert.equal(transient.state.posts.length, 2);
-  assert.equal((await verifyTagPlan(transient.graph, p1)).state, "TAG_VERIFIED");
+  assert.equal(transient.state.posts.length, 1);
+  assert.equal((await verifyTagPlan(transient.graph, p1)).state, "POST_OUTCOME_UNKNOWN");
+  await applyTagPlan(transient.graph, p1, GO);
+  assert.equal(transient.state.posts.length, 1);
 
   const permanent = fakeGraph({ products: PRODUCTS, postFailures: [{ error: new GraphError(400, { error: { code: 100, message: "Invalid parameter" } }) }] });
   const p2 = await plan(permanent.graph, [[1, [tag(101, 0.5, 0.5)]]]);
   await applyTagPlan(permanent.graph, p2, GO);
   assert.equal(permanent.state.posts.length, 1);
-  assert.deepEqual(states(await verifyTagPlan(permanent.graph, p2)), ["1:101:TAG_REVIEW_REQUIRED:post_failed:100"]);
+  assert.deepEqual(states(await verifyTagPlan(permanent.graph, p2)), ["1:101:POST_OUTCOME_UNKNOWN:post_failed:100"]);
 });
 
 test("a tag already on the slide is verified only when approved at the mapped position", async () => {
@@ -187,7 +189,7 @@ test("read-back catches a lost pre-existing tag and a moved tag", async () => {
   await applyTagPlan(graph, p, GO);
   state.tags.c1 = state.tags.c1.filter((t) => t.product_id !== "E1").map((t) => ({ ...t, x: 0.7 }));
   const v = await verifyTagPlan(graph, p);
-  assert.equal(v.state, "TAG_REVIEW_REQUIRED");
+  assert.equal(v.state, "POST_OUTCOME_UNKNOWN");
   assert.deepEqual(v.slides[0].lostExisting, ["E1"]);
   assert.equal(v.slides[0].tags[0].reason, "readback_mismatch");
 });
@@ -206,12 +208,14 @@ test("graph client: GET puts the token only in the request, errors never carry i
   assert.equal(seen[1][2].includes("updated_tags"), true);
 });
 
-test("partial batch: after an ambiguous error only the absent product is retried", async () => {
+test("partial batch: GET verifies the applied product and holds the absent product without reposting", async () => {
   const { graph, state } = fakeGraph({ products: PRODUCTS, postFailures: [{ applyOnly: ["P101"], error: new GraphError(503, {}) }] });
   const p = await plan(graph, [[1, [tag(101, 0.2, 0.2), tag(102, 0.8, 0.8)]]]);
   await applyTagPlan(graph, p, GO);
-  assert.deepEqual(state.posts.map((x) => x.tags), [["P101", "P102"], ["P102"]]);
-  assert.equal((await verifyTagPlan(graph, p)).state, "TAG_VERIFIED");
+  assert.deepEqual(state.posts.map((x) => x.tags), [["P101", "P102"]]);
+  const checked = await verifyTagPlan(graph, p);
+  assert.equal(checked.state, "POST_OUTCOME_UNKNOWN");
+  assert.deepEqual(checked.slides[0].tags.map((t) => t.state), ["TAG_VERIFIED", "POST_OUTCOME_UNKNOWN"]);
 });
 
 test("plan is re-checked at write time: changed slide, forged owner, failed read-back", async () => {
@@ -235,10 +239,10 @@ test("plan is re-checked at write time: changed slide, forged owner, failed read
   const post = blind.graph.post;
   blind.graph.post = async (...a) => { blind.state.failTagGet = true; return post(...a); };
   await applyTagPlan(blind.graph, p4, GO);
-  assert.deepEqual([blind.state.posts.length, p4.slides[0].tags[0].state, p4.slides[0].tags[0].reason], [1, "TAG_REVIEW_REQUIRED", "readback_failed"]);
+  assert.deepEqual([blind.state.posts.length, p4.slides[0].tags[0].state, p4.slides[0].tags[0].reason], [1, "POST_OUTCOME_UNKNOWN", "readback_failed"]);
 });
 
-test("write-time post limit counts live tags on every slide; slide changed during retry stops", async () => {
+test("write-time post limit counts live tags; changes during POST read-back hold missing tags", async () => {
   const many = (n, p) => Array.from({ length: n }, (_, i) => ({ product_id: `${p}${i}`, x: 0.1, y: 0.1, review_status: "approved" }));
   const full = fakeGraph({ products: PRODUCTS, tags: { c1: many(4, "A"), c2: many(4, "B") } });
   const p1 = await plan(full.graph, [[1, [tag(101, 0.5, 0.5)]], [2, [tag(102, 0.5, 0.5)]]]);
@@ -276,7 +280,7 @@ test("variant approval stays UNVERIFIED until the read-back shows the tag approv
   await applyTagPlan(graph, p, GO);
   state.tags.c1[0].review_status = "pending";
   let v = await verifyTagPlan(graph, structuredClone(p));
-  assert.deepEqual([v.state, v.slides[0].tags[0].reason, v.slides[0].tags[0].approval.variant], ["TAG_REVIEW_REQUIRED", "readback_mismatch", "UNVERIFIED"]);
+  assert.deepEqual([v.state, v.slides[0].tags[0].reason, v.slides[0].tags[0].approval.variant], ["POST_OUTCOME_UNKNOWN", "readback_mismatch", "UNVERIFIED"]);
   state.tags.c1[0].review_status = "approved";
   v = await verifyTagPlan(graph, p);
   assert.deepEqual([v.state, v.slides[0].tags[0].approval], ["TAG_VERIFIED", { group: "approved", variant: "APPROVED_IN_READBACK" }]);
@@ -319,7 +323,7 @@ test("real-response shape is enforced: catalog id, child ids, product ids, numer
   await applyTagPlan(graph, p, GO);
   state.tags.c1[0].x = "0.5";
   const v = await verifyTagPlan(graph, p);
-  assert.deepEqual([v.state, v.slides[0].tags[0].reason], ["TAG_REVIEW_REQUIRED", "readback_mismatch"]);
+  assert.deepEqual([v.state, v.slides[0].tags[0].reason], ["POST_OUTCOME_UNKNOWN", "readback_mismatch"]);
 });
 
 test("wrong-typed list fields block instead of throwing", async () => {
@@ -394,4 +398,16 @@ test("server route: GET only, internal auth, raw detail + variants, existing Caf
   process.env.CAFE24_PROXY_BASIC_AUTH ??= "FAKE_TEST:FAKE_TEST";
   const { isApiRequestAllowed } = await import("../server.mjs");
   assert.equal(isApiRequestAllowed({ headers: {}, socket: { remoteAddress: "10.0.0.5" } }, "/api/instagram-product-tags/cafe24/15195", { readAuth: undefined }), false, "not public");
+});
+
+
+test("read-only verification can resolve an uncertain outcome without a second POST", async () => {
+  const { graph, state } = fakeGraph({ products: PRODUCTS });
+  const p = await plan(graph, [[1, [tag(101, 0.5, 0.5)]]]);
+  await applyTagPlan(graph, p, GO);
+  state.failTagGet = true;
+  assert.equal((await verifyTagPlan(graph, p)).state, "POST_OUTCOME_UNKNOWN");
+  state.failTagGet = false;
+  assert.equal((await verifyTagPlan(graph, p)).state, "TAG_VERIFIED");
+  assert.equal(state.posts.length, 1);
 });

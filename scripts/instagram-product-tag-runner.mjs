@@ -67,20 +67,22 @@ export async function findPublishedMedia(graph, record, { now = Date.now(), expe
 }
 
 // What the record keeps of a plan: per tag only its slide, product and state.
-// applyTagPlan can move tags to review without changing plan.state, so a review tag decides the state.
+// An attempted but unconfirmed POST holds the record before any later run can replan it.
 const summarize = (plan) => {
-  const tags = (plan.slides || []).flatMap((s) => s.tags.map((t) => ({ order: s.order, productNo: t.productNo ?? null, productId: t.productId ?? null, state: t.state, reason: t.reason ?? null, approval: t.approval ?? null })));
-  return { state: tags.some((t) => t.state === "TAG_REVIEW_REQUIRED") ? "TAG_REVIEW_REQUIRED" : plan.state, reason: plan.reason ?? null, tags };
+  const tags = (plan.slides || []).flatMap((s) => s.tags.map((t) => ({ order: s.order, productNo: t.productNo ?? null, productId: t.productId ?? null, state: t.state === "PRODUCT_TAGGING" ? "POST_OUTCOME_UNKNOWN" : t.state, reason: t.reason ?? (t.state === "PRODUCT_TAGGING" ? "post_outcome_unconfirmed" : null), approval: t.approval ?? null })));
+  return { state: tags.some((t) => t.state === "POST_OUTCOME_UNKNOWN") ? "POST_OUTCOME_UNKNOWN" : tags.some((t) => t.state === "TAG_REVIEW_REQUIRED") ? "TAG_REVIEW_REQUIRED" : plan.state, reason: plan.reason ?? null, tags };
 };
 
 export const isTagJobDone = (record) => ["TAG_VERIFIED", "NO_TAGS"].includes(record?.tags?.state);
+const isTagJobHeld = (record) => record?.tags?.state === "POST_OUTCOME_UNKNOWN" || list(record?.tags?.tags).some((t) => ["PRODUCT_TAGGING", "POST_OUTCOME_UNKNOWN"].includes(t.state));
 
 const running = new Set();
 
 // readFeedFolder(folderName) -> { location, path, manifest, mapping } (null for a missing file).
 // Writes need record.approvals.acceptUnverifiedVariantApproval, write:true and INSTAGRAM_PRODUCT_TAG_WRITES=on.
-export async function runTagJob({ record, graph, readFeedFolder, getCafe24Product, write = false, env = process.env, now = Date.now(), expected = SAMPLAS_META }) {
+export async function runTagJob({ record, graph, readFeedFolder, getCafe24Product, write = false, env = process.env, now = Date.now(), expected = SAMPLAS_META, checkpoint = async () => {} }) {
   const rec = structuredClone(record);
+  if (isTagJobHeld(rec)) return { record: rec, step: "post_outcome_unknown" };
   if (isTagJobDone(rec)) return { record: rec, step: "done" };
   if (running.has(rec.folderName)) return { record: rec, step: "already_running" };
   running.add(rec.folderName);
@@ -107,7 +109,14 @@ export async function runTagJob({ record, graph, readFeedFolder, getCafe24Produc
       let wrote = false;
       let applyReason = null;
       if (plan.state === "PENDING" && write === true && writeRuns < MAX_WRITE_RUNS) {
-        const applied = await applyTagPlan(graph, plan, { write: true, env, acceptUnverifiedVariantApproval: rec.approvals?.acceptUnverifiedVariantApproval === true, expected });
+        const applied = await applyTagPlan(graph, plan, { write: true, env, acceptUnverifiedVariantApproval: rec.approvals?.acceptUnverifiedVariantApproval === true, expected,
+          beforePost: async () => {
+            // Persist before POST: a crash or failed final save must not make an attempted tag eligible again.
+            wrote = true;
+            rec.tags = { ...summarize(plan), writeRuns: writeRuns + 1, checkedAt: at };
+            await checkpoint(rec);
+          }
+        });
         if (applied.applied) {
           wrote = true;
           rec.tags = { ...summarize(applied.plan), writeRuns: writeRuns + 1, checkedAt: at };
@@ -188,12 +197,14 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
   const run = (folderName) => serial(folderName, async () => {
     const record = await store.get(folderName);
     if (!record) return { ok: false, error: "not_registered" };
+    let latestRecord = record;
     try {
-      const out = await runTagJob({ record, graph, readFeedFolder: dropbox.readFeedFolder, getCafe24Product, write: true, env, now: now() });
+      const out = await runTagJob({ record, graph, readFeedFolder: dropbox.readFeedFolder, getCafe24Product, write: true, env, now: now(), checkpoint: (rec) => store.put(rec) });
+      latestRecord = out.record;
       if (out.step !== "already_running") await store.put({ ...out.record, lastError: null });
       return { ok: true, step: out.step, record: out.record };
     } catch (error) {
-      const failed = { ...(error?.partialRecord ?? record), lastError: { message: String(error?.message || error).slice(0, 300), at: new Date(now()).toISOString() } };
+      const failed = { ...(error?.partialRecord ?? latestRecord), lastError: { message: String(error?.message || error).slice(0, 300), at: new Date(now()).toISOString() } };
       await store.put(failed);
       return { ok: false, error: failed.lastError.message, record: failed };
     }
@@ -211,6 +222,7 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
     autoMap: (folderName, findings) => serial(folderName, async () => {
       const record = await store.get(folderName);
       if (!record) return { ok: false, error: "not_registered" };
+      if (isTagJobHeld(record)) return { ok: false, error: "post_outcome_unknown" };
       if (isTagJobDone(record)) return { ok: false, error: "tags_final" };
       const { manifest, reason } = await dropbox.readFeedFolder(folderName);
       if (!manifest) return { ok: false, error: reason || "manifest_missing" };
@@ -221,6 +233,7 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
     }),
     approveAutoMap: (folderName, picks, by, builtAt) => serial(folderName, async () => {
       const record = await store.get(folderName);
+      if (isTagJobHeld(record)) return { ok: false, error: "post_outcome_unknown" };
       if (!record?.autoMapping) return { ok: false, error: record ? "auto_mapping_missing" : "not_registered" };
       if (isTagJobDone(record)) return { ok: false, error: "tags_final" };
       const out = approveAutoTags(record.autoMapping, picks, { by, builtAt, now: now() });
@@ -236,7 +249,7 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
       for (const name of await store.list()) {
         const r = await store.get(name);
         // Skip finished posts, posts not due yet, and posts still missing two days after their slot.
-        if (!r || isTagJobDone(r) || Date.parse(r.slotIso) > now()) continue;
+        if (!r || isTagJobDone(r) || isTagJobHeld(r) || Date.parse(r.slotIso) > now()) continue;
         if (r.publish?.state === "NOT_FOUND" && now() - Date.parse(r.slotIso) > 48 * 3600e3) continue;
         out.push({ folderName: name, ...(await run(name)) });
       }
