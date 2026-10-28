@@ -29,7 +29,7 @@ export function createSchedulingRegistrationHook({config,stateDir,baseUrl,author
     const pending={...record,state:'REGISTERING',registrationAttempts:(record.registrationAttempts||0)+1,attemptedAt:now()};
     await save(pending); // Before network; a crash cannot trigger an automatic second registration attempt.
     let result;
-    try {result=await registerScheduledPost({receipt:pending.receipt,baseUrl,authorization,autoTag:config.autoTag,acceptUnverifiedVariantApproval:config.acceptUnverifiedVariantApproval===true,fetchImpl});}
+    try {result=await registerScheduledPost({receipt:pending.receipt,baseUrl,authorization,mappingProposal:config.mappingProposal,autoTag:config.mappingProposal?undefined:config.autoTag,acceptUnverifiedVariantApproval:!config.mappingProposal && config.acceptUnverifiedVariantApproval===true,fetchImpl});}
     catch {result={ok:false,error:'registration_config_or_request_failed'};}
     return save({...pending,state:result.ok?'REGISTERED':result.error==='registration_outcome_unknown'?'REGISTRATION_OUTCOME_UNKNOWN':'REGISTRATION_FAILED',
       error:result.ok?null:'registration_requires_recovery',updatedAt:now()});

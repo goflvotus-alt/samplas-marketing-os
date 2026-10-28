@@ -64,7 +64,7 @@ READY images carry no product data. Without this file the runner uses the record
 
 ## Auto mapping (`scripts/instagram-product-tag-automap.mjs`)
 
-Legacy/manual records receive findings from outside Marketing OS. Opted-in records can instead use the Render image API described in [Claude → Render integration](instagram-product-tags/claude-render-integration.md). For the manual path: a person or a Claude session looks at the slides and the Cafe24 product images and writes **findings**: per slide, each garment with its x/y and Cafe24 candidates, each with a confidence (0..1) and the evidence (print, hardware, color, cut). `analyzer` names who looked.
+Legacy/manual records receive findings from outside Marketing OS. Claude-prepared proposal records follow [Claude → Render integration](instagram-product-tags/claude-render-integration.md). For external findings: a person or a Claude session looks at the slides and the Cafe24 product images and writes **findings**: per slide, each garment with its x/y and Cafe24 candidates, each with a confidence (0..1) and the evidence (print, hardware, color, cut). `analyzer` names who looked.
 
 ```json
 { "schemaVersion": 1, "folderName": "TAEGLOBAL-26AW", "analyzer": "...",
@@ -119,6 +119,6 @@ Routes, all with internal auth (automap routes above):
 Autorun every 10 minutes, off unless `INSTAGRAM_PRODUCT_TAG_AUTORUN=on`. It runs records that are not final and whose slot has passed. It stops looking for a post still `NOT_FOUND` 48 hours after its slot.
 
 
-## Automatic image analysis (opt-in)
+## Claude-prepared proposals (current PR #49 direction)
 
-See [Claude scheduling → Render shopping tags](instagram-product-tags/claude-render-integration.md) for the verified success receipt, idempotent registration, image API, automatic approval policy and rollout prerequisites. Chrome and READY → UPLOADED remain exclusive to the existing upload automation. Existing manual/file mappings and PR45–48 POST safety protections are reused. No production gate is enabled by installing this code.
+See [Claude scheduling → Render shopping tags](instagram-product-tags/claude-render-integration.md). Claude reuses preparation-time image/product findings and sends mappingProposal with verified scheduling registration. Render uses no image inference API, requires no OpenAI key, validates fresh product/stock/group data and requires human approval before POST. Existing manual/file mappings and PR45–48 execution protection are retained.

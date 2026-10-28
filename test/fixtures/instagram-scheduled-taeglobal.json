@@ -1,0 +1,396 @@
+{
+  "provenance": "Historical Production GET/catalog snapshots; frozen replay only, never current stock or live approval evidence",
+  "asOf": "2026-10-28T15:12:35.631Z",
+  "caption": "@tae_global 26AW RELEASE NOW\n\n센트럴 세인트 마틴스 출신 김태훈, 장소영 디자이너가 전개하는 TAEGLOBAL(타에글로벌)은 모듈형 디자인과 바이오 기반 3D 프린팅 기술을 결합한 컨템포러리 남성복 브랜드입니다.\n\n기술적 실험과 기능성을 바탕으로 의복의 구조와 형태를 탐구하며, 혁신적인 디자인과 실용성 사이의 균형을 제안합니다.\n\nTAEGLOBAL 26AW COLLECTION\nAVAILABLE NOW AT SAMPLAS\n\nONLINE & OFFLINE\nWWW.SAMPLAS.CO.KR\n",
+  "slotIso": "2026-10-28T11:00:00.000Z",
+  "captionSha256": "f499e63f3218eb6e3343ed878a0db39e7f0c23ad3a33fe02a2f10a6ef901ed42",
+  "published": {
+    "state": "PUBLISHED",
+    "mediaId": "17909311497575689",
+    "permalink": "https://www.instagram.com/p/DfCRozKmLG9/",
+    "timestamp": "2026-10-28T11:00:03+0000",
+    "checkedAt": "2026-10-28T14:36:15.538Z"
+  },
+  "manifest": {
+    "folderName": "TAEGLOBAL-26AW",
+    "items": [
+      {
+        "order": 1,
+        "savedAsset": "assets/01.jpg"
+      },
+      {
+        "order": 2,
+        "savedAsset": "assets/02.jpg"
+      },
+      {
+        "order": 3,
+        "savedAsset": "assets/03.jpg"
+      },
+      {
+        "order": 4,
+        "savedAsset": "assets/04.jpg"
+      },
+      {
+        "order": 5,
+        "savedAsset": "assets/05.jpg"
+      },
+      {
+        "order": 6,
+        "savedAsset": "assets/06.jpg"
+      },
+      {
+        "order": 7,
+        "savedAsset": "assets/07.jpg"
+      }
+    ]
+  },
+  "tags": [
+    {
+      "order": 1,
+      "savedAsset": "assets/01.jpg",
+      "childId": "18132995713685549",
+      "productNo": 15570,
+      "variantCode": "P0000XAW000F",
+      "metaProductId": "28840522035586978",
+      "x": 0.51,
+      "y": 0.33,
+      "confidence": 0.9,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 2,
+      "savedAsset": "assets/02.jpg",
+      "childId": "17912768076476946",
+      "productNo": 15570,
+      "variantCode": "P0000XAW000F",
+      "metaProductId": "28840522035586978",
+      "x": 0.42,
+      "y": 0.62,
+      "confidence": 0.9,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 3,
+      "savedAsset": "assets/03.jpg",
+      "childId": "18134430097682760",
+      "productNo": 15568,
+      "variantCode": "P0000XAU000B",
+      "metaProductId": "28945118551841223",
+      "x": 0.49,
+      "y": 0.31,
+      "confidence": 0.9,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 4,
+      "savedAsset": "assets/04.jpg",
+      "childId": "18142588351622976",
+      "productNo": 15568,
+      "variantCode": "P0000XAU000B",
+      "metaProductId": "28945118551841223",
+      "x": 0.55,
+      "y": 0.55,
+      "confidence": 0.9,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 5,
+      "savedAsset": "assets/05.jpg",
+      "childId": "18106251209368345",
+      "productNo": 15567,
+      "variantCode": "P0000XAT000B",
+      "metaProductId": "38787412537572516",
+      "x": 0.52,
+      "y": 0.31,
+      "confidence": 0.85,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 6,
+      "savedAsset": "assets/06.jpg",
+      "childId": "18037329044897376",
+      "productNo": 15567,
+      "variantCode": "P0000XAT000B",
+      "metaProductId": "38787412537572516",
+      "x": 0.57,
+      "y": 0.55,
+      "confidence": 0.85,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    },
+    {
+      "order": 7,
+      "savedAsset": "assets/07.jpg",
+      "childId": "18482158834113565",
+      "productNo": 15573,
+      "variantCode": "P0000XAZ000F",
+      "metaProductId": "28378636105098089",
+      "x": 0.51,
+      "y": 0.33,
+      "confidence": 0.9,
+      "approved": false,
+      "status": "PROPOSED",
+      "approval": {
+        "group": "approved",
+        "variant": "UNVERIFIED"
+      }
+    }
+  ],
+  "catalogRows": [
+    {
+      "product_id": "28465147946512917",
+      "retailer_id": "15570.P0000XAW000E",
+      "name": "[tae global : 타에 글로벌] 3d printed light down jacket rock blue&gray",
+      "availability": "out of stock",
+      "color": "GRAY"
+    },
+    {
+      "product_id": "28692684237018082",
+      "retailer_id": "15570.P0000XAW000G",
+      "name": "[tae global : 타에 글로벌] 3d printed light down jacket rock blue&gray",
+      "availability": "out of stock",
+      "color": "GRAY"
+    },
+    {
+      "product_id": "28840522035586978",
+      "retailer_id": "15570.P0000XAW000F",
+      "name": "[tae global : 타에 글로벌] 3d printed light down jacket rock blue&gray",
+      "availability": "in stock",
+      "color": "GRAY"
+    },
+    {
+      "product_id": "38934268676188361",
+      "retailer_id": "15570.P0000XAW000H",
+      "name": "[tae global : 타에 글로벌] 3d printed light down jacket rock blue&gray",
+      "availability": "out of stock",
+      "color": "GRAY"
+    },
+    {
+      "product_id": "28527217500240432",
+      "retailer_id": "15568.P0000XAU000A",
+      "name": "[tae global : 타에 글로벌] 3d printed detachable vest jacket rock black&white",
+      "availability": "out of stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "28701232899561748",
+      "retailer_id": "15568.P0000XAU000D",
+      "name": "[tae global : 타에 글로벌] 3d printed detachable vest jacket rock black&white",
+      "availability": "out of stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "28945118551841223",
+      "retailer_id": "15568.P0000XAU000B",
+      "name": "[tae global : 타에 글로벌] 3d printed detachable vest jacket rock black&white",
+      "availability": "in stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "29209325365332319",
+      "retailer_id": "15568.P0000XAU000C",
+      "name": "[tae global : 타에 글로벌] 3d printed detachable vest jacket rock black&white",
+      "availability": "out of stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "28411488175168483",
+      "retailer_id": "15567.P0000XAT000C",
+      "name": "[tae global : 타에 글로벌] 3d printed detachable vest jacket jet black",
+      "availability": "out of stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "28668055226182390",
+      "retailer_id": "15567.P0000XAT000D",
+      "name": "[tae global : 타에 글로벌] 3d printed detachable vest jacket jet black",
+      "availability": "out of stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "28756392113991961",
+      "retailer_id": "15567.P0000XAT000A",
+      "name": "[tae global : 타에 글로벌] 3d printed detachable vest jacket jet black",
+      "availability": "out of stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "38787412537572516",
+      "retailer_id": "15567.P0000XAT000B",
+      "name": "[tae global : 타에 글로벌] 3d printed detachable vest jacket jet black",
+      "availability": "in stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "26453606604336423",
+      "retailer_id": "15573.P0000XAZ000H",
+      "name": "[tae global : 타에 글로벌] 3d printed modular heavy down vest black&white",
+      "availability": "out of stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "28378636105098089",
+      "retailer_id": "15573.P0000XAZ000F",
+      "name": "[tae global : 타에 글로벌] 3d printed modular heavy down vest black&white",
+      "availability": "in stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "28613390791689017",
+      "retailer_id": "15573.P0000XAZ000E",
+      "name": "[tae global : 타에 글로벌] 3d printed modular heavy down vest black&white",
+      "availability": "out of stock",
+      "color": "BLACK"
+    },
+    {
+      "product_id": "29478429621758560",
+      "retailer_id": "15573.P0000XAZ000G",
+      "name": "[tae global : 타에 글로벌] 3d printed modular heavy down vest black&white",
+      "availability": "out of stock",
+      "color": "BLACK"
+    }
+  ],
+  "cafe24": [
+    {
+      "productNo": 15570,
+      "selling": "T",
+      "display": "T",
+      "fetchedAt": "2026-10-28T15:12:32.568Z",
+      "options": [
+        {
+          "variantCode": "P0000XAW000E",
+          "state": "SOLD_OUT",
+          "available": false
+        },
+        {
+          "variantCode": "P0000XAW000F",
+          "state": "IN_STOCK",
+          "available": true
+        },
+        {
+          "variantCode": "P0000XAW000G",
+          "state": "SOLD_OUT",
+          "available": false
+        },
+        {
+          "variantCode": "P0000XAW000H",
+          "state": "SOLD_OUT",
+          "available": false
+        }
+      ]
+    },
+    {
+      "productNo": 15568,
+      "selling": "T",
+      "display": "T",
+      "fetchedAt": "2026-10-28T15:12:33.715Z",
+      "options": [
+        {
+          "variantCode": "P0000XAU000A",
+          "state": "SOLD_OUT",
+          "available": false
+        },
+        {
+          "variantCode": "P0000XAU000B",
+          "state": "IN_STOCK",
+          "available": true
+        },
+        {
+          "variantCode": "P0000XAU000C",
+          "state": "SOLD_OUT",
+          "available": false
+        },
+        {
+          "variantCode": "P0000XAU000D",
+          "state": "SOLD_OUT",
+          "available": false
+        }
+      ]
+    },
+    {
+      "productNo": 15567,
+      "selling": "T",
+      "display": "T",
+      "fetchedAt": "2026-10-28T15:12:34.755Z",
+      "options": [
+        {
+          "variantCode": "P0000XAT000A",
+          "state": "SOLD_OUT",
+          "available": false
+        },
+        {
+          "variantCode": "P0000XAT000B",
+          "state": "IN_STOCK",
+          "available": true
+        },
+        {
+          "variantCode": "P0000XAT000C",
+          "state": "SOLD_OUT",
+          "available": false
+        },
+        {
+          "variantCode": "P0000XAT000D",
+          "state": "SOLD_OUT",
+          "available": false
+        }
+      ]
+    },
+    {
+      "productNo": 15573,
+      "selling": "T",
+      "display": "T",
+      "fetchedAt": "2026-10-28T15:12:35.631Z",
+      "options": [
+        {
+          "variantCode": "P0000XAZ000E",
+          "state": "SOLD_OUT",
+          "available": false
+        },
+        {
+          "variantCode": "P0000XAZ000F",
+          "state": "IN_STOCK",
+          "available": true
+        },
+        {
+          "variantCode": "P0000XAZ000G",
+          "state": "SOLD_OUT",
+          "available": false
+        },
+        {
+          "variantCode": "P0000XAZ000H",
+          "state": "SOLD_OUT",
+          "available": false
+        }
+      ]
+    }
+  ]
+}

@@ -64,7 +64,7 @@ async function proposeTag({ graph, item, brand, getCafe24Product, catalogId }) {
   // In-stock options first: Meta "in stock" and the Cafe24 option available, in Cafe24 option order.
   const inStock = color === null ? [] : list(cafe24?.options).filter((o) => o.available === true)
     .map((o) => ({ o, row: rows.find((r) => parseMetaContentId(r.retailer_id).variantCode === o.variantCode && r.availability === "in stock" && (!color || String(r.color || "").trim().toUpperCase() === color)) }))
-    .filter((x) => x.row);
+    .filter((x) => x.row && (!item.metaProductId || String(x.row.id) === item.metaProductId) && (!item.variantCode || x.o.variantCode === item.variantCode));
   if (color !== null && !reasons.includes("cafe24_not_found") && rows.length && !inStock.length) reasons.push("no_in_stock_option");
   const picked = inStock[0]?.row;
   if (picked) evidence.push(`meta: ${picked.retailer_id} "${picked.name}" in stock; ${inStock.length} in-stock option(s)`);

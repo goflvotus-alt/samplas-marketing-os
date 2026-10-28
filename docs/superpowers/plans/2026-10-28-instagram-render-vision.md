@@ -1,3 +1,5 @@
+> Superseded on 2026-10-29 by the user-approved no-paid-image-API direction. Current architecture and gates: docs/instagram-product-tags/claude-render-integration.md. This file preserves the earlier plan only.
+
 # Instagram scheduled receipt → Render vision
 
 Goal: keep Claude web scheduling and its Chrome/READY ownership; use a verified success receipt to register with the existing API, then Render detects publication, analyzes images, matches stock and group approval, approves high-confidence tags, and uses the unchanged PR45–48 write/checkpoint/read-back path.

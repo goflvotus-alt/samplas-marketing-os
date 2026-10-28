@@ -54,7 +54,6 @@ import { createMetaWeeklyCafe24SourceHandler } from "./scripts/meta-weekly-cafe2
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
 import { createGraphClient, toTagCafe24View } from "./scripts/instagram-product-tags.mjs";
 import { createFeedDropbox, createPostStore, createProductTagService } from "./scripts/instagram-product-tag-runner.mjs";
-import { createImageAnalyzer, loadVisionProducts } from "./scripts/instagram-product-tag-vision.mjs";
 import { getDropboxAccessToken } from "./scripts/dropbox-report-uploader.mjs";
 import { getVeilFoundStatus, runVeilFoundPublisher, fetchInstagramFeed, veilFoundConfig } from "./scripts/veil-found-publisher.mjs";
 import { runVeilSoldOutAudit } from "./scripts/veil-found-soldout-audit.mjs";
@@ -178,22 +177,9 @@ const veilControl=createVeilControl({env,workDir,soldOutAudit:({number})=>{
 // The 10-minute autorun is off unless INSTAGRAM_PRODUCT_TAG_AUTORUN=on.
 const productTagGraph = createGraphClient({ getToken: () => resolveMetaAccessToken() });
 const productTagDropbox = createFeedDropbox({ getToken: () => getDropboxAccessToken({ env }) });
-const analyzeProductImages = createImageAnalyzer({ env });
 const productTags = createProductTagService({
   graph: productTagGraph,
   dropbox: productTagDropbox,
-  analyzeImages: async ({ record, manifest, path, brand }) => {
-    if (!env.OPENAI_API_KEY) throw new Error("vision_not_configured");
-    if (manifest?.folderName !== record.folderName || !Array.isArray(manifest.items) || manifest.items.some((m, i) => m.order !== i + 1)) throw new Error("vision_manifest_invalid");
-    const products = await loadVisionProducts(productTagGraph, brand);
-    const images = [];
-    // Sequential reads bound transient memory on the 512MB Production instance.
-    for (const item of manifest.items) {
-      images.push(await productTagDropbox.readFeedImage(path, item.savedAsset));
-      if (images.reduce((n, image) => n + image.length, 0) > 24 * 1024 * 1024) throw new Error("vision_post_images_too_large");
-    }
-    return analyzeProductImages({ manifest, brand, products, images });
-  },
   getCafe24Product: (productNo) => fetchTagCafe24View(productNo),
   store: createPostStore(join(workDir, "instagram-product-tags", "posts")),
   env
@@ -656,7 +642,7 @@ const server = isMainModule ? createServer(async (req, res) => {
           const body = await readJsonBody(req);
           const folderName = String(body?.folderName || "");
           const out = url.pathname.endsWith("/approve")
-            ? await productTags.approveAutoMap(folderName, body?.tags, String(body?.approvedBy || ""), String(body?.builtAt || ""))
+            ? await productTags.approveAutoMap(folderName, body?.tags, String(body?.approvedBy || ""), String(body?.builtAt || ""), { acceptUnverifiedVariantApproval: body?.acceptUnverifiedVariantApproval === true })
             : await productTags.autoMap(folderName, body?.findings);
           return json(res, out, out.ok ? 200 : out.error === "not_registered" ? 404 : 400);
         }
@@ -1671,7 +1657,6 @@ async function loadEnv() {
 
 function safeErrorMessage(error) {
   return String(error?.message || "Unknown error")
-    .replaceAll(env.OPENAI_API_KEY || "__NO_OPENAI_KEY__", "[OPENAI_API_KEY]")
     .replaceAll(env.VEIL_FOUND_IG_TOKEN || "__NO_VEIL_FOUND_TOKEN__", "[VEIL_FOUND_IG_TOKEN]")
     .replaceAll(env.META_ACCESS_TOKEN || "__NO_META_TOKEN__", "[META_ACCESS_TOKEN]")
     .replaceAll(metaStoredAccessTokenCache || "__NO_META_STORED_TOKEN__", "[META_ACCESS_TOKEN]")

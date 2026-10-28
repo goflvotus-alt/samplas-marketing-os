@@ -313,110 +313,73 @@ test("auto mapping: proposal held until a person approves, then tagged and verif
   assert.deepEqual([b.record.files.mappingSource, b.record.tags.state], ["folder", "NO_TAGS"]);
 });
 
-const autoInput = { folderName:'TAEGLOBAL-26AW',slotIso:SLOT,caption:CAPTION,slideCount:2,autoTag:{brand:'TAEGLOBAL'},acceptUnverifiedVariantApproval:true };
-const visual = () => ({findings:{schemaVersion:1,folderName:manifest.folderName,brand:'TAEGLOBAL',analyzer:'openai:test',slides:manifest.items.map(m=>({...m,items:[{label:'jacket',x:.5,y:.5,candidates:[{productNo:101,confidence:.95,evidence:'matching zipper and panels'}]}]}))}});
+const scheduledProposal = (over={}) => ({schemaVersion:1,folderName:manifest.folderName,brand:'TAEGLOBAL',preparedBy:'Claude existing schedule preparation',mappings:manifest.items.map(m=>({slideIndex:m.order,savedAsset:m.savedAsset,productNo:101,variantCode:'BK',color:'BLACK',option:'M',x:.5,y:.5,evidence:'reused verified zipper/panel match',confidence:.9,reviewRequired:false})),...over});
+const scheduledInput = p => ({folderName:manifest.folderName,slotIso:SLOT,caption:CAPTION,slideCount:2,mappingProposal:p});
+const serviceForProposal = async ({graph=fakeGraph().graph,getCafe24Product=cafe24,env=ON}={})=>createProductTagService({graph,dropbox:{readFeedFolder:ready(null)},getCafe24Product,env,store:createPostStore(await mkdtemp(join(tmpdir(),'scheduled-proposal-')))});
 
-test('registration is serialized/idempotent without resetting holds; conflicting identity or policy refused',async()=>{
- const store=createPostStore(await mkdtemp(join(tmpdir(),'tag-register-')));
- const svc=createProductTagService({store});
- const results=await Promise.all([svc.register(autoInput),svc.register(autoInput)]);
- assert.ok(results.every(r=>r.ok)); assert.equal(results.filter(r=>r.existing).length,1);
- const rec=await store.get(autoInput.folderName); rec.tags.state='POST_OUTCOME_UNKNOWN';await store.put(rec);
- assert.equal((await svc.register(autoInput)).record.tags.state,'POST_OUTCOME_UNKNOWN');
- assert.equal((await svc.register({...autoInput,slotIso:'2026-10-30T11:00:00Z'})).ok,false);
- assert.equal((await svc.register({...autoInput,acceptUnverifiedVariantApproval:false})).ok,false);
- assert.equal(newPostRecord({...autoInput,autoTag:{brand:''}}).ok,false);
+test('schedule proposal: no key/model, publish detection and fresh validation; human approval required even with WRITES on',async()=>{
+ const {graph,state}=fakeGraph();const service=await serviceForProposal({graph,env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on',OPENAI_API_KEY:'must-never-be-used'}});
+ const input=scheduledInput(scheduledProposal());input.acceptUnverifiedVariantApproval=true;input.approved=true;
+ const made=await service.register(input);assert.equal(made.record.approvals.acceptUnverifiedVariantApproval,false);
+ const result=await service.run(input.folderName);
+ assert.equal(result.record.publish.state,'PUBLISHED');assert.equal(result.record.tags.state,'TAG_REVIEW_REQUIRED');assert.equal(state.posts.length,0);
+ assert.equal(result.record.autoMapping.source.state,'AWAITING_HUMAN_APPROVAL');assert.ok(result.record.autoMapping.slides.every(s=>s.tags.every(t=>!t.approved && t.status==='PROPOSED')));
+ assert.equal((await service.register(input)).existing,true);
+ assert.equal((await service.register({...input,mappingProposal:scheduledProposal({preparedBy:'changed'})})).ok,false);
 });
 
-test('post-publish vision: durable checkpoint, autoapproval and cached findings; existing gates unchanged',async()=>{
- const {graph,state}=fakeGraph();let calls=0;const saved=[];
- const r=newPostRecord(autoInput).record;
- const analyzeImages=async()=>{calls++;assert.equal(saved.at(-1).analysis.state,'ANALYZING');return visual();};
- const args={record:r,graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),analyzeImages,checkpoint:async r=>saved.push(structuredClone(r)),env:{INSTAGRAM_PRODUCT_TAG_VISION:'on'}};
- let out=await runTagJob(args);
- assert.equal(calls,1);assert.equal(out.record.autoMapping.source.state,'APPROVED');assert.equal(out.record.analysis.state,'COMPLETE');
- assert.equal(state.posts.length,0);assert.equal(out.record.autoMapping.slides[0].tags[0].approvedBy,'render:vision-v1');
- out=await runTagJob({...args,record:out.record,env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on'},write:true});
- assert.equal(calls,1);assert.equal(out.record.tags.state,'TAG_VERIFIED');assert.equal(state.posts.length,2);
-});
-
-test('vision disabled, unpublished, held, manual/file mappings never call analyzer',async()=>{
- for(const setup of [ {env:{}}, {record:newPostRecord({...autoInput,slotIso:'2026-11-01T11:00:00Z'}).record}, {record:{...newPostRecord(autoInput).record,tags:{state:'POST_OUTCOME_UNKNOWN'}}}, {readFeedFolder:ready(mapping())} ]) {
-  await runTagJob({record:newPostRecord(autoInput).record,graph:fakeGraph({feed:setup.record?.slotIso?.startsWith('2026-11')?[]:undefined}).graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{INSTAGRAM_PRODUCT_TAG_VISION:'on'},analyzeImages:()=>assert.fail('analyzer forbidden'),...setup});
- }
-});
-
-test('failed/interrupted analysis holds without paid retry; checkpoint failure prevents API call',async()=>{
- const args={record:newPostRecord(autoInput).record,graph:fakeGraph().graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{INSTAGRAM_PRODUCT_TAG_VISION:'on'}};
- let calls=0;
- const failed=await runTagJob({...args,analyzeImages:async()=>{calls++;throw new Error('vision_http:429');}});
- assert.equal(failed.record.analysis.state,'FAILED');assert.equal(failed.record.tags.state,'TAG_REVIEW_REQUIRED');
- await runTagJob({...args,record:failed.record,analyzeImages:()=>assert.fail('retry')});assert.equal(calls,1);
- await runTagJob({...args,record:{...args.record,analysis:{state:'ANALYZING'}},analyzeImages:()=>assert.fail('interrupted retry')});
- await assert.rejects(()=>runTagJob({...args,analyzeImages:()=>assert.fail('not checkpointed'),checkpoint:async()=>{throw new Error('disk full');}}),/disk full/);
-});
-
-test('automatic approval excludes low-confidence and group-unapproved candidates',async()=>{
- const {graph,state}=fakeGraph();const get=graph.get.bind(graph);
- graph.get=async(path,p)=>path.endsWith('/catalog_product_search')?{data:[{product_id:'P101',retailer_id:'101.X',review_status:'pending'}]}:get(path,p);
- const out=await runTagJob({record:newPostRecord(autoInput).record,graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on'},write:true,analyzeImages:visual});
- assert.equal(out.record.tags.state,'TAG_REVIEW_REQUIRED');assert.equal(state.posts.length,0);
- assert.equal(out.record.autoMapping.slides[0].tags[0].approved,false);
-});
-
-test('vision-approved jobs retain unknown POST stop and restart protection',async()=>{
- const {graph,state}=fakeGraph({postFailures:[new GraphError(0,{})]});
- const store=createPostStore(await mkdtemp(join(tmpdir(),'vision-held-')));let calls=0;
- const options={graph,dropbox:{readFeedFolder:ready(null)},getCafe24Product:cafe24,store,env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on'},analyzeImages:async()=>{calls++;return visual();}};
- const svc=createProductTagService(options);await svc.register(autoInput);
- const out=await svc.run(autoInput.folderName);
- assert.equal(out.record.tags.state,'POST_OUTCOME_UNKNOWN');assert.equal(state.posts.length,1);
- const restarted=createProductTagService(options);
- assert.deepEqual(await restarted.tick(),[]);assert.equal((await restarted.run(autoInput.folderName)).step,'post_outcome_unknown');
- assert.equal(calls,1);assert.equal(state.posts.length,1);
-});
-
-test('automatic approval selects only safe subset and never grants variant acceptance',async()=>{
- const {graph,state}=fakeGraph();const data=visual();
- data.findings.slides[1].items[0].candidates[0].confidence=.6;
- const out=await runTagJob({record:newPostRecord({...autoInput,acceptUnverifiedVariantApproval:false}).record,graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on'},write:true,analyzeImages:async()=>data});
- assert.equal(out.record.autoMapping.slides[0].tags.length,1);assert.equal(out.record.autoMapping.slides[1].tags.length,0);
- assert.equal(out.record.autoMapping.slides[1].skipped[0].reason,'not_selected_by_operator');
- assert.equal(out.record.approvals.acceptUnverifiedVariantApproval,false);assert.equal(state.posts.length,0);
-});
-
-test('vision cached approval is held if manifest changes',async()=>{
- const args={record:newPostRecord(autoInput).record,graph:fakeGraph().graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{INSTAGRAM_PRODUCT_TAG_VISION:'on'},analyzeImages:visual};
- const out=await runTagJob(args);
- const changed=structuredClone(manifest);changed.items[0].savedAsset='assets/replaced.jpg';
- const held=await runTagJob({...args,record:out.record,readFeedFolder:ready(null,changed),analyzeImages:()=>assert.fail('reanalysis')});
- assert.equal(held.record.tags.reason,'vision_manifest_changed');
-});
-
-test('Dropbox vision images: download only, bounded bytes and path scope',async()=>{
- const calls=[];
- const db=createFeedDropbox({getToken:async()=> 'mock',feedDir:'/F',fetchImpl:async(url,init)=>{calls.push([url,init]);return new Response(new Uint8Array([1,2,3]));}});
- assert.match(await db.readFeedImage('/F/READY/TAEGLOBAL-26AW','assets/01.jpg'),/^data:image\/jpeg;base64,/);
- assert.match(await db.readFeedImage('/F/UPLOADED/20261028-201500 TAEGLOBAL-26AW','assets/01.png'),/^data:image\/png;base64,/);
- assert.ok(calls.every(([url])=>url==='https://content.dropboxapi.com/2/files/download'));
- for(const [path,asset] of [['/elsewhere','assets/01.jpg'],['/F/READY/TAEGLOBAL-26AW','../token.json'],['/F/READY/TAEGLOBAL-26AW','assets/x/../../01.jpg']]) await assert.rejects(()=>db.readFeedImage(path,asset),/invalid_feed_image_path/);
- const huge=createFeedDropbox({getToken:async()=> 'mock',feedDir:'/F',fetchImpl:async()=>new Response(new Uint8Array(8*1024*1024+1))});
- await assert.rejects(()=>huge.readFeedImage('/F/READY/TAEGLOBAL-26AW','assets/01.jpg'),/feed_image_too_large/);
-});
-
-test('vision manifest identity and caption/hash conflicts fail closed',async()=>{
- assert.deepEqual(newPostRecord({...autoInput,captionSha256:'a'.repeat(64)}).problems,['caption_hash_mismatch']);
- for(const bad of [{...manifest,folderName:'OTHER'},{...manifest,items:[{order:2,savedAsset:'assets/01.jpg'},manifest.items[1]]}]) {
-  const out=await runTagJob({record:newPostRecord(autoInput).record,graph:fakeGraph().graph,readFeedFolder:ready(null,bad),getCafe24Product:cafe24,now:Date.now(),env:{INSTAGRAM_PRODUCT_TAG_VISION:'on'},analyzeImages:()=>assert.fail('bad manifest')});
-  assert.equal(out.record.tags.reason,'vision_manifest_invalid');
- }
-});
-
-test('automatic candidate API errors hold as TAG_REVIEW_REQUIRED without POST',async()=>{
- for(const phase of ['mapping','approval']) {
-  const {graph,state}=fakeGraph();const get=graph.get.bind(graph);
-  graph.get=async(path,p)=>{if((phase==='mapping' && path.endsWith('/products')) || (phase==='approval' && path.endsWith('/catalog_product_search')))throw new Error('upstream unavailable');return get(path,p);};
-  const out=await runTagJob({record:newPostRecord(autoInput).record,graph,readFeedFolder:ready(null),getCafe24Product:cafe24,now:Date.now(),env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on'},write:true,analyzeImages:visual});
+test('uncertain items, exact option mismatch and API failures cannot be approved',async()=>{
+ for(const mode of ['review','variant','api']) {
+  const {graph,state}=fakeGraph();const p=scheduledProposal();
+  if(mode==='review')p.mappings[0].reviewRequired=true;
+  if(mode==='variant')p.mappings[0].variantCode='OTHER';
+  if(mode==='api'){const get=graph.get.bind(graph);graph.get=async(path,p)=>{if(path.endsWith('/catalog_product_search'))throw new Error('unavailable');return get(path,p);};}
+  const service=await serviceForProposal({graph});await service.register(scheduledInput(p));const out=await service.run(p.folderName);
   assert.equal(out.record.tags.state,'TAG_REVIEW_REQUIRED');assert.equal(state.posts.length,0);
+  const refused=await service.approveAutoMap(p.folderName,[{order:1,productNo:101}],'human',out.record.autoMapping.source.builtAt);
+  assert.equal(refused.ok,false);assert.equal(state.posts.length,0);
  }
+});
+
+test('human approval checks builtAt and CURRENT stock; historical proposal stock is not current',async()=>{
+ const {graph,state}=fakeGraph();let inStock=true;
+ const getCafe24Product=async no=>{const row=await cafe24(no);return {...row,options:row.options.map(o=>({...o,available:inStock}))};};
+ const service=await serviceForProposal({graph,getCafe24Product});const p=scheduledProposal();await service.register(scheduledInput(p));
+ const proposal=(await service.run(p.folderName)).record.autoMapping;
+ assert.equal((await service.approveAutoMap(p.folderName,[{order:1,productNo:101}],'human','old')).ok,false);
+ inStock=false;assert.equal((await service.approveAutoMap(p.folderName,[{order:1,productNo:101}],'human',proposal.source.builtAt)).ok,false);
+ inStock=true;assert.equal((await service.approveAutoMap(p.folderName,[{order:1,productNo:101}],'human',proposal.source.builtAt)).ok,true);
+ const after=await service.run(p.folderName);assert.equal(after.record.tags.applyReason,'variant_approval_unverified');assert.equal(state.posts.length,0);
+});
+
+test('proposal registration is serialized, rejects malformed coordinates and preserves unknown holds',async()=>{
+ const service=await serviceForProposal();const input=scheduledInput(scheduledProposal());
+ const made=await Promise.all([service.register(input),service.register(input)]);assert.ok(made.every(m=>m.ok));assert.equal(made.filter(m=>m.existing).length,1);
+ const bad=scheduledProposal();bad.mappings[0].x=2;assert.equal(newPostRecord(scheduledInput(bad)).ok,false);
+ assert.equal((await service.register({...input,slotIso:'2026-11-01T11:00:00Z'})).ok,false);
+});
+
+test('legacy paid-vision opt-in never calls an analyzer',async()=>{
+ const {graph,state}=fakeGraph();
+ const out=await runTagJob({record:newPostRecord({...scheduledInput(undefined),autoTag:{brand:'TAEGLOBAL'}}).record,graph,readFeedFolder:ready(null),getCafe24Product:cafe24,env:{...ON,INSTAGRAM_PRODUCT_TAG_VISION:'on',OPENAI_API_KEY:'unused'},write:true,analyzeImages:()=>assert.fail('paid call forbidden')});
+ assert.equal(out.record.tags.reason,'paid_vision_disabled');assert.equal(state.posts.length,0);
+});
+
+test('explicit human tag + separate variant acceptance permits existing runner; uncertain POST hold still persists',async()=>{
+ for(const failure of [false,true]) {
+  const {graph,state}=fakeGraph({postFailures:failure?[new GraphError(0,{})]:[]});const service=await serviceForProposal({graph});
+  const p=scheduledProposal();await service.register(scheduledInput(p));const map=(await service.run(p.folderName)).record.autoMapping;
+  assert.equal((await service.approveAutoMap(p.folderName,[{order:1,productNo:101},{order:2,productNo:101}],'human',map.source.builtAt,{acceptUnverifiedVariantApproval:true})).ok,true);
+  const out=await service.run(p.folderName);assert.equal(out.record.tags.state,failure?'POST_OUTCOME_UNKNOWN':'TAG_VERIFIED');
+  const attempts=state.posts.length;assert.equal(attempts,failure?1:2);
+  await service.run(p.folderName);assert.equal(state.posts.length,attempts);
+  assert.equal((await service.register(scheduledInput(p))).record.tags.state,failure?'POST_OUTCOME_UNKNOWN':'TAG_VERIFIED');
+ }
+});
+
+test('preapproved folder file cannot bypass human approval of a new scheduled proposal',async()=>{
+ const {graph,state}=fakeGraph();
+ const rec=newPostRecord(scheduledInput(scheduledProposal())).record;
+ const out=await runTagJob({record:rec,graph,readFeedFolder:ready(mapping()),getCafe24Product:cafe24,env:ON,write:true});
+ assert.equal(out.record.tags.state,'TAG_REVIEW_REQUIRED');assert.equal(state.posts.length,0);
 });

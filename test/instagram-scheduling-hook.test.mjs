@@ -53,3 +53,10 @@ test('outbox refuses Dropbox/feed locations and changed receipt identity',async(
  const conflict=createSchedulingRegistrationHook({...o,config:{...config,slotIso:'2026-10-29T11:00:00Z'}});
  await assert.rejects(()=>conflict.observe(verification),/registration_config_changed/);
 });
+
+test('prepared mapping proposal travels with registration, never as approval',async()=>{
+ const mappingProposal={schemaVersion:1,folderName:config.folderName,brand:'TAEGLOBAL',preparedBy:'Claude schedule preparation',mappings:[{slideIndex:1,savedAsset:'assets/01.jpg',productNo:15570,metaProductId:'28840522035586978',variantCode:'P0000XAW000F',color:'GRAY',option:'M',x:.51,y:.33,evidence:'reused prior verified mapping',confidence:.9,reviewRequired:false}]};
+ let body;const h=createSchedulingRegistrationHook({...await options(),config:{...config,mappingProposal},fetchImpl:async(u,i)=>{body=JSON.parse(i.body);return {ok:true,json:async()=>({ok:true})};}});
+ await h.observe(success);await h.observe(verification);
+ assert.deepEqual(body.mappingProposal,mappingProposal);assert.equal(body.autoTag,undefined);assert.equal(body.acceptUnverifiedVariantApproval,false);
+});
