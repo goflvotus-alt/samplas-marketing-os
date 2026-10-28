@@ -77,9 +77,10 @@ services:
       # Leave unset by default: answer correction approval is disabled.
       - key: SESSION_APPROVER_EMAILS
         sync: false
-      # off (default) | test-only (test-session-* only) | on
+      # off (code default) | test-only (test-session-* only) | on. Set in the Render dashboard
+      # (Production is "on" as of 2026-10-28); a fixed value here would not match it.
       - key: SESSION_MCP_WRITES
-        value: "off"
+        sync: false
       # ASSETS: read-only view of the design team's Dropbox folder (one "SESSION 00N" folder per session).
       - key: SESSION_ASSETS_ROOT
         sync: false
