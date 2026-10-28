@@ -632,9 +632,18 @@ const server = isMainModule ? createServer(async (req, res) => {
       }
     }
     // Shopping tag records: list/get, register a scheduled post, run one folder now. Internal auth only.
-    if (url.pathname === "/api/instagram-product-tags/posts" || url.pathname === "/api/instagram-product-tags/run") {
+    if (["/api/instagram-product-tags/posts", "/api/instagram-product-tags/run", "/api/instagram-product-tags/automap", "/api/instagram-product-tags/automap/approve"].includes(url.pathname)) {
       if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
       try {
+        if (url.pathname.startsWith("/api/instagram-product-tags/automap")) {
+          if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
+          const body = await readJsonBody(req);
+          const folderName = String(body?.folderName || "");
+          const out = url.pathname.endsWith("/approve")
+            ? await productTags.approveAutoMap(folderName, body?.tags, String(body?.approvedBy || ""), String(body?.builtAt || ""))
+            : await productTags.autoMap(folderName, body?.findings);
+          return json(res, out, out.ok ? 200 : out.error === "not_registered" ? 404 : 400);
+        }
         if (url.pathname === "/api/instagram-product-tags/run") {
           if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
           const out = await productTags.run(String((await readJsonBody(req))?.folderName || ""));

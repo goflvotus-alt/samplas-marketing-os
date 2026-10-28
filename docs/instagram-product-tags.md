@@ -60,7 +60,27 @@ Both stock checks must pass, so an option is tagged only when Meta and Cafe24 ag
 
 `order` and `savedAsset` must match `manifest.json`. A person writes this file and sets `approved`. The runner only reads it: statuses are kept in the runner's record, never written back to READY. A file whose slides list no tags means "this post has no tags" (`NO_TAGS`).
 
-READY images carry no product data. Slides are never matched to products by name or image similarity. Without this file nothing is tagged and the post is `TAG_REVIEW_REQUIRED` (`product_tags_missing`).
+READY images carry no product data. Without this file the runner uses the record's approved auto mapping (below). Without either, nothing is tagged and the post is `TAG_REVIEW_REQUIRED` (`product_tags_missing`, or `auto_mapping_not_approved` while an auto mapping waits for a person).
+
+## Auto mapping (`scripts/instagram-product-tag-automap.mjs`)
+
+Marketing OS has no vision model. The visual step happens outside it: a person or a Claude session looks at the slides and the Cafe24 product images and writes **findings**: per slide, each garment with its x/y and Cafe24 candidates, each with a confidence (0..1) and the evidence (print, hardware, color, cut). `analyzer` names who looked.
+
+```json
+{ "schemaVersion": 1, "folderName": "TAEGLOBAL-26AW", "analyzer": "...",
+  "slides": [{ "order": 1, "savedAsset": "assets/01.jpg",
+    "items": [{ "label": "down jacket", "x": 0.51, "y": 0.33,
+      "candidates": [{ "productNo": 15570, "confidence": 0.9, "evidence": "..." }] }] }] }
+```
+
+`POST /api/instagram-product-tags/automap` with `{ folderName, findings }` checks each garment and stores a product-tags.json proposal in the runner record (`autoMapping`), never in the feed folder:
+- The top candidate needs confidence ≥ 0.8 (`visual_low_confidence`). A second candidate at 0.5 or more makes it `visual_ambiguous_candidates`. Lower ones are only noted alternatives. A garment with no candidate is a slide review entry (`no_catalog_match`).
+- Every Meta row of the product group must start with the brand tag, for example `[TAEGLOBAL : ...]` (`brand_mismatch`). Brand only narrows the search; it never picks the product.
+- Color: the group has one Meta `color`, or the garment's `color` in findings names exactly one of them. Otherwise `color_unconfirmed` or `color_not_in_product`. Size is not visible, so any in-stock size of that color is the same product.
+- The Meta Product ID is the first Cafe24 option of that color, in Cafe24 order, that is available in Cafe24 and `in stock` in Meta. None gives `no_in_stock_option`.
+- Every tag comes out `approved: false`, `PROPOSED` or `TAG_REVIEW_REQUIRED` with the reason, confidence and evidence.
+
+`POST /api/instagram-product-tags/automap/approve` with `{ folderName, approvedBy, builtAt, tags: [{ order, productNo }] }` is the person's decision. `builtAt` is the `source.builtAt` of the mapping the person reviewed; a newer mapping gives `mapping_changed`. At least one tag must be listed (a post without tags uses an empty product-tags.json). Only `PROPOSED` tags can be listed. They become `approved: true`, and every other tag is dropped from this post (`skipped`). After that the runner uses the mapping like product-tags.json, with every check above (`buildTagPlan`, stock, write gates). A new automap call replaces the mapping and needs a new approval. Both calls refuse a record whose tags are final. Run, automap and approve are serialized per folder in the server process.
 
 ## Operating limits
 
@@ -87,7 +107,7 @@ Steps:
 
 `TAG_VERIFIED` and `NO_TAGS` are final: the record is not run again. The record is `WORK_DIR/instagram-product-tags/posts/<folder>.json`. It holds `publish`, `tags` (per tag: slide, product, state, reason, approval), `files` and `lastError`, each kept separately. One run per folder at a time.
 
-Routes, all with internal auth:
+Routes, all with internal auth (automap routes above):
 - `GET /api/instagram-product-tags/posts` lists the records; add `?folder=` for one record.
 - `POST /api/instagram-product-tags/posts` registers a post.
 - `POST /api/instagram-product-tags/run` with `{ folderName }` runs one post now.

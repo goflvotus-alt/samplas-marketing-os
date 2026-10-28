@@ -34,7 +34,7 @@ function fakeGraph({ feed, username = "samplaskr", postFailures = [] } = {}) {
       if (path === "m1/children") return { data: [{ id: "c1", media_type: "IMAGE" }, { id: "c2", media_type: "IMAGE" }] };
       if (path.endsWith("/product_tags")) return { data: state.tags[path.split("/")[0]].map((t) => ({ ...t })) };
       if (path === `${IG}/catalog_product_search`) return { data: [{ product_id: `P${params.q}`, retailer_id: `${params.q}.X`, review_status: "approved", product_variants: [{ product_id: `P${params.q}` }] }] };
-      if (path === `${CATALOG}/products`) { const no = params.filter.retailer_product_group_id.eq; return { data: [{ id: `P${no}`, retailer_id: `${no}.BK`, name: `item ${no}`, availability: "in stock" }] }; }
+      if (path === `${CATALOG}/products`) { const no = params.filter.retailer_product_group_id.eq; return { data: [{ id: `P${no}`, retailer_id: `${no}.BK`, name: `[TAEGLOBAL] item ${no}`, availability: "in stock" }] }; }
       throw new Error(`unexpected GET ${path}`);
     },
     async post(path, params) {
@@ -215,10 +215,42 @@ test("service: register once, run unknown folder, errors recorded, tick skips fu
 
 test("server wiring: internal auth, autorun off by default, feed files never written or moved", async () => {
   const src = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
-  const block = src.slice(src.indexOf('if (url.pathname === "/api/instagram-product-tags/posts"'), src.indexOf('if (url.pathname === "/api/cafe24/brands")'));
+  const block = src.slice(src.indexOf('if (["/api/instagram-product-tags/posts"'), src.indexOf('if (url.pathname === "/api/cafe24/brands")'));
   assert.match(block, /if \(!isAuthorizedInternalRequest\(req\)\) return json\(res, \{ error: "Unauthorized" \}, 401\);/);
   assert.match(src, /if \(env\.INSTAGRAM_PRODUCT_TAG_AUTORUN === "on"\) setInterval\(\(\) => productTags\.tick\(\)/);
   const runner = await readFile(new URL("../scripts/instagram-product-tag-runner.mjs", import.meta.url), "utf8");
   assert.equal(/files\/(upload|delete|move|copy|create_folder)/.test(runner), false, "runner never writes, moves or deletes feed files");
   assert.equal(/INSTAGRAM_FEED_UPLOADED_MOVE|9333|chromium|playwright/i.test(runner + block), false, "no move gate, no Chrome");
+});
+
+test("auto mapping: proposal held until a person approves, then tagged and verified; folder file wins", async () => {
+  const store = createPostStore(await mkdtemp(join(tmpdir(), "ptag-")));
+  const { graph, state } = fakeGraph();
+  let folderMapping = null;
+  const svc = createProductTagService({ graph, dropbox: { readFeedFolder: async () => ({ location: "UPLOADED", path: UPLOADED_PATH, manifest, mapping: folderMapping }) }, getCafe24Product: cafe24, store, env: ON, now: () => AFTER });
+  await svc.register({ folderName: "TAEGLOBAL-26AW", slotIso: SLOT, caption: CAPTION, slideCount: 2, acceptUnverifiedVariantApproval: true });
+  const findings = { schemaVersion: 1, folderName: "TAEGLOBAL-26AW", analyzer: "test", slides: [
+    { order: 1, savedAsset: "assets/01.jpg", items: [{ label: "jacket", x: 0.5, y: 0.3, candidates: [{ productNo: 101, confidence: 0.95, evidence: "print" }] }] },
+    { order: 2, savedAsset: "assets/02.jpg", items: [{ label: "pants", x: 0.5, y: 0.7, candidates: [{ productNo: 102, confidence: 0.7 }, { productNo: 103, confidence: 0.65 }] }] }] };
+  const made = await svc.autoMap("TAEGLOBAL-26AW", findings);
+  assert.deepEqual(made.mapping.slides.map((s) => s.tags.map((t) => [t.status, t.approved, t.metaProductId])), [[["PROPOSED", false, "P101"]], [["TAG_REVIEW_REQUIRED", false, "P102"]]]);
+  const held = await svc.run("TAEGLOBAL-26AW");
+  assert.deepEqual([held.record.tags.reason, held.record.files.mappingSource, state.posts.length], ["auto_mapping_not_approved", "auto", 0]);
+  const builtAt = made.mapping.source.builtAt;
+  assert.deepEqual((await svc.approveAutoMap("TAEGLOBAL-26AW", [{ order: 2, productNo: 102 }], "op", builtAt)).problems, ["not_proposed:2:102"]);
+  assert.equal((await svc.approveAutoMap("TAEGLOBAL-26AW", [{ order: 1, productNo: 101 }], "", builtAt)).ok, false);
+  // Approval and a run at the same time: serialized per folder, neither loses the other's change.
+  const [approved, ran] = await Promise.all([svc.approveAutoMap("TAEGLOBAL-26AW", [{ order: 1, productNo: 101 }], "op", builtAt), svc.run("TAEGLOBAL-26AW")]);
+  assert.deepEqual([approved.ok, ran.record.tags.state], [true, "TAG_VERIFIED"]);
+  assert.equal((await store.get("TAEGLOBAL-26AW")).tags.state, "TAG_VERIFIED");
+  const done = await svc.get("TAEGLOBAL-26AW");
+  assert.deepEqual([done.tags.state, done.files.mappingSource, state.posts], ["TAG_VERIFIED", "auto", [{ child: "c1", tags: ["P101"] }]]);
+  assert.equal((await store.get("TAEGLOBAL-26AW")).autoMapping.source.state, "APPROVED");
+  assert.equal((await svc.autoMap("TAEGLOBAL-26AW", findings)).error, "tags_final");
+  // A product-tags.json in the folder is used instead of any auto mapping.
+  folderMapping = mapping([]);
+  await svc.register({ folderName: "B-26AW", slotIso: SLOT, caption: CAPTION, slideCount: 2 });
+  await svc.autoMap("B-26AW", { ...findings, folderName: "B-26AW" });
+  const b = await svc.run("B-26AW");
+  assert.deepEqual([b.record.files.mappingSource, b.record.tags.state], ["folder", "NO_TAGS"]);
 });

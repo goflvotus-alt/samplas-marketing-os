@@ -12,11 +12,14 @@
 // Order per run: find the published media -> read manifest.json + product-tags.json -> buildTagPlan ->
 // applyTagPlan (gated) -> verifyTagPlan. TAG_VERIFIED and NO_TAGS are final.
 // Anything unclear holds the tags: a missing mapping is TAG_REVIEW_REQUIRED, never a guess.
+// Without product-tags.json the runner uses record.autoMapping (instagram-product-tag-automap.mjs), but only
+// after a person approved it.
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { asciiSafeJson } from "./dropbox-report-uploader.mjs";
 import { applyTagPlan, buildTagPlan, SAMPLAS_META, validateMapping, verifyTagPlan } from "./instagram-product-tags.mjs";
+import { approveAutoTags, buildAutoMapping } from "./instagram-product-tag-automap.mjs";
 
 export const FEED_DIR_DEFAULT = "/SAMPLAS WORK/병구 작업/피드 자동화";
 // A run that sent tags counts once; after this many the post waits for a person.
@@ -87,12 +90,16 @@ export async function runTagJob({ record, graph, readFeedFolder, getCafe24Produc
       rec.publish = { ...(await findPublishedMedia(graph, rec, { now, expected })), checkedAt: at };
       if (rec.publish.state !== "PUBLISHED") return { record: rec, step: "publish" };
     }
-    const { location, path, manifest, mapping, reason } = await readFeedFolder(rec.folderName);
-    rec.files = { location: location ?? null, path: path ?? null, checkedAt: at };
+    const read = await readFeedFolder(rec.folderName);
+    const { location, path, manifest, reason } = read;
+    // product-tags.json in the folder wins. Else an auto mapping a person approved (automap routes).
+    const auto = !read.mapping && rec.autoMapping ? rec.autoMapping : null;
+    const mapping = read.mapping ?? (auto?.source?.state === "APPROVED" ? auto : null);
+    rec.files = { location: location ?? null, path: path ?? null, mappingSource: read.mapping ? "folder" : auto ? "auto" : null, checkedAt: at };
     const tagCount = list(mapping?.slides).reduce((n, s) => n + list(s?.tags).length, 0);
     if (!manifest) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: reason || "manifest_missing", checkedAt: at };
     else if (list(manifest.items).length !== rec.slideCount) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "manifest_slide_count", checkedAt: at };
-    else if (!mapping) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "product_tags_missing", checkedAt: at };
+    else if (!mapping) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: auto ? "auto_mapping_not_approved" : "product_tags_missing", checkedAt: at };
     else if (tagCount === 0 && !validateMapping(mapping, manifest).length) rec.tags = { ...rec.tags, state: "NO_TAGS", reason: null, tags: [], checkedAt: at };
     else {
       let plan = await buildTagPlan({ graph, mapping, manifest, mediaId: rec.publish.mediaId, getCafe24Product, expected });
@@ -170,7 +177,15 @@ export function createPostStore(dir) {
 // Server side: register, run one folder, or tick over every open record (autorun).
 // Tag writes need each record's approval plus the env gate checked in runTagJob.
 export function createProductTagService({ graph, dropbox, getCafe24Product, store, env = process.env, now = () => Date.now() }) {
-  const run = async (folderName) => {
+  // One change at a time per folder (run, automap, approve), so no call writes a record another one has
+  // changed meanwhile. ponytail: in-process only; one server runs the tags (see Operating limits).
+  const queues = new Map();
+  const serial = (name, fn) => {
+    const next = (queues.get(name) ?? Promise.resolve()).then(fn, fn);
+    queues.set(name, next.catch(() => {}));
+    return next;
+  };
+  const run = (folderName) => serial(folderName, async () => {
     const record = await store.get(folderName);
     if (!record) return { ok: false, error: "not_registered" };
     try {
@@ -182,7 +197,7 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
       await store.put(failed);
       return { ok: false, error: failed.lastError.message, record: failed };
     }
-  };
+  });
   return {
     async register(input) {
       const made = newPostRecord(input);
@@ -191,6 +206,28 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
       await store.put(made.record);
       return made;
     },
+    // Auto mapping from visual findings (see instagram-product-tag-automap.mjs). Stored in the record, never in
+    // the feed folder. A new mapping replaces the old one and needs a new approval.
+    autoMap: (folderName, findings) => serial(folderName, async () => {
+      const record = await store.get(folderName);
+      if (!record) return { ok: false, error: "not_registered" };
+      if (isTagJobDone(record)) return { ok: false, error: "tags_final" };
+      const { manifest, reason } = await dropbox.readFeedFolder(folderName);
+      if (!manifest) return { ok: false, error: reason || "manifest_missing" };
+      const out = await buildAutoMapping({ graph, findings, manifest, getCafe24Product, now: now() });
+      if (!out.ok) return { ok: false, error: "invalid_findings", problems: out.problems };
+      await store.put({ ...record, autoMapping: out.mapping });
+      return { ok: true, mapping: out.mapping };
+    }),
+    approveAutoMap: (folderName, picks, by, builtAt) => serial(folderName, async () => {
+      const record = await store.get(folderName);
+      if (!record?.autoMapping) return { ok: false, error: record ? "auto_mapping_missing" : "not_registered" };
+      if (isTagJobDone(record)) return { ok: false, error: "tags_final" };
+      const out = approveAutoTags(record.autoMapping, picks, { by, builtAt, now: now() });
+      if (!out.ok) return { ok: false, error: "not_approvable", problems: out.problems };
+      await store.put({ ...record, autoMapping: out.mapping });
+      return { ok: true, mapping: out.mapping };
+    }),
     get: (name) => store.get(name),
     list: async () => Promise.all((await store.list()).map((n) => store.get(n))),
     run,
