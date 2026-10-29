@@ -15,10 +15,14 @@ const rows = {
   15569: [["A", "M", "out of stock"]],
   15570: [["A", "M", "in stock"]]
 };
+const rowsOf = (no) => (rows[no] || []).map(([code, size, availability, color]) => ({ id: `${no}${code}`, retailer_id: `${no}.${code}`, name: `${no === "15568" ? "[OTHER] TAEGLOBAL" : "[TAEGLOBAL : 타에글로벌]"} ${no} ${size}`, availability, color }));
+// Rows through the product group: IG search -> product node -> /{group}/products (catalog-wide list refused live).
 const graph = { async get(path, params) {
-  assert.equal(path, `${SAMPLAS_META.catalogId}/products`);
-  const no = params.filter.retailer_product_group_id.eq;
-  return { data: (rows[no] || []).map(([code, size, availability, color]) => ({ id: `${no}${code}`, retailer_id: `${no}.${code}`, name: `${no === "15568" ? "[OTHER] TAEGLOBAL" : "[TAEGLOBAL : 타에글로벌]"} ${no} ${size}`, availability, color })) };
+  assert.notEqual(path, `${SAMPLAS_META.catalogId}/products`);
+  if (path === `${SAMPLAS_META.igUserId}/catalog_product_search`) { const r = rowsOf(params.q); return { data: r.length ? [{ product_id: r[0].id, retailer_id: `${params.q}.X`, review_status: "approved", product_variants: r.map((x) => ({ product_id: x.id })) }] : [] }; }
+  if (params?.fields === "product_group{id,retailer_id}") { const no = Object.keys(rows).find((n) => rowsOf(n).some((x) => x.id === path)); return { product_group: { id: `G${no}`, retailer_id: no } }; }
+  assert.match(path, /^G\d+\/products$/);
+  return { data: rowsOf(path.slice(1).split("/")[0]) };
 } };
 const cafe24 = async (no) => ({ productNo: no, selling: "T", display: "T", fetchedAt: "x",
   options: [{ variantCode: "A", available: no !== 15567 && no !== 15571 }, { variantCode: "B", available: true }] });
@@ -65,7 +69,8 @@ test("leading brand tag tolerates Meta whitespace and case, but rejects other br
     ["jacket [tae global : 타에 글로벌]", "TAG_REVIEW_REQUIRED"]
   ]) {
     const out = await buildAutoMapping({
-      graph: { get: async () => ({ data: [{ id: "15570A", retailer_id: "15570.A", name, availability: "in stock" }] }) },
+      // One answer serves the search, the product node and the group's products.
+      graph: { get: async () => ({ data: [{ id: "15570A", product_id: "15570A", retailer_id: "15570.A", name, availability: "in stock" }], product_group: { id: "G15570", retailer_id: "15570" } }) },
       findings: findings([item([{ productNo: 15570, confidence: 0.9 }])]), manifest, getCafe24Product: cafe24, now: 0
     });
     const t = out.mapping.slides[0].tags[0];
@@ -107,9 +112,11 @@ test("TAEGLOBAL seven pending tags: spaced brand and raw Cafe24 stock agree, nev
       items: [item([{ productNo: t.productNo, confidence: t.confidence }], { x: t.x, y: t.y })] })) };
   // Reuse the recorded M identities. Names below model the observed prefix; these are not fresh catalog reads.
   const recordedGraph = { async get(path, params) {
-    const p = products.get(Number(path.endsWith("/products") ? params.filter.retailer_product_group_id.eq : params.q));
+    const p = path.endsWith("/catalog_product_search") ? products.get(Number(params.q))
+      : [...products.values()].find((x) => path === x.metaProductId || path === `G${x.productNo}/products`);
     assert.ok(p);
-    if (path === `${SAMPLAS_META.catalogId}/products`) return { data: [{ id: p.metaProductId,
+    if (params?.fields === "product_group{id,retailer_id}") return { product_group: { id: `G${p.productNo}`, retailer_id: String(p.productNo) } };
+    if (path === `G${p.productNo}/products`) return { data: [{ id: p.metaProductId,
       retailer_id: `${p.productNo}.${p.variantCode}`, name: `[tae global : 타에 글로벌] fixture ${p.productNo}`, availability: "in stock" }] };
     assert.equal(path, `${SAMPLAS_META.igUserId}/catalog_product_search`);
     return { data: [{ product_id: p.metaProductId, retailer_id: `${p.productNo}.${p.variantCode}`,

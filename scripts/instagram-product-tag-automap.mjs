@@ -13,7 +13,7 @@
 // A candidate below AUTO_CANDIDATE_FLOOR is a noted alternative, not a candidate. Two candidates at or above it
 // are ambiguous and go to review.
 import { parseMetaContentId } from "./meta-product-registry-link.mjs";
-import { SAMPLAS_META } from "./instagram-product-tags.mjs";
+import { SAMPLAS_META, groupProducts } from "./instagram-product-tags.mjs";
 
 export const AUTO_MIN_CONFIDENCE = 0.8;
 export const AUTO_CANDIDATE_FLOOR = 0.5;
@@ -34,7 +34,7 @@ export function validateFindings(findings, manifest) {
 }
 
 // One garment -> one tag proposal (or a review entry when there is no single candidate).
-async function proposeTag({ graph, item, brand, getCafe24Product, catalogId }) {
+async function proposeTag({ graph, item, brand, getCafe24Product, catalogId, igUserId }) {
   const reasons = [];
   if (!validCoord(item.x) || !validCoord(item.y)) reasons.push("invalid_coordinates");
   const ranked = list(item.candidates).filter((c) => Number.isInteger(c?.productNo) && c.productNo > 0).sort((a, b) => b.confidence - a.confidence);
@@ -43,10 +43,7 @@ async function proposeTag({ graph, item, brand, getCafe24Product, catalogId }) {
   if (!(top.confidence >= AUTO_MIN_CONFIDENCE)) reasons.push("visual_low_confidence");
   if (second && second.confidence >= AUTO_CANDIDATE_FLOOR) reasons.push("visual_ambiguous_candidates");
   const evidence = [`visual: ${top.evidence || "none given"}`];
-  const rows = list((await graph.get(`${catalogId}/products`, {
-    fields: "id,retailer_id,name,availability,color",
-    filter: { retailer_product_group_id: { eq: String(top.productNo) } }, limit: "50"
-  })).data).filter((r) => parseMetaContentId(r.retailer_id).cafe24ProductNo === top.productNo);
+  const rows = await groupProducts(graph, { catalogId, igUserId, productNo: top.productNo, fields: "id,retailer_id,name,availability,color" });
   // Brand narrows the search only. It is never the evidence that picks the product. Every row of the group
   // must carry the brand as the name's leading tag ("[TAEGLOBAL : ...] ..."), not just contain the word.
   const brandTag = new RegExp(`^\\[${brand.replace(/\s/g, "").replace(/[^A-Z0-9]/g, "\\$&")}(:|\\])`);
@@ -85,7 +82,7 @@ export async function buildAutoMapping({ graph, findings, manifest, getCafe24Pro
   for (const s of findings.slides) {
     const out = { order: s.order, savedAsset: s.savedAsset, tags: [], review: [] };
     for (const item of list(s.items)) {
-      const p = await proposeTag({ graph, item, brand, getCafe24Product, catalogId: expected.catalogId });
+      const p = await proposeTag({ graph, item, brand, getCafe24Product, catalogId: expected.catalogId, igUserId: expected.igUserId });
       if (p.tag) out.tags.push(p.tag); else out.review.push(p.review);
     }
     // The same product twice on one slide is one tag; keep the first, send the rest to review.

@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createProductTagService,createPostStore} from '../scripts/instagram-product-tag-runner.mjs';
 import {createSchedulingRegistrationHook} from '../scripts/instagram-scheduling-registration-hook.mjs';
-import {SAMPLAS_META} from '../scripts/instagram-product-tags.mjs';
+import {GraphError,SAMPLAS_META} from '../scripts/instagram-product-tags.mjs';
 const fixture=JSON.parse(await readFile(new URL('./fixtures/instagram-scheduled-taeglobal.json',import.meta.url),'utf8'));
 
 async function setup(t,env={},extra=[]){
@@ -22,7 +22,9 @@ async function setup(t,env={},extra=[]){
   if(path===fixture.published.mediaId)return {id:path,username:'samplaskr',owner:{id:igUserId},media_type:'CAROUSEL_ALBUM'};
   if(path===`${fixture.published.mediaId}/children`)return {data:fixture.tags.map(x=>({id:x.childId,media_type:'IMAGE'}))};
   if(path.endsWith('/product_tags'))return {data:[]}; // Absent tags in the simulated new-post plan, never read/written on live TAEGLOBAL.
-  if(path===`${catalogId}/products`)return {data:fixture.catalogRows.filter(r=>r.retailer_id.startsWith(`${p.filter.retailer_product_group_id.eq}.`)).map(r=>({...r,id:r.product_id}))};
+  if(path===`${catalogId}/products`)throw new GraphError(403,{error:{code:200,message:'(#200) Permissions error'}}); // Refused live since 2026-10-29; rows come via the product group.
+  const row=fixture.catalogRows.find(r=>r.product_id===path);if(row&&p.fields==='product_group{id,retailer_id}')return {product_group:{id:`G${row.retailer_id.split('.')[0]}`,retailer_id:row.retailer_id.split('.')[0]}};
+  if(/^G\d+\/products$/.test(path))return {data:fixture.catalogRows.filter(r=>r.retailer_id.startsWith(`${path.slice(1).split('/')[0]}.`)).map(r=>({...r,id:r.product_id}))};
   if(path===`${igUserId}/catalog_product_search`)return {data:[{product_id:fixture.tags.find(x=>String(x.productNo)===p.q).metaProductId,retailer_id:`${p.q}.group`,review_status:'approved',product_variants:fixture.catalogRows.filter(r=>r.retailer_id.startsWith(`${p.q}.`)).map(r=>({product_id:r.product_id}))}]}; // Historical approval replay only.
   throw new Error(`unexpected GET ${path}`);
  },post:async()=>{c.posts++;assert.fail('No real or simulated tag POST allowed in this replay');}};
