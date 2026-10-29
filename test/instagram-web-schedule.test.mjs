@@ -35,11 +35,14 @@ test("slot from ISO: composer date/time text, and the hook reads it back to the 
   assert.equal(slotParts("2026-11-02T20:00:00"), null, "offset required");
 });
 
-test("store caption: 본점 template and Samplas location; VEIL refused until its rule exists", () => {
+test("store caption: 본점 and VEIL templates, both at the Samplas location", () => {
   assert.deepEqual(checkStoreCaption("본점", CAPTION).location.name, "Samplas");
   assert.deepEqual(checkStoreCaption("본점", "@x 26AW").problems, ["caption_missing_available_at_samplas"]);
   assert.deepEqual(checkStoreCaption("본점", `${CAPTION}\nSAMPLAS VEIL`).problems, ["caption_mentions_veil"]);
-  assert.deepEqual(checkStoreCaption("VEIL", CAPTION).problems, ["veil_caption_rule_undefined"]);
+  assert.deepEqual(checkStoreCaption("VEIL", CAPTION).problems, ["caption_missing_offline_samplas_veil"]);
+  const veil = checkStoreCaption("VEIL", "X 26AW COLLECTION AVAILABLE NOW AT SAMPLAS\n\nONLINE WWW.SAMPLAS.CO.KR\nOFFLINE @samplas_veil");
+  assert.deepEqual([veil.ok, veil.location.name], [true, "Samplas"]);
+  assert.deepEqual(checkStoreCaption("본점", `${CAPTION}\nOFFLINE @samplas_veil`).problems, ["caption_mentions_veil"]);
   assert.deepEqual(checkStoreCaption(undefined, CAPTION).problems, ["store_required"]);
 });
 
@@ -55,7 +58,7 @@ test("schedule file problems block before any browser step", async () => {
   const problems = async (over) => (await load(over)).problems;
   assert.deepEqual(await problems({ size: (p) => (p.endsWith("02.jpg") ? "1080x1080" : "1080x1350") }), ["images_not_4x5"]);
   assert.deepEqual(await problems({ schedule: { slotIso: "2026-10-29T12:10:00+09:00" } }), ["slot_less_than_20_minutes_ahead"]);
-  assert.deepEqual(await problems({ schedule: { store: "VEIL" } }), ["veil_caption_rule_undefined"]);
+  assert.deepEqual(await problems({ schedule: { store: "VEIL" } }), ["caption_missing_offline_samplas_veil"]);
   assert.deepEqual(await problems({ schedule: { mappingProposalFile: undefined }, manifest: { folderName: "OTHER", items: [{ order: 2, savedAsset: "assets/02.jpg" }] } }), ["manifest_folder_mismatch", "manifest_items"]);
   assert.deepEqual(await problems({ schedule: { captionFile: "c.txt" } }), ["absolute_paths_required"]);
   assert.deepEqual(await problems({ schedule: { mappingProposalFile: undefined }, manifest: { folderName: "AZVA-26AW", items: [{ order: 1, savedAsset: "assets/01.mp4" }] } }), ["non_jpeg_asset"]);

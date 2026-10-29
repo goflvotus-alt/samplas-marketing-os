@@ -18,6 +18,8 @@ export default async (page, ctx) => {
   const lines = plan.caption.split("\n");
   for (let i = 0; i < lines.length; i++) { if (lines[i]) await p.keyboard.insertText(lines[i]); if (i < lines.length - 1) await p.keyboard.press("Shift+Enter"); }
   await p.waitForTimeout(600);
+  // A caption ending in "@account" leaves the mention list open over the location field; the title closes it.
+  await p.getByText("새 게시물 만들기", { exact: true }).click(); await p.waitForTimeout(600);
   await d().locator('input[aria-label="위치 추가"]').click();
   await p.keyboard.insertText(plan.location.name);
   const addr = p.getByText(plan.location.address, { exact: true }).locator("visible=true");

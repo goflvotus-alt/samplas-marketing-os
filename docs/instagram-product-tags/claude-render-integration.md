@@ -85,7 +85,7 @@ Additional work estimate (not a measured benchmark): for a post with reusable va
 4. `run2.mjs schedule.mjs`: clicks 예약 once. It runs only with this post's approval, `SAMPLAS_IG_SCHEDULE_APPROVED=<folderName>@<slot ISO>`, and only after a fresh verification passes.
 5. `run2.mjs verify-scheduled.mjs`: reads `/scheduled_content/`. With the registration hook env set, steps 4 and 5 register the post on Render as described above.
 
-Store rule: `본점` requires "AVAILABLE NOW AT SAMPLAS", no VEIL mention, and the Samplas location. There is no agreed VEIL feed caption rule or place entry, so `store: "VEIL"` is refused (`veil_caption_rule_undefined`). The repo has no other 본점/VEIL caption classifier.
+Store rule (confirmed 2026-10-29 from past @samplaskr posts): both stores keep "AVAILABLE NOW AT SAMPLAS" and the Samplas location (place 105833437465285). `VEIL` captions end with `ONLINE WWW.SAMPLAS.CO.KR` / `OFFLINE @samplas_veil`. `본점` captions must not mention VEIL.
 
 Known limits:
 - The date picker step was verified only on the month it opens on. A slot in another month aborts in `compose.mjs` until the month arrow is checked on a real draft.

@@ -31,17 +31,16 @@ export function slotParts(slotIso) {
     calendarTime: `${h < 12 ? "오전" : "오후"} ${h12}:${pad(mi)}` };
 }
 
-// Store rule for the feed caption. Only the 본점 rule is known (caption template and Samplas location).
-// VEIL feed captions have no agreed rule yet, so a VEIL schedule is refused rather than guessed.
+// Store rule for the feed caption (operating policy confirmed 2026-10-29 from past @samplaskr posts):
+// both stores keep "AVAILABLE NOW AT SAMPLAS" and the Samplas location (place 105833437465285).
+// VEIL brands also end with "OFFLINE @samplas_veil"; 본점 posts never mention VEIL.
 export function checkStoreCaption(store, caption) {
-  if (store === "본점") {
-    const problems = [];
-    if (!/AVAILABLE NOW AT SAMPLAS\b/.test(caption)) problems.push("caption_missing_available_at_samplas");
-    if (/\bVEIL\b/i.test(caption)) problems.push("caption_mentions_veil");
-    return { ok: !problems.length, problems, location: SAMPLAS_LOCATION };
-  }
-  if (store === "VEIL") return { ok: false, problems: ["veil_caption_rule_undefined"] };
-  return { ok: false, problems: ["store_required"] };
+  if (store !== "본점" && store !== "VEIL") return { ok: false, problems: ["store_required"] };
+  const problems = [];
+  if (!/AVAILABLE NOW AT SAMPLAS\b/.test(caption)) problems.push("caption_missing_available_at_samplas");
+  if (store === "본점" && /veil/i.test(caption)) problems.push("caption_mentions_veil");
+  if (store === "VEIL" && !/^OFFLINE @samplas_veil$/m.test(caption)) problems.push("caption_missing_offline_samplas_veil");
+  return { ok: !problems.length, problems, location: SAMPLAS_LOCATION };
 }
 
 const sipsSize = (file) => {
