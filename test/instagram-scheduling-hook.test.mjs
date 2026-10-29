@@ -69,3 +69,19 @@ test('scheduled-content preview: smaller same-aspect sizes and small order dista
  const swapped=createSchedulingRegistrationHook({...await options(),fetchImpl:()=>assert.fail('registration forbidden')});await swapped.observe(success);
  assert.equal((await swapped.observe({...verification,observations:[{...kimyo,order:kimyo.order.map((p,i)=>i===0?[2,9.4]:p)}]})).state,'VERIFICATION_FAILED');
 });
+
+test('default export sends only the registration credential, never the shared internal one',async()=>{
+ const {default:observeSchedulingStep}=await import('../scripts/instagram-scheduling-registration-hook.mjs');
+ const {writeFile}=await import('node:fs/promises');
+ const dir=await mkdtemp(join(tmpdir(),'schedule-hook-env-'));const file=join(dir,'registration.json');await writeFile(file,JSON.stringify(config));
+ const base={SAMPLAS_IG_REGISTRATION_CONFIG:file,SAMPLAS_MARKETING_OS_URL:'https://hook-test.invalid',CAFE24_PROXY_BASIC_AUTH:'shared:FAKE'};
+ const seen=[];const realFetch=globalThis.fetch;
+ globalThis.fetch=async(u,i)=>{seen.push(i.headers.Authorization);return {ok:true,json:async()=>({ok:true})};};
+ try{
+  const shared={...base,SAMPLAS_IG_REGISTRATION_STATE_DIR:join(dir,'a')};
+  await observeSchedulingStep(success,{env:shared});assert.notEqual((await observeSchedulingStep(verification,{env:shared})).state,'REGISTERED');
+  const own={...base,SAMPLAS_IG_REGISTRATION_STATE_DIR:join(dir,'b'),SAMPLAS_IG_REGISTRATION_BASIC_AUTH:'reg:FAKE'};
+  await observeSchedulingStep(success,{env:own});assert.equal((await observeSchedulingStep(verification,{env:own})).state,'REGISTERED');
+ }finally{globalThis.fetch=realFetch;}
+ assert.deepEqual(seen,[`Basic ${Buffer.from('reg:FAKE').toString('base64')}`]);
+});

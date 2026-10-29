@@ -635,7 +635,7 @@ const server = isMainModule ? createServer(async (req, res) => {
     }
     // Shopping tag records: list/get, register a scheduled post, run one folder now. Internal auth only.
     if (["/api/instagram-product-tags/posts", "/api/instagram-product-tags/run", "/api/instagram-product-tags/automap", "/api/instagram-product-tags/automap/approve"].includes(url.pathname)) {
-      if (!isAuthorizedInternalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
+      if (!isAuthorizedInternalRequest(req) && !isTagRegistrationRequest(req, url.pathname)) return json(res, { error: "Unauthorized" }, 401);
       try {
         if (url.pathname.startsWith("/api/instagram-product-tags/automap")) {
           if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
@@ -2773,6 +2773,12 @@ export function isAuthorizedOperatorRequest(req, credentials = env.SAMPLAS_OPERA
   return auth === `Basic ${Buffer.from(expected).toString("base64")}`;
 }
 
+// Instagram scheduling registration credential (INSTAGRAM_TAG_REGISTRATION_BASIC_AUTH, "user:pass"): it can only
+// POST /api/instagram-product-tags/posts. GET, /run, /automap, Cafe24 and every other route still need internal auth.
+export function isTagRegistrationRequest(req, pathname, credentials = env.INSTAGRAM_TAG_REGISTRATION_BASIC_AUTH) {
+  return req?.method === "POST" && pathname === "/api/instagram-product-tags/posts" && isAuthorizedOperatorRequest(req, credentials);
+}
+
 // Local means both: a local Host header and a loopback socket. The Host header alone can be sent by
 // anyone, so it never grants local access on its own (2026-10-07).
 const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
@@ -2793,10 +2799,10 @@ function hasOperatorSession(req) {
 }
 
 // API_READ_AUTH=off is the emergency rollback switch for this gate (route-level write checks stay).
-export function isApiRequestAllowed(req, pathname, { readAuth = env.API_READ_AUTH } = {}) {
+export function isApiRequestAllowed(req, pathname, { readAuth = env.API_READ_AUTH, registrationAuth = env.INSTAGRAM_TAG_REGISTRATION_BASIC_AUTH } = {}) {
   if (readAuth === "off") return true;
   if (PUBLIC_API_PATHS.has(pathname) || pathname.startsWith("/api/ai-audit/") || pathname.startsWith("/api/meta-creative-media/") || pathname.startsWith("/api/meta-creative-upload/")) return true;
-  return isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req);
+  return isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req) || isTagRegistrationRequest(req, pathname, registrationAuth);
 }
 
 function isAuthorizedEcountImport(req) {
