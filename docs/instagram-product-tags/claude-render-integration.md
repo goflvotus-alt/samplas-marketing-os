@@ -51,10 +51,30 @@ A failed/uncertain registration is checkpointed in the local outbox before netwo
 3. Convert supplied findings through the existing automapper. Validate manifest identity, exact product/variant, brand/color, current Cafe24 sellability and current Meta in-stock status. Existing confidence ≥0.8 and competing-candidate rules still apply.
 4. Require exact membership in IG catalog_product_search and approved product group. Catalog ad eligibility is not substituted for IG shopping approval. Persist validation timestamp; past validation is not current stock.
 5. Store source `AWAITING_HUMAN_APPROVAL`, every tag `approved:false`. Jobs stay TAG_REVIEW_REQUIRED and cannot POST, even with WRITES on. API errors, uncertainty or missing matches also require review.
-6. A person reviews the exact mapping and submits the existing /automap/approve route with approvedBy, matching builtAt and selected `{order,productNo}` picks. Supplied-proposal jobs recheck live candidate/stock/group validity at approval time. Explicit `acceptUnverifiedVariantApproval:true` in that approval is a **separate** human decision; default false. Variant approval remains UNVERIFIED until Graph read-back. No automatic approval policy exists in this path.
+6. A person reviews the exact mapping and submits the existing /automap/approve route with approvedBy, matching builtAt and selected `{order,productNo}` picks. Supplied-proposal jobs recheck live candidate/stock/group validity at approval time. Explicit `acceptUnverifiedVariantApproval:true` in that approval is a **separate** human decision; default false. Variant approval remains UNVERIFIED until Graph read-back. Without `INSTAGRAM_PRODUCT_TAG_AUTO_APPROVE=on` no automatic approval happens in this path.
 7. After approval, the existing runner builds and revalidates the tag plan again using fresh reads. Actual posting still requires WRITES=on; polling requires AUTORUN=on. Deduplication, first uncertain-result stop, durable POST_OUTCOME_UNKNOWN and GET read-back from PR45–48 are unchanged. Registration retries cannot reset those states.
 
-No automatic-approval rollout is included. It requires a separate policy decision after accuracy is established for a defined scope.
+### Automatic approval (`INSTAGRAM_PRODUCT_TAG_AUTO_APPROVE=on`, default off)
+
+Right after step 5, in the same run, the runner approves (`approvedBy: auto-policy-v1`) exactly the tags that passed every step-3/4 check: status PROPOSED, `reviewRequired:false`, a Meta product ID and an approved IG product group. Every `reviewRequired:true` entry and every tag that failed a check stays out of the post. The record keeps `autoApproval {policy, at, approved, problems}`. It sets `acceptUnverifiedVariantApproval:true`, so the variant approval is confirmed by the GET read-back after the POST, as for step 6. Step 7 runs unchanged: fresh plan rebuild, WRITES gate, deduplication, POST_OUTCOME_UNKNOWN hold, GET verification.
+
+### Operating settings (full automation)
+
+Render (marketing OS service), after PR #49 is deployed:
+
+- `INSTAGRAM_PRODUCT_TAG_AUTORUN=on` (publish detection polling)
+- `INSTAGRAM_PRODUCT_TAG_AUTO_APPROVE=on` (policy above)
+- `INSTAGRAM_PRODUCT_TAG_WRITES=on` (real tag POST)
+
+Local Mac (the run2.mjs schedule session):
+
+- `SAMPLAS_IG_REGISTRATION_HOOK=<repo>/scripts/instagram-scheduling-registration-hook.mjs` (module path run2.mjs imports)
+- `SAMPLAS_IG_REGISTRATION_CONFIG=<prepare.mjs output>/<folder>.registration.json`
+- `SAMPLAS_IG_REGISTRATION_STATE_DIR=<outbox dir outside Dropbox>`
+- `SAMPLAS_MARKETING_OS_URL=https://samplas-marketing-os.onrender.com`
+- `CAFE24_PROXY_BASIC_AUTH` (existing internal Basic auth; never printed)
+
+A post scheduled before the hook was on is not registered by it; it needs one explicit `/posts` registration.
 
 ## Focused replay and operating status
 

@@ -25,6 +25,7 @@ import { approveAutoTags, buildAutoMapping } from "./instagram-product-tag-autom
 export const FEED_DIR_DEFAULT = "/SAMPLAS WORK/병구 작업/피드 자동화";
 // A run that sent tags counts once; after this many the post waits for a person.
 export const MAX_WRITE_RUNS = 3;
+export const AUTO_APPROVER = "auto-policy-v1";
 // The feed read covers the newest posts only; a post this old is no longer looked for.
 const RECENT_MEDIA_LIMIT = "25";
 const SLOT_EARLY_MS = 5 * 60 * 1000;
@@ -107,6 +108,21 @@ export async function runTagJob({ record, graph, readFeedFolder, getCafe24Produc
       } catch {
         rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "scheduled_mapping_validation_failed", checkedAt: at };
         return { record: rec, step: "proposal" };
+      }
+      // Auto approval, off unless INSTAGRAM_PRODUCT_TAG_AUTO_APPROVE=on. Only tags that passed every check of
+      // buildScheduledMapping are approved: PROPOSED (confidence >= 0.8, no competing candidate, brand, color,
+      // Cafe24 option available, Meta in stock, approved IG product group) and not marked reviewRequired.
+      // Every other tag and every review entry stays out of this post. buildTagPlan checks all of it again
+      // before any POST, and the POST still needs INSTAGRAM_PRODUCT_TAG_WRITES=on.
+      if (env.INSTAGRAM_PRODUCT_TAG_AUTO_APPROVE === "on") {
+        const picks = rec.autoMapping.slides.flatMap((s) => s.tags.filter((t) => t.status === "PROPOSED" && t.reviewRequired === false && t.metaProductId && t.approval).map((t) => ({ order: s.order, productNo: t.productNo })));
+        const out = picks.length ? approveAutoTags(rec.autoMapping, picks, { by: AUTO_APPROVER, builtAt: rec.autoMapping.source.builtAt, now }) : null;
+        rec.autoApproval = { policy: AUTO_APPROVER, at, approved: out?.ok ? picks.length : 0, problems: out && !out.ok ? out.problems : [] };
+        if (out?.ok) {
+          rec.autoMapping = out.mapping;
+          // The variant approval is read back after the POST (verifyTagPlan), as for a person's approval.
+          rec.approvals = { ...rec.approvals, acceptUnverifiedVariantApproval: true };
+        }
       }
       await checkpoint(rec);
     }
