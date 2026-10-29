@@ -63,3 +63,30 @@ No automatic-approval rollout is included. It requires a separate policy decisio
 Initial operation still needs a reviewed deployment, the existing Claude task's observer/config connection, and human approval of each new post. No deployment, main merge, real reservation/post, TAEGLOBAL rePOST, flag activation, Chrome profile or Dropbox source changes have occurred. The earlier `pr49-integration-2026-10-29.json` describes the superseded paid-image evaluation branch and is historical evidence only; an image API key/accuracy evaluation is no longer a prerequisite for this architecture.
 
 Additional work estimate (not a measured benchmark): for a post with reusable validated data, serialize/check seven rows and submit one registration request, typically tens of seconds to a few minutes. Uncertain items require human review and have no fixed estimate. No new image model call is added; existing Claude Code use and existing Meta/Cafe24/Render operations remain within their existing accounts and limits, not a claim that those services have zero operating cost.
+
+## New brand or slot: schedule file, no code change
+
+`scripts/instagram-web-schedule/` holds the brand-neutral versions of the 2026-10-28 TAEGLOBAL steps (nt1/nt3 → `draft.mjs`, nt4 → `compose.mjs`, f3 → `schedule.mjs`, nt6 → `verify-scheduled.mjs`). Each one reads one schedule file named by `SAMPLAS_IG_SCHEDULE`. They run through the existing `run2.mjs` on the dedicated Chrome (CDP 9333). They do not import Playwright.
+
+```json
+{ "folderName": "KIMYO-26AW", "slotIso": "2026-11-05T20:00:00+09:00", "store": "본점",
+  "captionFile": "/abs/caption.txt", "mappingProposalFile": "/abs/proposal.json" }
+```
+
+1. `node scripts/instagram-web-schedule/prepare.mjs <schedule.json> <outDir outside Dropbox>` checks the following without a browser or network:
+   - the READY manifest: order, JPEG only, 4:5 sizes, 20 images at most
+   - the caption and the store rule
+   - a slot at least 20 minutes ahead, with an explicit offset
+   - the proposal
+
+   It writes `<folder>.registration.json` for `SAMPLAS_IG_REGISTRATION_CONFIG`.
+2. `run2.mjs draft.mjs`: uploads in manifest order, sets 4:5 and checks each frame. It marks its tab and stops at 자르기.
+3. `run2.mjs compose.mjs`: checks the slide order (16x16 hash), then sets the caption, the location, 콘텐츠 예약, date and time. Then it verifies every field.
+4. `run2.mjs schedule.mjs`: clicks 예약 once. It runs only with this post's approval, `SAMPLAS_IG_SCHEDULE_APPROVED=<folderName>@<slot ISO>`, and only after a fresh verification passes.
+5. `run2.mjs verify-scheduled.mjs`: reads `/scheduled_content/`. With the registration hook env set, steps 4 and 5 register the post on Render as described above.
+
+Store rule: `본점` requires "AVAILABLE NOW AT SAMPLAS", no VEIL mention, and the Samplas location. There is no agreed VEIL feed caption rule or place entry, so `store: "VEIL"` is refused (`veil_caption_rule_undefined`). The repo has no other 본점/VEIL caption classifier.
+
+Known limits:
+- The date picker step was verified only on the month it opens on. A slot in another month aborts in `compose.mjs` until the month arrow is checked on a real draft.
+- Video assets are refused (`non_jpeg_asset`).
