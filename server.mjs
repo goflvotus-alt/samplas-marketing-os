@@ -175,9 +175,11 @@ const veilControl=createVeilControl({env,workDir,soldOutAudit:({number})=>{
 // Records live in WORK_DIR. Feed folders are only read, in READY or UPLOADED: the upload automation alone
 // moves them. Tag POSTs need INSTAGRAM_PRODUCT_TAG_WRITES=on plus the record's approval.
 // The 10-minute autorun is off unless INSTAGRAM_PRODUCT_TAG_AUTORUN=on.
+const productTagGraph = createGraphClient({ getToken: () => resolveMetaAccessToken() });
+const productTagDropbox = createFeedDropbox({ getToken: () => getDropboxAccessToken({ env }) });
 const productTags = createProductTagService({
-  graph: createGraphClient({ getToken: () => resolveMetaAccessToken() }),
-  dropbox: createFeedDropbox({ getToken: () => getDropboxAccessToken({ env }) }),
+  graph: productTagGraph,
+  dropbox: productTagDropbox,
   getCafe24Product: (productNo) => fetchTagCafe24View(productNo),
   store: createPostStore(join(workDir, "instagram-product-tags", "posts")),
   env
@@ -640,7 +642,7 @@ const server = isMainModule ? createServer(async (req, res) => {
           const body = await readJsonBody(req);
           const folderName = String(body?.folderName || "");
           const out = url.pathname.endsWith("/approve")
-            ? await productTags.approveAutoMap(folderName, body?.tags, String(body?.approvedBy || ""), String(body?.builtAt || ""))
+            ? await productTags.approveAutoMap(folderName, body?.tags, String(body?.approvedBy || ""), String(body?.builtAt || ""), { acceptUnverifiedVariantApproval: body?.acceptUnverifiedVariantApproval === true })
             : await productTags.autoMap(folderName, body?.findings);
           return json(res, out, out.ok ? 200 : out.error === "not_registered" ? 404 : 400);
         }
@@ -655,7 +657,7 @@ const server = isMainModule ? createServer(async (req, res) => {
         }
         if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
         const made = await productTags.register(await readJsonBody(req));
-        return json(res, made, made.ok ? 201 : 400);
+        return json(res, made, made.ok ? (made.existing ? 200 : 201) : made.problems?.includes("registration_conflict") ? 409 : 400);
       } catch (error) {
         return json(res, { error: safeErrorMessage(error) }, 500);
       }

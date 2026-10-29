@@ -1,7 +1,7 @@
 // Auto-mapping: per-slide visual findings -> a product-tags.json proposal for the tag runner.
 //
-// The visual step is not in this repo: Marketing OS has no vision model. findings come from an outside
-// analyzer (a person or a Claude session that looked at the images) and say, per garment, where it is on the
+// Visual findings come from the opt-in Render image adapter, or an outside analyzer (a person/Claude),
+// and say, per garment, where it is on the
 // slide and which Cafe24 products it looks like, with a confidence and the evidence. This module only checks
 // those candidates against Meta and Cafe24 data. It never approves: every tag comes out approved:false, and
 // a person approves tags with approveAutoTags(). Anything unclear stays TAG_REVIEW_REQUIRED.
@@ -64,7 +64,7 @@ async function proposeTag({ graph, item, brand, getCafe24Product, catalogId }) {
   // In-stock options first: Meta "in stock" and the Cafe24 option available, in Cafe24 option order.
   const inStock = color === null ? [] : list(cafe24?.options).filter((o) => o.available === true)
     .map((o) => ({ o, row: rows.find((r) => parseMetaContentId(r.retailer_id).variantCode === o.variantCode && r.availability === "in stock" && (!color || String(r.color || "").trim().toUpperCase() === color)) }))
-    .filter((x) => x.row);
+    .filter((x) => x.row && (!item.metaProductId || String(x.row.id) === item.metaProductId) && (!item.variantCode || x.o.variantCode === item.variantCode));
   if (color !== null && !reasons.includes("cafe24_not_found") && rows.length && !inStock.length) reasons.push("no_in_stock_option");
   const picked = inStock[0]?.row;
   if (picked) evidence.push(`meta: ${picked.retailer_id} "${picked.name}" in stock; ${inStock.length} in-stock option(s)`);

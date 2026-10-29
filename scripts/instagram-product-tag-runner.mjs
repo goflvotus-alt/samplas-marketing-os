@@ -13,17 +13,19 @@
 // applyTagPlan (gated) -> verifyTagPlan. TAG_VERIFIED and NO_TAGS are final.
 // Anything unclear holds the tags: a missing mapping is TAG_REVIEW_REQUIRED, never a guess.
 // Without product-tags.json the runner uses record.autoMapping (instagram-product-tag-automap.mjs), but only
-// after a person approved it.
+// after manual approval or the explicit per-post vision-v1 policy approved it.
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { asciiSafeJson } from "./dropbox-report-uploader.mjs";
-import { applyTagPlan, buildTagPlan, SAMPLAS_META, validateMapping, verifyTagPlan } from "./instagram-product-tags.mjs";
+import { applyTagPlan, buildTagPlan, checkTagCandidate, SAMPLAS_META, validateMapping, verifyTagPlan } from "./instagram-product-tags.mjs";
+import { buildScheduledMapping, validateScheduledProposal } from "./instagram-scheduled-mapping.mjs";
 import { approveAutoTags, buildAutoMapping } from "./instagram-product-tag-automap.mjs";
 
 export const FEED_DIR_DEFAULT = "/SAMPLAS WORK/병구 작업/피드 자동화";
 // A run that sent tags counts once; after this many the post waits for a person.
 export const MAX_WRITE_RUNS = 3;
+export const AUTO_APPROVER = "auto-policy-v1";
 // The feed read covers the newest posts only; a post this old is no longer looked for.
 const RECENT_MEDIA_LIMIT = "25";
 const SLOT_EARLY_MS = 5 * 60 * 1000;
@@ -33,17 +35,22 @@ const list = (v) => (Array.isArray(v) ? v : []);
 export const captionSha256 = (caption) => createHash("sha256").update(String(caption ?? "").normalize("NFC").replace(/\r\n/g, "\n").trim()).digest("hex");
 export const isFeedFolderName = (name) => FOLDER_RE.test(String(name || "")) && !String(name).includes("..");
 
-// What a person registers once the post is scheduled. Approvals are per post and default to off.
-export function newPostRecord({ folderName, slotIso, caption, captionSha256: sha, slideCount, acceptUnverifiedVariantApproval = false }) {
+// Verified scheduler receipt (or operator registration). Automation is opt-in; legacy approvals default off.
+export function newPostRecord({ folderName, slotIso, caption, captionSha256: sha, slideCount, acceptUnverifiedVariantApproval = false, autoTag, mappingProposal }) {
   const problems = [];
   if (!isFeedFolderName(folderName)) problems.push("folder_name");
   if (!Number.isFinite(Date.parse(slotIso))) problems.push("slot_iso");
   const hash = sha ? String(sha).toLowerCase() : caption ? captionSha256(caption) : "";
   if (!/^[0-9a-f]{64}$/.test(hash)) problems.push("caption_sha256");
+  if (sha && caption && captionSha256(caption) !== hash) problems.push("caption_hash_mismatch");
   if (!Number.isInteger(slideCount) || slideCount < 1 || slideCount > 20) problems.push("slide_count");
+  if (autoTag !== undefined && (!autoTag || typeof autoTag.brand !== "string" || !/^[A-Za-z0-9][A-Za-z0-9 .&_-]{0,60}$/.test(autoTag.brand.trim()))) problems.push("auto_tag_brand");
+  if (mappingProposal !== undefined) problems.push(...validateScheduledProposal(mappingProposal, folderName, slideCount));
   if (problems.length) return { ok: false, problems };
   return { ok: true, record: { schemaVersion: 1, folderName, slotIso: new Date(slotIso).toISOString(), captionSha256: hash, slideCount,
-    approvals: { acceptUnverifiedVariantApproval: acceptUnverifiedVariantApproval === true },
+    ...(mappingProposal ? { mappingProposal: structuredClone(mappingProposal) } : {}),
+    ...(!mappingProposal && autoTag ? { autoTag: { brand: autoTag.brand.trim().toUpperCase(), policy: "vision-v1" } } : {}),
+    approvals: { acceptUnverifiedVariantApproval: !mappingProposal && acceptUnverifiedVariantApproval === true },
     publish: { state: "SCHEDULED" }, tags: { state: "PENDING", writeRuns: 0 } } };
 }
 
@@ -94,10 +101,45 @@ export async function runTagJob({ record, graph, readFeedFolder, getCafe24Produc
     }
     const read = await readFeedFolder(rec.folderName);
     const { location, path, manifest, reason } = read;
-    // product-tags.json in the folder wins. Else an auto mapping a person approved (automap routes).
-    const auto = !read.mapping && rec.autoMapping ? rec.autoMapping : null;
-    const mapping = read.mapping ?? (auto?.source?.state === "APPROVED" ? auto : null);
-    rec.files = { location: location ?? null, path: path ?? null, mappingSource: read.mapping ? "folder" : auto ? "auto" : null, checkedAt: at };
+    if (rec.mappingProposal && !rec.autoMapping && manifest && list(manifest.items).length === rec.slideCount) {
+      try {
+        rec.autoMapping = await buildScheduledMapping({ proposal: rec.mappingProposal, manifest, graph, getCafe24Product, now, expected });
+        rec.proposalManifestSha256 = captionSha256(JSON.stringify(manifest));
+      } catch {
+        rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "scheduled_mapping_validation_failed", checkedAt: at };
+        return { record: rec, step: "proposal" };
+      }
+      // Auto approval, off unless INSTAGRAM_PRODUCT_TAG_AUTO_APPROVE=on. Only tags that passed every check of
+      // buildScheduledMapping are approved: PROPOSED (confidence >= 0.8, no competing candidate, brand, color,
+      // Cafe24 option available, Meta in stock, approved IG product group) and not marked reviewRequired.
+      // Every other tag and every review entry stays out of this post. buildTagPlan checks all of it again
+      // before any POST, and the POST still needs INSTAGRAM_PRODUCT_TAG_WRITES=on.
+      if (env.INSTAGRAM_PRODUCT_TAG_AUTO_APPROVE === "on") {
+        const picks = rec.autoMapping.slides.flatMap((s) => s.tags.filter((t) => t.status === "PROPOSED" && t.reviewRequired === false && t.metaProductId && t.approval).map((t) => ({ order: s.order, productNo: t.productNo })));
+        const out = picks.length ? approveAutoTags(rec.autoMapping, picks, { by: AUTO_APPROVER, builtAt: rec.autoMapping.source.builtAt, now }) : null;
+        rec.autoApproval = { policy: AUTO_APPROVER, at, approved: out?.ok ? picks.length : 0, problems: out && !out.ok ? out.problems : [] };
+        if (out?.ok) {
+          rec.autoMapping = out.mapping;
+          // The variant approval is read back after the POST (verifyTagPlan), as for a person's approval.
+          rec.approvals = { ...rec.approvals, acceptUnverifiedVariantApproval: true };
+        }
+      }
+      await checkpoint(rec);
+    }
+    if (rec.mappingProposal && rec.proposalManifestSha256 && rec.proposalManifestSha256 !== captionSha256(JSON.stringify(manifest))) {
+      rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "proposal_manifest_changed", checkedAt: at };
+      return { record: rec, step: "proposal" };
+    }
+    if (rec.autoTag && !rec.mappingProposal && !rec.autoMapping && !read.mapping) {
+      rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "paid_vision_disabled", checkedAt: at };
+      return { record: rec, step: "proposal" };
+    }
+    // New proposal jobs require their own human approval; a folder file cannot bypass it.
+    // Legacy/manual jobs retain the existing folder-file priority.
+    const folderMapping = rec.mappingProposal ? null : read.mapping;
+    const auto = !folderMapping && rec.autoMapping ? rec.autoMapping : null;
+    const mapping = folderMapping ?? (auto?.source?.state === "APPROVED" ? auto : null);
+    rec.files = { location: location ?? null, path: path ?? null, mappingSource: folderMapping ? "folder" : auto ? "auto" : null, checkedAt: at };
     const tagCount = list(mapping?.slides).reduce((n, s) => n + list(s?.tags).length, 0);
     if (!manifest) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: reason || "manifest_missing", checkedAt: at };
     else if (list(manifest.items).length !== rec.slideCount) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "manifest_slide_count", checkedAt: at };
@@ -161,6 +203,30 @@ export function createFeedDropbox({ getToken, fetchImpl = fetch, feedDir = FEED_
   };
   const read = async (location, path) => ({ location, path, manifest: await download(`${path}/manifest.json`), mapping: await download(`${path}/product-tags.json`) });
   return {
+    async readFeedImage(path, savedAsset) {
+      const prefix = `${feedDir}/`;
+      const relative = String(path || "").startsWith(prefix) ? path.slice(prefix.length) : "";
+      if (!/^(READY\/[A-Za-z0-9][A-Za-z0-9._-]{0,80}|UPLOADED\/\d{8}-\d{6} [A-Za-z0-9][A-Za-z0-9._-]{0,80})$/.test(relative) ||
+          relative.includes("..") || !/^assets\/[A-Za-z0-9_-]+\.(jpg|jpeg|png|webp)$/i.test(String(savedAsset))) throw new Error("invalid_feed_image_path");
+      const response = await fetchImpl("https://content.dropboxapi.com/2/files/download", { method: "POST", redirect: "error", signal: AbortSignal.timeout(30000),
+        headers: { ...(await auth()), "Dropbox-API-Arg": asciiSafeJson({ path: `${path}/${savedAsset}` }) } });
+      if (!response.ok || !response.body) throw new Error(`Dropbox image read failed (${response.status})`);
+      const max = 8 * 1024 * 1024;
+      const reader = response.body.getReader(), chunks = [];
+      let size = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > max) { await reader.cancel(); throw new Error("feed_image_too_large"); }
+        chunks.push(value);
+      }
+      const bytes = Buffer.concat(chunks);
+      const ext = savedAsset.split(".").pop().toLowerCase();
+      const mime = ext === "png" ? "png" : ext === "webp" ? "webp" : "jpeg";
+      if (!bytes.length) throw new Error("feed_image_empty");
+      return `data:image/${mime};base64,${bytes.toString("base64")}`;
+    },
     async readFeedFolder(folderName) {
       if (!isFeedFolderName(folderName)) throw new Error("invalid folder name");
       const ready = await read("READY", `${feedDir}/READY/${folderName}`);
@@ -210,12 +276,18 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
     }
   });
   return {
-    async register(input) {
+    register(input) {
       const made = newPostRecord(input);
-      if (!made.ok) return made;
-      if (await store.get(made.record.folderName)) return { ok: false, problems: ["already_registered"] };
-      await store.put(made.record);
-      return made;
+      if (!made.ok) return Promise.resolve(made);
+      return serial(made.record.folderName, async () => {
+        const existing = await store.get(made.record.folderName);
+        if (existing) {
+          const identity = r => JSON.stringify([r.slotIso, r.captionSha256, r.slideCount, !r.mappingProposal && r.approvals?.acceptUnverifiedVariantApproval === true, r.autoTag ?? null, r.mappingProposal ?? null]);
+          return identity(existing) === identity(made.record) ? { ok: true, existing: true, record: existing } : { ok: false, problems: ["registration_conflict"] };
+        }
+        await store.put(made.record);
+        return made;
+      });
     },
     // Auto mapping from visual findings (see instagram-product-tag-automap.mjs). Stored in the record, never in
     // the feed folder. A new mapping replaces the old one and needs a new approval.
@@ -231,14 +303,23 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
       await store.put({ ...record, autoMapping: out.mapping });
       return { ok: true, mapping: out.mapping };
     }),
-    approveAutoMap: (folderName, picks, by, builtAt) => serial(folderName, async () => {
+    approveAutoMap: (folderName, picks, by, builtAt, { acceptUnverifiedVariantApproval = false } = {}) => serial(folderName, async () => {
       const record = await store.get(folderName);
       if (isTagJobHeld(record)) return { ok: false, error: "post_outcome_unknown" };
       if (!record?.autoMapping) return { ok: false, error: record ? "auto_mapping_missing" : "not_registered" };
       if (isTagJobDone(record)) return { ok: false, error: "tags_final" };
       const out = approveAutoTags(record.autoMapping, picks, { by, builtAt, now: now() });
       if (!out.ok) return { ok: false, error: "not_approvable", problems: out.problems };
-      await store.put({ ...record, autoMapping: out.mapping });
+      if (record.mappingProposal) {
+        for (const slide of out.mapping.slides) for (const tag of slide.tags) {
+          let checked;
+          try { checked = await checkTagCandidate(graph, { ...SAMPLAS_META, productNo: tag.productNo, metaProductId: tag.metaProductId, cafe24: await getCafe24Product(tag.productNo) }); }
+          catch { checked = { ok: false, reason: "candidate_validation_unavailable" }; }
+          if (!checked.ok) return { ok: false, error: "not_approvable", problems: [checked.reason] };
+        }
+      }
+      await store.put({ ...record, autoMapping: out.mapping,
+        ...(record.mappingProposal ? { approvals: { ...record.approvals, acceptUnverifiedVariantApproval: acceptUnverifiedVariantApproval === true } } : {}) });
       return { ok: true, mapping: out.mapping };
     }),
     get: (name) => store.get(name),
