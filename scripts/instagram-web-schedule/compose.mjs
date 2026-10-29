@@ -12,8 +12,9 @@ export default async (page, ctx) => {
   const order = await orderCheck(p, plan);
   console.log("ORDER", JSON.stringify(order));
   if (!order.every((x, i) => x && x[0] === i + 1 && x[1] <= 25)) { console.log("ABORT slide order"); return { kind: "compose", ok: false }; }
+  // Meta+A/Backspace here dropped the first "@handle" line on 2026-10-29; type only into an empty box.
+  if ((await d().locator('[aria-label="캡션 추가..."]').innerText()).trim()) { console.log("ABORT caption box not empty"); return { kind: "compose", ok: false }; }
   await d().locator('[aria-label="캡션 추가..."]').click();
-  await p.keyboard.press("Meta+A"); await p.keyboard.press("Backspace");
   const lines = plan.caption.split("\n");
   for (let i = 0; i < lines.length; i++) { if (lines[i]) await p.keyboard.insertText(lines[i]); if (i < lines.length - 1) await p.keyboard.press("Shift+Enter"); }
   await p.waitForTimeout(600);
