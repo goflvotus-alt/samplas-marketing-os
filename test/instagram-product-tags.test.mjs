@@ -461,3 +461,26 @@ test("Graph errors name the endpoint and codes, never the token", async () => {
   assert.equal(e.message, `(#200) Permissions error [GET ${CATALOG}/products 403/200]`);
   assert.equal(e.message.includes("SECRET"), false);
 });
+
+test("registration-only credential reaches POST /posts and nothing else; shared internal auth unchanged", async () => {
+  process.env.CAFE24_PROXY_BASIC_AUTH ??= "FAKE_TEST:FAKE_TEST";
+  const { isApiRequestAllowed, isTagRegistrationRequest } = await import("../server.mjs");
+  const basic = (v) => `Basic ${Buffer.from(v).toString("base64")}`;
+  const cred = "reg:FAKE_REG";
+  const req = (method, authorization) => ({ method, headers: { authorization, host: "samplas.example" }, socket: { remoteAddress: "10.0.0.5" } });
+  const posts = "/api/instagram-product-tags/posts";
+  assert.equal(isTagRegistrationRequest(req("POST", basic(cred)), posts, cred), true);
+  for (const [method, path] of [["GET", posts], ["PUT", posts], ["POST", "/api/instagram-product-tags/run"], ["POST", "/api/instagram-product-tags/automap"], ["POST", "/api/instagram-product-tags/automap/approve"], ["GET", "/api/instagram-product-tags/cafe24/15195"], ["GET", "/api/cafe24/products"], ["POST", `${posts}/`]]) {
+    assert.equal(isTagRegistrationRequest(req(method, basic(cred)), path, cred), false, `${method} ${path}`);
+  }
+  for (const c of [undefined, "", "reg", "reg:", ":x"]) assert.equal(isTagRegistrationRequest(req("POST", basic(String(c))), posts, c), false, `unset/invalid ${c}`);
+  assert.equal(isTagRegistrationRequest(req("POST", basic("reg:WRONG")), posts, cred), false);
+  // The global /api gate admits it only for POST /posts (env unset here, so the default credential grants nothing).
+  assert.equal(isApiRequestAllowed(req("POST", basic(cred)), posts, { readAuth: undefined }), false);
+  assert.equal(isApiRequestAllowed(req("POST", basic(process.env.CAFE24_PROXY_BASIC_AUTH)), "/api/instagram-product-tags/run", { readAuth: undefined }), true, "shared internal auth unchanged");
+  const src = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
+  const gates = src.match(/if \(!isAuthorizedInternalRequest\(req\)[^\n]*\) return json\(res, \{ error: "Unauthorized" \}, 401\);/g);
+  assert.deepEqual(gates.filter((g) => g.includes("isTagRegistrationRequest")), ['if (!isAuthorizedInternalRequest(req) && !isTagRegistrationRequest(req, url.pathname)) return json(res, { error: "Unauthorized" }, 401);'], "only the tag-record route gate accepts it");
+  assert.match(src, /return isLocalRequest\(req\) \|\| isAuthorizedInternalRequest\(req\) \|\| hasOperatorSession\(req\) \|\| isTagRegistrationRequest\(req, pathname\);/);
+  assert.equal(src.match(/isTagRegistrationRequest\(/g).length, 3, "declared once, used by the /api gate and the tag-record gate only");
+});

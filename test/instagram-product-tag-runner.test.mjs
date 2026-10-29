@@ -277,7 +277,7 @@ test("service: register once, run unknown folder, errors recorded, tick skips fu
 test("server wiring: internal auth, autorun off by default, feed files never written or moved", async () => {
   const src = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   const block = src.slice(src.indexOf('if (["/api/instagram-product-tags/posts"'), src.indexOf('if (url.pathname === "/api/cafe24/brands")'));
-  assert.match(block, /if \(!isAuthorizedInternalRequest\(req\)\) return json\(res, \{ error: "Unauthorized" \}, 401\);/);
+  assert.match(block, /if \(!isAuthorizedInternalRequest\(req\) && !isTagRegistrationRequest\(req, url\.pathname\)\) return json\(res, \{ error: "Unauthorized" \}, 401\);/);
   assert.match(src, /if \(env\.INSTAGRAM_PRODUCT_TAG_AUTORUN === "on"\) setInterval\(\(\) => productTags\.tick\(\)/);
   const runner = await readFile(new URL("../scripts/instagram-product-tag-runner.mjs", import.meta.url), "utf8");
   assert.equal(/files\/(upload|delete|move|copy|create_folder)/.test(runner), false, "runner never writes, moves or deletes feed files");

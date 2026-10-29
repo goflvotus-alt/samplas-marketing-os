@@ -70,7 +70,8 @@ export function createSchedulingRegistrationHook({config,stateDir,baseUrl,author
 export default async function observeSchedulingStep(result,{env=process.env}={}) {
   if(!env.SAMPLAS_IG_REGISTRATION_CONFIG)return {state:'REGISTRATION_HOOK_DISABLED'};
   const config=JSON.parse(await readFile(env.SAMPLAS_IG_REGISTRATION_CONFIG,'utf8'));
-  const authorization=env.CAFE24_PROXY_BASIC_AUTH?`Basic ${Buffer.from(env.CAFE24_PROXY_BASIC_AUTH).toString('base64')}`:undefined;
+  // Registration-only credential ("user:pass"); Render accepts it for POST /api/instagram-product-tags/posts only.
+  const authorization=env.SAMPLAS_IG_REGISTRATION_BASIC_AUTH?`Basic ${Buffer.from(env.SAMPLAS_IG_REGISTRATION_BASIC_AUTH).toString('base64')}`:undefined;
   const hook=createSchedulingRegistrationHook({config,stateDir:env.SAMPLAS_IG_REGISTRATION_STATE_DIR,baseUrl:env.SAMPLAS_MARKETING_OS_URL,authorization});
   return hook.observe(result);
 }
