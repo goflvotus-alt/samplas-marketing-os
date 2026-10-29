@@ -475,12 +475,17 @@ test("registration-only credential reaches POST /posts and nothing else; shared 
   }
   for (const c of [undefined, "", "reg", "reg:", ":x"]) assert.equal(isTagRegistrationRequest(req("POST", basic(String(c))), posts, c), false, `unset/invalid ${c}`);
   assert.equal(isTagRegistrationRequest(req("POST", basic("reg:WRONG")), posts, cred), false);
-  // The global /api gate admits it only for POST /posts (env unset here, so the default credential grants nothing).
-  assert.equal(isApiRequestAllowed(req("POST", basic(cred)), posts, { readAuth: undefined }), false);
+  // The global /api gate admits it only for POST /posts; unset, it grants nothing.
+  const gate = (method, path, registrationAuth = cred) => isApiRequestAllowed(req(method, basic(cred)), path, { readAuth: undefined, registrationAuth });
+  assert.equal(gate("POST", posts), true);
+  assert.equal(gate("POST", posts, ""), false);
+  for (const [method, path] of [["GET", posts], ["POST", "/api/instagram-product-tags/run"], ["POST", "/api/instagram-product-tags/automap/approve"], ["GET", "/api/instagram-product-tags/cafe24/15195"], ["GET", "/api/cafe24/products"], ["POST", "/api/ecount/import"], ["POST", `${posts}/`], ["POST", "/api/instagram-product-tags/POSTS"]]) {
+    assert.equal(gate(method, path), false, `gate ${method} ${path}`);
+  }
   assert.equal(isApiRequestAllowed(req("POST", basic(process.env.CAFE24_PROXY_BASIC_AUTH)), "/api/instagram-product-tags/run", { readAuth: undefined }), true, "shared internal auth unchanged");
   const src = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
   const gates = src.match(/if \(!isAuthorizedInternalRequest\(req\)[^\n]*\) return json\(res, \{ error: "Unauthorized" \}, 401\);/g);
   assert.deepEqual(gates.filter((g) => g.includes("isTagRegistrationRequest")), ['if (!isAuthorizedInternalRequest(req) && !isTagRegistrationRequest(req, url.pathname)) return json(res, { error: "Unauthorized" }, 401);'], "only the tag-record route gate accepts it");
-  assert.match(src, /return isLocalRequest\(req\) \|\| isAuthorizedInternalRequest\(req\) \|\| hasOperatorSession\(req\) \|\| isTagRegistrationRequest\(req, pathname\);/);
+  assert.match(src, /return isLocalRequest\(req\) \|\| isAuthorizedInternalRequest\(req\) \|\| hasOperatorSession\(req\) \|\| isTagRegistrationRequest\(req, pathname, registrationAuth\);/);
   assert.equal(src.match(/isTagRegistrationRequest\(/g).length, 3, "declared once, used by the /api gate and the tag-record gate only");
 });

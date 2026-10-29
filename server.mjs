@@ -2799,10 +2799,10 @@ function hasOperatorSession(req) {
 }
 
 // API_READ_AUTH=off is the emergency rollback switch for this gate (route-level write checks stay).
-export function isApiRequestAllowed(req, pathname, { readAuth = env.API_READ_AUTH } = {}) {
+export function isApiRequestAllowed(req, pathname, { readAuth = env.API_READ_AUTH, registrationAuth = env.INSTAGRAM_TAG_REGISTRATION_BASIC_AUTH } = {}) {
   if (readAuth === "off") return true;
   if (PUBLIC_API_PATHS.has(pathname) || pathname.startsWith("/api/ai-audit/") || pathname.startsWith("/api/meta-creative-media/") || pathname.startsWith("/api/meta-creative-upload/")) return true;
-  return isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req) || isTagRegistrationRequest(req, pathname);
+  return isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req) || isTagRegistrationRequest(req, pathname, registrationAuth);
 }
 
 function isAuthorizedEcountImport(req) {
