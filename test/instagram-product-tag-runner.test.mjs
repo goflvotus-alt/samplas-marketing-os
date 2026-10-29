@@ -34,7 +34,10 @@ function fakeGraph({ feed, username = "samplaskr", postFailures = [] } = {}) {
       if (path === "m1/children") return { data: [{ id: "c1", media_type: "IMAGE" }, { id: "c2", media_type: "IMAGE" }] };
       if (path.endsWith("/product_tags")) return { data: state.tags[path.split("/")[0]].map((t) => ({ ...t })) };
       if (path === `${IG}/catalog_product_search`) return { data: [{ product_id: `P${params.q}`, retailer_id: `${params.q}.X`, review_status: "approved", product_variants: [{ product_id: `P${params.q}` }] }] };
-      if (path === `${CATALOG}/products`) { const no = params.filter.retailer_product_group_id.eq; return { data: [{ id: `P${no}`, retailer_id: `${no}.BK`, name: `[TAEGLOBAL] item ${no}`, availability: "in stock" }] }; }
+      // Catalog-wide product list is refused live (2026-10-29); rows come through the product group.
+      if (path === `${CATALOG}/products`) throw new GraphError(403, { error: { code: 200, message: "(#200) Permissions error" } });
+      if (/^P\d+$/.test(path) && params.fields === "product_group{id,retailer_id}") return { product_group: { id: `G${path.slice(1)}`, retailer_id: path.slice(1) } };
+      if (/^G\d+\/products$/.test(path)) { const no = path.slice(1).split("/")[0]; return { data: [{ id: `P${no}`, retailer_id: `${no}.BK`, name: `[TAEGLOBAL] item ${no}`, availability: "in stock" }] }; }
       throw new Error(`unexpected GET ${path}`);
     },
     async post(path, params) {
@@ -336,7 +339,7 @@ test('uncertain items, exact option mismatch and API failures cannot be approved
   if(mode==='api'){const get=graph.get.bind(graph);graph.get=async(path,p)=>{if(path.endsWith('/catalog_product_search'))throw new Error('unavailable');return get(path,p);};}
   const service=await serviceForProposal({graph});await service.register(scheduledInput(p));const out=await service.run(p.folderName);
   assert.equal(out.record.tags.state,'TAG_REVIEW_REQUIRED');assert.equal(state.posts.length,0);
-  const refused=await service.approveAutoMap(p.folderName,[{order:1,productNo:101}],'human',out.record.autoMapping.source.builtAt);
+  const refused=await service.approveAutoMap(p.folderName,[{order:1,productNo:101}],'human',out.record.autoMapping?.source.builtAt);
   assert.equal(refused.ok,false);assert.equal(state.posts.length,0);
  }
 });

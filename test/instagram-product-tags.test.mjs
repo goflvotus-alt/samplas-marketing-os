@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { evaluateOption } from "../scripts/veil-found-soldout-audit.mjs";
-import { applyTagPlan, buildTagPlan, CAFE24_MAX_AGE_MS, createGraphClient, GraphError, preflight, SAMPLAS_META, toTagCafe24View, validateMapping, verifyTagPlan, withTagStatus } from "../scripts/instagram-product-tags.mjs";
+import { applyTagPlan, buildTagPlan, CAFE24_MAX_AGE_MS, createGraphClient, GraphError, groupProducts, preflight, SAMPLAS_META, toTagCafe24View, validateMapping, verifyTagPlan, withTagStatus } from "../scripts/instagram-product-tags.mjs";
 
 const IG = SAMPLAS_META.igUserId;
 const CATALOG = SAMPLAS_META.catalogId;
@@ -27,7 +27,11 @@ function fakeGraph({ owner = IG, username = "samplaskr", children = ["c1", "c2"]
       if (path.endsWith("/product_tags") && state.failTagGet) throw new GraphError(500, {});
       if (path.endsWith("/product_tags")) return { data: state.tags[path.split("/")[0]].map((t) => ({ ...t })) };
       if (path === `${IG}/catalog_product_search`) return { data: search[params.q] ? [search[params.q]] : [] };
-      if (path === `${CATALOG}/products`) return { data: products[params.filter.retailer_product_group_id.eq] || [] };
+      // Live since 2026-10-29: the catalog-wide product list is refused; the group path works.
+      if (path === `${CATALOG}/products`) throw new GraphError(403, { error: { code: 200, message: "(#200) Permissions error" } });
+      const hit = Object.entries(search).find(([, g]) => g.product_id === path);
+      if (hit && params.fields === "product_group{id,retailer_id}") return { product_group: { id: `G${hit[0]}`, retailer_id: hit[0] } };
+      if (/^G\d+\/products$/.test(path)) return { data: products[path.slice(1).split("/")[0]] || [] };
       throw new Error(`unexpected GET ${path}`);
     },
     async post(path, params) {
@@ -330,9 +334,10 @@ test("wrong-typed list fields block instead of throwing", async () => {
   const weird = (over) => fakeGraph({ products: PRODUCTS, ...over }).graph;
   const g1 = weird({});
   const odd = { ...g1, get: async (path, params) => path.endsWith("/catalog_product_search") ? { data: { 0: SEARCH[101] } } : g1.get(path, params) };
-  assert.deepEqual(states(await plan(odd, [[1, [tag(101, 0.5, 0.5)]]])), ["1:101:TAG_REVIEW_REQUIRED:not_in_ig_search"]);
+  // The group rows come from the search (groupProducts), so a malformed search leaves no rows.
+  assert.deepEqual(states(await plan(odd, [[1, [tag(101, 0.5, 0.5)]]])), ["1:101:TAG_REVIEW_REQUIRED:meta_product_id_not_in_group"]);
   const noVariants = weird({ search: { 101: { ...SEARCH[101], product_id: "OTHER", product_variants: "P101" } } });
-  assert.deepEqual(states(await plan(noVariants, [[1, [tag(101, 0.5, 0.5)]]])), ["1:101:TAG_REVIEW_REQUIRED:not_in_ig_search"]);
+  assert.deepEqual(states(await plan(noVariants, [[1, [tag(101, 0.5, 0.5)]]])), ["1:101:TAG_REVIEW_REQUIRED:meta_product_id_not_in_group"]);
   const p = await plan(weird({}), [[1, [tag(101, 0.5, 0.5)]]], { getCafe24Product: async () => view(101, [], { options: { BK: 1 } }) });
   assert.deepEqual(states(p), ["1:101:TAG_REVIEW_REQUIRED:cafe24_option_not_found"]);
 });
@@ -431,4 +436,28 @@ test("first uncertain POST stops all later slides, even when a later GET resolve
     await applyTagPlan(f.graph, p, GO);
     assert.equal(f.state.posts.length, 1);
   }
+});
+
+test("group rows: one IG search group whose product group is the product number and holds every searched id, else none", async () => {
+  const rows = [{ id: "A", retailer_id: "7.A" }, { id: "B", retailer_id: "7.B" }, { id: "Z", retailer_id: "8.Z" }];
+  const fake = ({ search = [{ product_id: "A", retailer_id: "7.X", product_variants: [{ product_id: "B" }] }], group = { id: "G7", retailer_id: "7" } } = {}) => ({ get: async (path) => {
+    if (path === `${IG}/catalog_product_search`) return { data: search };
+    if (path === "A") return { product_group: group };
+    if (path === "G7/products") return { data: rows };
+    throw new Error(`unexpected GET ${path}`);
+  } });
+  const get = (over) => groupProducts(fake(over), { catalogId: CATALOG, igUserId: IG, productNo: 7, fields: "id,retailer_id" });
+  assert.deepEqual((await get()).map((r) => r.id), ["A", "B"], "other product's row dropped");
+  assert.deepEqual(await get({ search: [] }), [], "not in IG search");
+  assert.deepEqual(await get({ search: [{ product_id: "A", retailer_id: "7.X" }, { product_id: "B", retailer_id: "7.Y" }] }), [], "two search groups");
+  assert.deepEqual(await get({ group: { id: "G7", retailer_id: "8" } }), [], "group of another product");
+  assert.deepEqual(await get({ group: null }), [], "no product group");
+  assert.deepEqual(await get({ search: [{ product_id: "A", retailer_id: "7.X", product_variants: [{ product_id: "C" }] }] }), [], "searched variant missing from the group");
+});
+
+test("Graph errors name the endpoint and codes, never the token", async () => {
+  const graph = createGraphClient({ getToken: async () => "SECRET", fetchImpl: async () => ({ ok: false, status: 403, json: async () => ({ error: { code: 200, message: "(#200) Permissions error" } }) }) });
+  const e = await graph.get(`${CATALOG}/products`, { fields: "id" }).catch((x) => x);
+  assert.equal(e.message, `(#200) Permissions error [GET ${CATALOG}/products 403/200]`);
+  assert.equal(e.message.includes("SECRET"), false);
 });

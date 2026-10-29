@@ -48,7 +48,8 @@ export function createGraphClient({ getToken, version = "v25.0", fetchImpl = fet
       throw new GraphError(0, { error: { message: "Graph request failed (network)" } });
     }
     const json = await response.json().catch(() => ({}));
-    if (!response.ok || json.error) throw new GraphError(response.status, json);
+    // The endpoint (path only, never the token) goes into the message so a stored lastError says which call failed.
+    if (!response.ok || json.error) { const e = new GraphError(response.status, json); e.message += ` [${method} ${path} ${response.status}/${e.code ?? "-"}]`; throw e; }
     return json;
   };
   return { get: (path, params) => call("GET", path, params), post: (path, params) => call("POST", path, params) };
@@ -141,10 +142,7 @@ export async function checkTagCandidate(graph, { catalogId, igUserId, productNo,
   const age = now - Date.parse(cafe24.fetchedAt);
   if (!(age >= 0 && age <= CAFE24_MAX_AGE_MS)) return { ok: false, reason: "cafe24_stale" };
   if (cafe24.selling !== "T" || cafe24.display !== "T") return { ok: false, reason: "cafe24_not_selling_or_hidden" };
-  const rows = list((await graph.get(`${catalogId}/products`, {
-    fields: "id,retailer_id,name,availability",
-    filter: { retailer_product_group_id: { eq: String(productNo) } }, limit: "50"
-  })).data);
+  const rows = await groupProducts(graph, { catalogId, igUserId, productNo, fields: "id,retailer_id,name,availability" });
   const item = rows.find((r) => String(r.id) === id && r.name && parseMetaContentId(r.retailer_id).cafe24ProductNo === Number(productNo));
   if (!item) return { ok: false, reason: "meta_product_id_not_in_group" };
   const found = list((await graph.get(`${igUserId}/catalog_product_search`, { catalog_id: catalogId, q: String(productNo) })).data)
@@ -159,6 +157,24 @@ export async function checkTagCandidate(graph, { catalogId, igUserId, productNo,
   if (options.length > 1) return { ok: false, reason: "cafe24_option_ambiguous" };
   if (options[0].available !== true) return { ok: false, reason: options[0].state === "UNKNOWN" ? "cafe24_option_uncertain" : "cafe24_option_out_of_stock" };
   return { ok: true, product: { id, retailerId: item.retailer_id, name: item.name, variantCode, approval: { group: "approved", variant: "UNVERIFIED" } } };
+}
+
+// The catalog rows of one Cafe24 product (retailer_product_group_id = productNo).
+// GET /{catalog}/products answers 403 / code 200 for the Production token since 2026-10-29, while the
+// IG search, the product node and /{product_group}/products work. So: the single IG search group for productNo,
+// its product's product_group, that group's products. No single group, a group whose retailer_id is not
+// productNo, or a group that lacks a searched product id gives no rows: the caller reviews, nothing is guessed.
+export async function groupProducts(graph, { catalogId, igUserId, productNo, fields }) {
+  const no = Number(productNo);
+  const groups = list((await graph.get(`${igUserId}/catalog_product_search`, { catalog_id: catalogId, q: String(no) })).data)
+    .filter((g) => parseMetaContentId(g.retailer_id).cafe24ProductNo === no);
+  if (groups.length !== 1 || !groups[0].product_id) return [];
+  const ids = [groups[0].product_id, ...list(groups[0].product_variants).map((v) => v.product_id)].map(String);
+  const group = (await graph.get(ids[0], { fields: "product_group{id,retailer_id}" })).product_group;
+  if (!group?.id || String(group.retailer_id) !== String(no)) return [];
+  const rows = list((await graph.get(`${group.id}/products`, { fields, limit: "50" })).data)
+    .filter((r) => parseMetaContentId(r.retailer_id).cafe24ProductNo === no);
+  return ids.every((id) => rows.some((r) => String(r.id) === id)) ? rows : [];
 }
 
 // A tag as Graph returns it: a product id and numeric coordinates. Anything else is treated as unknown.
