@@ -15,6 +15,8 @@ export function scheduledSlotIso(text) {
   return d.toISOString();
 }
 
+const sameAspect=(got,want)=>{const [w,h]=String(got).split('x').map(Number),[W,H]=String(want).split('x').map(Number);return /^\d+x\d+$/.test(String(got)) && w>0 && w*H===h*W;};
+
 export function createSchedulingRegistrationHook({config,stateDir,baseUrl,authorization,fetchImpl=fetch,now=()=>new Date().toISOString()}) {
   const input={...config,captionSha256:config?.captionSha256};
   const made=newPostRecord(input);
@@ -47,8 +49,10 @@ export function createSchedulingRegistrationHook({config,stateDir,baseUrl,author
       const matches=observations.filter(o=>o.captionSha256===made.record.captionSha256 && scheduledSlotIso(o.sched)===made.record.slotIso);
       const hit=matches[0];
       const verified=result.complete===true && result.calendarCount===observations.length && matches.length===1 && hit.captionMatch===true &&
-        Array.isArray(hit.sizes) && hit.sizes.length===config.slideCount && hit.sizes.every((s,i)=>s===config.dimensions[i]) &&
-        Array.isArray(hit.order) && hit.order.length===config.slideCount && hit.order.every((pair,i)=>Array.isArray(pair) && pair[0]===i+1 && pair[1]===0);
+        // The scheduled-content dialog serves a smaller preview (720x900 for 1080x1350 on 2026-10-29), so sizes must keep
+        // each source's aspect, and each slide must best-match its own source within the schedule step's order limit (25).
+        Array.isArray(hit.sizes) && hit.sizes.length===config.slideCount && hit.sizes.every((s,i)=>sameAspect(s,config.dimensions[i])) &&
+        Array.isArray(hit.order) && hit.order.length===config.slideCount && hit.order.every((pair,i)=>Array.isArray(pair) && pair[0]===i+1 && typeof pair[1]==='number' && pair[1]<=25);
       if(!verified)return save({...record,state:'VERIFICATION_FAILED',updatedAt:now()});
       const receipt={account:'samplaskr',state:'SCHEDULED',folderName:config.folderName,slotIso:made.record.slotIso,captionSha256:made.record.captionSha256,slideCount:config.slideCount,
         verified:{caption:true,slot:true,slides:true,order:true,dimensions:true}};

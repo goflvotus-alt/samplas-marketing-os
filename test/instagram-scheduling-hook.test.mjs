@@ -21,7 +21,7 @@ test('actual f3 → nt6 result contract registers only after both; success idemp
 });
 
 test('missing success, duplicate calendar match, wrong slot/order/caption/dimensions never register',async()=>{
- for(const v of [{...verification,complete:false},{...verification,calendarCount:2,observations:[observed,observed]},...['sched','captionSha256','sizes','order'].map(k=>({...verification,observations:[{...observed,[k]:k==='sched'?'2026년 10월 29일 시간 08 : 00 PM':k==='sizes'?['1080x1080']:k==='order'?[[2,0]]:'wrong'}]}))]) {
+ for(const v of [{...verification,complete:false},{...verification,calendarCount:2,observations:[observed,observed]},...['sched','captionSha256','sizes','order'].map(k=>({...verification,observations:[{...observed,[k]:k==='sched'?'2026년 10월 29일 시간 08 : 00 PM':k==='sizes'?Array(7).fill('1080x1080'):k==='order'?Array.from({length:7},(_,i)=>[i+1,i===3?26:0]):'wrong'}]}))]) {
   const hook=createSchedulingRegistrationHook({...await options(),fetchImpl:()=>assert.fail('registration forbidden')});await hook.observe(success);
   assert.equal((await hook.observe(v)).state,'VERIFICATION_FAILED');
  }
@@ -59,4 +59,13 @@ test('prepared mapping proposal travels with registration, never as approval',as
  let body;const h=createSchedulingRegistrationHook({...await options(),config:{...config,mappingProposal},fetchImpl:async(u,i)=>{body=JSON.parse(i.body);return {ok:true,json:async()=>({ok:true})};}});
  await h.observe(success);await h.observe(verification);
  assert.deepEqual(body.mappingProposal,mappingProposal);assert.equal(body.autoTag,undefined);assert.equal(body.acceptUnverifiedVariantApproval,false);
+});
+
+test('scheduled-content preview: smaller same-aspect sizes and small order distances register (KIMYO 2026-10-29 shape)',async()=>{
+ const kimyo={...observed,sizes:Array(7).fill('720x900'),order:[[1,9.4],[2,11.7],[3,8.6],[4,10],[5,12],[6,9],[7,11]]};
+ let calls=0;const hook=createSchedulingRegistrationHook({...await options(),fetchImpl:async()=>{calls++;return {ok:true,json:async()=>({ok:true})};}});
+ await hook.observe(success);
+ assert.equal((await hook.observe({...verification,observations:[kimyo]})).state,'REGISTERED');assert.equal(calls,1);
+ const swapped=createSchedulingRegistrationHook({...await options(),fetchImpl:()=>assert.fail('registration forbidden')});await swapped.observe(success);
+ assert.equal((await swapped.observe({...verification,observations:[{...kimyo,order:kimyo.order.map((p,i)=>i===0?[2,9.4]:p)}]})).state,'VERIFICATION_FAILED');
 });
