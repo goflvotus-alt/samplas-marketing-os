@@ -1,0 +1,24 @@
+name: Popup EXPENSES regression
+on:
+  pull_request:
+    paths:
+      - 'scripts/popup-projects.mjs'
+      - 'scripts/popup-mcp.mjs'
+      - 'scripts/popup-service.mjs'
+      - 'test/popup-*.test.mjs'
+      - '.github/workflows/popup-expenses-check.yml'
+  workflow_dispatch:
+jobs:
+  popup-expenses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: node --check scripts/popup-projects.mjs && node --check scripts/popup-mcp.mjs
+      - run: node --test test/popup-expenses.test.mjs test/popup-mcp.test.mjs
