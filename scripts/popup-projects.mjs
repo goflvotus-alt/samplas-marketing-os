@@ -186,7 +186,7 @@ const REPORT_KEYS = ["status", "title", "period", "file", "headline", "findings"
 
 export const PATCH_FIELDS = ["name", "start", "end", "brand", "venue", "status", "scheduleTentative"];
 export const OPERATIONS = ["add_task", "update_task", "set_task_done", "delete_task", "add_asset", "update_asset", "link_asset_file", "unlink_asset_file", "delete_asset",
-  "add_note", "update_note", "delete_note", "update_report", "restore_from_trash"];
+  "add_note", "update_note", "delete_note", "update_report", "restore_from_trash", "add_expense", "update_expense"];
 
 function find(list, id, kind) {
   const item = (list || []).find((x) => x?.id === id);
@@ -204,6 +204,50 @@ function setDone(task, done, at, by) {
   if (done) task.doneAt = at; else delete task.doneAt;
   task.history = [...(Array.isArray(task.history) ? task.history : []), { at, by, done }].slice(-TASK_HISTORY_MAX);
   return true;
+}
+
+
+function cleanExpense(raw, field, partial = false) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw bad(`${field} must be an object`);
+  only(raw, ["date","category","title","amount","vatIncluded","payer","relatedStage","memo","estimate","hourlyWage","paidHours","shift","breakHours"], field);
+  if (!partial && !["date","category","title","amount"].every(k => raw[k] !== undefined)) throw bad(`${field}: date, category, title, amount required`);
+  const out = {};
+  if (raw.date !== undefined) { if (!isDate(raw.date)) throw bad(`${field}.date must be YYYY-MM-DD`); out.date = raw.date; }
+  for (const k of ["category","title","payer","relatedStage","memo","shift"]) {
+    if (raw[k] === undefined) continue;
+    if (typeof raw[k] !== "string" || (["category","title"].includes(k) && !raw[k].trim()) || raw[k].length > (k === "memo" ? 2000 : 200)) throw bad(`${field}.${k} invalid`);
+    out[k] = raw[k].trim();
+  }
+  if (raw.amount !== undefined) {
+    if (!Number.isSafeInteger(raw.amount) || raw.amount < 0 || raw.amount > 1_000_000_000) throw bad(`${field}.amount must be a nonnegative integer KRW`);
+    out.amount = raw.amount;
+  }
+  if (raw.vatIncluded !== undefined) {
+    if (raw.vatIncluded !== null && typeof raw.vatIncluded !== "boolean") throw bad(`${field}.vatIncluded must be true, false, or null`);
+    out.vatIncluded = raw.vatIncluded;
+  }
+  if (raw.estimate !== undefined) { if (typeof raw.estimate !== "boolean") throw bad(`${field}.estimate must be boolean`); out.estimate = raw.estimate; }
+  for (const k of ["hourlyWage","paidHours","breakHours"]) {
+    if (raw[k] === undefined) continue;
+    if (typeof raw[k] !== "number" || !Number.isFinite(raw[k]) || raw[k] < 0 || raw[k] > 1_000_000) throw bad(`${field}.${k} invalid`);
+    out[k] = raw[k];
+  }
+  return out;
+}
+function expenseBoard(project) {
+  if (project.expenses !== undefined && (!project.expenses || typeof project.expenses !== "object" || Array.isArray(project.expenses))) throw bad("existing expenses is invalid");
+  if (project.expenses?.items !== undefined && !Array.isArray(project.expenses.items)) throw bad("existing expenses.items is invalid");
+  const board = project.expenses || (project.expenses = { currency: "KRW", items: [] });
+  if (board.currency && board.currency !== "KRW") throw bad("expense currency must be KRW");
+  if (!board.items) board.items = [];
+  return board;
+}
+function updateExpenseTotal(board, at) {
+  if (board.items.some(item => !Number.isSafeInteger(item?.amount) || item.amount < 0)) throw bad("existing expense amount is invalid");
+  board.total = board.items.reduce((sum,item) => sum + item.amount, 0);
+  if (!Number.isSafeInteger(board.total)) throw bad("expense total overflow");
+  board.currency = "KRW";
+  board.updatedAt = at;
 }
 
 // Applies a field patch and item operations in place. Returns a list of human-readable changes.
@@ -309,6 +353,29 @@ export function applyChanges(project, { patch, operations = [] }, { now, actor }
         asset.files = (asset.files || []).filter((f) => f.path !== op.path);
         if (asset.files.length === before) throw new PopupError(404, "file_link_not_found", `${op.path} is not linked to ${asset.name}`);
         changes.push(`asset ${asset.name}: unlinked ${op.path} (the Dropbox file itself is kept)`);
+        break;
+      }
+      case "add_expense": {
+        only(op, ["type","expense"], field);
+        const board = expenseBoard(project);
+        const entry = cleanExpense(op.expense, `${field}.expense`);
+        const id = op.expenseId;
+        if (id !== undefined) throw bad(`${field}: expenseId belongs to update_expense`);
+        const item = { id: randomUUID(), ...entry };
+        board.items.push(item);
+        updateExpenseTotal(board, at);
+        changes.push(`expense added: ${item.title} (${item.amount} KRW)`);
+        break;
+      }
+      case "update_expense": {
+        only(op, ["type","expenseId","patch"], field);
+        const board = expenseBoard(project);
+        const item = find(board.items, op.expenseId, "expense");
+        const next = cleanExpense(op.patch, `${field}.patch`, true);
+        if (!Object.keys(next).length) throw bad(`${field}.patch is empty`);
+        let changed = false;
+        for (const [k,v] of Object.entries(next)) if (item[k] !== v) {item[k]=v;changed=true;}
+        if (changed) { updateExpenseTotal(board, at); changes.push(`expense updated: ${item.title}`); }
         break;
       }
       case "add_note": {
