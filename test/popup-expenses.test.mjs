@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { applyChanges, PopupError } from "../scripts/popup-projects.mjs";
-import { POPUP_TOOLS } from "../scripts/popup-mcp.mjs";
+import { POPUP_TOOLS, popupRpc } from "../scripts/popup-mcp.mjs";
 
 const now = new Date("2026-10-30T12:00:00Z");
 const opts = { now, actor: "test" };
@@ -18,6 +18,48 @@ test("MCP updatePopupProject exposes validated expense operations", () => {
   assert.ok(tool.inputSchema.properties.operations.items.properties.expenseId);
   assert.ok(tool.inputSchema.properties.operations.items.properties.type.enum.includes("add_expense"));
   assert.ok(tool.inputSchema.properties.operations.items.properties.type.enum.includes("update_expense"));
+});
+
+test("serialized tools/list retains the required expense date schema", async () => {
+  const reply = JSON.parse(JSON.stringify(await popupRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }, {})));
+  assert.equal(reply.result.tools.length, 9);
+  const operation = reply.result.tools.find(t => t.name === "updatePopupProject").inputSchema.properties.operations.items;
+  const expense = operation.properties.expense;
+  assert.equal(expense.additionalProperties, false);
+  for (const key of expense.required) assert.ok(Object.hasOwn(expense.properties, key), key);
+  assert.equal(expense.properties.date.type, "string");
+  assert.equal(expense.properties.date.pattern, "^\\d{4}-\\d{2}-\\d{2}$");
+  assert.match("2026-10-27", new RegExp(expense.properties.date.pattern));
+  assert.doesNotMatch("2026/10/27", new RegExp(expense.properties.date.pattern));
+  assert.ok(operation.properties.type.enum.includes("add_expense"));
+  assert.ok(operation.properties.type.enum.includes("update_expense"));
+});
+
+test("add and update accept YYYY-MM-DD dates without changing existing costs", () => {
+  const p = existing();
+  applyChanges(p, { operations: [{ type: "add_expense", expense: {
+    date: "2026-10-27", category: "VMD", title: "Local fixture", amount: 10
+  } }] }, opts);
+  const added = p.expenses.items[1];
+  assert.equal(added.date, "2026-10-27");
+  applyChanges(p, { operations: [{ type: "update_expense", expenseId: added.id, patch: { date: "2026-10-28" } }] }, opts);
+  assert.equal(added.date, "2026-10-28");
+  assert.equal(added.amount, 10);
+  assert.deepEqual(p.expenses.items[0], existing().expenses.items[0]);
+  assert.equal(p.expenses.total, 756800);
+});
+
+test("add and update reject malformed, impossible and non-string expense dates", () => {
+  for (const date of ["2026/10/27", "2026-1-27", "2026-02-30", "", null, 20261027]) {
+    for (const operation of [
+      { type: "add_expense", expense: { date, category: "VMD", title: "Local fixture", amount: 10 } },
+      { type: "update_expense", expenseId: "original", patch: { date } }
+    ]) {
+      const p = existing(), before = structuredClone(p);
+      assert.throws(() => applyChanges(p, { operations: [operation] }, opts), PopupError);
+      assert.deepEqual(p, before);
+    }
+  }
 });
 
 test("adding expense preserves historical SOC items and unrelated fields", () => {
