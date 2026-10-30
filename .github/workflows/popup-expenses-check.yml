@@ -19,5 +19,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
       - run: node --check scripts/popup-projects.mjs && node --check scripts/popup-mcp.mjs
       - run: node --test test/popup-expenses.test.mjs test/popup-mcp.test.mjs
