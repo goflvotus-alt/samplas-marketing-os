@@ -54,6 +54,7 @@ import { createMetaWeeklyCafe24SourceHandler } from "./scripts/meta-weekly-cafe2
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
 import { createGraphClient, toTagCafe24View } from "./scripts/instagram-product-tags.mjs";
 import { createFeedDropbox, createPostStore, createProductTagService } from "./scripts/instagram-product-tag-runner.mjs";
+import { publishStatus } from "./scripts/instagram-publish-status.mjs";
 import { getDropboxAccessToken } from "./scripts/dropbox-report-uploader.mjs";
 import { getVeilFoundStatus, runVeilFoundPublisher, fetchInstagramFeed, veilFoundConfig } from "./scripts/veil-found-publisher.mjs";
 import { runVeilSoldOutAudit } from "./scripts/veil-found-soldout-audit.mjs";
@@ -631,6 +632,19 @@ const server = isMainModule ? createServer(async (req, res) => {
         return json(res, await fetchTagCafe24View(productNo));
       } catch (error) {
         return json(res, { error: safeErrorMessage(error) }, error.status === 502 ? 502 : 500);
+      }
+    }
+    // Read-only publish check of one registered folder for the Mac archive runner (READY -> UPLOADED).
+    // Internal auth or the publish-status credential (GET of this path only). Never writes the record.
+    if (url.pathname === "/api/instagram-product-tags/publish-status") {
+      if (!isAuthorizedInternalRequest(req) && !isPublishStatusRequest(req, url.pathname)) return json(res, { error: "Unauthorized" }, 401);
+      if (req.method !== "GET") return json(res, { error: "Method not allowed" }, 405);
+      const record = await productTags.get(String(url.searchParams.get("folder") || "")).catch(() => null);
+      if (!record) return json(res, { error: "not_registered" }, 404);
+      try {
+        return json(res, await publishStatus({ record, graph: productTagGraph }));
+      } catch {
+        return json(res, { error: "graph_unavailable" }, 502);
       }
     }
     // Shopping tag records: list/get, register a scheduled post, run one folder now. Internal auth only.
@@ -2779,6 +2793,11 @@ export function isTagRegistrationRequest(req, pathname, credentials = env.INSTAG
   return req?.method === "POST" && pathname === "/api/instagram-product-tags/posts" && isAuthorizedOperatorRequest(req, credentials);
 }
 
+// Mac archive runner credential (INSTAGRAM_PUBLISH_STATUS_BASIC_AUTH, "user:pass"): GET /api/instagram-product-tags/publish-status only.
+export function isPublishStatusRequest(req, pathname, credentials = env.INSTAGRAM_PUBLISH_STATUS_BASIC_AUTH) {
+  return req?.method === "GET" && pathname === "/api/instagram-product-tags/publish-status" && isAuthorizedOperatorRequest(req, credentials);
+}
+
 // Local means both: a local Host header and a loopback socket. The Host header alone can be sent by
 // anyone, so it never grants local access on its own (2026-10-07).
 const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
@@ -2799,8 +2818,9 @@ function hasOperatorSession(req) {
 }
 
 // API_READ_AUTH=off is the emergency rollback switch for this gate (route-level write checks stay).
-export function isApiRequestAllowed(req, pathname, { readAuth = env.API_READ_AUTH, registrationAuth = env.INSTAGRAM_TAG_REGISTRATION_BASIC_AUTH } = {}) {
+export function isApiRequestAllowed(req, pathname, { readAuth = env.API_READ_AUTH, registrationAuth = env.INSTAGRAM_TAG_REGISTRATION_BASIC_AUTH, publishStatusAuth = env.INSTAGRAM_PUBLISH_STATUS_BASIC_AUTH } = {}) {
   if (readAuth === "off") return true;
+  if (isPublishStatusRequest(req, pathname, publishStatusAuth)) return true;
   if (PUBLIC_API_PATHS.has(pathname) || pathname.startsWith("/api/ai-audit/") || pathname.startsWith("/api/meta-creative-media/") || pathname.startsWith("/api/meta-creative-upload/")) return true;
   return isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req) || isTagRegistrationRequest(req, pathname, registrationAuth);
 }
