@@ -13,6 +13,7 @@ import { createAssetService } from "./session-assets.mjs";
 import { applyParticipantOperations, hmacKeyReady, mergeSync, parseSheetRows, participantSummary, participantsView } from "./session-participants.mjs";
 import { readSheetRows, sheetsConfigured } from "./session-sheets.mjs";
 import { applyBenefitOperations, benefitsView, feedbackConfigView, summariseFeedback, filterFeedbackBySessionDate, feedbackWindow } from "./session-feedback.mjs";
+import { applyReportOperations } from "./session-report.mjs";
 
 import { autoSyncEligible, createParticipantImportService } from "./session-participant-import.mjs";
 import { createTimetableService } from './session-timetable.mjs';
@@ -137,6 +138,29 @@ export function createSessionService(store, { env = process.env, fetchImpl = fet
       }
       return out;
     },
+    async report(id) { return (await store.readReport(id)).doc; },
+    async updateReport(id, version, operations, actor) {
+      const { doc, rev } = await store.readReport(id);
+      if (doc.version !== version) throw new SessionError(409, "version_conflict", "report changed", { currentVersion: doc.version });
+      let snapshot = null;
+      if (operations?.some(op => op?.type === "finalize")) {
+        const [participants, project, feedback] = await Promise.all([store.readParticipants(id), store.read(id), this.feedback(id)]);
+        const summary = participantSummary(participants.doc);
+        snapshot = {
+          participants: { total: summary.total, checkedIn: summary.checkedIn, no_show: summary.no_show,
+            cancelled: summary.cancelled, applied: summary.applied, sourceVersion: participants.doc.version },
+          feedback: { count: feedback.responses?.count ?? null,
+            scores: feedback.responses?.questions?.filter(q => q.type === "scale").map(q => ({ title: q.title, average: q.average, answered: q.answered })) ?? [],
+            fetchedAt: feedback.fetchedAt ?? null },
+          projectVersion: project.doc.version
+        };
+      }
+      const next = applyReportOperations(doc, operations, { actor, snapshot });
+      await store.writeReport(id, next, rev);
+      const saved = (await store.readReport(id)).doc;
+      if (JSON.stringify(saved) !== JSON.stringify(next)) throw new SessionError(502, "write_unverified", "report did not read back");
+      return saved;
+    },
     // PAMPHLET: a temporary link to the one image named in feedback.json, checked to sit inside the session's asset folder.
     async pamphletLink(id) {
       const config = await store.readFeedbackConfig(id);
@@ -235,7 +259,7 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
     const id = url.searchParams.get("id");
     if (route === 'timetable') return send(res, 200, await timetableRequest(req,id,{env,service,actor,readBody,now:now ?? Date.now()}));
     const methods = { projects: ["GET", "POST"], project: ["GET", "PUT"], cuesheet: ["GET"], assets: ["GET"], "asset-thumbnail": ["GET"], "asset-link": ["GET"],
-      participants: ["GET", "PUT"], "participants-sync": ["POST"], feedback: ["GET"], benefits: ["GET", "PUT"], "pamphlet-link": ["GET"],
+      participants: ["GET", "PUT"], "participants-sync": ["POST"], feedback: ["GET"], report: ["GET", "PUT"], benefits: ["GET", "PUT"], "pamphlet-link": ["GET"],
       "participants-import-status": ["GET"], "participants-import-preview": ["POST"], "participants-import": ["POST"] }[route];
     if (!methods) throw new SessionError(404, "not_found");
     if (!methods.includes(req.method)) {
@@ -255,6 +279,8 @@ export async function handleSessionDirectorRequest(req, res, url, { env = proces
       return res.end(bytes);
     }
     if (route === "feedback") return send(res, 200, { ok: true, feedback: await service.feedback(id) });
+    if (route === "report" && req.method === "GET") return send(res, 200, { ok: true, report: await service.report(id) });
+    if (route === "report") { const body = await readBody(req); return send(res, 200, { ok: true, report: await service.updateReport(id, body?.version, body?.operations, actor) }); }
     if (route === "pamphlet-link") return send(res, 200, { ok: true, ...(await service.pamphletLink(id)) });
     if (route === "benefits" && req.method === "GET") return send(res, 200, { ok: true, benefits: await service.benefits(id) });
     if (route === "benefits") {
