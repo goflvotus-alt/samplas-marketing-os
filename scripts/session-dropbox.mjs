@@ -10,6 +10,7 @@ import { applyOperations, assertSessionDocument, sessionSummary, SessionError, S
 import { assertParticipants, emptyParticipants } from "./session-participants.mjs";
 import { assertTimetable, emptyTimetable } from './session-timetable.mjs';
 import { assertBenefits, assertFeedbackConfig, emptyBenefits } from "./session-feedback.mjs";
+import { assertReport, seedReportFromNotes } from "./session-report.mjs";
 
 export const SESSION_ROOTS = { live: "/SAMPLAS WORK/SAMPLAS SESSION/_DIRECTOR", test: "/SAMPLAS WORK/SAMPLAS SESSION/_DIRECTOR_TEST" };
 const API = "https://api.dropboxapi.com/2/files/list_folder";
@@ -148,6 +149,21 @@ export function createSessionDropboxStore({ env = process.env, fetchImpl = fetch
       const result = await upload(sessionPath(id, 'timetable.json'), doc, rev ? { '.tag': 'update', update: rev } : { '.tag': 'add' });
       if (result.conflict) throw new SessionError(409, 'version_conflict', 'Timetable changed', { currentVersion: (await this.readTimetable(id)).doc.version });
       return { doc, rev: result.rev };
+    },
+
+    // --- report.json: independent expenses + evaluation, scoped to any validated SESSION id ---
+    async readReport(id) {
+      const {doc:session} = await this.read(id);
+      const found=await download(sessionPath(id, "report.json"), assertReport);
+      if(found && found.doc.sessionId!==id)throw new SessionError(500,"invalid_report","wrong session");
+      return found || {doc:seedReportFromNotes(id,session.notes||[]),rev:null};
+    },
+    async writeReport(id,doc,rev) {
+      assertReport(doc);
+      if(doc.sessionId!==id)throw new SessionError(400,"invalid_report","wrong session");
+      const result=await upload(sessionPath(id,"report.json"),doc,rev?{".tag":"update",update:rev}:{".tag":"add"});
+      if(result.conflict)throw new SessionError(409,"version_conflict","report changed",{currentVersion:(await this.readReport(id)).doc.version});
+      return {doc,rev:result.rev};
     },
 
     // --- participants.json next to session.json (same add / update-rev rules, never overwritten blindly) ---
