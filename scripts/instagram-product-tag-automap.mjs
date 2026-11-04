@@ -124,3 +124,20 @@ export function approveAutoTags(mapping, picks, { by, builtAt, now = Date.now() 
   if (problems.length) return { ok: false, problems };
   return { ok: true, mapping: { ...mapping, source: { ...mapping.source, state: "APPROVED" }, slides } };
 }
+
+// Re-confirms an APPROVED mapping without changing it (used to grant the variant flag afterwards). The picks must
+// be exactly the approved tags, builtAt must name this mapping, and every tag must still be approved and PENDING.
+export function confirmApprovedTags(mapping, picks, { by, builtAt } = {}) {
+  if (!by) return { ok: false, problems: ["approver_required"] };
+  if (mapping?.source?.state !== "APPROVED") return { ok: false, problems: ["not_approved"] };
+  if (!builtAt || builtAt !== mapping.source.builtAt) return { ok: false, problems: ["mapping_changed"] };
+  const have = list(mapping.slides).flatMap((s) => list(s.tags).map((t) => [`${s.order}:${t.productNo}`, t]));
+  const want = new Set(list(picks).map((p) => `${p.order}:${p.productNo}`));
+  const problems = have.length ? [] : ["no_tags_selected"];
+  for (const [key, t] of have) {
+    if (!want.has(key)) problems.push(`not_selected:${key}`);
+    else if (t.approved !== true || t.status !== "PENDING" || !t.metaProductId) problems.push(`not_pending:${key}`);
+  }
+  for (const key of want) if (!have.some(([k]) => k === key)) problems.push(`unknown_tag:${key}`);
+  return problems.length ? { ok: false, problems } : { ok: true, mapping };
+}
