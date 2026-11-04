@@ -60,6 +60,12 @@ export const BENEFIT_OPERATIONS = ["verify_feedback", "unverify_feedback", "mark
 const BENEFIT_ITEM = { type: "object", required: ["type", "participantId"], additionalProperties: false, properties: {
   type: { enum: BENEFIT_OPERATIONS }, participantId: str("Confirmed participant id from getSessionParticipants"), staff: str("Staff name recorded with the check, up to 40 characters") } };
 
+const REPORT_EXPENSE = strict({ name:str("Expense name, max 100 chars"), amount:{type:"integer",minimum:0,maximum:1000000000}, date:dateOrNull("Expense date"), memo:str("Memo, max 500 chars") });
+const REPORT_ITEM = {type:"object",required:["type"],additionalProperties:false,properties:{
+ type:{enum:["add_expense","update_expense","delete_expense","set_evaluation","finalize","reopen"]},
+ expense:REPORT_EXPENSE,expenseId:str("Expense id from getSessionReport"),
+ patch:{type:"object",additionalProperties:false,properties:{...REPORT_EXPENSE.properties,summary:str("Summary"),achievements:str("Achievements"),improvements:str("Improvements"),nextSteps:str("Next steps")}}
+}};
 export const SESSION_TOOLS = [
   { name: 'getSessionTimetable', description: 'Read the independently versioned timetable, trash and history.', inputSchema: strict({id},['id']), annotations: READ },
   { name: 'updateSessionTimetable', description: `Update timetable only: add_item, update_item, delete_item, restore_item, move_item. ${RULES}`, inputSchema: strict({id,version:{type:'integer',minimum:1,description:'Independent version from getSessionTimetable, never the session/cue version'},operations:{type:'array',minItems:1,maxItems:20,items:TIMETABLE_OPERATION_SCHEMA}},['id','version','operations']), annotations: WRITE },
@@ -88,6 +94,10 @@ export const SESSION_TOOLS = [
     annotations: WRITE },
   { name: "getSessionFeedback", description: "Read the session's FEEDBACK and PAMPHLET: feedback form links, the pamphlet's QR check, the anonymous per-question response summary (counts, averages, free-text answers) and the benefit policy. Responses are anonymous and never matched to participants.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
+  { name:"getSessionReport", description:"Read the versioned final report for any SESSION: independent expenses, overall evaluation, finalized snapshot and version. A missing report is initialized virtually from existing cost NOTES without writing.",
+    inputSchema:strict({id},["id"]),annotations:READ },
+  { name:"updateSessionReport", description:`Add/edit/delete expenses, write evaluation, finalize/reopen a report by its own version. ${RULES}`,
+    inputSchema:strict({id,version:{type:"integer",minimum:0,description:"Report version from getSessionReport"},operations:{type:"array",minItems:1,maxItems:20,items:REPORT_ITEM}},["id","version","operations"]),annotations:WRITE },
   { name: "getSessionBenefits", description: "Read the participant benefit state by participant id (feedback_unverified, available, used) with who confirmed it and when, plus the benefits version.",
     inputSchema: strict({ id }, ["id"]), annotations: READ },
   { name: "updateSessionBenefits", description: `Change benefits by participant id (confirmed participants only): verify_feedback (a staff member confirmed this person's feedback), unverify_feedback, mark_used (once; a second use is refused), undo_used. Never grant a benefit from response counts. ${RULES}`,
@@ -97,7 +107,7 @@ export const SESSION_TOOLS = [
 
 // The full number is for the web operations screen; ChatGPT gets the masked copy only.
 const withoutPhone = (view) => ({ ...view, people: view.people.map(({ response: { phone: _phone, ...response }, ...person }) => ({ ...person, response })) });
-const WRITE_TOOLS = new Set(["createSessionProject", "updateSessionProject", "updateSessionCueSheet", "updateSessionParticipants", "updateSessionBenefits"]);
+const WRITE_TOOLS = new Set(["createSessionProject", "updateSessionProject", "updateSessionCueSheet", "updateSessionParticipants", "updateSessionBenefits", "updateSessionReport"]);
 
 function assertWritable(env, tool, args) {
   const mode = env.SESSION_MCP_WRITES || "off";
@@ -134,6 +144,8 @@ export async function callSessionTool(name, args, { env, service, actor }) {
       return { status: 200, body: { ok: true, verified: true, participants: withoutPhone(await service.updateParticipants(args.id, args.version, args.operations, actor)) } };
     }
     case "getSessionFeedback": return { status: 200, body: { ok: true, feedback: await service.feedback(args.id) } };
+    case "getSessionReport": return {status:200,body:{ok:true,report:await service.report(args.id)}};
+    case "updateSessionReport": return {status:200,body:{ok:true,verified:true,report:await service.updateReport(args.id,args.version,args.operations,actor)}};
     case "getSessionBenefits": return { status: 200, body: { ok: true, benefits: await service.benefits(args.id) } };
     case "updateSessionBenefits": {
       if (!Array.isArray(args.operations) || !args.operations.length || args.operations.some((op) => !BENEFIT_OPERATIONS.includes(op?.type))) {
