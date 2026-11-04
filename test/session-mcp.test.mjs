@@ -49,7 +49,7 @@ test("timetable additions preserve existing tool read/write annotations; the MCP
     ["listSessionProjects", true], ["getSessionProject", true], ["getSessionCueSheet", true],
     ["listSessionAssets", true], ["getSessionParticipants", true],
     ["updateSessionParticipants", false], ["createSessionProject", false], ["updateSessionProject", false], ["updateSessionCueSheet", false],
-    ["getSessionFeedback", true], ["getSessionBenefits", true], ["updateSessionBenefits", false]]);
+    ["getSessionFeedback", true], ["getSessionReport", true], ["updateSessionReport", false], ["getSessionBenefits", true], ["updateSessionBenefits", false]]);
   const api = await start(BASE_ENV);
   try {
     const list = { jsonrpc: "2.0", id: 1, method: "tools/list" };
@@ -60,7 +60,7 @@ test("timetable additions preserve existing tool read/write annotations; the MCP
 
     const client = new Client({ name: "session-tests", version: "1.0.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${api.port}/api/session-director/mcp`), { requestInit: { headers: mcpHeaders } }));
-    assert.equal((await client.listTools()).tools.length, 14);
+    assert.equal((await client.listTools()).tools.length, 16);
     await client.close();
   } finally { await api.close(); }
   const unconfigured = await start({ ...BASE_ENV, SESSION_MCP_SECRET: "" });
