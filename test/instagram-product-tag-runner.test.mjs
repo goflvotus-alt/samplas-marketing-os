@@ -386,3 +386,70 @@ test('preapproved folder file cannot bypass human approval of a new scheduled pr
  const out=await runTagJob({record:rec,graph,readFeedFolder:ready(mapping()),getCafe24Product:cafe24,env:ON,write:true});
  assert.equal(out.record.tags.state,'TAG_REVIEW_REQUIRED');assert.equal(state.posts.length,0);
 });
+
+// NVRFRGT-26AW 2026-11-04: registered without a scheduling proposal (flag false), mapped with /automap and
+// approved without the flag. The same picks + builtAt may later grant the flag, with the full candidate checks,
+// keeping the approved mapping as it is; then the existing runner tags and verifies the post.
+test("automap post approved without the variant flag: re-confirm grants it with candidate checks, mapping kept, runner tags", async () => {
+  const { graph, state } = fakeGraph();
+  let inStock = true;
+  const getCafe24Product = async (no) => { const row = await cafe24(no); return { ...row, options: row.options.map((o) => ({ ...o, available: inStock })) }; };
+  const store = createPostStore(await mkdtemp(join(tmpdir(), "ptag-nvr-")));
+  const svc = createProductTagService({ graph, dropbox: { readFeedFolder: async () => ({ location: "READY", path: UPLOADED_PATH, manifest, mapping: null }) }, getCafe24Product, store, env: ON, now: () => AFTER });
+  assert.equal((await svc.register({ folderName: "TAEGLOBAL-26AW", slotIso: SLOT, caption: CAPTION, slideCount: 2 })).record.approvals.acceptUnverifiedVariantApproval, false);
+  const findings = { schemaVersion: 1, folderName: "TAEGLOBAL-26AW", analyzer: "test", slides: [1, 2].map((order) => ({ order, savedAsset: `assets/0${order}.jpg`, items: [{ label: "jacket", x: 0.5, y: 0.3, candidates: [{ productNo: 101, confidence: 0.95, evidence: "origin url" }] }] })) };
+  const built = (await svc.autoMap("TAEGLOBAL-26AW", findings)).mapping.source.builtAt;
+  const picks = [{ order: 1, productNo: 101 }, { order: 2, productNo: 101 }];
+  assert.equal((await svc.approveAutoMap("TAEGLOBAL-26AW", picks, "op", built)).ok, true);
+  const approved = (await store.get("TAEGLOBAL-26AW")).autoMapping;
+  const blocked = await svc.run("TAEGLOBAL-26AW");
+  assert.deepEqual([blocked.record.tags.state, blocked.record.tags.applyReason, state.posts.length], ["PENDING", "variant_approval_unverified", 0]);
+  // Refusals leave the flag off and the mapping untouched.
+  const refusals = [
+    [picks, "op", "old", ["mapping_changed"]],
+    [picks.slice(0, 1), "op", built, ["not_selected:2:101"]],
+    [[...picks, { order: 2, productNo: 999 }], "op", built, ["unknown_tag:2:999"]],
+    [picks, "", built, ["approver_required"]]
+  ];
+  for (const [p, by, b, problems] of refusals) assert.deepEqual((await svc.approveAutoMap("TAEGLOBAL-26AW", p, by, b, { acceptUnverifiedVariantApproval: true })).problems, problems);
+  inStock = false;
+  assert.deepEqual((await svc.approveAutoMap("TAEGLOBAL-26AW", picks, "op", built, { acceptUnverifiedVariantApproval: true })).problems, ["cafe24_option_out_of_stock"]);
+  inStock = true;
+  let rec = await store.get("TAEGLOBAL-26AW");
+  assert.deepEqual([rec.approvals.acceptUnverifiedVariantApproval, rec.autoMapping], [false, (await store.get("TAEGLOBAL-26AW")).autoMapping]);
+  assert.deepEqual(rec.autoMapping.slides.map((s) => s.tags.map((t) => [t.productNo, t.status, t.approved])), approved.slides.map((s) => s.tags.map((t) => [t.productNo, t.status, t.approved])));
+  // Without the flag nothing changes for an approved mapping (old behavior: re-approval of PENDING tags is refused).
+  assert.equal((await svc.approveAutoMap("TAEGLOBAL-26AW", picks, "op", built)).ok, false);
+  const ok = await svc.approveAutoMap("TAEGLOBAL-26AW", picks, "op", built, { acceptUnverifiedVariantApproval: true });
+  assert.equal(ok.ok, true);
+  rec = await store.get("TAEGLOBAL-26AW");
+  assert.equal(rec.approvals.acceptUnverifiedVariantApproval, true);
+  assert.deepEqual(rec.autoMapping, { ...approved }, "approved mapping kept byte for byte");
+  const done = await svc.run("TAEGLOBAL-26AW");
+  assert.deepEqual([done.record.tags.state, state.posts.length], ["TAG_VERIFIED", 2]);
+  assert.equal((await svc.approveAutoMap("TAEGLOBAL-26AW", picks, "op", built, { acceptUnverifiedVariantApproval: true })).error, "tags_final");
+});
+
+test("variant flag on a not-yet-approved automap mapping: normal approval plus candidate checks", async () => {
+  const { graph, state } = fakeGraph();
+  const store = createPostStore(await mkdtemp(join(tmpdir(), "ptag-nvr2-")));
+  const svc = createProductTagService({ graph, dropbox: { readFeedFolder: async () => ({ location: "READY", path: UPLOADED_PATH, manifest, mapping: null }) }, getCafe24Product: cafe24, store, env: ON, now: () => AFTER });
+  await svc.register({ folderName: "TAEGLOBAL-26AW", slotIso: SLOT, caption: CAPTION, slideCount: 2 });
+  const findings = { schemaVersion: 1, folderName: "TAEGLOBAL-26AW", analyzer: "test", slides: [{ order: 1, savedAsset: "assets/01.jpg", items: [{ label: "jacket", x: 0.5, y: 0.3, candidates: [{ productNo: 101, confidence: 0.95, evidence: "x" }] }] }, { order: 2, savedAsset: "assets/02.jpg", items: [] }] };
+  const built = (await svc.autoMap("TAEGLOBAL-26AW", findings)).mapping.source.builtAt;
+  assert.equal((await svc.approveAutoMap("TAEGLOBAL-26AW", [{ order: 1, productNo: 101 }], "op", built, { acceptUnverifiedVariantApproval: true })).ok, true);
+  assert.equal((await store.get("TAEGLOBAL-26AW")).approvals.acceptUnverifiedVariantApproval, true);
+  assert.deepEqual([(await svc.run("TAEGLOBAL-26AW")).record.tags.state, state.posts.length], ["TAG_VERIFIED", 1]);
+});
+
+// CARNET / AZVA shape: proposal registration + AUTO_APPROVE. The fix must not change that path.
+test("regression: proposal + AUTO_APPROVE (CARNET/AZVA path) still auto-approves, sets the flag and tags", async () => {
+  const { graph, state } = fakeGraph();
+  const service = await serviceForProposal({ graph, env: { ...ON, INSTAGRAM_PRODUCT_TAG_AUTO_APPROVE: "on" } });
+  const p = scheduledProposal();
+  assert.equal((await service.register(scheduledInput(p))).record.approvals.acceptUnverifiedVariantApproval, false);
+  const out = await service.run(p.folderName);
+  assert.equal(out.record.autoApproval.approved, 2);
+  assert.equal(out.record.approvals.acceptUnverifiedVariantApproval, true);
+  assert.deepEqual([out.record.tags.state, state.posts.length], ["TAG_VERIFIED", 2]);
+});

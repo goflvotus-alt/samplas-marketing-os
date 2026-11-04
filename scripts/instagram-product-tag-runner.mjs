@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { asciiSafeJson } from "./dropbox-report-uploader.mjs";
 import { applyTagPlan, buildTagPlan, checkTagCandidate, SAMPLAS_META, validateMapping, verifyTagPlan } from "./instagram-product-tags.mjs";
 import { buildScheduledMapping, validateScheduledProposal } from "./instagram-scheduled-mapping.mjs";
-import { approveAutoTags, buildAutoMapping } from "./instagram-product-tag-automap.mjs";
+import { approveAutoTags, buildAutoMapping, confirmApprovedTags } from "./instagram-product-tag-automap.mjs";
 
 export const FEED_DIR_DEFAULT = "/SAMPLAS WORK/병구 작업/피드 자동화";
 // A run that sent tags counts once; after this many the post waits for a person.
@@ -308,9 +308,14 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
       if (isTagJobHeld(record)) return { ok: false, error: "post_outcome_unknown" };
       if (!record?.autoMapping) return { ok: false, error: record ? "auto_mapping_missing" : "not_registered" };
       if (isTagJobDone(record)) return { ok: false, error: "tags_final" };
-      const out = approveAutoTags(record.autoMapping, picks, { by, builtAt, now: now() });
+      // The variant flag can also be given to a post registered without a scheduling proposal (automap path),
+      // with the same candidate checks as a proposal post. If that mapping is already approved, the same picks and
+      // builtAt only re-confirm it for the flag: the mapping is kept as approved, never rebuilt or re-approved.
+      const flag = acceptUnverifiedVariantApproval === true;
+      const confirmOnly = flag && !record.mappingProposal && record.autoMapping.source?.state === "APPROVED";
+      const out = confirmOnly ? confirmApprovedTags(record.autoMapping, picks, { by, builtAt }) : approveAutoTags(record.autoMapping, picks, { by, builtAt, now: now() });
       if (!out.ok) return { ok: false, error: "not_approvable", problems: out.problems };
-      if (record.mappingProposal) {
+      if (record.mappingProposal || flag) {
         for (const slide of out.mapping.slides) for (const tag of slide.tags) {
           let checked;
           try { checked = await checkTagCandidate(graph, { ...SAMPLAS_META, productNo: tag.productNo, metaProductId: tag.metaProductId, cafe24: await getCafe24Product(tag.productNo) }); }
@@ -319,7 +324,7 @@ export function createProductTagService({ graph, dropbox, getCafe24Product, stor
         }
       }
       await store.put({ ...record, autoMapping: out.mapping,
-        ...(record.mappingProposal ? { approvals: { ...record.approvals, acceptUnverifiedVariantApproval: acceptUnverifiedVariantApproval === true } } : {}) });
+        ...(record.mappingProposal || flag ? { approvals: { ...record.approvals, acceptUnverifiedVariantApproval: flag } } : {}) });
       return { ok: true, mapping: out.mapping };
     }),
     get: (name) => store.get(name),
