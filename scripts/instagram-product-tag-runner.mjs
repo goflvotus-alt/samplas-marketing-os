@@ -22,7 +22,8 @@ import { applyTagPlan, buildTagPlan, checkTagCandidate, SAMPLAS_META, validateMa
 import { buildScheduledMapping, validateScheduledProposal } from "./instagram-scheduled-mapping.mjs";
 import { approveAutoTags, buildAutoMapping, confirmApprovedTags } from "./instagram-product-tag-automap.mjs";
 
-export const FEED_DIR_DEFAULT = "/SAMPLAS WORK/병구 작업/피드 자동화";
+import { NEW_FEED, LEGACY_FEED, legacyOwners, selectFeed } from "./feed-path-policy.mjs";
+export const FEED_DIR_DEFAULT = NEW_FEED;
 // A run that sent tags counts once; after this many the post waits for a person.
 export const MAX_WRITE_RUNS = 3;
 export const AUTO_APPROVER = "auto-policy-v1";
@@ -180,7 +181,8 @@ export async function runTagJob({ record, graph, readFeedFolder, getCafe24Produc
 
 // Feed folder reads in Dropbox: list_folder and download only. The folder is looked up
 // where it is now: READY/<folder>, else the one UPLOADED entry named "<yyyymmdd-HHMMSS> <folder>".
-export function createFeedDropbox({ getToken, fetchImpl = fetch, feedDir = FEED_DIR_DEFAULT }) {
+export function createFeedDropbox({ getToken, fetchImpl = fetch, feedDir = FEED_DIR_DEFAULT, legacyDir = feedDir === FEED_DIR_DEFAULT ? LEGACY_FEED : null, legacyFolders = legacyOwners() }) {
+  const owners = legacyFolders instanceof Set ? legacyFolders : legacyOwners(legacyFolders);
   const auth = async () => ({ Authorization: `Bearer ${await getToken()}` });
   const download = async (path) => {
     const response = await fetchImpl("https://content.dropboxapi.com/2/files/download", { method: "POST", headers: { ...(await auth()), "Dropbox-API-Arg": asciiSafeJson({ path }) } });
@@ -194,6 +196,11 @@ export function createFeedDropbox({ getToken, fetchImpl = fetch, feedDir = FEED_
     let url = "https://api.dropboxapi.com/2/files/list_folder", body = { path, recursive: false, include_deleted: false };
     for (;;) {
       const response = await fetchImpl(url, { method: "POST", headers: { ...(await auth()), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (response.status === 409) {
+        const error = await response.text();
+        if (/not_found/.test(error)) return [];
+        throw new Error("Dropbox list unavailable");
+      }
       if (!response.ok) throw new Error(`Dropbox list failed (${response.status})`);
       const page = await response.json();
       names.push(...list(page.entries).filter((e) => e[".tag"] === "folder").map((e) => e.name));
@@ -204,9 +211,10 @@ export function createFeedDropbox({ getToken, fetchImpl = fetch, feedDir = FEED_
   const read = async (location, path) => ({ location, path, manifest: await download(`${path}/manifest.json`), mapping: await download(`${path}/product-tags.json`) });
   return {
     async readFeedImage(path, savedAsset) {
-      const prefix = `${feedDir}/`;
+      const root = [feedDir, legacyDir].filter(Boolean).find(root => String(path || "").startsWith(`${root}/`));
+      const prefix = `${root}/`;
       const relative = String(path || "").startsWith(prefix) ? path.slice(prefix.length) : "";
-      if (!/^(READY\/[A-Za-z0-9][A-Za-z0-9._-]{0,80}|UPLOADED\/\d{8}-\d{6} [A-Za-z0-9][A-Za-z0-9._-]{0,80})$/.test(relative) ||
+      if (!/^(READY\/[A-Za-z0-9][A-Za-z0-9._-]{0,80}|UPLOADED\/(?:\d{8}-\d{6} )?[A-Za-z0-9][A-Za-z0-9._-]{0,80})$/.test(relative) ||
           relative.includes("..") || !/^assets\/[A-Za-z0-9_-]+\.(jpg|jpeg|png|webp)$/i.test(String(savedAsset))) throw new Error("invalid_feed_image_path");
       const response = await fetchImpl("https://content.dropboxapi.com/2/files/download", { method: "POST", redirect: "error", signal: AbortSignal.timeout(30000),
         headers: { ...(await auth()), "Dropbox-API-Arg": asciiSafeJson({ path: `${path}/${savedAsset}` }) } });
@@ -229,12 +237,21 @@ export function createFeedDropbox({ getToken, fetchImpl = fetch, feedDir = FEED_
     },
     async readFeedFolder(folderName) {
       if (!isFeedFolderName(folderName)) throw new Error("invalid folder name");
-      const ready = await read("READY", `${feedDir}/READY/${folderName}`);
-      if (ready.manifest) return ready;
-      const hits = (await listFolders(`${feedDir}/UPLOADED`)).filter((n) => n.endsWith(` ${folderName}`) && /^\d{8}-\d{6} /.test(n));
-      if (hits.length > 1) return { location: "UPLOADED", path: null, manifest: null, mapping: null, reason: "uploaded_folder_ambiguous" };
-      if (!hits.length) return { location: null, path: null, manifest: null, mapping: null, reason: "folder_not_found" };
-      return read("UPLOADED", `${feedDir}/UPLOADED/${hits[0]}`);
+      const hits = [];
+      for (const [root, legacy] of [[feedDir, false], ...(legacyDir ? [[legacyDir, true]] : [])]) {
+        const ready = await read("READY", `${root}/READY/${folderName}`);
+        if (ready.manifest || (await listFolders(`${root}/READY`)).includes(folderName)) hits.push({...ready, legacy, ...(!ready.manifest ? {reason:"manifest_missing"} : {})});
+        const names = (await listFolders(`${root}/UPLOADED`)).filter(n => n === folderName || (n.endsWith(` ${folderName}`) && /^\d{8}-\d{6} /.test(n)));
+        for (const name of names) hits.push({...await read("UPLOADED", `${root}/UPLOADED/${name}`), legacy});
+      }
+      if (!legacyDir) {
+        if (hits.length > 1) return {location: "UPLOADED", path: null, manifest: null, mapping: null, reason: "uploaded_folder_ambiguous"};
+        if (!hits.length) return {location: null, path: null, manifest: null, mapping: null, reason: "folder_not_found"};
+        return hits[0];
+      }
+      try { return selectFeed(folderName, hits, owners); }
+      catch (error) { return {location:null,path:null,manifest:null,mapping:null,reason:error.message}; }
+
     }
   };
 }
