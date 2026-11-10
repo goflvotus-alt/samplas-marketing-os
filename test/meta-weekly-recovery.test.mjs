@@ -157,6 +157,9 @@ async function schedulerHarness(outputDir,{fail={},uploads=[],logs=[],notices=[]
   generateWeeklyMetaAdsReport:o=>generateWeeklyMetaAdsReport({...o,outputDir,now:()=>new Date(clock)}),
   buildMetaAdsSummaryForWeeklyReport:async(...a)=>fail.meta?.(clock)?{ok:false,error:'Meta HTTP 500',completeness:'UNAVAILABLE',coverage:{completeness:'UNAVAILABLE',reasons:['INSIGHTS_REQUEST_FAILED']}}:opts.fetchByLevel(...a),
   fetchCafe24ActualOrdersForWeeklyReport:async(...a)=>{if(fail.cafe24?.(clock))throw new Error('Cafe24 HTTP 401');return opts.fetchActualOrders(...a);},
+  fetchCafe24ItemPaymentsForWeeklyReport:async()=>({rows:[],completeness:'UNAVAILABLE'}),
+  fetchMetaProductsForWeeklyReport:async()=>({rows:[],completeness:'UNAVAILABLE'}),
+  fetchMetaAdTrackingForWeeklyReport:async()=>({rows:[],completeness:'UNAVAILABLE'}),
   fetchCafe24AnalyticsForWeeklyReport:opts.fetchActualAnalytics,fetchMetaAccountTotalsForWeeklyReport:opts.fetchAccountTotals,fetchMetaAttributionForWeeklyReport:async()=>null,fetchCafe24OrdersForRefundTracking:async()=>null,
   saveWeeklyReportToDropboxAtPath:async(w,{targetPath})=>{if(fail.dropbox?.(clock))throw new Error('Dropbox upload failed (HTTP 503)');uploads.push(targetPath);return {filePath:targetPath,uploaded:true};},
   safeErrorMessage:e=>String(e?.message||e),logApiError:async()=>{}};
