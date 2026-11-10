@@ -1,4 +1,5 @@
 import test from 'node:test';
+import ExcelJS from 'exceljs';
 import assert from 'node:assert/strict';
 import {buildRevenueEvidence} from '../scripts/meta-weekly-revenue.mjs';
 const since='2026-11-03',until='2026-11-09';
@@ -73,4 +74,13 @@ test('partial refund excludes completed returned item without subtracting remain
 test('stored-value designation alone cannot verify an absent payment or canceled items',()=>{
  const a={...order('missing'),payment_method_name:'선불금'};delete a.actual_order_amount;assert.equal(run([a]).onlineRevenue,null);
  const b={...order('inactive',0),payment_method_name:'선불금',actual_order_amount:{payment_amount:0,order_price_amount:100},items:[{order_item_code:'canceled',order_status:'C40',quantity:1,product_price:100}]};assert.equal(run([b]).onlineRevenue,null);
+});
+test('preview workbook keeps ISSUE_EVIDENCE veryHidden after an XLSX round-trip, REPORT values unchanged',async()=>{
+ let bytes;
+ const r=await generateWeeklyMetaAdsReport({period:{since,until},onePage:true,publicationMode:'preview',fetchByLevel:async()=>levels().campaign,fetchActualOrders:async(s,u)=>({paymentOrders:{...source([]),coverage:{completeness:'COMPLETE',scope:{since:s,until:u}}}}),fetchActualAnalytics:async(s,u)=>({ok:true,data:{orderdetails:[]},coverage:{completeness:'COMPLETE',scope:{since:s,until:u}}}),saveReport:async w=>{bytes=Buffer.from(await w.xlsx.writeBuffer());return {filePath:'preview.xlsx'};}});
+ assert.equal(r.ok,true);
+ const l=new ExcelJS.Workbook();await l.xlsx.load(bytes);
+ assert.equal(l.getWorksheet('ISSUE_EVIDENCE').state,'veryHidden');
+ assert.equal(l.getWorksheet('REPORT').state,'visible');
+ assert.equal(l.getWorksheet('REPORT').getCell('C16').value,0);assert.equal(l.getWorksheet('ISSUE_EVIDENCE').getCell('D3').value,0);
 });
