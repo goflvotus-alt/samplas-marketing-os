@@ -80,7 +80,7 @@ export function revenueMetrics(model){
  ];
 }
 export function writeRevenueEvidence(workbook,model){
- const sheet=workbook.addWorksheet('ISSUE_EVIDENCE');
+ const sheet=workbook.addWorksheet('ISSUE_EVIDENCE',{state:'veryHidden'});
  // Column A remains reserved for the existing immutable publication JSON and its reader.
  sheet.getColumn(3).width=35;sheet.getColumn(4).width=30;sheet.getColumn(5).width=30;
  sheet.getCell('C1').value='매출 검증 근거';sheet.getCell('D1').value='이번 주';sheet.getCell('E1').value='직전 주';

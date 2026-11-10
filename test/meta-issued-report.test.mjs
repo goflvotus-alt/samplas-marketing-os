@@ -5,6 +5,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import ExcelJS from 'exceljs';
 import {generateWeeklyMetaAdsReport} from '../scripts/meta-ads-weekly-report.mjs';
+import {readIssuedMetaReport} from '../scripts/meta-issued-report.mjs';
 
 const codes=['meta_meantime_look','meta_ssage','meta_adv_catalog','meta_adv_image','meta_adv_video'];
 const id='20261011-0000055';
@@ -186,4 +187,14 @@ test('a saturated inflow query cannot be called complete by its own boolean flag
  const {outputDir}=await setup();
  const r=await generateWeeklyMetaAdsReport(options(outputDir,'first',{fetchActualOrders:async()=>{const d=actual([]);d.trackingQueries[0].count=500;return d;},fetchActualAnalytics:async()=>acquisition([])}));
  assert.equal(r.ok,false);
+});
+test('scheduled issued workbook keeps ISSUE_EVIDENCE veryHidden in stored and delivered bytes',async()=>{
+ const {outputDir}=await setup();let delivered;
+ const r=await generateWeeklyMetaAdsReport(options(outputDir,'first',{saveReport:async w=>{delivered=Buffer.from(await w.xlsx.writeBuffer());return {filePath:'/delivery/verified.xlsx',uploaded:true};}}));
+ assert.equal(r.ok,true);assert.ok(r.publication?.filePath);
+ for(const bytes of [await readFile(r.publication.filePath),delivered]){
+  const w=new ExcelJS.Workbook();await w.xlsx.load(bytes);
+  assert.equal(w.getWorksheet('ISSUE_EVIDENCE').state,'veryHidden');assert.equal(w.getWorksheet('REPORT').state,'visible');
+ }
+ assert.ok(await readIssuedMetaReport({outputDir,since:'2026-10-06',until:'2026-10-12'}));
 });
