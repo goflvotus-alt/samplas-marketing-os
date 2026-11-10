@@ -101,6 +101,7 @@ export function reviewMetaPublication({model,current,previous,actualOrders,actua
  if(comparison?.status==='UNKNOWN_ADJUSTMENT')unknowns.push('UNKNOWN_ADJUSTMENT');
  // A paid, uncanceled order with canonical payment 0 (e.g. Naver Pay) cannot be confirmed as 0원.
  if(products?.summary?.grades?.paymentUnverifiedCount>0)unknowns.push('PAYMENT_AMOUNT_UNVERIFIED');
+ if(model.revenueEvidence)for(const [period,e] of Object.entries(model.revenueEvidence))if(e.status!=='PASS')unknowns.push(`${period}:REVENUE_EVIDENCE_UNVERIFIED`);
  const f=[...new Set(failures)],u=[...new Set(unknowns)];
  // Cafe24 actual amounts are confirmed only when their orders and acquisition evidence are verified.
  const gap=name=>[`${name}:ANALYTICS_COVERAGE_UNKNOWN`,`${name}:ORDER_COVERAGE_UNKNOWN`,`${name}:ANALYTICS_COVERAGE_INCOMPLETE`,`${name}:ORDER_PROVENANCE_REQUIRED`].some(c=>f.includes(c)||u.includes(c));
@@ -163,7 +164,7 @@ export function publicationRecord({model,actualOrders,generatedAt,reviewedAt,rev
  const grades=model.actualProducts.summary.grades;
  // Refund ledger: cumulative confirmed adjustment per issued order as this report shows it.
  const reportedAdjustments=model.refundTracking?.reportedAdjustments||[];
- return {schemaVersion:1,policy:POLICY,recordFormat:RECORD_FORMAT,mode:'scheduled',since:model.since,until:model.until,generatedAt,issuedAt:reviewedAt,reviewedAt,review,summary:{metaPaidOrderCount:model.actualProducts.summary.metaPaidOrderCount,metaPaidRevenue:model.actualProducts.summary.metaPaidRevenue,actualVerified:review.actual?.current===true,...(grades?{grades}:{})},orders,candidates,reportedAdjustments};
+ return {schemaVersion:1,policy:POLICY,recordFormat:RECORD_FORMAT,mode:'scheduled',since:model.since,until:model.until,generatedAt,issuedAt:reviewedAt,reviewedAt,review,...(model.revenueEvidence?{revenueEvidence:model.revenueEvidence}:{}),summary:{metaPaidOrderCount:model.actualProducts.summary.metaPaidOrderCount,metaPaidRevenue:model.actualProducts.summary.metaPaidRevenue,actualVerified:review.actual?.current===true,...(grades?{grades}:{})},orders,candidates,reportedAdjustments};
 }
 
 const shiftDay=(d,n)=>new Date(Date.parse(`${d}T00:00:00Z`)+n*864e5).toISOString().slice(0,10);
@@ -263,8 +264,8 @@ export async function storeIssuedMetaReport({outputDir,workbook,record,save}){
  return withPeriodLock(outputDir,record.since,record.until,async({parent,final})=>{
  const existing=await readIssuedMetaReport({outputDir,since:record.since,until:record.until});
  if(existing)return {...existing,alreadyIssued:true};
- const evidence=workbook.addWorksheet('ISSUE_EVIDENCE',{state:'veryHidden'});
- const encoded=JSON.stringify(record);for(let i=0;i<encoded.length;i+=30000)evidence.addRow([encoded.slice(i,i+30000)]);
+ const evidence=workbook.getWorksheet('ISSUE_EVIDENCE')||workbook.addWorksheet('ISSUE_EVIDENCE',{state:'veryHidden'});
+ const encoded=JSON.stringify(record);for(let i=0;i<encoded.length;i+=30000)evidence.getCell(1+i/30000,1).value=encoded.slice(i,i+30000);
  const bytes=Buffer.from(await workbook.xlsx.writeBuffer());
  const manifest={...record,sha256:sha(bytes)};
  const stage=join(parent,`.pending-${randomUUID()}`);await mkdir(stage,{mode:0o700});

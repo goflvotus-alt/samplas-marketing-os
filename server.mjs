@@ -50,6 +50,7 @@ import {
 import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
 import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs";
 import { runWeeklyReportPreview, handleWeeklyReportPreview } from "./scripts/weekly-report-manual.mjs";
+import { paymentDay } from "./scripts/meta-weekly-revenue.mjs";
 import { createMetaWeeklyCafe24SourceHandler } from "./scripts/meta-weekly-cafe24-source.mjs";
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
 import { createGraphClient, toTagCafe24View } from "./scripts/instagram-product-tags.mjs";
@@ -6985,6 +6986,11 @@ async function cafe24GetOrders(startDate, endDate, options = {}) {
   url.searchParams.set("start_date", startDate);
   url.searchParams.set("end_date", endDate);
   url.searchParams.set("embed", "items");
+  if (options.dateType === "pay_date") {
+    url.searchParams.set("date_type", "pay_date");
+    url.searchParams.set("start_date", `${startDate}T00:00:00+09:00`);
+    url.searchParams.set("end_date", `${endDate}T23:59:59+09:00`);
+  }
   if (options.inflowPath) url.searchParams.set("inflow_path", options.inflowPath);
   const requestedLimit = Math.min(Number(options.limit || 500) || 500, 1000);
   const pageSize = Math.min(100, requestedLimit);
@@ -7002,7 +7008,7 @@ async function cafe24GetOrders(startDate, endDate, options = {}) {
     if (pageOrders.length < pageSize) { terminalPage = true; break; }
   }
   await attachCafe24OrderItems(orders);
-  return { orders, ...(options.strictOrders ? {coverage:cafe24OrdersCoverage(orders,{since:startDate,until:endDate},{terminalPage,pages,limit:requestedLimit,malformedPage})} : {}) };
+  return { orders, ...(options.strictOrders ? {coverage:cafe24OrdersCoverage(options.dateType === "pay_date" ? orders.map(o => ({...o, order_date: paymentDay(o.payment_date || o.paid_date)})) : orders,{since:startDate,until:endDate},{terminalPage,pages,limit:requestedLimit,malformedPage})} : {}) };
 }
 
 async function cafe24FetchOrdersPage(url) {
@@ -9829,6 +9835,12 @@ export async function fetchCafe24ActualOrdersForWeeklyReport(since, until, { inc
   }
   const result = { source: 'cafe24_inflow_queries', orders, trackingQueries };
   if (includeAnalyticsOrders) {
+    // Independent online total: no inflow filter and no dependency on tracking-query success.
+    result.paymentOrders = { ok: false, dateType: "pay_date", queriedAt: new Date().toISOString(), coverage: {completeness:"UNAVAILABLE"} };
+    try {
+      const paid = await cafe24GetOrders(since, until, { limit: 1000, strictOrders: true, dateType: "pay_date" });
+      result.paymentOrders = { ...paid, dateType: "pay_date", queriedAt: new Date().toISOString() };
+    } catch { /* Keep unknown amounts unknown; do not use the general cache. */ }
     result.analyticsOrders = [];
     result.analyticsOrdersComplete = false;
     result.analyticsOrdersCoverage = {completeness:'UNAVAILABLE',reasons:['GENERAL_ORDERS_NOT_AVAILABLE']};

@@ -20,9 +20,9 @@ function options(outputDir,week='first',overrides={}){
  return {outputDir,env:{},referenceDateKey:first?'2026-10-13':'2026-10-20',period:{since:s,until:u},onePage:true,requireCompleteData:true,now:()=>new Date(first?'2026-10-13T01:00:00Z':'2026-10-20T01:00:00Z'),fetchByLevel:async()=>structuredClone(level),fetchActualOrders:async since=>actual(since==='2026-10-06'?[first?original:refunded]:since==='2026-10-13'?[current]:[]),fetchActualAnalytics:async since=>acquisition(since==='2026-10-06'?[original]:since==='2026-10-13'?[current]:[]),...overrides};
 }
 
-test('scheduled automatic PASS is a verified immutable publication, not only a generated file',async()=>{
+test('missing independent payment-date source is UNKNOWN but preserves immutable legacy publication',async()=>{
  const {outputDir}=await setup();const r=await generateWeeklyMetaAdsReport(options(outputDir));
- assert.equal(r.ok,true);assert.equal(r.publication?.review.result,'PASS');
+ assert.equal(r.ok,true);assert.equal(r.publication?.review.result,'UNKNOWN');
  const manifest=JSON.parse(await readFile(join(outputDir,'issued','2026-10-06_2026-10-12','manifest.json'),'utf8'));
  assert.equal(manifest.summary.metaPaidOrderCount,1);assert.equal(manifest.summary.metaPaidRevenue,198000);assert.equal(manifest.orders[0].amount,198000);
  assert.equal(manifest.generatedAt,'2026-10-13T01:00:00.000Z');assert.ok(manifest.issuedAt);assert.ok(manifest.reviewedAt);assert.match(manifest.sha256,/^[a-f0-9]{64}$/);
@@ -35,7 +35,7 @@ test('October 11 payment stays 198000 in issued comparison after October 19 full
  const before=await readFile(first.publication.manifestPath);
  const r=await generateWeeklyMetaAdsReport(options(outputDir,'second'));assert.equal(r.ok,true);
  assert.equal(r.comparison.issuedRevenue,198000);assert.equal(r.comparison.refundAdjustment,-198000);assert.equal(r.comparison.currentRevenue,0);
- const w=await workbook(r);assert.equal(w.getWorksheet('REPORT').getCell('E23').value,198000);
+ const w=await workbook(r);assert.equal(w.getWorksheet('ISSUED_COMPARISON').getCell('B3').value,198000);
  assert.equal(w.getWorksheet('REPORT').pageSetup.fitToHeight,1);
  const detail=w.getWorksheet('REFUND_ADJUSTMENTS');assert.equal(detail.getCell('A2').value,id);assert.equal(detail.getCell('D2').value,198000);
  assert.ok(JSON.stringify(w.getWorksheet('SUMMARY').getSheetValues()).includes('1720000'));
@@ -60,7 +60,7 @@ test('duplicate orders and duplicate refund events never double count',async()=>
 test('no prior issued workbook leaves published value unavailable while current net stays visible',async()=>{
  const {outputDir}=await setup();const r=await generateWeeklyMetaAdsReport(options(outputDir,'second'));
  assert.equal(r.ok,true);assert.equal(r.comparison.issuedRevenue,null);assert.equal(r.comparison.currentRevenue,0);assert.equal(r.comparison.refundAdjustment,null);
- const w=await workbook(r);assert.equal(w.getWorksheet('REPORT').getCell('E23').value,'UNAVAILABLE');
+ const w=await workbook(r);assert.equal(w.getWorksheet('ISSUED_COMPARISON').getCell('B3').value,'UNAVAILABLE');
  assert.ok(JSON.stringify(w.getWorksheet('REPORT').getRow(28).values).includes('0원'));
 });
 test('preview and non-scheduled generation cannot become verified publications',async()=>{
@@ -79,7 +79,7 @@ test('an unexplained decrease is published as UNKNOWN with the reason on page on
  const {outputDir}=await setup();await generateWeeklyMetaAdsReport(options(outputDir));
  const r=await generateWeeklyMetaAdsReport(options(outputDir,'second',{fetchActualOrders:async s=>actual(s==='2026-10-06'?[{...original,actual_order_amount:{payment_amount:99000}}]:[current])}));
  assert.equal(r.ok,true);assert.equal(r.comparison.status,'UNKNOWN_ADJUSTMENT');assert.equal(r.comparison.refundAdjustment,null);
- assert.equal(r.review.result,'UNKNOWN');assert.deepEqual(r.review.unknowns,['UNKNOWN_ADJUSTMENT']);assert.equal(r.publication.review.result,'UNKNOWN');
+ assert.equal(r.review.result,'UNKNOWN');assert.deepEqual(r.review.unknowns,['UNKNOWN_ADJUSTMENT','current:REVENUE_EVIDENCE_UNVERIFIED','previous:REVENUE_EVIDENCE_UNVERIFIED']);assert.equal(r.publication.review.result,'UNKNOWN');
  const banner=String((await workbook(r)).getWorksheet('REPORT').getCell('A4').value);
  assert.match(banner,/미검증\(UNKNOWN\)/);assert.match(banner,/설명되지 않은 금액 차이/);
 });
@@ -133,7 +133,7 @@ test('duplicate partial refund events count once and an unrelated claim amount i
  const event={order_id:id,refund_code:'refund1',refund_date:'2026-10-19T12:27:42+09:00',actual_refund_amount:amount};
  const partial={...original,canceled:'M',actual_order_amount:{payment_amount:99000},refunds:[event,event]};
  const r=await generateWeeklyMetaAdsReport(options(outputDir,'second',{fetchActualOrders:async s=>actual(s==='2026-10-06'?[partial]:[current])}));
- assert.equal(r.review.result,amount===99000?'PASS':'UNKNOWN');assert.equal(r.comparison.refundAdjustment,amount===99000?-99000:null);
+ assert.equal(r.review.result,'UNKNOWN');assert.equal(r.comparison.refundAdjustment,amount===99000?-99000:null);
  }
 });
 test('failed delivery never leaves a trusted issued baseline, and a retry can publish',async()=>{

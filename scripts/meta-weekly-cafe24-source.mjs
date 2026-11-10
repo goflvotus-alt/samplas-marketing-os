@@ -72,6 +72,10 @@ export function minimizeCafe24Source(kind, result) {
   if (kind === "actual") {
     if (typeof result.source !== "string") fail();
     const out = { source: result.source, orders: list(result.orders, order), trackingQueries: list(result.trackingQueries, query), coverage: coverage(result.coverage) };
+    if (result.paymentOrders != null) {
+      const paid = result.paymentOrders;
+      out.paymentOrders = { ...pick(paid, new Set(["ok", "dateType", "queriedAt"])), ...(paid.orders ? {orders:list(paid.orders, order)} : {}), coverage:coverage(paid.coverage) };
+    }
     if (!("analyticsOrders" in result)) return out;
     if (typeof result.analyticsOrdersComplete !== "boolean") fail();
     return { ...out, analyticsOrders: list(result.analyticsOrders, order), analyticsOrdersComplete: result.analyticsOrdersComplete, analyticsOrdersCoverage: coverage(result.analyticsOrdersCoverage) };

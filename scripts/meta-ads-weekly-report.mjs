@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import ExcelJS from "exceljs";
 import { seoulDateKey, previousMondayToSundayRange, previousWeekRange, wowChange } from "./naver-ads-weekly-report.mjs";
 
+import { buildRevenueEvidence, writeRevenueEvidence } from "./meta-weekly-revenue.mjs";
 import { buildActualProductsSold } from "./meta-actual-products-sold.mjs";
 import {scheduledMetaPublication,reviewMetaPublication,reconcileMetaPublication,publicationRecord,readIssuedMetaReport,inspectIssuedStorage,storeIssuedMetaReport,trackIssuedRefunds} from './meta-issued-report.mjs';
 import { metaOnePage } from "./weekly-onepage-report.mjs";
@@ -285,6 +286,7 @@ export async function buildWeeklyMetaReportWorkbook(model, { onePage = false } =
   }
   if (model.attribution) buildAttributionSheet(workbook, model);
   if (model.refundTracking) buildRefundTrackingSheet(workbook, model.refundTracking);
+  writeRevenueEvidence(workbook, model);
   buildRawSheet(workbook, model);
   return workbook;
 }
@@ -455,6 +457,15 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, on
     model.previousActualProducts = buildActualProductsSold({ data: previousOrders, analytics: previousAnalytics, metaAds: previous.ad.rows, since: previousSince, until: previousUntil, adGrades });
     if (!model.previousActualProducts.available) return { ok: false, since, until, error: "Previous Cafe24 actual attribution data unavailable; report was not saved.", filePath: null };
   }
+
+  if (!requireCompleteData && fetchActualOrders) {
+    try { previousOrders = await fetchActualOrders(previousSince, previousUntil, { includeAnalyticsOrders: true }); } catch { previousOrders = {ok:false}; }
+    try { previousAnalytics = await fetchActualAnalytics?.(previousSince, previousUntil); } catch { previousAnalytics = {ok:false}; }
+  }
+  model.revenueEvidence = {
+    current: buildRevenueEvidence({since,until,paymentOrders:actualOrders?.paymentOrders,analytics:actualAnalytics,metaAds:current.ad?.rows||[]}),
+    previous: buildRevenueEvidence({since:previousSince,until:previousUntil,paymentOrders:previousOrders?.paymentOrders,analytics:previousAnalytics,metaAds:previous.ad?.rows||[]})
+  };
 
   let comparison = null;
   if (requireCompleteData) {

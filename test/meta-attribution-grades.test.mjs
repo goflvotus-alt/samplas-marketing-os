@@ -96,7 +96,7 @@ test('click/view split shown beside unchanged Meta totals; mismatch or failure i
  assert.equal(good.ok,true,good.error);
  const w=new ExcelJS.Workbook();await w.xlsx.readFile(good.publication.filePath);const page=w.getWorksheet('REPORT');
  assert.equal(page.getCell('D6').value,14);assert.equal(page.getCell('G6').value,5192070);
- assert.equal(page.getCell('D7').value,'클릭 11건 · 노출 3건');assert.equal(page.getCell('G7').value,'클릭 4,054,410원 · 노출 1,137,660원');
+ assert.equal(page.getCell('D7').value,'클릭 11건 · 노출 3건 · 미검증');assert.equal(page.getCell('G7').value,'클릭 4,054,410원 · 노출 1,137,660원 · 미검증');
  assert.deepEqual(w.getWorksheet('META_ATTRIBUTION').getRow(2).values.slice(1,8),['ad1','Ad one',11,4054410,3,1137660,1]);
  const bad=await generateWeeklyMetaAdsReport(opts(await tmp(),'2026-10-13',{fetchAttribution:split({purchases:10,value:1},{purchases:3,value:1})}));
  const failed=await generateWeeklyMetaAdsReport(opts(await tmp(),'2026-10-13',{fetchAttribution:()=>{throw new Error('Graph 500');}}));
@@ -146,7 +146,7 @@ test('20261011-0000055: never adjusted by the 10/20 legacy report, applied once 
  // Both earlier weeks exist only as legacy_import baselines, as in Production.
  for(const [s,o,ad,file,mod] of [['2026-10-06',o055,'120250012266880277','a.xlsx','2026-10-13T03:24:35Z'],['2026-10-13',o134,'120249957936240277','b.xlsx','2026-10-20T01:00:55Z']]){
   let bytes;const ads=[{adId:ad,adName:'A',campaignName:'C'}];
-  await generateWeeklyMetaAdsReport({...opts(await tmp(),s,{fetchByLevel:async()=>level(ads,TOTALS),fetchActualOrders:async x=>weekly(x===s?[o]:[]),fetchActualAnalytics:async x=>({ok:true,coverage:{completeness:'COMPLETE'},data:{orderdetails:x===s?[{order_id:o.order_id,ad:'ig',medium:'paid',content:ad,order_amount:1}]:[]}})}),publicationMode:'preview',adGrades:false,saveReport:async w=>{bytes=Buffer.from(await w.xlsx.writeBuffer());return {filePath:'p'};}});
+  await generateWeeklyMetaAdsReport({...opts(await tmp(),s,{fetchByLevel:async()=>level(ads,TOTALS),fetchActualOrders:async x=>weekly(x===s?[o]:[]),fetchActualAnalytics:async x=>({ok:true,coverage:{completeness:'COMPLETE'},data:{orderdetails:x===s?[{order_id:o.order_id,ad:'ig',medium:'paid',content:ad,order_amount:1}]:[]}})}),publicationMode:'preview',adGrades:false,saveReport:async w=>{w.getWorksheet('REPORT').getCell('J9').value='Cafe24 실제 Meta 유료 주문';w.getWorksheet('REPORT').getCell('J10').value=Number(o.actual_order_amount.payment_amount);w.getWorksheet('REPORT').getCell('J11').value='1건 · 주문번호 일치 · Meta 귀속 매출과 별도';bytes=Buffer.from(await w.xlsx.writeBuffer());return {filePath:'p'};}});
   const f=join(await tmp(),file);await writeFile(f,bytes);
   await importLegacyMetaBaseline({file:f,source:{dropboxFileId:'id:fixture'+s.replaceAll('-',''),dropboxPath:'/x/'+file,serverModified:mod},write:true,outputDir:dir,now:()=>new Date('2026-10-20T11:00:00Z')});
  }
@@ -245,7 +245,7 @@ test('scheduled graded publication records the ad-name candidates and payment-un
  assert.deepEqual(r.publication.orders.map(o=>[o.orderId,o.amount,o.grade,o.amountStatus]).sort(),[['20261013-0000134',107000,'G1_AD_ID','NORMAL'],['20261017-0000023',0,'G1_AD_ID','PAYMENT_UNVERIFIED']]);
  assert.equal(r.publication.summary.metaPaidRevenue,107000);
  const w=new ExcelJS.Workbook();await w.xlsx.readFile(r.publication.filePath);const page=w.getWorksheet('REPORT');
- assert.equal(page.getCell('J9').value,'Cafe24 광고 ID 유입 확인');assert.equal(page.getCell('J10').value,107000);
- assert.match(page.getCell('J11').value,/정상 유지 1건 · 클레임 진행 0건 0원 별도 · 결제금액 미검증 1건 · 광고명 후보 2건 합산 안 함/);
- assert.equal(page.getCell('C24').value,2);assert.match(page.getCell('A4').value,/결제금액 0원/);
+ assert.equal(page.getCell('J9').value,'META VERIFIED SALES');assert.equal(page.getCell('J10').value,'UNVERIFIED');
+ assert.match(page.getCell('J11').value,/Admin 주문번호/);
+ assert.equal(page.getCell('C17').value,'UNVERIFIED');assert.match(page.getCell('A4').value,/결제금액 0원/);
 });
