@@ -56,6 +56,9 @@ function freshMetaContext(overrides = {}) {
     // (see the SyntaxError comment above), so a harmless stand-in is injected here.
     buildMetaAdsSummaryForWeeklyReport: () => {},
     fetchCafe24ActualOrdersForWeeklyReport: () => {},
+    fetchCafe24ItemPaymentsForWeeklyReport: async () => ({rows:[],completeness:'UNAVAILABLE'}),
+    fetchMetaProductsForWeeklyReport: async () => ({rows:[],completeness:'UNAVAILABLE'}),
+    fetchMetaAdTrackingForWeeklyReport: async () => ({rows:[],completeness:'UNAVAILABLE'}),
     fetchCafe24AnalyticsForWeeklyReport: () => {},
     fetchMetaAccountTotalsForWeeklyReport: () => {},
     fetchMetaAttributionForWeeklyReport: () => {},

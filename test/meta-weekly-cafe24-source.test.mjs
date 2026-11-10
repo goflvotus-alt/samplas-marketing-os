@@ -280,7 +280,7 @@ test('report results are identical with and without the dropped fields: grades, 
  assert.deepEqual(row(w2,'20261006-0000001').slice(8,11),['REFUND_ADJUSTMENT','최초 반영',-100000]);
  assert.deepEqual(row(w3,'20261006-0000001').slice(8,11),['REFUND_ADJUSTMENT','이전 반영 (2026-10-13_2026-10-19 발행본)',0]);
  assert.deepEqual(row(w2,'20261006-0000008').slice(8,11),['REFUND_ADJUSTMENT','최초 반영',-100000]);
- assert.equal(Object.keys(w2.sheets).length,14);
+ assert.equal(Object.keys(w2.sheets).length,20); // Six supplementary all-order/product tracing sheets.
  assert.equal(w1.review.result,w2.review.result);
 });
 
