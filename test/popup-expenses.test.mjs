@@ -22,7 +22,7 @@ test("MCP updatePopupProject exposes validated expense operations", () => {
 
 test("serialized tools/list retains the required expense date schema", async () => {
   const reply = JSON.parse(JSON.stringify(await popupRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }, {})));
-  assert.equal(reply.result.tools.length, 9);
+  assert.equal(reply.result.tools.length, 12);
   const operation = reply.result.tools.find(t => t.name === "updatePopupProject").inputSchema.properties.operations.items;
   const expense = operation.properties.expense;
   assert.equal(expense.additionalProperties, false);

@@ -18,6 +18,9 @@ const API = "https://api.dropboxapi.com/2/files/";
 const REMOVED_ROOT = POPUP_PROJECTS_DROPBOX_PATH.replace(/\/PROJECTS$/, "/_DELETED/PROJECTS");
 const OP_ID = /^[A-Za-z0-9_.:-]{8,80}$/;
 const WEB_APP = "https://samplas-popup-director.vercel.app/";
+// DAY REPORT numbers are computed by the web app (api/_shared/popup_logistics.py); the MCP never recomputes them.
+const DAY_KEYS = ["day", "date", "salesStatus", "revenue", "soldQty", "transactions", "avgTicket", "consignmentRevenue", "consignmentQty", "purchaseRevenue", "purchaseQty",
+  "commission", "commissionComplete", "directCost", "dayContribution", "visitors", "giftQty"];
 
 const canonical = (value) => JSON.stringify(value, (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
 
@@ -73,7 +76,7 @@ export function createPopupService({ env = process.env, fetchImpl = fetch, now =
   }
 
   // The single write path: read with rev, check version, change a copy, upload pinned to the rev, read back.
-  async function mutate(ref, expectedVersion, { actor, opId, op, change, folderMove }) {
+  async function mutate(ref, expectedVersion, { actor, opId, op, change, folderMove, beforeUpload }) {
     if (opId !== undefined && !OP_ID.test(opId)) throw new PopupError(400, "invalid_arguments", "opId must be 8-80 letters, digits, _ . : -");
     if (!Number.isInteger(expectedVersion)) throw new PopupError(400, "invalid_arguments", "expectedVersion (integer, from getPopupProject) is required");
     const id = opId || randomUUID();
@@ -86,6 +89,7 @@ export function createPopupService({ env = process.env, fetchImpl = fetch, now =
     const next = structuredClone(project);
     const changes = change(next);
     if (!changes.length) return { unchanged: true, changed: [], project: view(folder, project), version: project.version };
+    if (beforeUpload) await beforeUpload(accessToken, folder);
     next.version = (project.version || 0) + 1;
     next.updatedAt = now().toISOString();
     appendChangeLog(next, { at: next.updatedAt, by: actor, op, changes: changes.slice(0, 30), opId: id, version: next.version });
@@ -116,6 +120,34 @@ export function createPopupService({ env = process.env, fetchImpl = fetch, now =
     const saved = await readBack(folder, accessToken, next);
     return { changed: changes, project: view(folder, saved), version: saved.version, verified: true };
   }
+
+  // Every file a change points at (sales xlsx, source sheet, VMD photo) must exist in the project folder; otherwise nothing is saved.
+  async function assertFiles(accessToken, folder, paths) {
+    const missing = [];
+    for (const path of new Set(paths)) {
+      const r = await call(accessToken, "get_metadata", { path: `${folder.pathDisplay}/${path}` });
+      if (!r.ok || r.json?.[".tag"] !== "file") missing.push(path);
+    }
+    if (missing.length) throw new PopupError(404, "file_not_found", `Not found in PROJECTS/${folder.name}: ${missing.join(", ")}. Upload the file first (nothing was saved).`, { missing });
+  }
+
+  async function fetchDayReport(name) {
+    const url = `${env.POPUP_VIEW_URL || WEB_APP}api/popup/logistics-report?project=${encodeURIComponent(name)}`;
+    let response, body;
+    try {
+      response = await fetchImpl(url, { signal: AbortSignal.timeout(60000) });
+      body = await response.json();
+    } catch { throw new PopupError(502, "day_report_unavailable", "The DAY REPORT could not be read from the web app."); }
+    if (!response.ok || body?.ok !== true) throw new PopupError(response.status === 404 ? 404 : 502, body?.error || "day_report_unavailable", body?.message || "The web app did not return a DAY REPORT.");
+    return body.report ?? body;
+  }
+  const compactDayReport = (r) => ({
+    projectVersion: r.projectVersion ?? null, generatedAt: r.generatedAt ?? null, period: r.period, salesSource: r.salesSource, salesError: r.salesError ?? null,
+    commissionPolicy: r.commissionPolicy ?? null, matchCounts: r.matchCounts, excludedLines: r.excludedLines,
+    days: (r.days || []).map((d) => Object.fromEntries(DAY_KEYS.filter((k) => k in d).map((k) => [k, d[k]]))),
+    total: Object.fromEntries(DAY_KEYS.filter((k) => k in (r.total || {})).map((k) => [k, r.total[k]])),
+    pnl: r.pnl ? Object.fromEntries(Object.entries(r.pnl).filter(([k]) => k !== "provisionalCosts")) : null,
+    finalReport: r.finalReport ?? null, commissionBreakdown: r.commissionBreakdown ?? null, policyErrors: r.policyErrors ?? [] });
 
   async function removedFolders(accessToken) {
     const r = await call(accessToken, "list_folder", { path: REMOVED_ROOT });
@@ -186,8 +218,10 @@ export function createPopupService({ env = process.env, fetchImpl = fetch, now =
     },
 
     update(ref, expectedVersion, { patch, operations }, { actor, opId }) {
+      const paths = [];
       return mutate(ref, expectedVersion, { actor, opId, op: "update",
-        change: (p) => applyChanges(p, { patch, operations }, { now: now(), actor }),
+        change: (p) => applyChanges(p, { patch, operations }, { now: now(), actor, paths }),
+        beforeUpload: (accessToken, folder) => assertFiles(accessToken, folder, paths),
         // A rename moves PROJECTS/<old> to PROJECTS/<new> first so folder name and project name stay equal.
         folderMove: patch?.name !== undefined ? async (accessToken, folder, next) => {
           const name = validateProjectName(patch.name);
@@ -287,6 +321,46 @@ export function createPopupService({ env = process.env, fetchImpl = fetch, now =
       return { ...(result.verified ? { verified: true } : {}), ...(result.unchanged ? { unchanged: true } : {}), ...(result.replayed ? { replayed: true } : {}),
         name: result.project.name, version: result.version, updatedAt: result.project.updatedAt ?? null, changed: result.changed, poolAdded,
         staffBoard: staffBoardView(result.project), webUrl: result.project.webUrl };
+    },
+
+    async commissionBasis(ref, { query, limit = 100 } = {}) {
+      const { project } = await resolve(ref);
+      const r = await fetchDayReport(project.name);
+      const q = String(query || "").trim().toLowerCase();
+      const lines = (r.sales || []).filter((s) => !q || [s.productName, s.prodCd, s.commissionRuleId, s.brand].some((v) => String(v || "").toLowerCase().includes(q)))
+        .map((s) => ({ date: s.date, slipNo: s.slipNo, brand: s.brand, productName: s.productName, size: s.size, prodCd: s.prodCd, season: s.season, group: s.group ?? null,
+          settlement: s.settlement ?? null, quantity: s.quantity, paidAmount: s.paidAmount, commissionRate: s.commissionRate, commissionBasis: s.commissionBasis,
+          ruleId: s.commissionRuleId ?? null, commission: s.commission, detail: s.commissionDetail ?? null }));
+      return { name: project.name, version: project.version, stale: r.projectVersion != null && r.projectVersion !== project.version,
+        policy: project.logistics?.commissionPolicy ?? null, priority: ["ITEM_OVERRIDE", "BRAND_SPECIFIC", "SEASONAL", "TIERED", "FIXED"],
+        purchaseUnitCosts: project.logistics?.purchaseUnitCosts ?? null, purchaseCost: project.logistics?.purchaseCost ?? null,
+        breakdown: r.commissionBreakdown ?? null, policyErrors: r.policyErrors ?? [], totalLines: lines.length, lines: lines.slice(0, limit), truncated: lines.length > limit };
+    },
+
+    async dayReport(ref) {
+      const { folder, project } = await resolve(ref);
+      const r = compactDayReport(await fetchDayReport(project.name ?? folder.name));
+      return { name: project.name, version: project.version, stale: r.projectVersion !== null && r.projectVersion !== project.version, dayReport: r, webUrl: `${view(folder, project).webUrl}&view=dayreport` };
+    },
+
+    // FINAL REPORT numbers from the DAY REPORT of this exact version; text fields (summary, findings, …) are never touched.
+    async syncFinalReport(ref, expectedVersion, { allowFinal = false }, { actor, opId }) {
+      const { project } = await resolve(ref);
+      // A retry after a timeout settles from changeLog first (replayed), before any version check.
+      if (opId && (project.changeLog || []).some((e) => e.opId === opId)) return mutate(ref, expectedVersion, { actor, opId, op: "sync_report", change: () => [] });
+      const r = await fetchDayReport(project.name);
+      if (!r.finalReport) throw new PopupError(409, "day_report_outdated", "The web app does not provide finalReport figures yet (deploy the DAY REPORT update first).");
+      if (r.projectVersion !== expectedVersion) throw new PopupError(409, "day_report_stale", `The DAY REPORT was computed from version ${r.projectVersion}, not ${expectedVersion}. Read again.`, { currentVersion: project.version ?? null });
+      if (r.salesError) throw new PopupError(409, "sales_unavailable", "The DAY REPORT has no sales data; nothing was written.", { salesError: r.salesError });
+      if (r.days?.some((d) => d.salesStatus === "PENDING")) throw new PopupError(409, "sales_pending", "Some popup days are not in the sales file yet; nothing was written.");
+      if (project.report?.status === "final" && !allowFinal) throw new PopupError(409, "report_final", "The REPORT is FINAL. Ask the user, then call again with allowFinal:true to update its figures.");
+      const f = r.finalReport;
+      const patch = { headline: f.headline, comparison: { dailySales: f.dailySales }, dailyVisitors: f.dailyVisitors };
+      const result = await mutate(ref, expectedVersion, { actor, opId, op: "sync_report", change: (p) => applyChanges(p, { operations: [{ type: "update_report", patch }] }, { now: now(), actor }) });
+      // Re-read: the DAY REPORT of the saved version must give the same figures as the report now holds.
+      const after = await fetchDayReport(project.name).catch(() => null);
+      const recheck = after?.finalReport ? { projectVersion: after.projectVersion, matches: canonical(after.finalReport.headline) === canonical(f.headline) && canonical(after.finalReport.dailySales) === canonical(f.dailySales) } : { matches: null };
+      return { ...result, written: patch, recheck };
     },
 
     async history(ref) {

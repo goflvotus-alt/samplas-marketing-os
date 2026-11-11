@@ -186,7 +186,142 @@ const REPORT_KEYS = ["status", "title", "period", "file", "headline", "findings"
 
 export const PATCH_FIELDS = ["name", "start", "end", "brand", "venue", "status", "scheduleTentative"];
 export const OPERATIONS = ["add_task", "update_task", "set_task_done", "delete_task", "add_asset", "update_asset", "link_asset_file", "unlink_asset_file", "delete_asset",
-  "add_note", "update_note", "delete_note", "update_report", "restore_from_trash", "add_expense", "update_expense"];
+  "add_note", "update_note", "delete_note", "update_report", "restore_from_trash", "add_expense", "update_expense",
+  "set_visitor_counts", "update_logistics", "upsert_logistics_source", "update_vmd_archive", "upsert_vmd_zone", "link_vmd_photo", "unlink_vmd_photo",
+  "add_press_item", "update_press_item", "set_press_status", "upsert_commission_rule", "remove_commission_rule"];
+
+// --- Settlement / LOGISTICS / VMD / PRESS (same popup.json fields the web app reads) ---
+export const COMMISSION_MODES = ["UNCONFIRMED", "PROJECT_OVERRIDE"]; // legacy form, kept for SOC / existing data
+// Rule-based policy (any project). Priority for one 위탁 line: ITEM_OVERRIDE > BRAND_SPECIFIC > SEASONAL > TIERED > FIXED;
+// inside one type the first rule in the list wins. 사입 (PURCHASE) lines never take commission.
+export const RULE_TYPES = ["ITEM_OVERRIDE", "BRAND_SPECIFIC", "SEASONAL", "TIERED", "FIXED"];
+export const VMD_STATUSES = ["draft", "installed", "completed"];
+export const VMD_STAGES = ["plan", "final"];
+export const PRESS_STATUS = { visitStatus: ["방문 예정", "방문 완료", "미방문"], giftStatus: ["미지급", "현장 지급 완료", "택배 발송 완료"],
+  storyStatus: ["미업로드", "업로드 완료"], feedReelsStatus: ["미업로드", "업로드 완료"] };
+const PRESS_FIELDS = ["name", "instagram", "category", "source", "responseStatus", "contactStatus", "giftMethod", "note"]; // contact/address never via ChatGPT
+const SOURCE_FIELDS = ["id", "label", "path", "originalFileName", "format", "type", "season", "round", "settlement", "commissionRate", "costRate",
+  "defaultDiscountRate", "confirmedActualQty", "confirmedGiftQty", "confirmationStatus"];
+const LOGISTICS_KEYS = ["salesFile", "salesStore", "commissionPolicy", "defaultCommissionRate", "purchaseCost", "purchaseUnitCosts", "salesCodeRules"];
+
+const rate = (v, field) => { if (typeof v !== "number" || !(v >= 0 && v <= 1)) throw bad(`${field} must be a rate between 0 and 1 (0.2 = 20%)`); return v; };
+const won = (v, field) => { if (!Number.isSafeInteger(v) || v < 0) throw bad(`${field} must be a nonnegative integer KRW`); return v; };
+// A file the project points at: inside ASSETS/ or REPORT/, recorded so the service can confirm it exists before saving.
+function projectPath(value, field, paths, { roots = ["ASSETS", "REPORT"], ext } = {}) {
+  const { path } = cleanFile({ path: value }, field);
+  if (!roots.includes(path.split("/")[0])) throw bad(`${field} must be inside ${roots.join("/ or ")}/`);
+  if (ext && !ext.test(path)) throw bad(`${field} must be a ${ext.source} file`);
+  paths.push(path);
+  return path;
+}
+const textList = (v, field, max = 200) => { if (!Array.isArray(v) || !v.length) throw bad(`${field} must be a non-empty list`); return v.map((x, i) => text(x, `${field}[${i}]`, max).trim()); };
+export function cleanRule(r, field) {
+  if (!r || typeof r !== "object" || Array.isArray(r)) throw bad(`${field} must be an object`);
+  const type = oneOf(r.type, RULE_TYPES, `${field}.type`);
+  if (typeof r.id !== "string" || !/^[A-Za-z0-9_.-]{2,60}$/.test(r.id)) throw bad(`${field}.id (2-60 letters, digits, _ . -) is required`);
+  const common = ["id", "type", "note"];
+  const out = { id: r.id, type };
+  if (type === "TIERED") {
+    only(r, [...common, "scope", "operator", "application", "baseRate", "tiers", "when"], field);
+    Object.assign(out, { scope: oneOf(r.scope, ["CONSIGNMENT", "TOTAL"], `${field}.scope (CONSIGNMENT = 위탁 매출, TOTAL = 전체 매출)`),
+      operator: oneOf(r.operator, ["GT", "GTE"], `${field}.operator (GT = 초과, GTE = 이상)`),
+      application: oneOf(r.application, ["RETROACTIVE", "MARGINAL"], `${field}.application (RETROACTIVE = 전체 소급, MARGINAL = 초과분만)`),
+      baseRate: rate(r.baseRate, `${field}.baseRate`) });
+    if (!Array.isArray(r.tiers) || !r.tiers.length) throw bad(`${field}.tiers: at least one {threshold, rate}`);
+    out.tiers = r.tiers.map((t, i) => { only(t, ["threshold", "rate"], `${field}.tiers[${i}]`); return { threshold: won(t.threshold, `${field}.tiers[${i}].threshold`), rate: rate(t.rate, `${field}.tiers[${i}].rate`) }; })
+      .sort((a, b) => a.threshold - b.threshold);
+    if (new Set(out.tiers.map((t) => t.threshold)).size !== out.tiers.length) throw bad(`${field}.tiers: thresholds must differ`);
+  } else {
+    const extra = { FIXED: ["when"], SEASONAL: ["groups"], BRAND_SPECIFIC: ["brand"], ITEM_OVERRIDE: ["match"] }[type];
+    only(r, [...common, "rate", ...extra], field);
+    out.rate = rate(r.rate, `${field}.rate`);
+    if (type === "SEASONAL") out.groups = textList(r.groups, `${field}.groups (season or CURRENT/OFF group names)`);
+    if (type === "BRAND_SPECIFIC") { if (!String(r.brand || "").trim()) throw bad(`${field}.brand is required`); out.brand = text(r.brand, `${field}.brand`, 200).trim(); }
+    if (type === "ITEM_OVERRIDE") {
+      only(r.match, ["itemIds", "prodCds", "prodCdPrefixes"], `${field}.match`);
+      out.match = Object.fromEntries(Object.entries(r.match).map(([k, v]) => [k, textList(v, `${field}.match.${k}`, 80)]));
+      if (!Object.keys(out.match).length) throw bad(`${field}.match needs itemIds, prodCds or prodCdPrefixes`);
+    }
+  }
+  if (r.when !== undefined) {
+    only(r.when, ["brands", "groups"], `${field}.when`);
+    out.when = Object.fromEntries(Object.entries(r.when).map(([k, v]) => [k, textList(v, `${field}.when.${k}`)]));
+  }
+  if (r.note !== undefined) out.note = text(r.note, `${field}.note`, 300);
+  return out;
+}
+function cleanPolicy(p, field) {
+  if (p && typeof p === "object" && p.rules !== undefined) {
+    only(p, ["status", "rules", "note"], field);
+    if (!Array.isArray(p.rules)) throw bad(`${field}.rules must be a list`);
+    const rules = p.rules.map((r, i) => cleanRule(r, `${field}.rules[${i}]`));
+    if (new Set(rules.map((r) => r.id)).size !== rules.length) throw bad(`${field}.rules: rule ids must be unique`);
+    return { status: oneOf(p.status, ["CONFIRMED", "UNCONFIRMED"], `${field}.status`), rules, ...(p.note !== undefined ? { note: text(p.note, `${field}.note`, 500) } : {}) };
+  }
+  only(p, ["mode", "rate", "note"], field);
+  const out = { mode: oneOf(p.mode, COMMISSION_MODES, `${field}.mode`) };
+  out.rate = out.mode === "PROJECT_OVERRIDE" ? rate(p.rate, `${field}.rate`) : null;
+  if (p.note !== undefined) out.note = text(p.note, `${field}.note`, 500);
+  return out;
+}
+function cleanSource(s, field, paths, partial) {
+  only(s, SOURCE_FIELDS, field);
+  const out = {};
+  for (const k of ["label", "originalFileName", "type", "season", "confirmationStatus"]) if (s[k] !== undefined) out[k] = text(s[k], `${field}.${k}`, 200);
+  if (s.path !== undefined) out.path = projectPath(s.path, `${field}.path`, paths, { ext: /\.xlsx$/i });
+  if (s.format !== undefined) out.format = oneOf(s.format, ["STOCKSALE_WIDE", "INBOUND"], `${field}.format`);
+  if (s.settlement !== undefined) out.settlement = oneOf(s.settlement, ["CONSIGNMENT", "PURCHASE"], `${field}.settlement`);
+  for (const k of ["commissionRate", "costRate", "defaultDiscountRate"]) if (s[k] !== undefined) out[k] = s[k] === null ? null : rate(s[k], `${field}.${k}`);
+  for (const k of ["round", "confirmedActualQty", "confirmedGiftQty"]) if (s[k] !== undefined) out[k] = s[k] === null ? null : won(s[k], `${field}.${k}`);
+  if (!partial) for (const k of ["label", "path", "type"]) if (out[k] === undefined) throw bad(`${field}.${k} is required for a new source`);
+  return out;
+}
+const VMD_ZONE_FIELDS = ["name", "title", "description", "owner", "installedAt", "result", "issues", "nextTime", "reusable", "planComparison", "expenseIds", "assetPaths"];
+function cleanZone(z, field, project, paths, partial) {
+  only(z, VMD_ZONE_FIELDS, field);
+  const out = {};
+  for (const k of ["name", "title"]) if (z[k] !== undefined) { if (!String(z[k]).trim()) throw bad(`${field}.${k} cannot be empty`); out[k] = text(z[k], `${field}.${k}`, 200); }
+  for (const k of ["description", "owner", "result", "issues", "nextTime"]) if (z[k] !== undefined) out[k] = text(z[k], `${field}.${k}`, 4000);
+  if (z.installedAt !== undefined) out.installedAt = dateOrEmpty(z.installedAt, `${field}.installedAt`);
+  if (z.reusable !== undefined) out.reusable = bool(z.reusable, `${field}.reusable`);
+  if (z.planComparison !== undefined) out.planComparison = oneOf(z.planComparison ?? "", ["", "completed", "changed", "skipped"], `${field}.planComparison`);
+  if (z.expenseIds !== undefined) {
+    const ids = new Set((project.expenses?.items || []).map((e) => e?.id));
+    if (!Array.isArray(z.expenseIds) || z.expenseIds.some((id) => !ids.has(id))) throw bad(`${field}.expenseIds must be expense ids of this project`);
+    out.expenseIds = [...z.expenseIds];
+  }
+  if (z.assetPaths !== undefined) {
+    if (!Array.isArray(z.assetPaths)) throw bad(`${field}.assetPaths must be a list`);
+    out.assetPaths = z.assetPaths.map((p, i) => projectPath(p, `${field}.assetPaths[${i}]`, paths, { roots: ["ASSETS"] }));
+  }
+  if (!partial) for (const k of ["name", "title"]) if (out[k] === undefined) throw bad(`${field}.${k} is required for a new zone`);
+  return out;
+}
+function vmdArchive(project, at) {
+  return project.vmdArchive && typeof project.vmdArchive === "object" ? project.vmdArchive
+    : (project.vmdArchive = { status: "draft", updatedAt: at, plan: { summary: "", zones: [] }, final: { summary: "", zones: [] } });
+}
+function vmdZone(project, stage, zoneId, field) {
+  oneOf(stage, VMD_STAGES, `${field}.stage`);
+  return find(project.vmdArchive?.[stage]?.zones, zoneId, "vmd_zone");
+}
+function pressList(project, create) {
+  const c = project.integrations?.pressList;
+  if (c && typeof c === "object") { if (!Array.isArray(c.list)) c.list = []; return c; }
+  if (!create) throw new PopupError(404, "press_list_not_found", "This project has no PRESS LIST");
+  project.integrations = project.integrations && typeof project.integrations === "object" ? project.integrations : {};
+  return (project.integrations.pressList = { title: "PRESS LIST", statusOptions: { response: ["미회신", "회신 완료"], visit: PRESS_STATUS.visitStatus }, list: [] });
+}
+function cleanPress(item, field, partial) {
+  only(item, PRESS_FIELDS, field);
+  const out = {};
+  for (const k of PRESS_FIELDS) if (item[k] !== undefined) out[k] = text(item[k], `${field}.${k}`, k === "note" ? 2000 : 200).trim();
+  if (out.responseStatus !== undefined) oneOf(out.responseStatus, ["미회신", "회신 완료"], `${field}.responseStatus`);
+  if (out.instagram) out.instagram = "@" + out.instagram.replace(/^@+/, "");
+  if (!partial && !out.name && !out.instagram) throw bad(`${field}: name or instagram is required`);
+  return out;
+}
+const igKey = (v) => String(v || "").replace(/^@+/, "").toLowerCase();
 
 function find(list, id, kind) {
   const item = (list || []).find((x) => x?.id === id);
@@ -252,7 +387,7 @@ function updateExpenseTotal(board, at) {
 
 // Applies a field patch and item operations in place. Returns a list of human-readable changes.
 // Anything not named in the patch or an operation is left exactly as it was.
-export function applyChanges(project, { patch, operations = [] }, { now, actor }) {
+export function applyChanges(project, { patch, operations = [] }, { now, actor, paths = [] }) {
   const at = now.toISOString();
   const changes = [];
   if (patch !== undefined) {
@@ -417,6 +552,202 @@ export function applyChanges(project, { patch, operations = [] }, { now, actor }
           if (JSON.stringify(report[key]) !== JSON.stringify(next)) { report[key] = next; changes.push(`report ${key} updated`); }
         }
         if (changes.length) report.updatedAt = at;
+        break;
+      }
+      case "set_visitor_counts": {
+        // DAY REPORT 현장 총 방문객: visitorCounts[date] = {count, status, source}. count null removes the date.
+        only(op, ["type", "counts"], field);
+        if (!op.counts || typeof op.counts !== "object" || Array.isArray(op.counts) || !Object.keys(op.counts).length) throw bad(`${field}.counts must be {"YYYY-MM-DD": {count, status}}`);
+        const counts = project.visitorCounts && typeof project.visitorCounts === "object" ? project.visitorCounts : {};
+        for (const [date, v] of Object.entries(op.counts)) {
+          if (!isDate(date) || date < project.start || date > project.end) throw bad(`${field}.counts: ${date} is not a popup day (${project.start}~${project.end})`);
+          only(v, ["count", "status", "uniqueBuyers", "source"], `${field}.counts.${date}`);
+          if (v.count === null) { if (counts[date]) { delete counts[date]; changes.push(`visitors ${date} cleared`); } continue; }
+          const next = { count: won(v.count, `${field}.counts.${date}.count`), status: oneOf(v.status ?? "final", ["final", "in_progress"], `${field}.counts.${date}.status`),
+            source: v.source === undefined ? "chatgpt" : text(v.source, `${field}.counts.${date}.source`, 80),
+            ...(v.uniqueBuyers != null ? { uniqueBuyers: won(v.uniqueBuyers, `${field}.counts.${date}.uniqueBuyers`) } : {}) };
+          if (JSON.stringify(counts[date]) !== JSON.stringify(next)) { changes.push(`visitors ${date}: ${counts[date]?.count ?? "-"} → ${next.count} (${next.status})`); counts[date] = next; }
+        }
+        if (Object.keys(counts).length) project.visitorCounts = counts; else delete project.visitorCounts;
+        break;
+      }
+      case "update_logistics": {
+        only(op, ["type", "patch"], field);
+        only(op.patch, LOGISTICS_KEYS, `${field}.patch`);
+        if (!Object.keys(op.patch).length) throw bad(`${field}.patch is empty`);
+        const lg = project.logistics && typeof project.logistics === "object" ? project.logistics : (project.logistics = { sources: [] });
+        for (const [key, value] of Object.entries(op.patch)) {
+          let next;
+          if (value === null) next = null;
+          else if (key === "salesFile") {
+            only(value, ["path", "coverageEnd", "exportedAt", "note"], `${field}.patch.salesFile`);
+            next = { path: projectPath(value.path, `${field}.patch.salesFile.path`, paths, { ext: /\.xlsx$/i }), coverageEnd: dateOrEmpty(value.coverageEnd ?? "", `${field}.patch.salesFile.coverageEnd`) || null,
+              ...(value.exportedAt !== undefined ? { exportedAt: text(value.exportedAt, `${field}.patch.salesFile.exportedAt`, 40) } : {}), ...(value.note !== undefined ? { note: text(value.note, `${field}.patch.salesFile.note`, 500) } : {}) };
+          } else if (key === "salesStore") next = text(value, `${field}.patch.salesStore`, 40);
+          else if (key === "commissionPolicy") next = cleanPolicy(value, `${field}.patch.commissionPolicy`);
+          else if (key === "defaultCommissionRate") next = rate(value, `${field}.patch.defaultCommissionRate`);
+          else if (key === "purchaseCost") {
+            // 사입 원가 total: CONFIRMED needs the amount; UNCONFIRMED keeps 최종 순이익 미확정 (never 0).
+            only(value, ["status", "amount", "note"], `${field}.patch.purchaseCost`);
+            const status = oneOf(value.status, ["CONFIRMED", "UNCONFIRMED"], `${field}.patch.purchaseCost.status`);
+            next = { status, amount: status === "CONFIRMED" ? won(value.amount, `${field}.patch.purchaseCost.amount`) : null, ...(value.note !== undefined ? { note: text(value.note, `${field}.patch.purchaseCost.note`, 500) } : {}) };
+          } else if (key === "purchaseUnitCosts") {
+            // 사입 매입원가 per ECOUNT item code (KRW per unit): margin = sale − unit cost × qty.
+            if (typeof value !== "object" || Array.isArray(value)) throw bad(`${field}.patch.purchaseUnitCosts must be {"품목코드": 단가}`);
+            next = Object.fromEntries(Object.entries(value).map(([code, cost]) => [text(code, `${field}.patch.purchaseUnitCosts key`, 80), won(cost, `${field}.patch.purchaseUnitCosts.${code}`)]));
+          } else if (key === "salesCodeRules") {
+            if (!Array.isArray(value)) throw bad(`${field}.patch.salesCodeRules must be a list`);
+            next = value.map((r, i) => {
+              const f = `${field}.patch.salesCodeRules[${i}]`;
+              only(r, ["prefix", "type", "ledger", "settlement", "note"], f);
+              return { prefix: text(r.prefix, `${f}.prefix`, 40), type: text(r.type, `${f}.type`, 40), ...(r.ledger !== undefined ? { ledger: bool(r.ledger, `${f}.ledger`) } : {}),
+                ...(r.settlement !== undefined ? { settlement: oneOf(r.settlement, ["CONSIGNMENT", "PURCHASE"], `${f}.settlement`) } : {}), ...(r.note !== undefined ? { note: text(r.note, `${f}.note`, 300) } : {}) };
+            });
+          }
+          if (next === null) { if (key in lg) { delete lg[key]; changes.push(`logistics ${key} cleared`); } continue; }
+          if (JSON.stringify(lg[key]) !== JSON.stringify(next)) { changes.push(`logistics ${key}: ${JSON.stringify(lg[key] ?? null).slice(0, 160)} → ${JSON.stringify(next).slice(0, 160)}`); lg[key] = next; }
+        }
+        break;
+      }
+      case "upsert_logistics_source": {
+        only(op, ["type", "source"], field);
+        if (!op.source || typeof op.source.id !== "string" || !/^[A-Za-z0-9_.-]{2,80}$/.test(op.source.id)) throw bad(`${field}.source.id (2-80 letters, digits, _ . -) is required`);
+        const lg = project.logistics && typeof project.logistics === "object" ? project.logistics : (project.logistics = { sources: [] });
+        lg.sources = Array.isArray(lg.sources) ? lg.sources : [];
+        const existing = lg.sources.find((s) => s?.id === op.source.id);
+        const next = cleanSource(op.source, `${field}.source`, paths, Boolean(existing));
+        if (existing) {
+          const changed = Object.keys(next).filter((k) => JSON.stringify(existing[k]) !== JSON.stringify(next[k]));
+          Object.assign(existing, next);
+          if (changed.length) changes.push(`logistics source ${existing.id}: ${changed.join(", ")} updated`);
+        } else { lg.sources.push({ id: op.source.id, ...next }); changes.push(`logistics source added: ${op.source.id} (${next.path})`); }
+        break;
+      }
+      case "update_vmd_archive": {
+        only(op, ["type", "patch"], field);
+        only(op.patch, ["status", "planSummary", "finalSummary"], `${field}.patch`);
+        if (!Object.keys(op.patch).length) throw bad(`${field}.patch is empty`);
+        const created = !project.vmdArchive;
+        const a = vmdArchive(project, at);
+        if (created) changes.push("VMD ARCHIVE started");
+        if (op.patch.status !== undefined && a.status !== oneOf(op.patch.status, VMD_STATUSES, `${field}.patch.status`)) { changes.push(`VMD status: ${a.status} → ${op.patch.status}`); a.status = op.patch.status; }
+        for (const stage of VMD_STAGES) {
+          const value = op.patch[`${stage}Summary`];
+          if (value === undefined) continue;
+          a[stage] ??= { summary: "", zones: [] };
+          if (a[stage].summary !== text(value, `${field}.patch.${stage}Summary`, 4000)) { a[stage].summary = value; changes.push(`VMD ${stage} summary updated`); }
+        }
+        if (changes.length) a.updatedAt = at;
+        break;
+      }
+      case "upsert_vmd_zone": {
+        only(op, ["type", "stage", "zoneId", "zone"], field);
+        oneOf(op.stage, VMD_STAGES, `${field}.stage`);
+        const a = vmdArchive(project, at);
+        a[op.stage] ??= { summary: "", zones: [] };
+        a[op.stage].zones = Array.isArray(a[op.stage].zones) ? a[op.stage].zones : [];
+        if (op.zoneId !== undefined) {
+          const zone = vmdZone(project, op.stage, op.zoneId, field);
+          const next = cleanZone(op.zone, `${field}.zone`, project, paths, true);
+          const changed = Object.keys(next).filter((k) => JSON.stringify(zone[k]) !== JSON.stringify(next[k]));
+          Object.assign(zone, next);
+          if (changed.length) changes.push(`VMD ${op.stage} zone ${zone.name}: ${changed.join(", ")} updated`);
+        } else {
+          const zone = { id: randomUUID(), description: "", owner: "", installedAt: "", expenseIds: [], assetPaths: [], photos: [], result: "", issues: "", nextTime: "", reusable: true, planComparison: "",
+            ...cleanZone(op.zone, `${field}.zone`, project, paths, false) };
+          a[op.stage].zones.push(zone);
+          changes.push(`VMD ${op.stage} zone added: ${zone.name} · ${zone.title}`);
+        }
+        a.updatedAt = at;
+        break;
+      }
+      case "link_vmd_photo": {
+        only(op, ["type", "stage", "zoneId", "photo"], field);
+        const zone = vmdZone(project, op.stage, op.zoneId, field);
+        only(op.photo, ["path", "label"], `${field}.photo`);
+        const path = projectPath(op.photo.path, `${field}.photo.path`, paths, { roots: ["ASSETS"], ext: /\.(jpe?g|png|webp|heic|gif)$/i });
+        zone.photos = Array.isArray(zone.photos) ? zone.photos : [];
+        if (!zone.photos.some((p) => p.path === path)) {
+          zone.photos.push({ label: op.photo.label === undefined ? path.split("/").pop() : text(op.photo.label, `${field}.photo.label`, 200), path });
+          project.vmdArchive.updatedAt = at;
+          changes.push(`VMD ${op.stage} zone ${zone.name}: photo linked ${path}`);
+        }
+        break;
+      }
+      case "unlink_vmd_photo": {
+        only(op, ["type", "stage", "zoneId", "path"], field);
+        const zone = vmdZone(project, op.stage, op.zoneId, field);
+        const before = (zone.photos || []).length;
+        zone.photos = (zone.photos || []).filter((p) => p.path !== op.path);
+        if (zone.photos.length === before) throw new PopupError(404, "file_link_not_found", `${op.path} is not linked to ${zone.name}`);
+        project.vmdArchive.updatedAt = at;
+        changes.push(`VMD ${op.stage} zone ${zone.name}: photo unlinked ${op.path} (the Dropbox file itself is kept)`);
+        break;
+      }
+      case "add_press_item": {
+        only(op, ["type", "item"], field);
+        const c = pressList(project, true);
+        const item = cleanPress(op.item, `${field}.item`, false);
+        if (item.instagram && c.list.some((x) => igKey(x.instagram) === igKey(item.instagram))) throw new PopupError(409, "duplicate_press_item", `${item.instagram} is already on the PRESS LIST`);
+        const entry = { id: `press-${randomUUID()}`, responseStatus: "미회신", contactStatus: "미연락", ...item };
+        c.list.push(entry);
+        c.updatedAt = at;
+        changes.push(`press added: ${entry.instagram || entry.name}`);
+        break;
+      }
+      case "update_press_item": {
+        only(op, ["type", "pressId", "patch"], field);
+        const c = pressList(project, false);
+        const item = find(c.list, op.pressId, "press");
+        const next = cleanPress(op.patch, `${field}.patch`, true);
+        if (!Object.keys(next).length) throw bad(`${field}.patch is empty`);
+        if (next.instagram && c.list.some((x) => x !== item && igKey(x.instagram) === igKey(next.instagram))) throw new PopupError(409, "duplicate_press_item", `${next.instagram} is already on the PRESS LIST`);
+        const changed = Object.keys(next).filter((k) => item[k] !== next[k]);
+        Object.assign(item, next);
+        if (changed.length) { c.updatedAt = at; changes.push(`press ${item.instagram || item.name}: ${changed.join(", ")} updated`); }
+        break;
+      }
+      case "set_press_status": {
+        // Same operations[pressId] entry the web app's PRESS LIST check-in writes.
+        only(op, ["type", "pressId", "status"], field);
+        const c = pressList(project, false);
+        const item = find(c.list, op.pressId, "press");
+        only(op.status, Object.keys(PRESS_STATUS), `${field}.status`);
+        if (!Object.keys(op.status).length) throw bad(`${field}.status is empty`);
+        const prev = c.operations?.[op.pressId] || {};
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(op.status)) next[k] = oneOf(v, PRESS_STATUS[k], `${field}.status.${k}`);
+        if (next.visitStatus === "방문 완료" && prev.visitStatus !== "방문 완료") next.checkInAt = at;
+        if (op.status.visitStatus && op.status.visitStatus !== "방문 완료" && prev.visitStatus === "방문 완료") next.checkInAt = "";
+        const changed = Object.keys(op.status).filter((k) => prev[k] !== next[k]);
+        if (changed.length) {
+          c.operations = c.operations && typeof c.operations === "object" ? c.operations : {};
+          c.operations[op.pressId] = next;
+          changes.push(`press ${item.instagram || item.name}: ${changed.map((k) => `${k} → ${next[k]}`).join(", ")}`);
+        }
+        break;
+      }
+      case "upsert_commission_rule": case "remove_commission_rule": {
+        // One rule of the rule-based policy; a legacy policy (SOC: PROJECT_OVERRIDE) must be replaced through update_logistics first.
+        only(op, op.type === "upsert_commission_rule" ? ["type", "rule", "position"] : ["type", "ruleId"], field);
+        const lg = project.logistics;
+        const policy = lg?.commissionPolicy;
+        if (!policy || !Array.isArray(policy.rules)) throw new PopupError(409, "policy_not_rule_based", "This project's commission policy is not rule-based; set logistics.commissionPolicy {status, rules} first.");
+        if (op.type === "remove_commission_rule") {
+          const rule = find(policy.rules, op.ruleId, "commission_rule");
+          policy.rules.splice(policy.rules.indexOf(rule), 1);
+          changes.push(`commission rule removed: ${rule.id} (${rule.type})`);
+          break;
+        }
+        const rule = cleanRule(op.rule, `${field}.rule`);
+        const i = policy.rules.findIndex((r) => r?.id === rule.id);
+        if (i >= 0) {
+          if (JSON.stringify(policy.rules[i]) !== JSON.stringify(rule)) { changes.push(`commission rule ${rule.id}: ${JSON.stringify(policy.rules[i]).slice(0, 160)} → ${JSON.stringify(rule).slice(0, 160)}`); policy.rules[i] = rule; }
+        } else {
+          const at = op.position === undefined ? policy.rules.length : Math.max(0, Math.min(won(op.position, `${field}.position`), policy.rules.length));
+          policy.rules.splice(at, 0, rule);
+          changes.push(`commission rule added: ${rule.id} (${rule.type})`);
+        }
         break;
       }
       case "restore_from_trash": {
