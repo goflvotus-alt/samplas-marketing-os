@@ -66,6 +66,36 @@ function detail(s,headers,rows) {
  }));
  if(!rows.length)box(s,34,1,12,'데이터 부족 — 확인된 상세 성과가 없습니다.',{color:C.muted,height:34});
 }
+// 04 on page one: counts for all valid pay-date orders, detail rows for confirmed (G1) matches only; full list stays in ORDER_DETAIL. Order totals sit on the order's first line only;
+// item amounts are shown only when the payment API confirmed them. Meta-reported purchases are not used here.
+function orderMatchSection(s,trace,start=43){
+ const m=trace.match,orders=trace.orders.filter(o=>!o.excluded);
+ const sorted=orders.filter(o=>o.matchStatus==='MATCHED');
+ section(s,start,'04  주문 매칭 현황  |  Cafe24 결제일 기준 · Meta 보고 구매와 별도');
+ [['전체 결제 주문',m.paidOrders],['확정 매칭',m.matched],['미매칭',m.unmatched]].forEach(([label,v],i)=>{
+  box(s,start+1,1+i*4,4+i*4,label,{size:10,bold:true,color:C.green,bg:C.pale});
+  const c=box(s,start+2,1+i*4,4+i*4,metricPresent(v)?v:'미검증',{size:metricPresent(v)?21:12,bold:true,color:metricPresent(v)?C.ink:C.muted,height:34,bg:C.pale});c.numFmt=unitFormat('건');
+ });
+ box(s,start+3,1,12,`확정 매칭 = 광고 ID(G1) + Analytics paid + Admin 주문번호 일치 · 광고명 후보(G2) ${m.g2Candidates??0}건 미포함 · 취소·반품 완료 ${trace.orders.length-orders.length}건 제외${m.unknown?` · 검증 불가 ${m.unknown}건`:''}`,{size:9,color:C.muted,height:24});
+ const head=start+4,spans=[[1,3],[4,9],[10,11],[12,12]];
+ ['주문번호','제품명','옵션 / 사이즈','결제금액'].forEach((h,i)=>box(s,head,...spans[i],h,{bold:true,size:9,color:C.white,bg:C.green,height:26}));
+ let row=head+1;const first=row;
+ for(const o of sorted){
+  const items=trace.details.filter(d=>d.orderId===o.orderId&&!d.excluded),multi=items.length>1;
+  (items.length?items:[{productName:'상품 정보 없음',option:''}]).forEach((d,i)=>{
+   box(s,row,1,3,o.orderId,{size:9,height:30});
+   box(s,row,4,9,d.productName||'',{size:9,height:30});
+   box(s,row,10,11,`${d.option||''}${multi&&metricPresent(d.salesAmount)?` · 품목 ${number(d.salesAmount,'원')}`:''}`,{size:8,height:30});
+   const c=box(s,row,12,12,i===0?(metricPresent(o.revenue)?o.revenue:'미검증'):'↑ 주문 합계',{size:9,align:'right',color:i===0?C.ink:C.muted,height:30});if(i===0)c.numFmt=o.storedValue?'#,##0"원 (선불금)"':unitFormat('원');
+   row++;
+  });
+ }
+ if(!sorted.length){box(s,row,1,12,'확정 매칭된 주문 없음',{color:C.muted,height:26});return row+2;}
+ box(s,row,1,11,`합계 · 확정 매칭 주문 ${sorted.length}건${sorted.some(o=>trace.details.filter(d=>d.orderId===o.orderId&&!d.excluded).length>1)?' · 다품목 주문은 첫 행에 주문 총결제액 1회 표시(임의 배분 없음)':''}`,{size:9,bold:true,color:C.green,bg:C.pale,height:26});
+ const total=sorted.every(o=>metricPresent(o.revenue))?sorted.reduce((a,o)=>a+o.revenue,0):null;
+ const t=box(s,row,12,12,total===null?'미검증':{formula:`SUM(L${first}:L${row-1})`,result:total},{size:9,bold:true,align:'right',bg:C.pale,height:26});t.numFmt=unitFormat('원');
+ return row+2;
+}
 function actions(s,rows,start=43,title='04') {
  section(s,start,`${title}  다음 액션  |  최대 3개`);
  rows.slice(0,3).forEach((a,i)=>{
@@ -125,8 +155,11 @@ export function metaOnePage(workbook,model) {
  judgments(s,[['플랫폼 성과',`Meta 귀속 구매 ${number(sum.purchases,'건')} · 매출 ${number(sum.purchaseValue,'원')} · ROAS ${number(sum.roas,'x')}`],['실제 주문 검증',reconciliation?`Meta 연결 발행 당시 매출 ${!issuedOk?'미검증':reconciliation.issuedRevenue===null?'UNAVAILABLE':number(reconciliation.issuedRevenue,'원')} · 후속 환불 조정 ${!prevOk||!issuedOk?'미검증':reconciliation.refundAdjustment===null?'UNAVAILABLE':number(reconciliation.refundAdjustment,'원')} · 현재 기준 순매출 ${prevOk?number(reconciliation.currentRevenue,'원'):'미검증'}`:model.revenueEvidence?`온라인 ${number(model.revenueEvidence.current?.onlineOrders,'건')} ${number(model.revenueEvidence.current?.onlineRevenue,'원')} · Meta 연결 검증 ${number(model.revenueEvidence.current?.verifiedOrders,'건')} ${number(model.revenueEvidence.current?.verifiedRevenue,'원')}`:commerce?`Cafe24 확인 주문 ${curOk?commerce.metaPaidOrderCount+'건':'미검증'} · 실제 결제 ${curOk?number(commerce.metaPaidRevenue,'원'):'미검증'}`:`UNAVAILABLE — ${actual?.reason||'추적정보 부족'}`],g?['등급 · 환불',`광고 ID 유입 ${g.adIdCount}건 · 추적코드 ${g.inflowCodeCount}건 · 광고명 후보 ${g.adNameCandidateCount}건(합산 안 함) · 클레임 진행 ${g.claimCount}건 · 결제 미검증 ${g.paymentUnverifiedCount}건 / ${refundLine(model.refundTracking)}`]:['상품 근거',commerce?'ACTUAL_PRODUCTS_SOLD의 주문번호·상품·옵션·수량 참조. Analytics 금액은 실결제로 대체하지 않음.':'실제 주문 근거 없이 판매 상품을 표시하지 않음.'],model.salesTrace?.match?['주문 매칭 · 주의',orderMatchLine(model.salesTrace.match)+` / 광고 상위 8개만 표시 · 전체 ${model.ads?.length||0}개는 CREATIVE_AD 시트`]:['주의',`광고별 상위 8개만 아래 표시 · 전체 ${model.ads?.length||0}개는 CREATIVE_AD 시트 · 실제 주문 커버리지와 Meta 귀속 수치는 다름.`]]);
  detail(s,['광고 ID','캠페인','광고명','광고비','구매','귀속매출','ROAS','CPA','CTR','CPC','확인주문'],[...(model.ads||[])].sort((a,b)=>(b.spend||0)-(a.spend||0)).map(row=>[String(row.adId||''),String(row.campaignName||''),String(row.adName||''),measured(row.spend,'원'),measured(row.purchases,'건'),measured(row.purchaseValue,'원'),measured(row.roas,'x'),measured(row.cpa,'원'),measured(row.ctr,'%'),measured(row.cpc,'원'),commerce?confirmedFor(actual,row.adId,g):'N/A']));
  for(let row=34;row<=41;row++){s.getRow(row).height=60;s.getRow(row).eachCell(cell=>{cell.font={...cell.font,size:8};});}
- actions(s,[{priority:'P1',action:'Analytics ig/paid와 Admin order_id 일치 주문을 지속 검증',success:'추적 누락·미매칭 분리'},{priority:'P1',action:'기존 ghost_mall_id 필터와 Analytics 유료 주문을 중복 없이 비교',success:'동일 주문 결제 1회 집계'},{priority:'P2',action:'광고 판단은 Meta 성과와 확인된 실제 주문 근거를 별도 확인',success:'귀속 매출 혼합 금지'}]);
- notes(s,['Meta Marketing API Insights · source-metric 그대로 사용','Cafe24 Analytics: 유입 근거만 사용 / Admin Orders: 상품 및 실결제 근거','동일 주문번호 결제 1회 · canonical 취소/환불 및 부분취소 규칙 유지',g?'광고 ID 유입 = Cafe24 Analytics 광고 ID 기록 · Meta 개별 구매와 1:1 아님 · 노출 구매는 주문 연결 불가 · META_ATTRIBUTION/REFUND_TRACKING 시트':'기존 공통 REPORT 1페이지 레이아웃 재사용 · 상세 시트 별도 유지','현재/비교 기간은 KST 날짜 범위 · 자동 리포트는 완료된 화~월 7일과 직전 7일 비교','세 매출 합산 금지 · 전주도 동일 결제일 기준 재조회 · 미추적 주문을 광고 비기여로 단정하지 않음']);
+ const matchSection=model.salesTrace?.match&&Array.isArray(model.salesTrace.orders);
+ const actionRow=matchSection?orderMatchSection(s,model.salesTrace):43;
+ if(matchSection)s.pageSetup.printArea=`A1:L${actionRow+14}`;
+ actions(s,[{priority:'P1',action:'Analytics ig/paid와 Admin order_id 일치 주문을 지속 검증',success:'추적 누락·미매칭 분리'},{priority:'P1',action:'기존 ghost_mall_id 필터와 Analytics 유료 주문을 중복 없이 비교',success:'동일 주문 결제 1회 집계'},{priority:'P2',action:'광고 판단은 Meta 성과와 확인된 실제 주문 근거를 별도 확인',success:'귀속 매출 혼합 금지'}],actionRow,matchSection?'05':'04');
+ notes(s,['Meta Marketing API Insights · source-metric 그대로 사용','Cafe24 Analytics: 유입 근거만 사용 / Admin Orders: 상품 및 실결제 근거','동일 주문번호 결제 1회 · canonical 취소/환불 및 부분취소 규칙 유지',g?'광고 ID 유입 = Cafe24 Analytics 광고 ID 기록 · Meta 개별 구매와 1:1 아님 · 노출 구매는 주문 연결 불가 · META_ATTRIBUTION/REFUND_TRACKING 시트':'기존 공통 REPORT 1페이지 레이아웃 재사용 · 상세 시트 별도 유지','현재/비교 기간은 KST 날짜 범위 · 자동 리포트는 완료된 화~월 7일과 직전 7일 비교','세 매출 합산 금지 · 전주도 동일 결제일 기준 재조회 · 미추적 주문을 광고 비기여로 단정하지 않음'],actionRow+6);
  return s;
 }
 export function instagramDecision(post,posts) {
