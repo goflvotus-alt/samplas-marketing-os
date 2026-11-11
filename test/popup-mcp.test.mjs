@@ -18,6 +18,7 @@ function fakeDropbox() {
   state.fetch = async (url, init = {}) => {
     const endpoint = url.split("/2/")[1];
     if (url.includes("oauth2/token")) return reply(200, { access_token: "t" });
+    if (url.includes("/api/popup/logistics-report")) return state.webReport ? reply(200, state.webReport(decodeURIComponent(url.split("project=")[1]))) : reply(404, { ok: false, error: "logistics_not_configured" });
     const arg = init.headers?.["Dropbox-API-Arg"] ? JSON.parse(init.headers["Dropbox-API-Arg"]) : JSON.parse(init.body || "{}");
     const meta = (n) => ({ ".tag": n.tag, name: n.display.split("/").pop(), path_display: n.display, ...(n.tag === "file" ? { size: n.body.length, rev: n.rev } : {}) });
     switch (endpoint) {
@@ -41,6 +42,10 @@ function fakeDropbox() {
         if (arg.mode[".tag"] === "update" && n?.rev !== arg.mode.update) return reply(409, { error_summary: "path/conflict/file/" });
         put(arg.path, init.body);
         return reply(200, {});
+      }
+      case "files/get_metadata": {
+        const n = nodes.get(arg.path.toLowerCase());
+        return n ? reply(200, meta(n)) : reply(409, { error_summary: "path/not_found/" });
       }
       case "files/create_folder_v2": {
         if (nodes.has(arg.path.toLowerCase())) return reply(409, { error_summary: "path/conflict/folder/" });
@@ -315,4 +320,124 @@ test("updatePopupStaffBoard with the same opId is applied once", async () => {
   const first = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments: AE_TABLE, opId: "staff-ae-1106-08" });
   const retry = await call("updatePopupStaffBoard", { name: "TEST-AE", expectedVersion: 9, assignments: AE_TABLE, opId: "staff-ae-1106-08" });
   assert.equal(first.version, 10); assert.equal(retry.replayed, true); assert.equal(retry.version, 10);
+});
+
+// --- Full POPUP DIRECTOR operations: settlement, LOGISTICS, DAY REPORT → FINAL REPORT, VMD, PRESS ---
+const AE_FIXTURE = { id: "ae-1", name: "TEST-AE", start: "2026-11-06", end: "2026-11-08", version: 47, tasks: [], assets: [], notes: [],
+  expenses: { currency: "KRW", items: [{ id: "e1", date: "2026-11-06", category: "인건비", title: "x", amount: 1000 }], total: 1000 },
+  report: { status: "final", title: "AE", summary: "keep", headline: { managerRevenueTarget: 20000000, commissionAmount: 4508000 }, findings: ["keep"] },
+  logistics: { salesStore: "APGUJEONG", sources: [], commissionPolicy: { mode: "UNCONFIRMED", rate: null },
+    salesCodeRules: [{ prefix: "pop", type: "CONSIGNMENT" }, { prefix: "aey263", type: "SAMPLAS_OWNED", ledger: false }],
+    salesFile: { path: "REPORT/old.xlsx", coverageEnd: "2026-11-07" } },
+  integrations: { pressList: { list: [{ id: "p1", instagram: "@kim", contact: "010-0000-0000", address: "Seoul" }] } } };
+const FIGURES = { headline: { popupSalesAmount: 23984000, transactionCount: 132, commissionRate: 0.2, commissionAmount: 4508000, contributionBeforeOwnedCostAndTax: 5227454, ownedGoodsCost: null, finalNetProfit: null },
+  dailySales: [{ date: "2026-11-06", popupSalesAmount: 12784000, commissionAmount: 2394000 }, { date: "2026-11-07", popupSalesAmount: 9150000, commissionAmount: 1704000 }, { date: "2026-11-08", popupSalesAmount: 2050000, commissionAmount: 410000 }],
+  dailyVisitors: [{ date: "2026-11-06", count: 146 }, { date: "2026-11-07", count: 118 }, { date: "2026-11-08", count: 51 }] };
+
+function setupAE() {
+  const ctx = setup();
+  const path = `${ROOT}/PROJECTS/TEST-AE`;
+  ctx.db.put(`${path}/popup.json`, JSON.stringify(AE_FIXTURE, null, 2));
+  for (const f of ["REPORT/old.xlsx", "REPORT/VMC6MA2SKLJZSF8.xlsx", "ASSETS/AE_VMD_01.jpg"]) ctx.db.put(`${path}/${f}`, "x");
+  const stored = () => JSON.parse(ctx.db.nodes.get(`${path}/popup.json`.toLowerCase()).body);
+  // The web app computes the DAY REPORT from the stored project version.
+  ctx.db.webReport = () => ({ ok: true, projectVersion: stored().version, salesError: null, days: [{ day: 1, date: "2026-11-06", salesStatus: "OK", revenue: 12784000, transactions: 70 }],
+    total: { revenue: 23984000, transactions: 132 }, pnl: { commission: 4508000, contribution: 5227454, netProfit: null, provisionalCosts: [] }, finalReport: FIGURES, ledger: ["large"] });
+  return { ...ctx, stored };
+}
+
+test("settlement: tiered 위탁 commission, 사입 cost unconfirmed, sales file must exist", async () => {
+  const { call, stored, socUnchanged } = setupAE();
+  const r = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 47, operations: [{ type: "update_logistics", patch: {
+    commissionPolicy: { mode: "TIERED", baseRate: 0.2, tiers: [{ above: 27000000, rate: 0.15 }], note: "계약" },
+    purchaseCost: { status: "UNCONFIRMED", note: "API 미제공" },
+    salesCodeRules: [{ prefix: "pop", type: "CONSIGNMENT" }, { prefix: "aey263", type: "SAMPLAS_OWNED", ledger: false, settlement: "PURCHASE" }] } }] });
+  assert.equal(r.verified, true); assert.equal(r.version, 48);
+  assert.deepEqual(stored().logistics.commissionPolicy, { mode: "TIERED", status: "CONFIRMED", baseRate: 0.2, tiers: [{ above: 27000000, rate: 0.15 }], basis: "CONSIGNMENT_REVENUE_TOTAL", note: "계약" });
+  assert.deepEqual(stored().logistics.purchaseCost, { status: "UNCONFIRMED", amount: null, note: "API 미제공" });
+  assert.equal(stored().logistics.salesStore, "APGUJEONG");
+
+  const badRate = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [{ type: "update_logistics", patch: { commissionPolicy: { mode: "PROJECT_OVERRIDE", rate: 20 } } }] });
+  assert.equal(badRate.error, "invalid_arguments");
+  const noCost = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [{ type: "update_logistics", patch: { purchaseCost: { status: "CONFIRMED" } } }] });
+  assert.equal(noCost.error, "invalid_arguments");
+
+  const missing = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [{ type: "update_logistics", patch: { salesFile: { path: "REPORT/nope.xlsx", coverageEnd: "2026-11-08" } } }] });
+  assert.equal(missing.error, "file_not_found"); assert.deepEqual(missing.missing, ["REPORT/nope.xlsx"]);
+  assert.equal(stored().version, 48);
+  const file = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [{ type: "update_logistics", patch: { salesFile: { path: "REPORT/VMC6MA2SKLJZSF8.xlsx", coverageEnd: "2026-11-08" } } }] });
+  assert.equal(file.verified, true); assert.equal(stored().logistics.salesFile.path, "REPORT/VMC6MA2SKLJZSF8.xlsx");
+
+  const src = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 49, operations: [{ type: "upsert_logistics_source", source: { id: "owned-1", label: "사입", path: "REPORT/old.xlsx", type: "SAMPLAS_OWNED", settlement: "PURCHASE", costRate: 0.45 } }] });
+  assert.equal(src.verified, true); assert.equal(stored().logistics.sources[0].costRate, 0.45);
+  const stale = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 49, operations: [{ type: "set_visitor_counts", counts: { "2026-11-06": { count: 1 } } }] });
+  assert.equal(stale.error, "version_conflict");
+  socUnchanged();
+});
+
+test("DAY REPORT: visitors, read, then FINAL REPORT sync with version check and re-read", async () => {
+  const { call, stored, socUnchanged } = setupAE();
+  const outside = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 47, operations: [{ type: "set_visitor_counts", counts: { "2026-11-09": { count: 5 } } }] });
+  assert.equal(outside.error, "invalid_arguments");
+  const v = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 47, operations: [{ type: "set_visitor_counts", counts: {
+    "2026-11-06": { count: 146, source: "report.dailyVisitors" }, "2026-11-07": { count: 118, source: "report.dailyVisitors" }, "2026-11-08": { count: 51, source: "report.dailyVisitors" } } }] });
+  assert.equal(v.verified, true);
+  assert.deepEqual(stored().visitorCounts["2026-11-08"], { count: 51, status: "final", source: "report.dailyVisitors" });
+
+  const day = await call("getPopupDayReport", { name: "TEST-AE" });
+  assert.equal(day.ok, true); assert.equal(day.stale, false); assert.equal(day.dayReport.total.transactions, 132);
+  assert.equal(day.dayReport.ledger, undefined); assert.equal(day.dayReport.pnl.provisionalCosts, undefined);
+
+  const wrongVersion = await call("syncPopupFinalReport", { name: "TEST-AE", expectedVersion: 47 });
+  assert.equal(wrongVersion.error, "day_report_stale");
+  const locked = await call("syncPopupFinalReport", { name: "TEST-AE", expectedVersion: 48 });
+  assert.equal(locked.error, "report_final"); assert.equal(stored().version, 48);
+  const synced = await call("syncPopupFinalReport", { name: "TEST-AE", expectedVersion: 48, allowFinal: true });
+  assert.equal(synced.verified, true); assert.equal(synced.version, 49); assert.equal(synced.recheck.matches, true);
+  const report = stored().report;
+  assert.equal(report.headline.managerRevenueTarget, 20000000); // other headline keys kept
+  assert.equal(report.headline.contributionBeforeOwnedCostAndTax, 5227454); assert.equal(report.headline.finalNetProfit, null);
+  assert.deepEqual(report.comparison.dailySales.map((d) => d.commissionAmount), [2394000, 1704000, 410000]);
+  assert.deepEqual(report.dailyVisitors.map((d) => d.count), [146, 118, 51]);
+  assert.equal(report.summary, "keep"); assert.deepEqual(report.findings, ["keep"]); assert.equal(report.status, "final");
+  socUnchanged();
+});
+
+test("VMD ARCHIVE create, zone, photo link (file must exist), unlink", async () => {
+  const { call, stored } = setupAE();
+  const a = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 47, operations: [
+    { type: "update_vmd_archive", patch: { status: "installed", finalSummary: "7 zones" } },
+    { type: "upsert_vmd_zone", stage: "final", zone: { name: "ZONE 1", title: "거울 시트지", installedAt: "2026-11-05", expenseIds: ["e1"] } }] });
+  assert.equal(a.verified, true);
+  const zone = stored().vmdArchive.final.zones[0];
+  assert.equal(zone.title, "거울 시트지"); assert.deepEqual(zone.photos, []); assert.equal(stored().vmdArchive.status, "installed");
+  const badExpense = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [{ type: "upsert_vmd_zone", stage: "final", zoneId: zone.id, zone: { expenseIds: ["zz"] } }] });
+  assert.equal(badExpense.error, "invalid_arguments");
+  const missing = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [{ type: "link_vmd_photo", stage: "final", zoneId: zone.id, photo: { path: "ASSETS/none.jpg" } }] });
+  assert.equal(missing.error, "file_not_found");
+  const linked = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [{ type: "link_vmd_photo", stage: "final", zoneId: zone.id, photo: { path: "ASSETS/AE_VMD_01.jpg", label: "① FINAL" } }] });
+  assert.equal(linked.verified, true); assert.deepEqual(stored().vmdArchive.final.zones[0].photos, [{ label: "① FINAL", path: "ASSETS/AE_VMD_01.jpg" }]);
+  const unlinked = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 49, operations: [{ type: "unlink_vmd_photo", stage: "final", zoneId: zone.id, path: "ASSETS/AE_VMD_01.jpg" }] });
+  assert.equal(unlinked.verified, true); assert.deepEqual(stored().vmdArchive.final.zones[0].photos, []);
+});
+
+test("PRESS LIST add, duplicate, update, status check-in; contact/address kept but never returned", async () => {
+  const { call, stored } = setupAE();
+  const add = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 47, operations: [{ type: "add_press_item", item: { instagram: "lee", category: "매거진" } }] });
+  assert.equal(add.verified, true);
+  const lee = stored().integrations.pressList.list[1];
+  assert.equal(lee.instagram, "@lee"); assert.equal(lee.responseStatus, "미회신");
+  const dup = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [{ type: "add_press_item", item: { instagram: "@KIM" } }] });
+  assert.equal(dup.error, "duplicate_press_item");
+  const noContact = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [{ type: "update_press_item", pressId: "p1", patch: { contact: "x" } }] });
+  assert.equal(noContact.error, "invalid_arguments");
+  const st = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [
+    { type: "update_press_item", pressId: "p1", patch: { responseStatus: "회신 완료" } }, { type: "set_press_status", pressId: "p1", status: { visitStatus: "방문 완료", storyStatus: "업로드 완료" } }] });
+  assert.equal(st.verified, true);
+  const op = stored().integrations.pressList.operations.p1;
+  assert.equal(op.visitStatus, "방문 완료"); assert.ok(op.checkInAt); assert.equal(op.storyStatus, "업로드 완료");
+  assert.equal(stored().integrations.pressList.list[0].contact, "010-0000-0000");
+  assert.equal(st.project.integrations.pressList.list[0].contact, undefined); assert.equal(st.project.integrations.pressList.list[0].address, undefined);
+  const cancel = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 49, operations: [{ type: "set_press_status", pressId: "p1", status: { visitStatus: "미방문" } }] });
+  assert.equal(cancel.verified, true); assert.equal(stored().integrations.pressList.operations.p1.checkInAt, "");
 });

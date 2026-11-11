@@ -4,7 +4,8 @@
 // tools/call unchanged, so new tools ship with a Render deploy only.
 // Writes: POPUP_MCP_WRITES = "on" (default) | "test-only" (projects named TEST-*) | "off".
 import { createPopupService } from "./popup-service.mjs";
-import { PopupError, PROJECT_STATUSES, TASK_GROUPS, TASK_PRIORITIES, ASSET_STATUSES, REPORT_STATUSES, OPERATIONS, TEMPLATES, STAFF_SITES } from "./popup-projects.mjs";
+import { PopupError, PROJECT_STATUSES, TASK_GROUPS, TASK_PRIORITIES, ASSET_STATUSES, REPORT_STATUSES, OPERATIONS, TEMPLATES, STAFF_SITES,
+  COMMISSION_MODES, VMD_STATUSES, VMD_STAGES, PRESS_STATUS } from "./popup-projects.mjs";
 
 export const POPUP_MCP_PATH = "/api/ai-audit/popup/mcp";
 const protocols = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -35,7 +36,16 @@ const OPERATION = { type: "object", required: ["type"], additionalProperties: fa
   expense: strict({date: date("Expense date"), category: str("Expense category"), title: str("Expense title"), amount: {type:"integer",minimum:0,maximum:1000000000}, vatIncluded: {type:["boolean","null"]}, payer: str("Payer"), relatedStage: str("Stage"), memo: str("Memo"), estimate:{type:"boolean"}, hourlyWage:{type:"number",minimum:0}, paidHours:{type:"number",minimum:0}, shift:str("Shift"), breakHours:{type:"number",minimum:0}}, ["date","category","title","amount"]),
   expenseId: str("Existing expense ID from getPopupProject"),
   trashId: str("restore_from_trash: entry id from project.trash"),
-  patch: { type: "object", description: "update_task: any TASK field. update_asset: any ASSET field. update_note: date, title, body. update_expense: validated expense fields. update_report: status (draft|final), title, summary, period {start,end,venue}, file {path,label,type} or null, headline, findings, nextActions, dailyVisitors, comparison, logistics — objects are merged into the existing report, so existing figures are kept unless named." } } };
+  counts: { type: "object", description: "set_visitor_counts: {\"YYYY-MM-DD\": {count (integer, null = remove), status: final|in_progress (default final), uniqueBuyers?, source?}} — 현장 총 방문객 per popup day" },
+  source: { type: "object", description: "upsert_logistics_source: {id (required), label, path (ASSETS/… or REPORT/… .xlsx, must exist), format STOCKSALE_WIDE|INBOUND, type, season, round, settlement CONSIGNMENT(위탁)|PURCHASE(사입), commissionRate, costRate (사입 원가율 of list price), defaultDiscountRate, confirmedActualQty, confirmedGiftQty, confirmationStatus}. Existing id = partial update." },
+  stage: { enum: VMD_STAGES, description: "VMD ARCHIVE stage: plan (계획) or final (실제 설치)" },
+  zoneId: str("VMD zone id from getPopupProject vmdArchive; omit in upsert_vmd_zone to add a zone"),
+  zone: { type: "object", description: "upsert_vmd_zone: name, title (both required for a new zone), description, owner, installedAt (YYYY-MM-DD or ''), result, issues, nextTime, reusable, planComparison (completed|changed|skipped|''), expenseIds (ids of this project's expenses), assetPaths (ASSETS/…)" },
+  photo: strict({ path: str("ASSETS/… image path that exists in the project folder"), label: str("Label shown under the photo") }, ["path"]),
+  item: { type: "object", description: "add_press_item: name and/or instagram (required), category, source, responseStatus (미회신|회신 완료), contactStatus, giftMethod, note. Contact and address are never set through ChatGPT." },
+  pressId: str("PRESS LIST item id from getPopupProject integrations.pressList.list"),
+  status: strict(Object.fromEntries(Object.entries(PRESS_STATUS).map(([k, v]) => [k, { enum: v }])), []),
+  patch: { type: "object", description: `update_task: any TASK field. update_asset: any ASSET field. update_note: date, title, body. update_expense: validated expense fields. update_report: status (draft|final), title, summary, period {start,end,venue}, file {path,label,type} or null, headline, findings, nextActions, dailyVisitors, comparison, logistics — objects are merged into the existing report, so existing figures are kept unless named. update_logistics: salesFile {path REPORT/….xlsx (must exist), coverageEnd, exportedAt, note}, salesStore, commissionPolicy {mode ${COMMISSION_MODES.join('|')}, status CONFIRMED|UNCONFIRMED, rate (PROJECT_OVERRIDE), baseRate + tiers [{above (KRW), rate}] (TIERED: one rate for all 위탁 sales, chosen by the popup's 위탁 revenue total), note}, defaultCommissionRate, purchaseCost {status CONFIRMED|UNCONFIRMED, amount (사입 원가 total KRW, CONFIRMED only), note}, salesCodeRules [{prefix, type, ledger, settlement CONSIGNMENT|PURCHASE, note}] (replaces the list); null clears a key. update_vmd_archive: status (${VMD_STATUSES.join('|')}), planSummary, finalSummary (starts the archive if missing). update_press_item: same fields as add_press_item.` } } };
 
 export const POPUP_TOOLS = [
   { name: "listPopupProjects", description: "List SAMPLAS popup projects: name, id, status (PLANNING/ACTIVE/ENDED/ARCHIVED; derived from dates when a project has none stored), dates, brand, venue, TODO progress, report state, version and last change. Trashed projects are hidden unless includeDeleted; folders moved to _DELETED are listed with includeRemoved.",
@@ -49,7 +59,7 @@ export const POPUP_TOOLS = [
       brand: nullableStr("Brand(s); omit or null when undecided"), venue: nullableStr("Venue; omit or null when undecided"),
       status: { enum: ["PLANNING", "ACTIVE", "ENDED"], default: "PLANNING" }, scheduleTentative: { type: "boolean", description: "true when the dates are not final (잠정)" },
       template: { enum: TEMPLATES, default: "default" }, note: strict(NOTE, ["title"]), opId }, ["name", "start", "end"]), annotations: WRITE },
-  { name: "updatePopupProject", description: `Change part of a project; everything not named stays as it is. patch: name (renames the folder too), start, end, brand, venue, status (PLANNING/ACTIVE/ENDED/ARCHIVED — ARCHIVED = 보관), scheduleTentative. operations (max 30): add_task {task}, update_task {taskId, patch}, set_task_done {taskId, done}, delete_task {taskId}, add_asset {asset}, update_asset {assetId, patch}, link_asset_file {assetId, file}, unlink_asset_file {assetId, path}, delete_asset {assetId}, add_note {note}, update_note {noteId, patch}, delete_note {noteId}, add_expense {expense}, update_expense {expenseId, patch}, update_report {patch}, restore_from_trash {trashId}. Deleted tasks/assets/notes go to project.trash and can be restored; Dropbox files are never deleted. Legacy form: {name, body: {project, expectedVersion}} replaces tasks/assets/notes/start/end only. ${RULES}`,
+  { name: "updatePopupProject", description: `Change part of a project; everything not named stays as it is. patch: name (renames the folder too), start, end, brand, venue, status (PLANNING/ACTIVE/ENDED/ARCHIVED — ARCHIVED = 보관), scheduleTentative. operations (max 30): add_task {task}, update_task {taskId, patch}, set_task_done {taskId, done}, delete_task {taskId}, add_asset {asset}, update_asset {assetId, patch}, link_asset_file {assetId, file}, unlink_asset_file {assetId, path}, delete_asset {assetId}, add_note {note}, update_note {noteId, patch}, delete_note {noteId}, add_expense {expense}, update_expense {expenseId, patch}, update_report {patch}, restore_from_trash {trashId}, set_visitor_counts {counts}, update_logistics {patch}, upsert_logistics_source {source}, update_vmd_archive {patch}, upsert_vmd_zone {stage, zoneId?, zone}, link_vmd_photo {stage, zoneId, photo}, unlink_vmd_photo {stage, zoneId, path}, add_press_item {item}, update_press_item {pressId, patch}, set_press_status {pressId, status {visitStatus, giftStatus, storyStatus, feedReelsStatus}}. Files named in a change must already exist in the project folder (file_not_found, nothing saved). Deleted tasks/assets/notes go to project.trash and can be restored; Dropbox files are never deleted. Legacy form: {name, body: {project, expectedVersion}} replaces tasks/assets/notes/start/end only. ${RULES}`,
     inputSchema: strict({ name, expectedVersion, patch: strict({ name: str("New name"), start: date("Start"), end: date("End"), brand: nullableStr("Brand"), venue: nullableStr("Venue"),
       status: { enum: PROJECT_STATUSES }, scheduleTentative: { type: "boolean" } }), operations: { type: "array", minItems: 1, maxItems: 30, items: OPERATION }, opId,
       body: { type: "object", description: "Legacy only: {project, expectedVersion} from getPopupProject. Prefer patch/operations." } }, ["name"]), annotations: DESTRUCTIVE },
@@ -64,8 +74,13 @@ export const POPUP_TOOLS = [
     inputSchema: strict({ name, expectedVersion,
       assignments: { type: "object", description: "Dates (YYYY-MM-DD) to set, each with 본점 and/or VEIL lists", additionalProperties: strict(Object.fromEntries(STAFF_SITES.map((site) => [site, { type: "array", items: { type: "string" }, description: `Staff at ${site}` }]))) },
       addToPool: { type: "array", items: { type: "string" }, description: "Optional: names to add to the STAFF POOL without placing them" }, opId }, ["name", "expectedVersion", "assignments"]), annotations: WRITE }
+,
+  { name: "getPopupDayReport", description: "Read a project's DAY REPORT as the web app computes it: per day and TOTAL sales, quantity, transactions (거래건수), avgTicket (객단가), 위탁/사입 split, 위탁 commission, visitors, direct costs, 기여금액 (dayContribution), and the P&L (commission, 사입 revenue/cost, contribution = 기여금액 before 사입 cost and tax, netProfit = 최종 순이익, null when unconfirmed). stale:true means the report was computed from another version. finalReport holds the figures syncPopupFinalReport would write.",
+    inputSchema: strict({ name }, ["name"]), annotations: READ },
+  { name: "syncPopupFinalReport", description: `Write the DAY REPORT figures into the FINAL REPORT: report.headline (merged; other headline keys kept), report.comparison.dailySales and report.dailyVisitors. Text (summary, findings, nextActions) is never changed. Refused when the DAY REPORT was computed from another version, has no sales, or has a PENDING day. A FINAL report needs allowFinal:true after the user agrees. The reply includes recheck.matches from re-reading the DAY REPORT after the save. ${RULES}`,
+    inputSchema: strict({ name, expectedVersion, allowFinal: { type: "boolean", default: false }, opId }, ["name", "expectedVersion"]), annotations: WRITE }
 ];
-const WRITE_TOOLS = new Set(["createPopupProject", "updatePopupProject", "deletePopupProject", "restorePopupProject", "updatePopupStaffBoard"]);
+const WRITE_TOOLS = new Set(["createPopupProject", "updatePopupProject", "deletePopupProject", "restorePopupProject", "updatePopupStaffBoard", "syncPopupFinalReport"]);
 
 function assertWritable(env, args) {
   const mode = env.POPUP_MCP_WRITES || "on";
@@ -88,6 +103,8 @@ export async function callPopupTool(toolName, args, { env, service, actor }) {
     case "getPopupStaffBoard": return { status: 200, body: { ok: true, ...(await service.staffBoard(args.name)) } };
     case "updatePopupStaffBoard": return { status: 200, body: { ok: true, ...(await service.updateStaffBoard(args.name, args.expectedVersion, args, { actor, opId: args.opId })) } };
     case "getPopupProjectHistory": return { status: 200, body: { ok: true, ...(await service.history(args.name)) } };
+    case "getPopupDayReport": return { status: 200, body: { ok: true, ...(await service.dayReport(args.name)) } };
+    case "syncPopupFinalReport": return { status: 200, body: { ok: true, ...(await service.syncFinalReport(args.name, args.expectedVersion, args, { actor, opId: args.opId })) } };
     case "createPopupProject": {
       const result = await service.create(args, { actor });
       return { status: result.replayed ? 200 : 201, body: { ok: true, verified: true, ...result } };
@@ -118,7 +135,7 @@ export async function popupRpc(message, context) {
   let result;
   if (message.method === "initialize") {
     result = { protocolVersion: protocols.includes(params.protocolVersion) ? params.protocolVersion : protocols[0], capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "samplas-popup-director", version: "2.0.0" },
+      serverInfo: { name: "samplas-popup-director", version: "2.1.0" },
       instructions: "Private SAMPLAS POPUP DIRECTOR. Read (getPopupProject) before editing and send only the change with expectedVersion. Write only what the user asked; never invent budget, venue or brand. Delete only after explicit confirmation. Never retry a conflict or an unconfirmed write automatically; only verified:true means saved." };
   } else if (message.method === "ping") result = {};
   else if (message.method === "tools/list") result = { tools: POPUP_TOOLS };
