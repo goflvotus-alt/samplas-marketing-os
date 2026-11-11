@@ -147,7 +147,7 @@ export function createPopupService({ env = process.env, fetchImpl = fetch, now =
     days: (r.days || []).map((d) => Object.fromEntries(DAY_KEYS.filter((k) => k in d).map((k) => [k, d[k]]))),
     total: Object.fromEntries(DAY_KEYS.filter((k) => k in (r.total || {})).map((k) => [k, r.total[k]])),
     pnl: r.pnl ? Object.fromEntries(Object.entries(r.pnl).filter(([k]) => k !== "provisionalCosts")) : null,
-    finalReport: r.finalReport ?? null });
+    finalReport: r.finalReport ?? null, commissionBreakdown: r.commissionBreakdown ?? null, policyErrors: r.policyErrors ?? [] });
 
   async function removedFolders(accessToken) {
     const r = await call(accessToken, "list_folder", { path: REMOVED_ROOT });
@@ -321,6 +321,20 @@ export function createPopupService({ env = process.env, fetchImpl = fetch, now =
       return { ...(result.verified ? { verified: true } : {}), ...(result.unchanged ? { unchanged: true } : {}), ...(result.replayed ? { replayed: true } : {}),
         name: result.project.name, version: result.version, updatedAt: result.project.updatedAt ?? null, changed: result.changed, poolAdded,
         staffBoard: staffBoardView(result.project), webUrl: result.project.webUrl };
+    },
+
+    async commissionBasis(ref, { query, limit = 100 } = {}) {
+      const { project } = await resolve(ref);
+      const r = await fetchDayReport(project.name);
+      const q = String(query || "").trim().toLowerCase();
+      const lines = (r.sales || []).filter((s) => !q || [s.productName, s.prodCd, s.commissionRuleId, s.brand].some((v) => String(v || "").toLowerCase().includes(q)))
+        .map((s) => ({ date: s.date, slipNo: s.slipNo, brand: s.brand, productName: s.productName, size: s.size, prodCd: s.prodCd, season: s.season, group: s.group ?? null,
+          settlement: s.settlement ?? null, quantity: s.quantity, paidAmount: s.paidAmount, commissionRate: s.commissionRate, commissionBasis: s.commissionBasis,
+          ruleId: s.commissionRuleId ?? null, commission: s.commission, detail: s.commissionDetail ?? null }));
+      return { name: project.name, version: project.version, stale: r.projectVersion != null && r.projectVersion !== project.version,
+        policy: project.logistics?.commissionPolicy ?? null, priority: ["ITEM_OVERRIDE", "BRAND_SPECIFIC", "SEASONAL", "TIERED", "FIXED"],
+        purchaseUnitCosts: project.logistics?.purchaseUnitCosts ?? null, purchaseCost: project.logistics?.purchaseCost ?? null,
+        breakdown: r.commissionBreakdown ?? null, policyErrors: r.policyErrors ?? [], totalLines: lines.length, lines: lines.slice(0, limit), truncated: lines.length > limit };
     },
 
     async dayReport(ref) {

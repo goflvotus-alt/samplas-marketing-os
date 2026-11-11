@@ -349,11 +349,11 @@ function setupAE() {
 test("settlement: tiered 위탁 commission, 사입 cost unconfirmed, sales file must exist", async () => {
   const { call, stored, socUnchanged } = setupAE();
   const r = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 47, operations: [{ type: "update_logistics", patch: {
-    commissionPolicy: { mode: "TIERED", baseRate: 0.2, tiers: [{ above: 27000000, rate: 0.15 }], note: "계약" },
+    commissionPolicy: { status: "CONFIRMED", note: "계약", rules: [{ id: "ae-contract", type: "TIERED", scope: "CONSIGNMENT", operator: "GT", application: "RETROACTIVE", baseRate: 0.2, tiers: [{ threshold: 27000000, rate: 0.15 }] }] },
     purchaseCost: { status: "UNCONFIRMED", note: "API 미제공" },
     salesCodeRules: [{ prefix: "pop", type: "CONSIGNMENT" }, { prefix: "aey263", type: "SAMPLAS_OWNED", ledger: false, settlement: "PURCHASE" }] } }] });
   assert.equal(r.verified, true); assert.equal(r.version, 48);
-  assert.deepEqual(stored().logistics.commissionPolicy, { mode: "TIERED", status: "CONFIRMED", baseRate: 0.2, tiers: [{ above: 27000000, rate: 0.15 }], basis: "CONSIGNMENT_REVENUE_TOTAL", note: "계약" });
+  assert.deepEqual(stored().logistics.commissionPolicy.rules[0], { id: "ae-contract", type: "TIERED", scope: "CONSIGNMENT", operator: "GT", application: "RETROACTIVE", baseRate: 0.2, tiers: [{ threshold: 27000000, rate: 0.15 }] });
   assert.deepEqual(stored().logistics.purchaseCost, { status: "UNCONFIRMED", amount: null, note: "API 미제공" });
   assert.equal(stored().logistics.salesStore, "APGUJEONG");
 
@@ -440,4 +440,48 @@ test("PRESS LIST add, duplicate, update, status check-in; contact/address kept b
   assert.equal(st.project.integrations.pressList.list[0].contact, undefined); assert.equal(st.project.integrations.pressList.list[0].address, undefined);
   const cancel = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 49, operations: [{ type: "set_press_status", pressId: "p1", status: { visitStatus: "미방문" } }] });
   assert.equal(cancel.verified, true); assert.equal(stored().integrations.pressList.operations.p1.checkInAt, "");
+});
+
+test("commission policy rules: validate, upsert, remove; legacy policy must be replaced first; basis lookup", async () => {
+  const { call, stored, db, socUnchanged } = setupAE();
+  const legacy = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 47, operations: [{ type: "upsert_commission_rule", rule: { id: "f", type: "FIXED", rate: 0.2 } }] });
+  assert.equal(legacy.error, "policy_not_rule_based");
+  const bad = [
+    { id: "t", type: "TIERED", scope: "ALL", operator: "GT", application: "RETROACTIVE", baseRate: 0.2, tiers: [{ threshold: 1, rate: 0.1 }] },
+    { id: "t", type: "TIERED", scope: "TOTAL", operator: "GT", application: "SOMETIMES", baseRate: 0.2, tiers: [{ threshold: 1, rate: 0.1 }] },
+    { id: "s", type: "SEASONAL", rate: 0.3 }, { id: "b", type: "BRAND_SPECIFIC", rate: 0.3 }, { id: "i", type: "ITEM_OVERRIDE", rate: 0.3, match: {} },
+    { id: "f", type: "FIXED", rate: 1.5 }, { type: "FIXED", rate: 0.2 }];
+  for (const rule of bad) {
+    const r = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 47, operations: [{ type: "update_logistics", patch: { commissionPolicy: { status: "CONFIRMED", rules: [rule] } } }] });
+    assert.equal(r.error, "invalid_arguments", JSON.stringify(rule));
+  }
+  const dupe = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 47, operations: [{ type: "update_logistics", patch: { commissionPolicy: { status: "CONFIRMED", rules: [{ id: "f", type: "FIXED", rate: 0.2 }, { id: "f", type: "FIXED", rate: 0.3 }] } } }] });
+  assert.equal(dupe.error, "invalid_arguments");
+  assert.equal(stored().version, 47);
+
+  const mixed = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 47, operations: [
+    { type: "update_logistics", patch: { commissionPolicy: { status: "CONFIRMED", rules: [{ id: "base", type: "FIXED", rate: 0.25 }] }, purchaseUnitCosts: { aey2631: 45000 } } },
+    { type: "upsert_commission_rule", rule: { id: "off", type: "SEASONAL", groups: ["OFF"], rate: 0.3 } },
+    { type: "upsert_commission_rule", rule: { id: "tier", type: "TIERED", scope: "TOTAL", operator: "GTE", application: "MARGINAL", baseRate: 0.25, tiers: [{ threshold: 50000000, rate: 0.2 }, { threshold: 30000000, rate: 0.22 }] } },
+    { type: "upsert_commission_rule", rule: { id: "x-brand", type: "BRAND_SPECIFIC", brand: "AE SYNCTX", rate: 0.18 } },
+    { type: "upsert_commission_rule", rule: { id: "sku", type: "ITEM_OVERRIDE", match: { prodCdPrefixes: ["pop9"] }, rate: 0.1 } },
+    { type: "upsert_commission_rule", rule: { id: "base", type: "FIXED", rate: 0.2 } }] });
+  assert.equal(mixed.verified, true);
+  const policy = stored().logistics.commissionPolicy;
+  assert.deepEqual(policy.rules.map((r) => r.id), ["base", "off", "tier", "x-brand", "sku"]);
+  assert.equal(policy.rules[0].rate, 0.2);
+  assert.deepEqual(policy.rules[2].tiers.map((t) => t.threshold), [30000000, 50000000]); // sorted
+  assert.deepEqual(stored().logistics.purchaseUnitCosts, { aey2631: 45000 });
+  const removed = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 48, operations: [{ type: "remove_commission_rule", ruleId: "sku" }] });
+  assert.equal(removed.verified, true); assert.equal(stored().logistics.commissionPolicy.rules.length, 4);
+  const missing = await call("updatePopupProject", { name: "TEST-AE", expectedVersion: 49, operations: [{ type: "remove_commission_rule", ruleId: "sku" }] });
+  assert.equal(missing.error, "commission_rule_not_found");
+
+  db.webReport = () => ({ ok: true, projectVersion: stored().version, commissionBreakdown: [{ basis: "TIERED", ruleId: "tier", lines: 1 }], policyErrors: [],
+    sales: [{ date: "2026-11-06", slipNo: "1", productName: "TEE", prodCd: "pop1", settlement: "CONSIGNMENT", quantity: 1, paidAmount: 100, commissionRate: 0.2, commissionBasis: "TIERED", commissionRuleId: "tier", commission: 20, commissionDetail: "TIERED tier: …" },
+      { date: "2026-11-06", slipNo: "2", productName: "CAP", prodCd: "aey2631", settlement: "PURCHASE", quantity: 1, paidAmount: 100, commissionRate: null, commissionBasis: "PURCHASE_MARGIN", commission: 55, commissionDetail: "사입" }] });
+  const basis = await call("getPopupCommissionBasis", { name: "TEST-AE", query: "aey" });
+  assert.equal(basis.ok, true); assert.equal(basis.totalLines, 1); assert.equal(basis.lines[0].settlement, "PURCHASE");
+  assert.equal(basis.priority[0], "ITEM_OVERRIDE"); assert.equal(basis.policy.rules.length, 4); assert.equal(basis.stale, false);
+  socUnchanged();
 });

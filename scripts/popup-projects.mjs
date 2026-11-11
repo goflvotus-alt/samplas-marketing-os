@@ -188,10 +188,13 @@ export const PATCH_FIELDS = ["name", "start", "end", "brand", "venue", "status",
 export const OPERATIONS = ["add_task", "update_task", "set_task_done", "delete_task", "add_asset", "update_asset", "link_asset_file", "unlink_asset_file", "delete_asset",
   "add_note", "update_note", "delete_note", "update_report", "restore_from_trash", "add_expense", "update_expense",
   "set_visitor_counts", "update_logistics", "upsert_logistics_source", "update_vmd_archive", "upsert_vmd_zone", "link_vmd_photo", "unlink_vmd_photo",
-  "add_press_item", "update_press_item", "set_press_status"];
+  "add_press_item", "update_press_item", "set_press_status", "upsert_commission_rule", "remove_commission_rule"];
 
 // --- Settlement / LOGISTICS / VMD / PRESS (same popup.json fields the web app reads) ---
-export const COMMISSION_MODES = ["UNCONFIRMED", "PROJECT_OVERRIDE", "TIERED", "SOURCE"];
+export const COMMISSION_MODES = ["UNCONFIRMED", "PROJECT_OVERRIDE"]; // legacy form, kept for SOC / existing data
+// Rule-based policy (any project). Priority for one 위탁 line: ITEM_OVERRIDE > BRAND_SPECIFIC > SEASONAL > TIERED > FIXED;
+// inside one type the first rule in the list wins. 사입 (PURCHASE) lines never take commission.
+export const RULE_TYPES = ["ITEM_OVERRIDE", "BRAND_SPECIFIC", "SEASONAL", "TIERED", "FIXED"];
 export const VMD_STATUSES = ["draft", "installed", "completed"];
 export const VMD_STAGES = ["plan", "final"];
 export const PRESS_STATUS = { visitStatus: ["방문 예정", "방문 완료", "미방문"], giftStatus: ["미지급", "현장 지급 완료", "택배 발송 완료"],
@@ -199,7 +202,7 @@ export const PRESS_STATUS = { visitStatus: ["방문 예정", "방문 완료", "�
 const PRESS_FIELDS = ["name", "instagram", "category", "source", "responseStatus", "contactStatus", "giftMethod", "note"]; // contact/address never via ChatGPT
 const SOURCE_FIELDS = ["id", "label", "path", "originalFileName", "format", "type", "season", "round", "settlement", "commissionRate", "costRate",
   "defaultDiscountRate", "confirmedActualQty", "confirmedGiftQty", "confirmationStatus"];
-const LOGISTICS_KEYS = ["salesFile", "salesStore", "commissionPolicy", "defaultCommissionRate", "purchaseCost", "salesCodeRules"];
+const LOGISTICS_KEYS = ["salesFile", "salesStore", "commissionPolicy", "defaultCommissionRate", "purchaseCost", "purchaseUnitCosts", "salesCodeRules"];
 
 const rate = (v, field) => { if (typeof v !== "number" || !(v >= 0 && v <= 1)) throw bad(`${field} must be a rate between 0 and 1 (0.2 = 20%)`); return v; };
 const won = (v, field) => { if (!Number.isSafeInteger(v) || v < 0) throw bad(`${field} must be a nonnegative integer KRW`); return v; };
@@ -211,17 +214,53 @@ function projectPath(value, field, paths, { roots = ["ASSETS", "REPORT"], ext } 
   paths.push(path);
   return path;
 }
-function cleanPolicy(p, field) {
-  only(p, ["mode", "status", "rate", "baseRate", "tiers", "basis", "note"], field);
-  const out = { mode: oneOf(p.mode, COMMISSION_MODES, `${field}.mode`), status: oneOf(p.status ?? (p.mode === "UNCONFIRMED" ? "UNCONFIRMED" : "CONFIRMED"), ["CONFIRMED", "UNCONFIRMED"], `${field}.status`) };
-  if (out.mode === "PROJECT_OVERRIDE") out.rate = rate(p.rate, `${field}.rate`);
-  if (out.mode === "TIERED") {
-    out.baseRate = rate(p.baseRate, `${field}.baseRate`);
-    if (!Array.isArray(p.tiers) || !p.tiers.length) throw bad(`${field}.tiers: at least one {above, rate}`);
-    out.tiers = p.tiers.map((t, i) => { only(t, ["above", "rate"], `${field}.tiers[${i}]`); return { above: won(t.above, `${field}.tiers[${i}].above`), rate: rate(t.rate, `${field}.tiers[${i}].rate`) }; });
-    out.basis = "CONSIGNMENT_REVENUE_TOTAL"; // one rate for all 위탁 sales, chosen by the popup's 위탁 revenue total
+const textList = (v, field, max = 200) => { if (!Array.isArray(v) || !v.length) throw bad(`${field} must be a non-empty list`); return v.map((x, i) => text(x, `${field}[${i}]`, max).trim()); };
+export function cleanRule(r, field) {
+  if (!r || typeof r !== "object" || Array.isArray(r)) throw bad(`${field} must be an object`);
+  const type = oneOf(r.type, RULE_TYPES, `${field}.type`);
+  if (typeof r.id !== "string" || !/^[A-Za-z0-9_.-]{2,60}$/.test(r.id)) throw bad(`${field}.id (2-60 letters, digits, _ . -) is required`);
+  const common = ["id", "type", "note"];
+  const out = { id: r.id, type };
+  if (type === "TIERED") {
+    only(r, [...common, "scope", "operator", "application", "baseRate", "tiers", "when"], field);
+    Object.assign(out, { scope: oneOf(r.scope, ["CONSIGNMENT", "TOTAL"], `${field}.scope (CONSIGNMENT = 위탁 매출, TOTAL = 전체 매출)`),
+      operator: oneOf(r.operator, ["GT", "GTE"], `${field}.operator (GT = 초과, GTE = 이상)`),
+      application: oneOf(r.application, ["RETROACTIVE", "MARGINAL"], `${field}.application (RETROACTIVE = 전체 소급, MARGINAL = 초과분만)`),
+      baseRate: rate(r.baseRate, `${field}.baseRate`) });
+    if (!Array.isArray(r.tiers) || !r.tiers.length) throw bad(`${field}.tiers: at least one {threshold, rate}`);
+    out.tiers = r.tiers.map((t, i) => { only(t, ["threshold", "rate"], `${field}.tiers[${i}]`); return { threshold: won(t.threshold, `${field}.tiers[${i}].threshold`), rate: rate(t.rate, `${field}.tiers[${i}].rate`) }; })
+      .sort((a, b) => a.threshold - b.threshold);
+    if (new Set(out.tiers.map((t) => t.threshold)).size !== out.tiers.length) throw bad(`${field}.tiers: thresholds must differ`);
+  } else {
+    const extra = { FIXED: ["when"], SEASONAL: ["groups"], BRAND_SPECIFIC: ["brand"], ITEM_OVERRIDE: ["match"] }[type];
+    only(r, [...common, "rate", ...extra], field);
+    out.rate = rate(r.rate, `${field}.rate`);
+    if (type === "SEASONAL") out.groups = textList(r.groups, `${field}.groups (season or CURRENT/OFF group names)`);
+    if (type === "BRAND_SPECIFIC") { if (!String(r.brand || "").trim()) throw bad(`${field}.brand is required`); out.brand = text(r.brand, `${field}.brand`, 200).trim(); }
+    if (type === "ITEM_OVERRIDE") {
+      only(r.match, ["itemIds", "prodCds", "prodCdPrefixes"], `${field}.match`);
+      out.match = Object.fromEntries(Object.entries(r.match).map(([k, v]) => [k, textList(v, `${field}.match.${k}`, 80)]));
+      if (!Object.keys(out.match).length) throw bad(`${field}.match needs itemIds, prodCds or prodCdPrefixes`);
+    }
   }
-  if (out.mode === "UNCONFIRMED") out.rate = null;
+  if (r.when !== undefined) {
+    only(r.when, ["brands", "groups"], `${field}.when`);
+    out.when = Object.fromEntries(Object.entries(r.when).map(([k, v]) => [k, textList(v, `${field}.when.${k}`)]));
+  }
+  if (r.note !== undefined) out.note = text(r.note, `${field}.note`, 300);
+  return out;
+}
+function cleanPolicy(p, field) {
+  if (p && typeof p === "object" && p.rules !== undefined) {
+    only(p, ["status", "rules", "note"], field);
+    if (!Array.isArray(p.rules)) throw bad(`${field}.rules must be a list`);
+    const rules = p.rules.map((r, i) => cleanRule(r, `${field}.rules[${i}]`));
+    if (new Set(rules.map((r) => r.id)).size !== rules.length) throw bad(`${field}.rules: rule ids must be unique`);
+    return { status: oneOf(p.status, ["CONFIRMED", "UNCONFIRMED"], `${field}.status`), rules, ...(p.note !== undefined ? { note: text(p.note, `${field}.note`, 500) } : {}) };
+  }
+  only(p, ["mode", "rate", "note"], field);
+  const out = { mode: oneOf(p.mode, COMMISSION_MODES, `${field}.mode`) };
+  out.rate = out.mode === "PROJECT_OVERRIDE" ? rate(p.rate, `${field}.rate`) : null;
   if (p.note !== undefined) out.note = text(p.note, `${field}.note`, 500);
   return out;
 }
@@ -552,6 +591,10 @@ export function applyChanges(project, { patch, operations = [] }, { now, actor, 
             only(value, ["status", "amount", "note"], `${field}.patch.purchaseCost`);
             const status = oneOf(value.status, ["CONFIRMED", "UNCONFIRMED"], `${field}.patch.purchaseCost.status`);
             next = { status, amount: status === "CONFIRMED" ? won(value.amount, `${field}.patch.purchaseCost.amount`) : null, ...(value.note !== undefined ? { note: text(value.note, `${field}.patch.purchaseCost.note`, 500) } : {}) };
+          } else if (key === "purchaseUnitCosts") {
+            // 사입 매입원가 per ECOUNT item code (KRW per unit): margin = sale − unit cost × qty.
+            if (typeof value !== "object" || Array.isArray(value)) throw bad(`${field}.patch.purchaseUnitCosts must be {"품목코드": 단가}`);
+            next = Object.fromEntries(Object.entries(value).map(([code, cost]) => [text(code, `${field}.patch.purchaseUnitCosts key`, 80), won(cost, `${field}.patch.purchaseUnitCosts.${code}`)]));
           } else if (key === "salesCodeRules") {
             if (!Array.isArray(value)) throw bad(`${field}.patch.salesCodeRules must be a list`);
             next = value.map((r, i) => {
@@ -681,6 +724,29 @@ export function applyChanges(project, { patch, operations = [] }, { now, actor, 
           c.operations = c.operations && typeof c.operations === "object" ? c.operations : {};
           c.operations[op.pressId] = next;
           changes.push(`press ${item.instagram || item.name}: ${changed.map((k) => `${k} → ${next[k]}`).join(", ")}`);
+        }
+        break;
+      }
+      case "upsert_commission_rule": case "remove_commission_rule": {
+        // One rule of the rule-based policy; a legacy policy (SOC: PROJECT_OVERRIDE) must be replaced through update_logistics first.
+        only(op, op.type === "upsert_commission_rule" ? ["type", "rule", "position"] : ["type", "ruleId"], field);
+        const lg = project.logistics;
+        const policy = lg?.commissionPolicy;
+        if (!policy || !Array.isArray(policy.rules)) throw new PopupError(409, "policy_not_rule_based", "This project's commission policy is not rule-based; set logistics.commissionPolicy {status, rules} first.");
+        if (op.type === "remove_commission_rule") {
+          const rule = find(policy.rules, op.ruleId, "commission_rule");
+          policy.rules.splice(policy.rules.indexOf(rule), 1);
+          changes.push(`commission rule removed: ${rule.id} (${rule.type})`);
+          break;
+        }
+        const rule = cleanRule(op.rule, `${field}.rule`);
+        const i = policy.rules.findIndex((r) => r?.id === rule.id);
+        if (i >= 0) {
+          if (JSON.stringify(policy.rules[i]) !== JSON.stringify(rule)) { changes.push(`commission rule ${rule.id}: ${JSON.stringify(policy.rules[i]).slice(0, 160)} → ${JSON.stringify(rule).slice(0, 160)}`); policy.rules[i] = rule; }
+        } else {
+          const at = op.position === undefined ? policy.rules.length : Math.max(0, Math.min(won(op.position, `${field}.position`), policy.rules.length));
+          policy.rules.splice(at, 0, rule);
+          changes.push(`commission rule added: ${rule.id} (${rule.type})`);
         }
         break;
       }
