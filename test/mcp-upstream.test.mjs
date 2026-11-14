@@ -12,7 +12,7 @@ const send = (res, status, body, type = "application/json") => { res.writeHead(s
 async function errorOf(promise) { try { await promise; } catch (e) { return e; } assert.fail("expected rejection"); }
 
 test("only GET to allowlisted paths; no arbitrary URL or path", () => {
-  assert.equal(ALLOWED_UPSTREAM_PATHS.size, 10);
+  assert.equal(ALLOWED_UPSTREAM_PATHS.size, 14);
   assert.doesNotThrow(() => assertSafeUpstreamRequest("GET", "/api/sales/total"));
   for (const method of ["POST", "PUT", "PATCH", "DELETE"]) assert.throws(() => assertSafeUpstreamRequest(method, "/api/sales/total"), /GET only/);
   for (const path of ["/api/pending-brands/review", "/api/ecount/product-sync", "https://evil.example/api/sales/total", "/api/sales/total/../brand-master", "//evil.example/x"]) {

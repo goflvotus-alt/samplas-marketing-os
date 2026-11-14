@@ -105,6 +105,59 @@ const policyUnresolved = (body) => body.policy_status === "UNRESOLVED" || (!body
 
 const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in obj).map((k) => [k, obj[k]]));
 
+
+// CRM tools: aggregates only. The upstream /api/crm/* routes already exclude member ids, names and
+// pseudonymous keys; status fields (UNVERIFIED / IMMATURE / UNKNOWN) must be relayed, never filled in.
+const month = { type: "string", pattern: "^\\d{4}-(0[1-9]|1[0-2])$", description: "Month YYYY-MM (KST)" };
+const CRM_NOTES = [
+  "first real purchase = earliest non-canceled purchase; Cafe24 first_order is only a cross-check",
+  "amounts = Marketing OS canonical paid amount; the month is NOT final until closeStatus says so"
+];
+const crmMeta = (source, extra = {}) => ({ source, completeness: "PARTIAL", notes: CRM_NOTES, ...extra });
+const CRM_TOOLS = [
+  {
+    name: "get_crm_monthly",
+    title: "CRM monthly customers",
+    description: "Monthly new (first real purchase) vs repeat members, unverified members, guests/Naver Pay, purchase-count distribution and days to second purchase. Report UNVERIFIED counts and newMemberRange; never treat unverified as new or repeat.",
+    input: object({ month }, ["month"]),
+    async run({ month: m }, up) {
+      const body = await up.getJson("/api/crm/monthly", { month: m });
+      return envelope("get_crm_monthly", body, crmMeta("/api/crm/monthly"));
+    }
+  },
+  {
+    name: "get_crm_cohort",
+    title: "CRM repurchase cohorts",
+    description: "Cumulative repurchase rate by first-purchase month for the given day windows. Cells marked IMMATURE or UNVERIFIED have no rate; say so instead of estimating.",
+    input: object({ from: month, to: month, windows: text(40, { pattern: "^\\d{1,3}(,\\d{1,3}){0,5}$", default: "30,60,90,180,365", description: "Comma-separated day windows" }) }, ["from", "to"]),
+    async run({ from, to, windows }, up) {
+      if (from > to) throw new ToolError("VALIDATION_FAILED", "from must be on or before to");
+      const body = await up.getJson("/api/crm/cohort", { from, to, windows });
+      return envelope("get_crm_cohort", body, crmMeta("/api/crm/cohort", { dataAsOf: body.dataThrough ?? null }));
+    }
+  },
+  {
+    name: "get_crm_acquisition",
+    title: "CRM acquisition channels",
+    description: "Acquisition channel (Cafe24 Analytics ad/medium, joined by order id) of first real purchases and of all valid orders in a month. Amounts are Marketing OS paid amounts, not Analytics amounts. UNKNOWN means no Analytics row.",
+    input: object({ month }, ["month"]),
+    async run({ month: m }, up) {
+      const body = await up.getJson("/api/crm/acquisition", { month: m });
+      return envelope("get_crm_acquisition", body, crmMeta("/api/crm/acquisition", { completeness: body.analyticsCoverage === "COMPLETE" ? "PARTIAL" : "UNAVAILABLE" }));
+    }
+  },
+  {
+    name: "get_crm_data_quality",
+    title: "CRM data quality",
+    description: "Sources, snapshot times, late orders, cancel/claim states, history gaps and unverified counts behind the CRM figures for a month. Use it before quoting any CRM number as final.",
+    input: object({ month }, ["month"]),
+    async run({ month: m }, up) {
+      const body = await up.getJson("/api/crm/data-quality", { month: m });
+      return envelope("get_crm_data_quality", body, crmMeta("/api/crm/data-quality"));
+    }
+  }
+];
+
 export const READ_TOOLS = [
   {
     name: "get_sales_summary",
@@ -390,7 +443,8 @@ export const READ_TOOLS = [
         notes: ["list contains explicit policies only; brands without one use SOURCING_DEFAULT (query by brand for the effective policy)"]
       });
     }
-  }
+  },
+  ...CRM_TOOLS
 ];
 
 async function foreignPeriod(up, since, until, storeCode) {
