@@ -12,7 +12,11 @@ export const ALLOWED_UPSTREAM_PATHS = new Set([
   "/api/brands/new",
   "/api/pending-brands",
   "/api/inventory/overview",
-  "/api/advertising/overview"
+  "/api/advertising/overview",
+  "/api/crm/monthly",
+  "/api/crm/cohort",
+  "/api/crm/acquisition",
+  "/api/crm/data-quality"
 ]);
 
 export class ToolError extends Error {

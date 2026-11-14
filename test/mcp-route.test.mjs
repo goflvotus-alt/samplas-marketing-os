@@ -117,12 +117,12 @@ test("protected resource metadata advertises only samplas.read", async () => {
   } finally { await t.close(); }
 });
 
-test("MCP initialize, exactly 10 read-only tools with samplas.read security, tool execution", async () => {
+test("MCP initialize, exactly 14 read-only tools with samplas.read security, tool execution", async () => {
   const t = await setup();
   try {
     const client = await connect(t.resourceUrl, await t.sign());
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 10);
+    assert.equal(tools.length, 14);
     for (const tool of tools) {
       assert.equal(tool.annotations.readOnlyHint, true, tool.name);
       assert.equal(tool.inputSchema.type, "object", tool.name);
@@ -186,7 +186,7 @@ test("misconfiguration fails closed; dev-noauth only off Render and on loopback"
   const dev = await setup({ configured: false, authMode: "dev-noauth" });
   try {
     const client = await connect(dev.resourceUrl, null);
-    assert.equal((await client.listTools()).tools.length, 10);
+    assert.equal((await client.listTools()).tools.length, 14);
     await client.close();
   } finally { await dev.close(); }
 
@@ -228,7 +228,7 @@ test("wire format: initialize, id preservation, notifications, unknown method, m
 
     const list = await (await rpc(t, token, { jsonrpc: "2.0", id: 42, method: "tools/list", params: {} })).json();
     assert.equal(list.id, 42);
-    assert.equal(list.result.tools.length, 10);
+    assert.equal(list.result.tools.length, 14);
     for (const tool of list.result.tools) {
       assert.equal(tool.inputSchema.type, "object", tool.name);
       assert.equal(tool.inputSchema.additionalProperties, false, tool.name);
@@ -268,7 +268,7 @@ test("MCP_AUTH_MODE=none: no token needed; no OAuth config or metadata; tools st
   try {
     const client = await connect(t.resourceUrl, null);
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 10);
+    assert.equal(tools.length, 14);
     const result = await client.callTool({ name: "get_foreign_sales", arguments: { since: "2026-01-01", until: "2026-09-30", compareSince: "2025-01-01", compareUntil: "2025-09-30" } });
     assert.equal(result.structuredContent.data.current.foreign.salesAmount, 133480850);
     assert.equal(result.structuredContent.data.comparison.foreign.salesAmount, null);

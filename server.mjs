@@ -1122,6 +1122,30 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (url.pathname === "/api/ai-audit/popup/project") {
       return json(res, { error: "Method Not Allowed" }, 405);
     }
+    if (url.pathname.startsWith("/api/crm/")) {
+      // CRM analytics: read-only aggregates over existing caches; never calls Cafe24 or writes files.
+      if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
+      try {
+        const crm = await import("./scripts/crm-analytics.mjs");
+        const isMonth = (v) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(v || ""));
+        const month = url.searchParams.get("month");
+        const ds = () => crm.cachedCrmDataset({ workDir, snapshotDirs: [join(workDir, "tracking-test")] });
+        if (url.pathname === "/api/crm/cohort") {
+          const from = url.searchParams.get("from"), to = url.searchParams.get("to");
+          const windows = (url.searchParams.get("windows") || crm.CRM_WINDOWS.join(",")).split(",").map(Number);
+          if (!isMonth(from) || !isMonth(to) || from > to) return json(res, { error: "from/to must be YYYY-MM and from <= to" }, 400);
+          if (!windows.length || windows.some((w) => !Number.isInteger(w) || w < 1 || w > 730)) return json(res, { error: "windows must be integers 1..730" }, 400);
+          return json(res, crm.crmCohort(await ds(), from, to, windows));
+        }
+        const handlers = { "/api/crm/monthly": crm.crmMonthly, "/api/crm/acquisition": crm.crmAcquisition, "/api/crm/data-quality": crm.crmDataQuality };
+        const handler = handlers[url.pathname];
+        if (!handler) return json(res, { error: "Not found" }, 404);
+        if (!isMonth(month)) return json(res, { error: "month must be YYYY-MM" }, 400);
+        return json(res, handler(await ds(), month));
+      } catch (error) {
+        return json(res, { error: safeErrorMessage(error) }, 500);
+      }
+    }
     if (url.pathname === "/api/sales/total") {
       if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
       const since = url.searchParams.get("since");

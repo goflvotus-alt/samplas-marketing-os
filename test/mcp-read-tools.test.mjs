@@ -46,10 +46,11 @@ const clientsBody = (since, until) => {
   };
 };
 
-test("exactly the 10 planned read tools, all with strict object schemas", () => {
+test("exactly the 14 planned read tools (10 original + 4 CRM), all with strict object schemas", () => {
   assert.deepEqual(READ_TOOLS.map((t) => t.name), [
     "get_sales_summary", "get_monthly_report", "get_clients_summary", "get_foreign_sales", "get_brand",
-    "get_pending_brands", "get_new_brands", "get_inventory", "get_advertising_summary", "get_commercial_policy"
+    "get_pending_brands", "get_new_brands", "get_inventory", "get_advertising_summary", "get_commercial_policy",
+    "get_crm_monthly", "get_crm_cohort", "get_crm_acquisition", "get_crm_data_quality"
   ]);
   for (const t of READ_TOOLS) assert.ok(t.description.length > 40, t.name);
 });
