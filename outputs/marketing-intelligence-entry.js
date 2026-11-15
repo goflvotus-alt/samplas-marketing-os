@@ -7,7 +7,7 @@ const money=n=>Number.isFinite(n)?fmt(Math.round(n))+'원':'확인 불가';
 const delta=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b>0?(a/b-1)*100:null;
 const change=(a,b)=>{const d=delta(a,b);return d===null?'비교 기간 데이터 없음':(d>0?'+':'')+d.toFixed(1)+'%';};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state={active:false,serial:0,loaded:false,loading:false,preset:'1',start:'',end:'',compare:'previous',compareStart:'',compareEnd:'',tab:'overview',detail:null,loadedRows:null};
+const state={active:false,serial:0,loaded:false,loading:false,preset:'1',start:'',end:'',compare:'previous',compareStart:'',compareEnd:'',tab:'overview',detail:null,loadedRows:null,trace:null,tracePage:1,traceMonth:null,traceSerial:0,trafficMonth:null,trafficSerial:0};
 const mn=s=>Number(s.slice(0,4))*12+Number(s.slice(5))-1;
 const ym=n=>Math.floor(n/12)+'-'+String(n%12+1).padStart(2,'0');
 function latestMonth(){const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit'}).formatToParts(new Date());return ym(Number(p.find(x=>x.type==='year').value)*12+Number(p.find(x=>x.type==='month').value)-2)}
@@ -44,6 +44,14 @@ const css=[
 '#'+ID+' .mi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}',
 '#'+ID+' .mi-kpi,#'+ID+' .mi-action,#'+ID+' .mi-panel{background:white;border:1px solid #dce5de;border-radius:12px;padding:18px;min-width:0}',
 '#'+ID+' .mi-kpi small{font-size:12px;font-weight:750;color:#61736a}',
+'#'+ID+' .mi-hover{position:relative}',
+'#'+ID+' .mi-hover:hover::after,#'+ID+' .mi-hover:focus-visible::after{content:attr(data-mi-tip);position:absolute;top:calc(100% + 6px);left:6px;z-index:15;background:#162e23;color:white;padding:12px 14px;border-radius:9px;box-shadow:0 7px 24px #0003;white-space:normal;min-width:min(270px,75vw);max-width:min(350px,80vw);font-size:12px;font-weight:400;line-height:1.7}',
+'#'+ID+' .mi-kpi button,#'+ID+' button[data-mi-trace-segment]{margin-top:10px;border:1px solid #aac7b4;background:#eff8f1;color:#205b3a;font-size:12px;padding:9px 11px;border-radius:8px}',
+'#'+ID+' .mi-trace{border:1px solid #afcbb6;border-radius:12px;background:#fff;padding:17px;margin:12px 0}',
+'#'+ID+' .mi-trace-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}',
+'#'+ID+' .mi-trace-controls select{padding:9px;border:1px solid #d5e0d9;border-radius:8px}',
+'#'+ID+' .mi-purchased-product{font-size:12px;line-height:1.6}',
+'#'+ID+' .mi-traffic{background:#fff;border:1px solid #dce5de;border-radius:12px;padding:17px;margin:13px 0}',
 '#'+ID+' .mi-kpi strong{display:block;font-size:25px;letter-spacing:-.04em;margin:8px 0}',
 '#'+ID+' .mi-kpi p{font-size:12px;color:#68766e}',
 '#'+ID+' .mi-kpi b{color:#245941}',
@@ -109,8 +117,18 @@ function mount(){
   v.innerHTML='<div class="mi-head"><div><div class="mi-eyebrow">SAMPLAS · MARKETING INTELLIGENCE</div><h2>마케팅 데이터 분석</h2><p class="mi-muted">기간을 바꾸고 매출·고객·유입의 변화를 탐색해.</p></div><div><span class="mi-tag" id="miStatus">조회 대기</span> <button id="miReload" type="button">다시 확인</button></div></div><div class="mi-range"><label>분석 기간<select id="miPreset"><option value="1">최근 완료 월</option><option value="3">최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option><option value="custom">직접 선택</option></select></label><label>시작 월<input id="miStart" type="month"></label><label>종료 월<input id="miEnd" type="month"></label><label>비교 기간<select id="miCompare"><option value="previous">직전 동일 기간</option><option value="year">전년 동일 기간</option><option value="custom">직접 비교</option></select></label><label>비교 시작 월<input id="miCompareStart" type="month" disabled></label><label>비교 종료 월<input id="miCompareEnd" type="month" disabled></label><span id="miPeriodHint" class="mi-muted"></span></div><div id="miTabs" class="mi-tabs" role="tablist" aria-label="분석 영역"></div><div id="miInspect" aria-live="polite"></div><div id="miBody" class="mi-loading">조회 전</div>';
   main.appendChild(v);$('miReload').addEventListener('click',load);
   $('miTabs').addEventListener('click',e=>{const b=e.target.closest('[data-mi-tab]');if(!b)return;state.tab=b.getAttribute('data-mi-tab');state.detail=null;showExplorerTab()});
-  $('miBody').addEventListener('click',e=>{const b=e.target.closest('[data-mi-segment]');if(!b||!state.loadedRows)return;state.detail=Number(b.getAttribute('data-mi-segment'));showSegmentDetail()});
-  $('miInspect').addEventListener('click',e=>{if(e.target.closest('[data-mi-close]')){state.detail=null;showSegmentDetail()}});
+  $('miBody').addEventListener('click',e=>{
+    const trace=e.target.closest('[data-mi-trace]');if(trace){openOrderTrace(trace.getAttribute('data-mi-trace'));return}
+    const b=e.target.closest('[data-mi-segment]');if(!b||!state.loadedRows)return;state.detail=Number(b.getAttribute('data-mi-segment'));showSegmentDetail();
+  });
+  $('miInspect').addEventListener('click',e=>{
+    if(e.target.closest('[data-mi-close]')){state.detail=null;showSegmentDetail()}
+    const seg=e.target.closest('[data-mi-trace-segment]');if(seg)openOrderTrace(seg.getAttribute('data-mi-trace-segment'));
+    const page=e.target.closest('[data-mi-trace-page]');if(page){state.tracePage=Number(page.getAttribute('data-mi-trace-page'));loadOrderTrace()}
+    if(e.target.closest('[data-mi-trace-close]')){state.trace=null;state.traceSerial++;$('miInspect').innerHTML=''}
+  });
+  $('miInspect').addEventListener('change',e=>{if(e.target.id==='miTraceMonth'){state.traceMonth=e.target.value;state.tracePage=1;loadOrderTrace()}});
+
   showExplorerTab();
   $('miPreset').addEventListener('change',e=>{state.preset=e.target.value;syncPeriod();load()});
   $('miCompare').addEventListener('change',e=>{state.compare=e.target.value;if(state.compare==='custom'&&(!state.compareStart||!state.compareEnd)){const length=mn(state.end)-mn(state.start);state.compareEnd=ym(mn(state.start)-1);state.compareStart=ym(mn(state.compareEnd)-length)}syncPeriod();load()});
@@ -146,7 +164,9 @@ const prev=m=>String(Number(m.slice(0,4))-1)+m.slice(4);
 const sum=(list,key)=>list.length&&list.every(x=>x&&Number.isFinite(x[key]))?list.reduce((a,x)=>a+x[key],0):null;
 const row=(month,x)=>x?{month,orders:x.total?.orders,amount:x.total?.amount,new:x.newMembers?.members,newRevenue:x.newMembers?.amount,repeat:x.repeatMembers?.amount,guestRevenue:x.guests?.amount,naverPayGuest:x.guests?.naverPay?.amount,personalRevenue:x.personalPayment?.amount,unverifiedRevenue:x.unverifiedMembers?.amount,identityUnknownRevenue:x.identityUnknown?.amount,unknown:x.unverifiedMembers?.members,meta:x.__meta}:null;
 function metric(title,value,then,description,negative){
- return '<article class="mi-kpi"><small>'+esc(title)+'</small><strong>'+esc(value)+'</strong><p><b'+(negative?' class="down"':'')+'>'+esc(then)+'</b></p><p>'+esc(description)+'</p></article>';
+ const trace=title==='온라인 주문 수'?'ALL':title==='신규 구매 확인 회원'?'NEW':null;
+ const help='집계 기준: '+description+' 해당 월의 주문·구매이력은 미검증 구간이 있을 수 있어.';
+ return '<article class="mi-kpi mi-hover" tabindex="0" data-mi-tip="'+esc(help)+'" aria-label="'+esc(help)+'"><small>'+esc(title)+' · ⓘ</small><strong>'+esc(value)+'</strong><p><b'+(negative?' class="down"':'')+'>'+esc(then)+'</b></p><p>'+esc(description)+'</p>'+(trace?'<button type="button" data-mi-trace="'+trace+'">'+(trace==='NEW'?'신규 고객이 구매한 상품 보기':'전체 주문 내역 보기')+'</button>':'')+'</article>';
 }
 function task(num,title,signal,step,kpi){
  return '<article class="mi-action"><span class="mi-index">'+num+'</span><h4>'+esc(title)+'</h4><p>'+esc(signal)+'</p><div class="mi-next"><b>추가 분석 과제</b><div>'+esc(step)+'</div><b>성과를 판단할 기준</b><div>'+esc(kpi)+'</div></div></article>';
@@ -336,7 +356,7 @@ function organizeExplorer(){
  showExplorerTab();
 }
 function showSegmentDetail(){
- const el=$('miInspect');if(!el)return;
+ const el=$('miInspect');if(!el||state.trace)return;
  const data=state.loadedRows,ix=state.detail;
  if(ix===null||!data||!Number.isInteger(ix)||ix<0||ix>5){el.innerHTML='';return}
  const specs=[
