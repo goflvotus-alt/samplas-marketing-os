@@ -478,7 +478,7 @@ export function crmAcquisition(ds, month) {
 // CRM order trace, permitted only behind the authenticated server route.
 // Each row is anonymous; no order_id, member_id, delivery/contact information or PII is returned.
 // Classification exactly mirrors crmMonthly's month-level customer groups.
-export function crmOrderTrace(ds, month, segment = "ALL", { page = 1, limit = 25, firstOnly = false } = {}) {
+export function crmOrderTrace(ds, month, segment = "ALL", { page = 1, limit = 25, firstOnly = false, channel = null, medium = null } = {}) {
   const validSegments = new Set(["ALL", "NEW", "REPEAT", "GUEST", "UNVERIFIED", "PERSONAL", "UNKNOWN"]);
   if (!validSegments.has(segment) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     throw new Error("invalid segment or month");
@@ -499,12 +499,14 @@ export function crmOrderTrace(ds, month, segment = "ALL", { page = 1, limit = 25
     return "UNVERIFIED";
   };
   const rows = ds.orders.filter((o) => o.month === month && o.valid && (segment === "ALL" || segmentOf(o) === segment) &&
-    (!firstOnly || (segmentOf(o) === "NEW" && members.get(o.member)?.first?.id === o.id)));
+    (!firstOnly || (segmentOf(o) === "NEW" && members.get(o.member)?.first?.id === o.id)) &&
+    (!channel || (String(ds.analytics.get(o.id)?.ad || "").trim() || (ds.analytics.has(o.id) ? "(no ad / direct)" : "UNKNOWN")) === channel) &&
+    (!medium || String(ds.analytics.get(o.id)?.medium || "").trim() === medium));
   const ordered = [...rows].sort((a, b) => b.time - a.time || b.id.localeCompare(a.id));
   const slice = ordered.slice((pageNo - 1) * pageSize, pageNo * pageSize);
   const totalPaidAmount = rows.reduce((sum, o) => sum + o.amount, 0);
   return {
-    month, segment, page: pageNo, pageSize, firstOnly,
+    month, segment, page: pageNo, pageSize, firstOnly, channel, medium,
     totals: {
       orders: rows.length,
       paidAmount: totalPaidAmount,
