@@ -39,3 +39,19 @@ test('missing source or unauthorized trace is explicitly disclosed, never made z
  assert.match(ui,/상품 원천 상태/);
  assert.doesNotMatch(ui,/window\.open\(/);
 });
+
+test('operator reauthentication submits secure same-origin session without persisted passwords',()=>{
+ assert.match(ui,/function operatorAuthForm/);
+ assert.match(ui,/function handleMiAuthSubmit/);
+ assert.match(ui,/fetch\('\/api\/operator\/session'/);
+ assert.match(ui,/credentials:'same-origin'/);
+ assert.match(ui,/form\.elements\.namedItem\('password'\)\.value=''/);
+ assert.match(ui,/if\(state\.trace\)loadOrderTrace\(\)/);
+ assert.match(ui,/if\(state\.tab==='acquisition'\)loadVisitEvidence\(\)/);
+ assert.doesNotMatch(ui,/localStorage\.setItem\([^)]*password/);
+});
+test('operator login is only offered when 401, not for unsupported data',()=>{
+ assert.match(ui,/const unauthorized=String\(e\?\.message/);
+ assert.match(ui,/unauthorized\?operatorAuthForm\(\)/);
+ assert.match(ui,/상품 원본 미수집/);
+});
