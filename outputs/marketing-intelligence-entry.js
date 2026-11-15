@@ -7,13 +7,14 @@ const money=n=>Number.isFinite(n)?fmt(Math.round(n))+'원':'확인 불가';
 const delta=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b>0?(a/b-1)*100:null;
 const change=(a,b)=>{const d=delta(a,b);return d===null?'비교 기간 데이터 없음':(d>0?'+':'')+d.toFixed(1)+'%';};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state={active:false,serial:0,loaded:false,loading:false,preset:'1',start:'',end:'',compare:'previous'};
+const state={active:false,serial:0,loaded:false,loading:false,preset:'1',start:'',end:'',compare:'previous',compareStart:'',compareEnd:''};
 const mn=s=>Number(s.slice(0,4))*12+Number(s.slice(5))-1;
 const ym=n=>Math.floor(n/12)+'-'+String(n%12+1).padStart(2,'0');
 function latestMonth(){const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit'}).formatToParts(new Date());return ym(Number(p.find(x=>x.type==='year').value)*12+Number(p.find(x=>x.type==='month').value)-2)}
 function syncPeriod(){
  if(state.preset!=='custom'){const last=latestMonth();state.end=last;state.start=ym(mn(last)-Number(state.preset)+1)}
  for(const [id,v] of [['miStart',state.start],['miEnd',state.end]]){const el=$(id);if(el){el.value=v;el.min='2025-01';el.max=latestMonth();el.disabled=state.preset!=='custom'}}
+ for(const [id,v] of [['miCompareStart',state.compareStart],['miCompareEnd',state.compareEnd]]){const el=$(id);if(el){el.value=v;el.min='2025-01';el.max=latestMonth();el.disabled=state.compare!=='custom'}}
 }
 
 const css=[
@@ -81,10 +82,11 @@ function mount(){
  const nav=$('nav'),main=document.querySelector('main.main');if(!nav||!main)return;
  if(!$(ID)){
   const v=document.createElement('section');v.id=ID;v.className='view';v.setAttribute('aria-label','Marketing Intelligence');
-  v.innerHTML='<div class="mi-head"><div><div class="mi-eyebrow">SAMPLAS · MARKETING INTELLIGENCE</div><h2>마케팅 데이터 분석</h2><p class="mi-muted">기간을 바꾸고 매출·고객·유입의 변화를 탐색해.</p></div><div><span class="mi-tag" id="miStatus">조회 대기</span> <button id="miReload" type="button">다시 확인</button></div></div><div class="mi-range"><label>분석 기간<select id="miPreset"><option value="1">최근 완료 월</option><option value="3">최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option><option value="custom">직접 선택</option></select></label><label>시작 월<input id="miStart" type="month"></label><label>종료 월<input id="miEnd" type="month"></label><label>비교 기간<select id="miCompare"><option value="previous">직전 동일 기간</option><option value="year">전년 동일 기간</option></select></label><span id="miPeriodHint" class="mi-muted"></span></div><div id="miBody" class="mi-loading">조회 전</div>';
+  v.innerHTML='<div class="mi-head"><div><div class="mi-eyebrow">SAMPLAS · MARKETING INTELLIGENCE</div><h2>마케팅 데이터 분석</h2><p class="mi-muted">기간을 바꾸고 매출·고객·유입의 변화를 탐색해.</p></div><div><span class="mi-tag" id="miStatus">조회 대기</span> <button id="miReload" type="button">다시 확인</button></div></div><div class="mi-range"><label>분석 기간<select id="miPreset"><option value="1">최근 완료 월</option><option value="3">최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option><option value="custom">직접 선택</option></select></label><label>시작 월<input id="miStart" type="month"></label><label>종료 월<input id="miEnd" type="month"></label><label>비교 기간<select id="miCompare"><option value="previous">직전 동일 기간</option><option value="year">전년 동일 기간</option><option value="custom">직접 비교</option></select></label><label>비교 시작 월<input id="miCompareStart" type="month" disabled></label><label>비교 종료 월<input id="miCompareEnd" type="month" disabled></label><span id="miPeriodHint" class="mi-muted"></span></div><div id="miBody" class="mi-loading">조회 전</div>';
   main.appendChild(v);$('miReload').addEventListener('click',load);
   $('miPreset').addEventListener('change',e=>{state.preset=e.target.value;syncPeriod();load()});
-  $('miCompare').addEventListener('change',e=>{state.compare=e.target.value;load()});
+  $('miCompare').addEventListener('change',e=>{state.compare=e.target.value;if(state.compare==='custom'&&(!state.compareStart||!state.compareEnd)){const length=mn(state.end)-mn(state.start);state.compareEnd=ym(mn(state.start)-1);state.compareStart=ym(mn(state.compareEnd)-length)}syncPeriod();load()});
+  for(const id of ['miCompareStart','miCompareEnd'])$(id).addEventListener('change',()=>{state.compareStart=$('miCompareStart').value;state.compareEnd=$('miCompareEnd').value;load()});
   for(const id of ['miStart','miEnd'])$(id).addEventListener('change',()=>{state.start=$('miStart').value;state.end=$('miEnd').value;load()});
   syncPeriod();
  }
@@ -205,9 +207,10 @@ async function load(){
  const valid=state.start&&state.end&&mn(state.start)<=mn(state.end)&&state.start>='2025-01'&&state.end<=latestMonth()&&mn(state.end)-mn(state.start)<12;
  if(!valid){state.loading=false;$('miStatus').textContent='기간 오류';$('miBody').className='mi-loading';$('miBody').textContent='2025년 1월 이후 완료된 월 가운데 최대 12개월을 선택해.';return}
  const months=Array.from({length:mn(state.end)-mn(state.start)+1},(_,i)=>ym(mn(state.start)+i));
- const prevMonths=months.map((m,i)=>state.compare==='year'?ym(mn(m)-12):ym(mn(state.start)-months.length+i));
+ const prevMonths=state.compare==='custom'?(state.compareStart&&state.compareEnd&&mn(state.compareStart)<=mn(state.compareEnd)?Array.from({length:mn(state.compareEnd)-mn(state.compareStart)+1},(_,i)=>ym(mn(state.compareStart)+i)):[]):months.map((m,i)=>state.compare==='year'?ym(mn(m)-12):ym(mn(state.start)-months.length+i));
+ if(prevMonths.length!==months.length||prevMonths.at(-1)>latestMonth()){state.loading=false;$('miStatus').textContent='비교 기간 확인';$('miBody').className='mi-loading';$('miBody').textContent='선택 기간과 비교 기간의 개월 수가 같아야 하고, 완료된 월만 사용할 수 있어.';return}
  // Missing historical comparison months do not block the selected current period.
- const compareLabel=state.compare==='year'?'전년 같은 기간':'직전 같은 길이 기간';
+ const compareLabel=state.compare==='custom'?'직접 비교 '+prevMonths[0]+' ~ '+prevMonths.at(-1):state.compare==='year'?'전년 같은 기간':'직전 같은 길이 기간';
  $('miPeriodHint').textContent=months[0]+' ~ '+months.at(-1)+' · '+compareLabel;
  $('miStatus').textContent='조회 중';$('miBody').className='mi-loading';$('miBody').textContent='선택한 월의 CRM 데이터 확인 중';
  const urls=[...months.map(m=>'/api/crm/monthly?month='+m),...prevMonths.map(m=>m<'2025-01'?null:'/api/crm/monthly?month='+m),...months.map(m=>'/api/crm/acquisition?month='+m),...months.map(m=>'/api/crm/data-quality?month='+m),...prevMonths.map(m=>m<'2025-01'?null:'/api/crm/acquisition?month='+m),...prevMonths.map(m=>m<'2025-01'?null:'/api/crm/data-quality?month='+m),'/api/crm/cohort?from='+months[0]+'&to='+months.at(-1)+'&windows=30,60,90'];
