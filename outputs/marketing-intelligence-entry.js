@@ -31,6 +31,17 @@ const css=[
 '#'+ID+' .mi-tabs button[aria-selected=true]{background:#1b3227;color:#fff;border-color:#1b3227}',
 '#'+ID+' .mi-pane[hidden]{display:none!important}',
 '#'+ID+' .mi-inspect{border:1px solid #9ab8a5;background:#f3f9f4;padding:17px;border-radius:13px;margin:14px 0;line-height:1.7}',
+'#'+ID+' #miInspect:not(:empty){position:fixed;inset:0;z-index:2200;display:grid;place-items:center;padding:22px;background:rgba(20,19,15,.54);overflow-y:auto}',
+'#'+ID+' #miInspect:not(:empty)>.mi-inspect,#'+ID+' #miInspect:not(:empty)>.mi-trace{box-sizing:border-box;width:min(780px,100%);max-height:calc(100dvh - 44px);overflow:auto;margin:0;background:white;border:1px solid #e0e5df;box-shadow:0 28px 75px rgba(15,30,20,.3);border-radius:16px;padding:24px}',
+'#'+ID+' #miInspect .mi-inspect>h3,#'+ID+' #miInspect .mi-trace>h3{font-size:20px;line-height:1.4;margin:4px 50px 12px 0}',
+'#'+ID+' #miInspect button[data-mi-close],#'+ID+' #miInspect button[data-mi-trace-close]{border:1px solid #d6e0d7;border-radius:100px;background:#fff;padding:9px 14px;cursor:pointer;float:right}',
+'#'+ID+' .mi-order-list{display:grid;gap:10px;margin:14px 0}',
+'#'+ID+' .mi-order-card{border:1px solid #e1e8e0;border-radius:12px;background:#fafcfa;padding:13px 15px}',
+'#'+ID+' .mi-order-card summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px}',
+'#'+ID+' .mi-order-card summary strong{font-size:15px;color:#203c2c}',
+'#'+ID+' .mi-order-card .mi-order-products{margin-top:12px;padding-top:10px;border-top:1px solid #dce5dc}',
+'#'+ID+' .mi-order-card .mi-order-products>div{padding:5px 0}',
+'@media(max-width:650px){#'+ID+' #miInspect:not(:empty){padding:8px}#'+ID+' #miInspect:not(:empty)>.mi-inspect,#'+ID+' #miInspect:not(:empty)>.mi-trace{padding:17px;max-height:calc(100dvh - 16px)}}',
 '#'+ID+' .mi-inspect p{font-size:13px}',
 '#'+ID+' .mi-provisional{border:1px dashed #bdcdc2;background:#f7faf7;padding:22px;border-radius:13px;margin:12px 0}',
 '#'+ID+' .mi-segment-button{border:1px solid #bdcfc1;background:#f2f8f2;color:#2e6043;padding:7px 11px;margin-top:8px}',
@@ -129,14 +140,16 @@ function mount(){
     const b=e.target.closest('[data-mi-segment]');if(!b||!state.loadedRows)return;state.detail=Number(b.getAttribute('data-mi-segment'));showSegmentDetail();
   });
   $('miInspect').addEventListener('click',e=>{
-    if(e.target.closest('[data-mi-close]')){state.detail=null;showSegmentDetail()}
+    if(e.target.closest('[data-mi-close]'))closeMiInspector()
     const seg=e.target.closest('[data-mi-trace-segment]');if(seg)openOrderTrace(seg.getAttribute('data-mi-trace-segment'));
     const page=e.target.closest('[data-mi-trace-page]');if(page){state.tracePage=Number(page.getAttribute('data-mi-trace-page'));loadOrderTrace()}
-    if(e.target.closest('[data-mi-trace-close]')){state.trace=null;state.traceSerial++;$('miInspect').innerHTML=''}
+    if(e.target.closest('[data-mi-trace-close]')){closeMiInspector()}
+    if(e.target===$('miInspect'))closeMiInspector()
   });
   $('miInspect').addEventListener('change',e=>{if(e.target.id==='miTraceMonth'){state.traceMonth=e.target.value;state.tracePage=1;loadOrderTrace()}});
   $('miBody').addEventListener('change',e=>{if(e.target.id==='miTrafficMonth'){state.trafficMonth=e.target.value;loadVisitEvidence()}});
 
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('miInspect')?.innerHTML){closeMiInspector()}});
   showExplorerTab();
   $('miPreset').addEventListener('change',e=>{state.preset=e.target.value;syncPeriod();load()});
   $('miCompare').addEventListener('change',e=>{state.compare=e.target.value;if(state.compare==='custom'&&(!state.compareStart||!state.compareEnd)){const length=mn(state.end)-mn(state.start);state.compareEnd=ym(mn(state.start)-1);state.compareStart=ym(mn(state.compareEnd)-length)}syncPeriod();load()});
@@ -363,6 +376,10 @@ function organizeExplorer(){
  });
  showExplorerTab();
 }
+function closeMiInspector(){
+ state.trace=null;state.detail=null;state.traceSerial++;
+ const el=$('miInspect');if(el)el.innerHTML='';
+}
 function showSegmentDetail(){
  const el=$('miInspect');if(!el||state.trace)return;
  const data=state.loadedRows,ix=state.detail;
@@ -403,14 +420,14 @@ async function loadOrderTrace(){
   const result=await get('/api/crm/order-trace?month='+encodeURIComponent(month)+'&segment='+group+'&page='+page+'&limit=20'+(filter?.firstOnly?'&firstOnly=true':'')+(filter?.channel?'&channel='+encodeURIComponent(filter.channel):'')+(filter?.medium?'&medium='+encodeURIComponent(filter.medium):''));
   if(reqId!==state.traceSerial || state.trace!==group || state.traceMonth!==month)return;
   const rows=Array.isArray(result.rows)?result.rows:[];
-  const html=rows.map(r=>{
-   const items=r.products?.length?r.products.map(x=>'<div class="mi-purchased-product">'+esc(x.name)+' · '+fmt(x.quantity)+'개'+(x.productNo?' <span class="mi-muted">#'+esc(x.productNo)+'</span>':'')+'</div>').join(''):'<span class="mi-muted">상품 원본 확인 불가</span>';
-   return '<tr><td>'+esc(r.date)+'</td><td>'+esc(r.anonymousCustomer||'회원 식별 안 됨')+'</td><td>'+money(r.paidAmount)+'</td><td>'+items+'</td><td>'+esc(r.acquisition?.channel||'UNKNOWN')+(r.acquisition?.medium?' / '+esc(r.acquisition.medium):'')+'</td></tr>';
+  const html=rows.map((r,i)=>{
+   const items=r.products?.length?r.products.map(x=>'<div class="mi-purchased-product">'+esc(x.name)+' · '+fmt(x.quantity)+'개'+(x.productNo?' <span class="mi-muted">상품번호 '+esc(x.productNo)+'</span>':'')+'</div>').join(''):'<span class="mi-muted">상품 원본 미수집. 확인되지 않은 상품을 추정하지 않아.</span>';
+   return '<details class="mi-order-card"'+(i===0?' open':'')+'><summary><span>'+esc(r.date)+' · '+esc(r.anonymousCustomer||'비회원 / 미식별')+' <span class="mi-muted">상세 펼치기</span></span><strong>'+money(r.paidAmount)+'</strong></summary><div class="mi-order-products"><b>구매 상품·수량</b>'+items+'<p class="mi-muted">주문 기록 유입: '+esc(r.acquisition?.channel||'UNKNOWN')+(r.acquisition?.medium?' / '+esc(r.acquisition.medium):'')+'</p><p class="mi-muted">상품 원천 상태: '+esc(r.productEvidence||'미확인')+'</p></div></details>';
   }).join('');
   const max=Math.max(1,Math.ceil(Number(result.totals?.orders||0)/20));
   el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+' · '+esc(month)+esc(sourceLabel)+'</h3>'+
    '<p class="mi-muted">확인된 주문 '+fmt(result.totals?.orders)+'건 · 주문 결제액 '+money(result.totals?.paidAmount)+' · 구분 가능한 회원 '+(result.totals?.members==null?'해당 없음':fmt(result.totals.members)+'명')+'</p>'+
-   '<div class="mi-trace-controls">'+monthSelector+'</div><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>구매일</th><th>익명 회원</th><th>실결제 주문 금액</th><th>구매 상품과 수량</th><th>주문 유입 분류</th></tr></thead><tbody>'+(html||'<tr><td colspan="5">표시할 주문이 없어.</td></tr>')+'</tbody></table></div>'+
+   '<div class="mi-trace-controls">'+monthSelector+'</div><div class="mi-order-list">'+(html||'<div class="mi-provisional">해당 조건의 주문 없음</div>')+'</div>'+
    '<div class="mi-trace-controls"><button type="button" data-mi-trace-page="'+(page-1)+'"'+(page===1?' disabled':'')+'>이전</button><span>'+page+' / '+max+' 페이지</span><button type="button" data-mi-trace-page="'+(page+1)+'"'+(page>=max?' disabled':'')+'>다음</button></div>'+
    '<p class="mi-inline-note">Cafe24 주문 원본 + Analytics 주문 유입 기준. 구매 상품은 상품명·수량이며 할인/반품이 분배된 상품별 순매출이 아니야. 주문별 검색어는 수집되지 않아. 개인식별 정보는 제공하지 않아.</p></section>';
  }catch(e){
