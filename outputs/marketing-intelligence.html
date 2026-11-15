@@ -11,7 +11,8 @@ const $=id=>document.getElementById(id), fmt=x=>Number.isFinite(x)?new Intl.Numb
 const state={months:[],previous:[],acquisition:[],quality:[],ads:[],previousAds:[],mode:'loading',experiments:[]};
 const selectMonths=()=>{const y=Number($('year').value),a=Number($('fromMonth').value),b=Number($('toMonth').value); if(a>b)return [];return Array.from({length:b-a+1},(_,i)=>`${y}-${String(a+i).padStart(2,'0')}`)};
 const unwrap=payload=>{const data=payload?.data??payload?.structuredContent?.data??payload;return data&&typeof data==='object'?{...data,__meta:payload?.meta??payload?.structuredContent?.meta??null}:data};
-async function get(url){const r=await fetch(url,{credentials:'same-origin',headers:{Accept:'application/json'}});if(!r.ok)throw Error(`HTTP ${r.status}`);const d=await r.json();if(d.ok===false)throw Error(d.error?.message||'API 실패');return unwrap(d)}
+let inFlight=0;const requestQueue=[];
+async function get(url){if(inFlight>=3)await new Promise(resolve=>requestQueue.push(resolve));inFlight++;try{const r=await fetch(url,{credentials:'same-origin',headers:{Accept:'application/json'}});if(!r.ok)throw Error(`HTTP ${r.status}`);const d=await r.json();if(d.ok===false)throw Error(d.error?.message||'API 실패');return unwrap(d)}finally{inFlight--;const next=requestQueue.shift();if(next)next()}}
 const toItem=(m,x)=>({month:m,total:x.total?.amount,orders:x.total?.orders,new:x.newMembers?.members,repeat:x.repeatMembers?.members,newAmount:x.newMembers?.amount,repeatAmount:x.repeatMembers?.amount,unverified:x.unverifiedMembers?.members,guestAmount:x.guests?.amount,meta:x.__meta,personal:x.personalPayment?.amount});
 const rangeForMonth=m=>{const [y,mo]=m.split('-').map(Number),last=new Date(Date.UTC(y,mo,0)).getUTCDate();return `${m}-01&until=${m}-${String(last).padStart(2,'0')}`};
 const getAdsMonth=m=>get(`${API.ads}?since=${rangeForMonth(m)}`);
