@@ -31,58 +31,97 @@ state.cohort=cohortResponses[0].status==='fulfilled'?cohortResponses[0].value:nu
 state.previousCohort=cohortResponses[1].status==='fulfilled'?cohortResponses[1].value:null;
 state.decisionReasons=decisionBlockers();
 if(failed)state.decisionReasons.unshift('API 요청 실패 '+failed+'건');
-state.mode=state.decisionReasons.length?'blocked':'verified';
-$('mode').textContent=state.mode==='blocked'?'BLOCKED · 전략 판단 보류':'VERIFIED · 근거 검증';
-$('mode').className='status '+(state.mode==='blocked'?'err':'');
-$('notice').textContent=state.mode==='blocked'?'관측 수치는 참고용이며 데이터가 불완전하여 실행 전략 추천을 차단합니다.':'필수 데이터 품질 확인 완료. 행동 제안은 인과관계를 확정하지 않는 가설입니다.';
+state.rules=evidenceRules();state.mode=state.rules.newStatus==='VERIFIED'&&state.rules.repeatStatus==='VERIFIED'&&state.rules.cohortStatus==='VERIFIED'&&state.rules.adsStatus==='REVIEW'?'verified':'limited';
+$('mode').textContent=state.mode==='limited'?'PARTIAL · 영역별 제한 분석':'VERIFIED · 영역별 근거 검증';
+$('mode').className='status '+(state.mode==='limited'?'warn':'');
+$('notice').textContent=state.mode==='limited'?'각 분석 영역의 판단 가능 범위가 다릅니다. 잠정 신호는 조사 제안만 제공하며 예산·CRM 실행은 권고하지 않습니다.':'검증된 지표별 조사 제안을 제공하며 인과·증분 성과는 확정하지 않습니다.';
 $('stamp').textContent=months[0]+' ~ '+months.at(-1);render()}
 const sum=(a,k)=>a.every(x=>x&&Number.isFinite(x[k]))?a.reduce((s,x)=>s+x[k],0):null;const pct=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b>0?100*(a/b-1):null;
-function demo(){const m=['07','08','09','10'];const n26=[20,25,24,21],n25=[29,50,60,45],r26=[6288110,4624280,8140140,16654950],r25=[8446690,5484630,15909200,11695120];state.months=m.map((x,i)=>({month:`2026-${x}`,new:n26[i],repeatAmount:r26[i],unverified:[6,3,2,3][i],total:[35000863,34722620,30748893,39462706][i],orders:[122,109,108,106][i]}));state.previous=m.map((x,i)=>({month:`2025-${x}`,new:n25[i],repeatAmount:r25[i],unverified:[5,10,13,7][i],total:[28630776,39662199,49896355,41309719][i],orders:[116,150,153,136][i]}));state.acquisition=[{firstPurchaseChannels:[{channel:'(no ad / direct)',members:15},{channel:'ig',medium:'social',members:2},{channel:'meta',medium:'paid',members:2},{channel:'네이버',medium:'shopping',members:1}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:20},{channel:'ig',medium:'social',members:3},{channel:'네이버',medium:'shopping',members:2}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:16},{channel:'ig',medium:'social',members:1},{channel:'ig',medium:'paid',members:2},{channel:'meta',medium:'paid',members:1},{channel:'네이버',medium:'shopping',members:4}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:17},{channel:'ig',medium:'social',members:3},{channel:'네이버',medium:'shopping',members:1}]}];state.quality=m.map(x=>({closeStatus:'NOT_FINAL',__meta:{completeness:'PARTIAL'},issues:['SAMPLE']}));state.previousAcquisition=[];state.previousQuality=[];state.cohort=null;state.previousCohort=null;state.decisionReasons=['검증 샘플은 전략 추천 불가'];state.ads=[];state.previousAds=[];state.mode='demo';$('year').value='2026';$('fromMonth').value='07';$('toMonth').value='10';$('mode').textContent='검증 샘플 · 실시간 아님';$('mode').className='status warn';$('stamp').textContent='2026-07 ~ 2026-10';$('notice').textContent='이 화면은 이전에 실제 API에서 검증된 월별 수치를 내장한 시연 모드야. 현재 운영 서버의 실시간 데이터가 아니며 마감 전 잠정 집계다.';render()}
-function decisionBlockers(){
- const reasons=[];
- const contexts=[['대상 기간',state.months,state.acquisition,state.quality,state.cohort],['전년 기간',state.previous,state.previousAcquisition,state.previousQuality,state.previousCohort]];
- for(const [label,months,acqs,qualities,cohort] of contexts){
-  if(!cohort||cohort.__meta?.completeness!=='COMPLETE')reasons.push(label+' 코호트 데이터 불완전');
+function demo(){const m=['07','08','09','10'];const n26=[20,25,24,21],n25=[29,50,60,45],r26=[6288110,4624280,8140140,16654950],r25=[8446690,5484630,15909200,11695120];state.months=m.map((x,i)=>({month:`2026-${x}`,new:n26[i],repeatAmount:r26[i],unverified:[6,3,2,3][i],total:[35000863,34722620,30748893,39462706][i],orders:[122,109,108,106][i]}));state.previous=m.map((x,i)=>({month:`2025-${x}`,new:n25[i],repeatAmount:r25[i],unverified:[5,10,13,7][i],total:[28630776,39662199,49896355,41309719][i],orders:[116,150,153,136][i]}));state.acquisition=[{firstPurchaseChannels:[{channel:'(no ad / direct)',members:15},{channel:'ig',medium:'social',members:2},{channel:'meta',medium:'paid',members:2},{channel:'네이버',medium:'shopping',members:1}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:20},{channel:'ig',medium:'social',members:3},{channel:'네이버',medium:'shopping',members:2}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:16},{channel:'ig',medium:'social',members:1},{channel:'ig',medium:'paid',members:2},{channel:'meta',medium:'paid',members:1},{channel:'네이버',medium:'shopping',members:4}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:17},{channel:'ig',medium:'social',members:3},{channel:'네이버',medium:'shopping',members:1}]}];state.quality=m.map(x=>({closeStatus:'NOT_FINAL',__meta:{completeness:'PARTIAL'},issues:['SAMPLE']}));state.previousAcquisition=[];state.previousQuality=[];state.cohort=null;state.previousCohort=null;state.decisionReasons=['검증 샘플은 전략 추천 불가'];state.ads=[];state.previousAds=[];state.mode='demo';state.rules=null;$('year').value='2026';$('fromMonth').value='07';$('toMonth').value='10';$('mode').textContent='검증 샘플 · 실시간 아님';$('mode').className='status warn';$('stamp').textContent='2026-07 ~ 2026-10';$('notice').textContent='이 화면은 이전에 실제 API에서 검증된 월별 수치를 내장한 시연 모드야. 현재 운영 서버의 실시간 데이터가 아니며 마감 전 잠정 집계다.';render()}
+function evidenceRules(){
+ const issues={new:[],repeat:[],ads:[],cohort:[]};
+ const contexts=[['대상 기간',state.months,state.acquisition,state.quality],['전년 기간',state.previous,state.previousAcquisition,state.previousQuality]];
+ const requireBothMonthly=contexts.every(([,months])=>months.length>0&&months.every(m=>m&&Number.isFinite(m.new)&&Number.isFinite(m.repeatAmount)));
+ if(!requireBothMonthly){issues.new.push('전년 및 현재 신규 고객 수 누락');issues.repeat.push('전년 및 현재 재구매 매출 누락')}
+ for(const [label,months,acqs,qualities] of contexts){
   for(let i=0;i<months.length;i++){
-   const m=months[i],a=acqs[i],q=qualities[i],name=m?.month||label+' '+(i+1)+'월';
-   if(!m||m.meta?.completeness!=='COMPLETE')reasons.push(name+' CRM 커버리지 불완전');
-   if(!a||a.__meta?.completeness!=='COMPLETE')reasons.push(name+' 유입 데이터 불완전');
-   if(!q||q.__meta?.completeness!=='COMPLETE')reasons.push(name+' 품질 진단 불완전');
-   if(q){
-    if(!['FINAL','CLOSED'].includes(q.closeStatus))reasons.push(name+' 월 마감 전');
-    if(q.history?.gaps?.length)reasons.push(name+' 이력 누락');
-    if(q.issues?.length)reasons.push(name+' 품질 경고 '+q.issues.join(','));
-    if((q.members?.unverifiedFirstPurchaseUpToMonth??0)>0)reasons.push(name+' 최초 구매 이력 미확인');
+   const m=months[i],a=acqs[i],q=qualities[i],id=m?.month||label+' '+(i+1)+'월';
+   if(!m||!Number.isFinite(m.new)){issues.new.push(id+' 신규 고객 수 누락')}
+   if(!m||!Number.isFinite(m.repeatAmount)){issues.repeat.push(id+' 재구매 매출 누락')}
+   if(m?.meta?.completeness!=='COMPLETE'){issues.new.push(id+' 신규 고객 집계 잠정');issues.repeat.push(id+' 재구매 매출 잠정')}
+   if(!q){issues.new.push(id+' 품질 분석 미확인');issues.repeat.push(id+' 품질 분석 미확인');continue}
+   if(q.__meta?.completeness!=='COMPLETE'||!['FINAL','CLOSED'].includes(q.closeStatus)){
+    issues.new.push(id+' 데이터 미마감·불완전');issues.repeat.push(id+' 데이터 미마감·불완전');
    }
-   if(m&&(m.unverified??0)>0)reasons.push(name+' 구매 분류 미확인');
-   if(a&&(!Array.isArray(a.firstPurchaseChannels)||a.analyticsCoverage!=='COMPLETE'||a.firstPurchaseChannels.some(x=>!Number.isFinite(x.members))))reasons.push(name+' 유입 추적 불완전');
-  }
-  for(const m of months){
-   if(!m)continue;const row=cohort?.cohorts?.find(x=>x.month===m.month);
-   if(!row)reasons.push(m.month+' 코호트 누락');
-   else for(const w of [30,60,90]){
-    const cell=row.cells?.find(x=>x.window===w);
-    if(!cell||cell.status!=='MATURE'||!Number.isFinite(cell.rate))reasons.push(m.month+' '+w+'일 코호트 미성숙');
+   if(q.history?.gaps?.length||q.issues?.length){
+    issues.new.push(id+' 구매 이력/취소 검증 경고');issues.repeat.push(id+' 구매 이력/취소 검증 경고');
    }
+   if(m?.unverified>0||q.members?.unverifiedFirstPurchaseUpToMonth>0)issues.new.push(id+' 최초 구매 확인 누락');
+   if(!a||a.__meta?.completeness!=='COMPLETE'||a.analyticsCoverage!=='COMPLETE'||!Array.isArray(a.firstPurchaseChannels)||a.firstPurchaseChannels.some(x=>!Number.isFinite(x.members)))issues.new.push(id+' 유입 채널 분석 미완료');
   }
  }
- for(const a of [...state.ads,...state.previousAds]){
-  if(!a||a.__meta?.completeness!=='COMPLETE'||a.channels?.some(x=>x.issues?.length))reasons.push('광고 데이터 완전성 미확인');
+ // Cohort maturity is a local constraint: missing 90-day follow-up does not invalidate 30-day observations.
+ const cohorts=state.cohort?.cohorts||[];
+ const matured30=cohorts.filter(c=>c.cells?.some(x=>x.window===30&&x.status==='MATURE'&&Number.isFinite(x.rate)));
+ if(!matured30.length)issues.cohort.push('성숙한 30일 코호트 없음');
+ if(state.cohort?.__meta?.completeness!=='COMPLETE')issues.cohort.push('코호트 커버리지 불완전');
+ if(state.previousCohort?.__meta?.completeness!=='COMPLETE')issues.cohort.push('전년 코호트 커버리지 불완전');
+ // Advertising platform metrics must be compared only within a single channel and only with verified coverage/currency.
+ for(const [label,rows] of [['대상 기간',state.ads],['전년 기간',state.previousAds]]){
+  if(!rows.length||rows.some(x=>!x||x.__meta?.completeness!=='COMPLETE'))issues.ads.push(label+' 광고 데이터 커버리지 미검증');
+  for(const row of rows)if(row?.channels?.some(x=>x.issues?.length||x.status!=='available'))issues.ads.push(label+' 광고 품질/통화 경고');
  }
- return [...new Set(reasons)];
+ const uniq=x=>[...new Set(x)];
+ for(const k of Object.keys(issues))issues[k]=uniq(issues[k]);
+ return {issues,hasNewEvidence:requireBothMonthly,hasRepeatEvidence:requireBothMonthly,
+  newStatus:!requireBothMonthly?'BLOCKED':issues.new.length?'REVIEW':'VERIFIED',
+  repeatStatus:!requireBothMonthly?'BLOCKED':issues.repeat.length?'REVIEW':'VERIFIED',
+  adsStatus:issues.ads.length?'BLOCKED':'REVIEW',
+  cohortStatus:issues.cohort.length?'REVIEW':'VERIFIED'};
+}
+function decisionBlockers(){
+ const r=evidenceRules();
+ return [...new Set(Object.entries(r.issues).flatMap(([name,arr])=>arr.map(s=>name+': '+s)))];
 }
 function kpi(label,value,note){return `<div class="card"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`}
-function render(){const n=sum(state.months,'new'),pn=sum(state.previous,'new'),r=sum(state.months,'repeatAmount'),pr=sum(state.previous,'repeatAmount'),d=pct(n,pn),dr=pct(r,pr);$('kpis').innerHTML=kpi('신규 구매 확인 회원',n==null?'확인 불가':`${fmt(n)}명`,d==null?'전년 대비 검증 불가':`전년 ${fmt(pn)}명 · ${d.toFixed(1)}%`)+kpi('재구매 회원 매출',money(r),dr==null?'전년 비교 불가':`전년 대비 ${dr.toFixed(1)}%`)+kpi('첫 구매 분류 미확인 회원',sum(state.months,'unverified')==null?'확인 불가':fmt(sum(state.months,'unverified'))+'명','미확인 고객을 신규 고객으로 합산하지 않음')+kpi('데이터 상태',state.mode==='verified'?'검증 완료':state.mode==='demo'?'샘플 보기':'전략 판단 보류','모든 월 closeStatus 및 completeness 별도 검토');
-const blocked=state.mode!=='verified';const cards=[];if(blocked)cards.push({name:'데이터 검증 후 전략 결정',priority:'BLOCKED / 실행 판단 금지',why:'품질·마감·코호트 검증이 끝나지 않았습니다.',action:'누락 이력·취소 검증·월 마감·성숙 코호트를 먼저 확인하세요.',kpi:'품질 검증 통과 및 성숙 코호트 확보',caveat:'관측 데이터만으로 광고·고객 전략을 결정할 수 없습니다.'});if(!blocked&&d!=null&&d<=-20)cards.push({name:'신규 고객 확보 전략 재검토',priority:'P0 / 우선 분석',why:`검증된 신규 구매 회원 ${fmt(pn)} → ${fmt(n)}명 (${d.toFixed(1)}%). 같은 월 기준 감소.`,action:'첫 구매 유입 채널과 최초 구매 브랜드를 구분해 신규 모객 기회를 검증한다.',kpi:'신규 구매 회원수 · 채널별 첫 구매 주문 · 첫 구매 기여이익',caveat:'광고비·유입 방문수·상품 재고 영향은 이 데이터만으로 분리되지 않는다.'});if(!blocked&&dr!=null&&dr<0)cards.push({name:'재구매 활성화 가설 점검',priority:'P1 / 실험 설계',why:`재구매 회원 구매액이 전년 대비 ${dr.toFixed(1)}%.`,action:'30/60/90일 첫 구매 후속 프로그램을 소규모 통제군과 함께 검토한다.',kpi:'90일 내 두 번째 구매율 · 순매출 · 할인비용 차감 공헌이익',caveat:'코호트 성숙 여부와 고객 식별 정확도를 먼저 확인해야 한다.'});if(!blocked)cards.push({name:'광고 예산 변경은 보류하고 검증',priority:'DATA CHECK / 선행 조건',why:'플랫폼 광고 전환과 Cafe24 실주문은 귀속 기준이 달라 직접 비교할 수 없다.',action:'Meta/네이버별 캠페인 목적, 실제 광고비 통화, 첫 구매 유입, 재고·상품구성을 대조한다.',kpi:'플랫폼별 비용 · 신규 첫 구매 · 귀속 가능 주문 · 마진',caveat:'이 화면은 단일 캠페인의 증분 매출을 증명하지 않는다.'});
+function render(){const n=sum(state.months,'new'),pn=sum(state.previous,'new'),r=sum(state.months,'repeatAmount'),pr=sum(state.previous,'repeatAmount'),d=pct(n,pn),dr=pct(r,pr);$('kpis').innerHTML=kpi('신규 구매 확인 회원',n==null?'확인 불가':`${fmt(n)}명`,d==null?'전년 대비 검증 불가':`전년 ${fmt(pn)}명 · ${d.toFixed(1)}%`)+kpi('재구매 회원 매출',money(r),dr==null?'전년 비교 불가':`전년 대비 ${dr.toFixed(1)}%`)+kpi('첫 구매 분류 미확인 회원',sum(state.months,'unverified')==null?'확인 불가':fmt(sum(state.months,'unverified'))+'명','미확인 고객을 신규 고객으로 합산하지 않음')+kpi('데이터 상태',state.mode==='verified'?'영역별 검증':state.mode==='demo'?'샘플 보기':'제한적 분석','모든 월 closeStatus 및 completeness 별도 검토');
+const rules=state.mode==='demo'?null:state.rules, cards=[];
+const safeNew=rules?.newStatus==='VERIFIED', safeRepeat=rules?.repeatStatus==='VERIFIED', safeAds=rules?.adsStatus!=='BLOCKED';
+if(!rules||Object.values(rules.issues).some(arr=>arr.length))cards.push({
+  name:'데이터 검증 우선순위',priority:'DATA CHECK / 실행 전 조건',
+  why:'원천·기간·마감·취소 및 코호트가 모든 분석에 동일한 영향을 주지는 않습니다.',
+  action:'하단 영역별 품질 경고를 확인하고 결측 및 이력 문제부터 점검합니다.',
+  kpi:'검증 완료된 월/채널 비율 · 미확인 고객수 · 성숙 코호트 비율',
+  caveat:'이 카드는 마케팅 전략 실행 권고가 아닙니다.'
+});
+if(d!=null&&d<=-20&&rules?.hasNewEvidence){
+ cards.push({name:'신규 고객 감소 신호 점검',priority:safeNew?'VERIFIED / 원인 조사':'REVIEW / 잠정 신호',
+ why:'확인된 신규 구매 회원 '+fmt(pn)+' → '+fmt(n)+'명 ('+d.toFixed(1)+'%). '+(safeNew?'검증 조건 충족.':'미확인 구매 이력·미마감 자료로 증감률은 잠정치.'),
+ action:safeNew?'유입 경로·첫 구매 브랜드 변화의 원인 분석을 진행한다.':'최초 구매 이력·취소·전년 유입 추적 차이를 검증한 후 캠페인 실험 여부를 결정한다.',
+ kpi:'검증된 신규 첫 구매자 수 · 유입 추적률 · 첫 구매 공헌이익',
+ caveat:'유입 원인과 광고 효과는 아직 입증되지 않았으며 캠페인 집행·예산 권고가 아니다.'});
+}
+if(dr!=null&&dr<0&&rules?.hasRepeatEvidence){
+ cards.push({name:'재구매 매출 변화 확인',priority:safeRepeat&&rules.cohortStatus==='VERIFIED'?'VERIFIED / 가설 조사':'REVIEW / 잠정 신호',
+ why:'관측된 재구매 매출 전년 대비 '+dr.toFixed(1)+'%. '+(safeRepeat?'집계 검증 조건 충족.':'미마감·취소 검증으로 잠정치.'),
+ action:safeRepeat&&rules.cohortStatus==='VERIFIED'?'성숙 코호트만 사용해 30/60/90일 후속 프로그램 가설을 검토한다.':'우선 구매 이력과 성숙 코호트 구간을 점검한다. 실제 CRM 발송·할인 집행은 보류한다.',
+ kpi:'성숙 코호트 두 번째 구매율 · 실제 순매출 · 할인 차감 공헌이익',
+ caveat:'IMMATURE를 0%로 간주하지 않으며 성숙 코호트가 없는 기간은 비교하지 않는다.'});
+}
+cards.push({name:'광고 예산 변경은 검증 전 보류',priority:safeAds?'REVIEW / 플랫폼 성과만':'BLOCKED / 광고 예산 결정',
+ why:'플랫폼 보고 전환과 Cafe24 실주문의 귀속 기준이 다릅니다. 광고비 통화·커버리지 검증이 필요합니다.',
+ action:'플랫폼별 통화, 캠페인 목적, 유입 추적과 실제 매출 근거를 각각 확인합니다.',
+ kpi:'플랫폼별 클릭·전환 · 회원 첫 구매 · 귀속 검증 · 마진',
+ caveat:'자동 집행하지 않으며 플랫폼 전환을 실매출 또는 증분 효과로 해석하지 않습니다.'});
 const currentMeta=adMetrics(state.ads,'meta'),priorMeta=adMetrics(state.previousAds,'meta'),currentNaver=adMetrics(state.ads,'naver'),priorNaver=adMetrics(state.previousAds,'naver');
 const adRows=[['Meta',currentMeta,priorMeta],['NAVER',currentNaver,priorNaver]];
 $('adsPanel').innerHTML=`<p class="sub">Meta·네이버 플랫폼 내부 지표만 비교해. 통화·집계 기준 검증 전에는 광고비를 확정 원화로 표현하거나 Cafe24 매출로 간주하지 않아.</p><table><thead><tr><th>플랫폼</th><th>광고비 (통화 미검증)</th><th>전년 대비 비용</th><th>클릭</th><th>전년 대비 클릭</th><th>플랫폼 전환</th><th>전년 대비 전환</th></tr></thead><tbody>${adRows.map(([label,cur,prev])=>`<tr><td>${label}</td><td>${cur?fmt(cur.spend):'확인 불가'}</td><td>${cur&&prev&&pct(cur.spend,prev.spend)!=null?pct(cur.spend,prev.spend).toFixed(1)+'%':'–'}</td><td>${cur?fmt(cur.clicks):'–'}</td><td>${cur&&prev&&pct(cur.clicks,prev.clicks)!=null?pct(cur.clicks,prev.clicks).toFixed(1)+'%':'–'}</td><td>${cur?fmt(cur.conversions):'–'}</td><td>${cur&&prev&&pct(cur.conversions,prev.conversions)!=null?pct(cur.conversions,prev.conversions).toFixed(1)+'%':'–'}</td></tr>`).join('')}</tbody></table><div class="source">광고 플랫폼 API GET /api/advertising/overview · 월별 GET 후 같은 기간 합계 · 커버리지 미검증인 Meta 과거 자료는 유효성 확인 필요</div>`;
-if(!blocked&&currentMeta&&priorMeta){const clickDelta=pct(currentMeta.clicks,priorMeta.clicks);if(clickDelta!==null&&clickDelta<=-20)cards.push({name:'Meta 유입 규모 감소 원인 검증',priority:'P1 / 유입 진단',why:`Meta 보고 클릭 ${fmt(priorMeta.clicks)} → ${fmt(currentMeta.clicks)} (${clickDelta.toFixed(1)}%).`,action:'목적별 캠페인과 랜딩페이지 방문, 중단 캠페인, 소재 교체, 실집행일을 비교한다. ROAS만 보고 증액하지 않는다.',kpi:'목적별 링크클릭 · 랜딩페이지 방문 · 신규 첫 구매 주문',caveat:`광고 데이터 이슈: ${currentMeta.issues.join(', ')||'없음'}. 확인되지 않은 커버리지는 신뢰할 수 없다.`})}
-if(!blocked&&currentNaver&&priorNaver){const convDelta=pct(currentNaver.conversions,priorNaver.conversions);if(convDelta!==null&&convDelta<=-20)cards.push({name:'네이버 구매 신호 감소 점검',priority:'P1 / 검색광고 점검',why:`네이버 보고 전환 ${fmt(priorNaver.conversions)} → ${fmt(currentNaver.conversions)} (${convDelta.toFixed(1)}%).`,action:'검색어, 브랜드 키워드, 노출 점유, 랜딩 페이지와 품절 상품을 확인한다.',kpi:'캠페인별 전환 · 방문 · 실주문 매칭률',caveat:'플랫폼 전환 정의·광고비 통화 검증 전에는 실제 신규고객 확보 효율로 간주하지 않는다.'})}
+if(safeAds&&currentMeta&&priorMeta){const clickDelta=pct(currentMeta.clicks,priorMeta.clicks);if(clickDelta!==null&&clickDelta<=-20)cards.push({name:'Meta 유입 규모 감소 원인 검증',priority:'P1 / 유입 진단',why:`Meta 보고 클릭 ${fmt(priorMeta.clicks)} → ${fmt(currentMeta.clicks)} (${clickDelta.toFixed(1)}%).`,action:'목적별 캠페인과 랜딩페이지 방문, 중단 캠페인, 소재 교체, 실집행일을 비교한다. ROAS만 보고 증액하지 않는다.',kpi:'목적별 링크클릭 · 랜딩페이지 방문 · 신규 첫 구매 주문',caveat:`광고 데이터 이슈: ${currentMeta.issues.join(', ')||'없음'}. 확인되지 않은 커버리지는 신뢰할 수 없다.`})}
+if(safeAds&&currentNaver&&priorNaver){const convDelta=pct(currentNaver.conversions,priorNaver.conversions);if(convDelta!==null&&convDelta<=-20)cards.push({name:'네이버 구매 신호 감소 점검',priority:'P1 / 검색광고 점검',why:`네이버 보고 전환 ${fmt(priorNaver.conversions)} → ${fmt(currentNaver.conversions)} (${convDelta.toFixed(1)}%).`,action:'검색어, 브랜드 키워드, 노출 점유, 랜딩 페이지와 품절 상품을 확인한다.',kpi:'캠페인별 전환 · 방문 · 실주문 매칭률',caveat:'플랫폼 전환 정의·광고비 통화 검증 전에는 실제 신규고객 확보 효율로 간주하지 않는다.'})}
 $('queue').innerHTML=cards.map((x,i)=>`<article class="decision"><span class="tag">${x.priority}</span><h3>${x.name}</h3><p>${x.why}</p><p><b>추천 다음 행동</b><br>${x.action}</p><div class="actions"><button data-id="${i}">근거와 검증 KPI 확인</button></div></article>`).join('');document.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{const x=cards[Number(b.dataset.id)];$('detail').classList.remove('hidden');$('detail').innerHTML=`<button class="close" id="closeDetail" aria-label="닫기">×</button><h3>${x.name}</h3><div class="details"><b>관측 근거</b><br>${x.why}<br><b>제안</b><br>${x.action}<br><b>실행 후 검증 KPI</b><br>${x.kpi}<br><b>한계와 사전 확인</b><br>${x.caveat}</div>`;$('closeDetail').onclick=()=>$('detail').classList.add('hidden');$('detail').scrollIntoView({behavior:'smooth',block:'nearest'})});
 const max=Math.max(1,...state.previous.map(x=>x?.new??0),...state.months.map(x=>x?.new??0));$('bars').innerHTML=state.months.map((x,i)=>{const p=state.previous[i];return `<div class="barrow"><div class="barlabel"><b>${x?.month||'미확인'}</b><span>전년 ${p?.new??'–'} / 당년 ${x?.new??'–'}</span></div><div class="track"><div class="fill alt" style="width:${p?.new!=null?100*p.new/max:0}%"></div></div><div class="track" style="margin-top:3px"><div class="fill" style="width:${x?.new!=null?100*x.new/max:0}%"></div></div></div>`}).join('');
 const dict={};let missingAcquisition=false;for(const a of state.acquisition){if(!a||!Array.isArray(a.firstPurchaseChannels)){missingAcquisition=true;continue}for(const x of a.firstPurchaseChannels){if(!Number.isFinite(x.members)){missingAcquisition=true;continue}const name=(x.channel||'unknown')+(x.medium?` / ${x.medium}`:'');dict[name]=(dict[name]||0)+x.members}}const entries=Object.entries(dict).sort((a,b)=>b[1]-a[1]);$('channels').innerHTML=entries.length?`<table><thead><tr><th>관측 유입 유형</th><th>첫 구매 확인 회원</th></tr></thead><tbody>${entries.map(([k,v])=>`<tr><td>${escapeText(k)}</td><td class="num">${fmt(v)}명</td></tr>`).join('')}</tbody></table>`:'<div class="empty">유입 데이터 미확인</div>';if(missingAcquisition)$('channels').insertAdjacentHTML('afterbegin','<div class="message">일부 유입 회원 수 누락, 집계 불완전</div>');
-const issues=[...state.quality,...state.previousQuality].map((x,i)=>{
+const blocked=state.mode!=='verified';const issues=[...state.quality,...state.previousQuality].map((x,i)=>{
  const id=i<state.months.length?state.months[i]?.month:state.previous[i-state.months.length]?.month;
  return (id||'미확인')+': '+(x?.closeStatus??'UNKNOWN')+' / '+(x?.__meta?.completeness??'UNKNOWN')+' / 이력 누락 '+(x?.history?.gaps?.length??'미확인')+' / 경고 '+(x?.issues?.join(',')??'미확인');
 });
