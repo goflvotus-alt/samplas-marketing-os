@@ -114,7 +114,7 @@ async function get(url){
 }
 const prev=m=>String(Number(m.slice(0,4))-1)+m.slice(4);
 const sum=(list,key)=>list.length&&list.every(x=>x&&Number.isFinite(x[key]))?list.reduce((a,x)=>a+x[key],0):null;
-const row=(month,x)=>x?{month,amount:x.total?.amount,new:x.newMembers?.members,newRevenue:x.newMembers?.amount,repeat:x.repeatMembers?.amount,guestRevenue:x.guests?.amount,naverPayGuest:x.guests?.naverPay?.amount,personalRevenue:x.personalPayment?.amount,unverifiedRevenue:x.unverifiedMembers?.amount,identityUnknownRevenue:x.identityUnknown?.amount,unknown:x.unverifiedMembers?.members,meta:x.__meta}:null;
+const row=(month,x)=>x?{month,orders:x.total?.orders,amount:x.total?.amount,new:x.newMembers?.members,newRevenue:x.newMembers?.amount,repeat:x.repeatMembers?.amount,guestRevenue:x.guests?.amount,naverPayGuest:x.guests?.naverPay?.amount,personalRevenue:x.personalPayment?.amount,unverifiedRevenue:x.unverifiedMembers?.amount,identityUnknownRevenue:x.identityUnknown?.amount,unknown:x.unverifiedMembers?.members,meta:x.__meta}:null;
 function metric(title,value,then,description,negative){
  return '<article class="mi-kpi"><small>'+esc(title)+'</small><strong>'+esc(value)+'</strong><p><b'+(negative?' class="down"':'')+'>'+esc(then)+'</b></p><p>'+esc(description)+'</p></article>';
 }
@@ -177,6 +177,28 @@ function renderWhy(rows,acquisition,oldAcq){
  '<article class="mi-why-item"><h4>재구매 해석에서 주의할 점은?</h4><p>최초 구매 이력 미확인 고객이 '+(unknown===null?'확인 불가':fmt(unknown)+'명')+' 있어. 이들을 재구매 회원이나 신규 회원으로 임의 분류하지 않아. 코호트는 관찰이 완료된 기간만 비교해야 해.</p></article>'+
  '</section>';
 }
+
+function renderChannelEvidence(current,prior,compareLabel){
+ const aggregate=rows=>{
+  const map=new Map();let gaps=0;
+  for(const row of rows){
+   if(!row||!Array.isArray(row.firstPurchaseChannels)){gaps++;continue}
+   for(const item of row.firstPurchaseChannels){
+    if(!Number.isFinite(item.members)){gaps++;continue}
+    const key=(item.channel||'UNKNOWN')+(item.medium?' / '+item.medium:'');
+    map.set(key,(map.get(key)||0)+item.members);
+   }
+  }
+  return {map,gaps};
+ };
+ const a=aggregate(current),b=aggregate(prior);
+ const keys=[...new Set([...a.map.keys(),...b.map.keys()])].sort((x,y)=>(a.map.get(y)||0)-(a.map.get(x)||0));
+ const rows=keys.map(k=>'<tr><td>'+esc(k)+'</td><td>'+fmt(a.map.get(k)??null)+'</td><td>'+fmt(b.map.get(k)??null)+'</td><td>'+(a.map.has(k)&&b.map.has(k)?(a.map.get(k)-b.map.get(k)>0?'+':'')+fmt(a.map.get(k)-b.map.get(k)):'비교 불가')+'</td></tr>').join('');
+ const any=current.some(x=>x?.__meta?.completeness!=='COMPLETE'||x?.analyticsCoverage!=='COMPLETE')||prior.some(x=>x?.__meta?.completeness!=='COMPLETE'||x?.analyticsCoverage!=='COMPLETE');
+ return '<section class="mi-breakdown"><h3>첫 구매 고객은 어떤 경로에서 왔을까?</h3><p class="mi-muted">Cafe24 Analytics와 주문을 연결한 회원 첫 구매 유입 분류야. 실제 방문 수, 광고 증분 효과, 고객 획득의 인과관계가 아니야.</p>'+
+ '<div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>유입 출처 / 매체</th><th>선택 기간 신규 회원</th><th>'+esc(compareLabel)+'</th><th>차이</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4">확인 가능한 유입 기록이 없어</td></tr>')+'</tbody></table></div>'+
+ '<p class="mi-error">'+(any||a.gaps||b.gaps?'유입 채널 분류에 누락이나 검증되지 않은 구간이 있어. 채널별 원인 확정·예산 판단 금지.':'유입 분류 확인 완료. 다만 유입 출처와 구매 기여는 별개야.')+'</p></section>';
+}
 async function load(){
  if(!$('miBody'))return;
  const token=++state.serial;state.loaded=false;state.loading=true;
@@ -194,7 +216,9 @@ async function load(){
  if(token!==state.serial)return;state.loaded=true;state.loading=false;
  const n=months.length,group=k=>responses.slice(k*n,(k+1)*n).map(r=>r?.ok?r.value:null);
  const current=group(0).map((x,i)=>row(months[i],x)),previous=group(1).map((x,i)=>row(prevMonths[i],x)),acquisition=group(2),qualities=group(3),oldAcq=group(4),oldQuality=group(5),cohort=responses[6*n]?.ok?responses[6*n].value:null;
+ const orders=sum(current,'orders'),oldOrders=sum(previous,'orders');
  const sales=sum(current,'amount'),oldSales=sum(previous,'amount'),newCount=sum(current,'new'),oldNew=sum(previous,'new'),repeat=sum(current,'repeat'),oldRepeat=sum(previous,'repeat'),unknown=sum(current,'unknown');
+ const aov=orders>0&&sales!==null?sales/orders:null,priorAov=oldOrders>0&&oldSales!==null?oldSales/oldOrders:null;
  const fall=delta(newCount,oldNew),repeatFall=delta(repeat,oldRepeat);
  const warnings=[...qualities,...oldQuality].flatMap(q=>{
   if(!q)return ['월별 데이터 품질 조회 누락'];let out=[];
@@ -214,9 +238,12 @@ async function load(){
  '<section class="mi-hero"><div class="mi-eyebrow" style="color:#aad0b6">'+months[0]+' ~ '+months.at(-1)+' · '+compareLabel+'</div><h3>'+esc(title)+'</h3><p>'+esc(subtitle)+'</p></section>'+
  '<section class="mi-grid" aria-label="온라인 매출 성장 지표">'+
  metric('온라인 실결제 매출',money(sales),change(sales,oldSales),'선택한 비교 기간과 온라인 주문 금액 비교',delta(sales,oldSales)<0)+
+ metric('온라인 주문 수',orders===null?'확인 불가':fmt(orders)+'건',change(orders,oldOrders),'주문 건수가 변해 매출에 영향을 주었는지 확인',delta(orders,oldOrders)<0)+
+ metric('주문당 평균 결제금액',money(aov),change(aov,priorAov),'온라인 매출 ÷ 온라인 주문 수. 회원별 객단가와는 달라.',delta(aov,priorAov)<0)+
  metric('신규 구매 확인 회원',newCount===null?'확인 불가':fmt(newCount)+'명',change(newCount,oldNew),'처음 구매한 회원 수, 미확인 회원 제외',fall<0)+
  metric('재구매 회원 매출',money(repeat),change(repeat,oldRepeat),'기존 구매 회원이 다시 구매한 금액',repeatFall<0)+'</section>'+
  '<div class="mi-section"><h3>매출을 구성하는 고객과 주문</h3><span class="mi-muted">합계 검증 · 월별 상세</span></div>'+renderBreakdown(current,previous,compareLabel)+
+ '<div class="mi-section"><h3>첫 구매 유입 채널</h3><span class="mi-muted">원천 추적 품질에 주의</span></div>'+renderChannelEvidence(acquisition,oldAcq,compareLabel)+
  '<div class="mi-section"><h3>변화를 해석할 때 확인할 점</h3><span class="mi-muted">관측 근거와 미확인 원인을 구분해</span></div>'+renderWhy(current,acquisition,oldAcq)+
  '<div class="mi-section"><h3>고객 변화 탐색</h3><span class="mi-muted">원인 확정이 아닌 검증할 가설</span></div><section class="mi-duo">'+
  '<article class="mi-panel"><h3>신규 고객 수 변화</h3><div class="mi-note">비교 기간 '+(oldNew===null?'확인 불가':fmt(oldNew)+'명')+' → 현재 '+(newCount===null?'확인 불가':fmt(newCount)+'명')+' · '+change(newCount,oldNew)+'</div><p>방문자 수나 인스타그램 팔로워가 아닌 <b>실제 첫 구매 회원</b>이야. '+(acquisition.length===months.length&&acquisition.every(Boolean)&&oldAcq.length===months.length&&oldAcq.every(Boolean)?'유입 데이터는 조회됐지만 출처 미식별과 태깅 문제는 별도 검증해야 해.':'일부 유입 기록을 조회하지 못해 채널 원인을 확정할 수 없어.')+'</p></article>'+
