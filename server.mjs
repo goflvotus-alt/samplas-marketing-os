@@ -1123,6 +1123,22 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (url.pathname === "/api/ai-audit/popup/project") {
       return json(res, { error: "Method Not Allowed" }, 405);
     }
+    if (url.pathname === "/api/marketing-intelligence/traffic") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      if (!isAuthorizedInternalRequest(req)) return json(res, { ok: false, error: "Unauthorized" }, 401);
+      const since = url.searchParams.get("since"), until = url.searchParams.get("until");
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      const startTime = Date.parse(since + "T00:00:00Z"), endTime = Date.parse(until + "T00:00:00Z");
+      if (!datePattern.test(since || "") || !datePattern.test(until || "") ||
+          !Number.isFinite(startTime) || !Number.isFinite(endTime) ||
+          endTime < startTime || endTime - startTime > 31 * 86400000)
+        return json(res, { ok: false, error: "Valid 1 to 32-day date interval required" }, 400);
+      try {
+        return json(res, await readMarketingVisitAnalytics(since, until));
+      } catch (error) {
+        return json(res, { ok: false, error: "Cafe24 Analytics visitor query failed", detail: Number(error.status) || 502 }, 502);
+      }
+    }
     if (url.pathname.startsWith("/api/crm/")) {
       // CRM analytics: read-only aggregates over existing caches; never calls Cafe24 or writes files.
       if (req.method !== "GET") return json(res, { error: "GET만 지원합니다." }, 405);
@@ -7215,6 +7231,102 @@ async function cafe24FetchJson(url, options = {}) {
   return body;
 }
 
+
+
+// Read-only Cafe24 Analytics visit summary. Order attribution and visitor metrics are separate populations.
+// Cache strictly per date range, never store access credentials in the cache.
+const marketingVisitCache = new Map();
+async function readMarketingVisitAnalytics(since, until) {
+  const key = since + "|" + until;
+  const hit = marketingVisitCache.get(key);
+  if (hit && Date.now() - hit.at < 900000) return hit.result;
+  await ensureCafe24AccessToken();
+  const sources = [
+    ["visits", "/visitors/view"],
+    ["domains", "/visitpaths/domains"],
+    ["searches", "/visitpaths/keyworddetails"]
+  ];
+  const fetchSource = async ([label, path]) => {
+    const url = new URL("https://ca-api.cafe24data.com" + path);
+    for (const [k, v] of Object.entries({
+      mall_id: env.CAFE24_MALL_ID,
+      shop_no: "1",
+      start_date: since, end_date: until, device_type: "total",
+      limit: "100", offset: "0"
+    })) url.searchParams.set(k, v);
+    if (label === "domains") { url.searchParams.set("sort", "visit_count");url.searchParams.set("order","desc"); }
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 12000);
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const token = env.CAFE24_ACCESS_TOKEN;
+        const res = await fetch(url, { headers: { Authorization: "Bearer " + token, Accept: "application/json" }, signal: controller.signal });
+        const raw = await res.text();
+        let data;
+        try { data = JSON.parse(raw); } catch { data = null; }
+        const msg = String(data?.error?.message || data?.message || data?.error_description || "");
+        if (!res.ok) {
+          if (res.status === 401 && /expired/i.test(msg) && attempt === 0) {
+            if (env.CAFE24_ACCESS_TOKEN === token) await refreshCafe24TokenSingleFlight();
+            continue;
+          }
+          return { status: "UNAVAILABLE", rows: null, reason: "HTTP_" + res.status };
+        }
+        // Never coerce an unrecognized payload into an empty result.
+        const root = data?.data ?? data;
+        const variants = {
+          visits: ["visitors", "visitor", "view", "views", "visitors_view"],
+          domains: ["domains", "visitpaths_domains", "visitpaths", "domain"],
+          searches: ["keyworddetails", "keywords", "visitpaths_keyworddetails"]
+        };
+        let rows = Array.isArray(root) ? root : null;
+        if (!rows && root && typeof root === "object") {
+          for (const k of variants[label]) {
+            if (Array.isArray(root[k])) { rows = root[k];break; }
+            if (root[k] && typeof root[k] === "object" && Array.isArray(root[k].items)) { rows = root[k].items;break; }
+          }
+        }
+        if (!rows) return { status: "UNAVAILABLE", rows: null, reason: "UNKNOWN_RESPONSE_SCHEMA" };
+        return { status: "AVAILABLE", rows, limitedToFirst100: rows.length === 100 };
+      }
+      return { status: "UNAVAILABLE", rows: null, reason: "AUTH_RETRY_FAILED" };
+    } catch {
+      return { status: "UNAVAILABLE", rows: null, reason: "REQUEST_FAILED" };
+    } finally { clearTimeout(deadline); }
+  };
+  const values = await Promise.all(sources.map(fetchSource));
+  const result = { ok: true, period: { since, until }, source: "Cafe24 Analytics mall.read_analytics", completeness: "PARTIAL",
+    visits: { status: values[0].status, visitCount: null, firstVisitCount: null, repeatVisitCount: null, reason: values[0].reason ?? null },
+    domains: { status: values[1].status, rows: [], limited: values[1].limitedToFirst100 || false, reason: values[1].reason ?? null },
+    keywords: { status: values[2].status, rows: [], limited: values[2].limitedToFirst100 || false, reason: values[2].reason ?? null },
+    note: "Visits are Cafe24 Analytics sessions (60-min activity timeout), not unique people. Search terms may be unprovided; Analytics payment counts differ from CRM cancellations."
+  };
+  if (values[0].rows) {
+    const rows = values[0].rows;
+    const numbers = (key) => rows.length && rows.every(r => Number.isFinite(Number(r[key]))) ? rows.reduce((a,r)=>a+Number(r[key]),0) : null;
+    result.visits.visitCount = numbers("visit_count");
+    result.visits.firstVisitCount = numbers("first_visit_count");
+    result.visits.repeatVisitCount = numbers("re_visit_count");
+    if (result.visits.visitCount === null) { result.visits.status = "UNAVAILABLE";result.visits.reason = "INVALID_VISITOR_SCHEMA"; }
+  }
+  if (values[1].rows) {
+    result.domains.rows = values[1].rows.map(r=>({ domain: String(r.domain || "(미식별)").slice(0, 140), visits: Number.isFinite(Number(r.visit_count)) ? Number(r.visit_count) : null })).filter(r=>r.visits!==null);
+    if (result.domains.rows.length !== values[1].rows.length) { result.domains.status = "PARTIAL";result.domains.reason = "UNREADABLE_ROWS"; }
+  }
+  if (values[2].rows) {
+    result.keywords.rows = values[2].rows.map(r=>({
+      keyword: String(r.keyword || "(검색어 없음)").slice(0, 160),
+      engine: String(r.engine || "(미식별)").slice(0, 60),
+      visits: Number.isFinite(Number(r.visit_count)) ? Number(r.visit_count) : null,
+      purchaseCount: Number.isFinite(Number(r.purchase_count)) ? Number(r.purchase_count) : null
+    })).filter(r=>r.visits!==null);
+    if (result.keywords.rows.length !== values[2].rows.length) { result.keywords.status = "PARTIAL";result.keywords.reason = "UNREADABLE_ROWS"; }
+    result.keywords.rows.sort((a,b)=>(b.visits??0)-(a.visits??0));
+  }
+  marketingVisitCache.set(key, { at: Date.now(), result });
+  if (marketingVisitCache.size>24) marketingVisitCache.delete(marketingVisitCache.keys().next().value);
+  return result;
+}
 
 async function fetchCafe24AnalyticsOrderDetails({
   startDate,
