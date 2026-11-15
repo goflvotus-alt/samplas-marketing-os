@@ -1155,11 +1155,13 @@ const server = isMainModule ? createServer(async (req, res) => {
           const page = Number(url.searchParams.get("page") || "1");
           const limit = Number(url.searchParams.get("limit") || "25");
           const firstOnly = url.searchParams.get("firstOnly") === "true";
+          const channel = url.searchParams.get("channel") || null, medium = url.searchParams.get("medium") || null;
           if (!isMonth(month) || !["ALL", "NEW", "REPEAT", "GUEST", "UNVERIFIED", "PERSONAL", "UNKNOWN"].includes(segment) ||
               !Number.isInteger(page) || page < 1 || page > 10000 ||
-              !Number.isInteger(limit) || limit < 1 || limit > 50)
+              !Number.isInteger(limit) || limit < 1 || limit > 50 ||
+              (channel && channel.length > 120) || (medium && medium.length > 120))
             return json(res, { ok: false, error: "Invalid order trace filters" }, 400);
-          const result = crm.crmOrderTrace(await ds(), month, segment, { page, limit, firstOnly });
+          const result = crm.crmOrderTrace(await ds(), month, segment, { page, limit, firstOnly, channel, medium });
           return json(res, { ok: true, data: result, meta: { completeness: "PARTIAL", source: "cafe24_cached_order_evidence", note: "Products are item names/quantities, not reconciled product-level paid amounts; no customer PII" } });
         }
         if (url.pathname === "/api/crm/cohort") {
