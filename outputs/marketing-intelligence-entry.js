@@ -7,7 +7,7 @@ const money=n=>Number.isFinite(n)?fmt(Math.round(n))+'원':'확인 불가';
 const delta=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b>0?(a/b-1)*100:null;
 const change=(a,b)=>{const d=delta(a,b);return d===null?'비교 기간 데이터 없음':(d>0?'+':'')+d.toFixed(1)+'%';};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state={active:false,serial:0,loaded:false,loading:false,preset:'1',start:'',end:'',compare:'previous',compareStart:'',compareEnd:''};
+const state={active:false,serial:0,loaded:false,loading:false,preset:'1',start:'',end:'',compare:'previous',compareStart:'',compareEnd:'',tab:'overview',detail:null,loadedRows:null};
 const mn=s=>Number(s.slice(0,4))*12+Number(s.slice(5))-1;
 const ym=n=>Math.floor(n/12)+'-'+String(n%12+1).padStart(2,'0');
 function latestMonth(){const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit'}).formatToParts(new Date());return ym(Number(p.find(x=>x.type==='year').value)*12+Number(p.find(x=>x.type==='month').value)-2)}
@@ -26,6 +26,14 @@ const css=[
 '#'+ID+' .mi-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}',
 '#'+ID+' .mi-range{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:16px 0;padding:14px;background:#fff;border:1px solid #dce5de;border-radius:12px}',
 '#'+ID+' .mi-range label{display:grid;gap:5px;font-size:12px;font-weight:750}',
+'#'+ID+' .mi-tabs{display:flex;flex-wrap:wrap;gap:9px;padding-bottom:12px;border-bottom:1px solid #dce6de;margin:18px 0}',
+'#'+ID+' .mi-tabs button{border:1px solid #cfddd1;background:#fff;color:#2a4d37;font-weight:750;padding:12px 15px}',
+'#'+ID+' .mi-tabs button[aria-selected=true]{background:#1b3227;color:#fff;border-color:#1b3227}',
+'#'+ID+' .mi-pane[hidden]{display:none!important}',
+'#'+ID+' .mi-inspect{border:1px solid #9ab8a5;background:#f3f9f4;padding:17px;border-radius:13px;margin:14px 0;line-height:1.7}',
+'#'+ID+' .mi-inspect p{font-size:13px}',
+'#'+ID+' .mi-provisional{border:1px dashed #bdcdc2;background:#f7faf7;padding:22px;border-radius:13px;margin:12px 0}',
+'#'+ID+' .mi-segment-button{border:1px solid #bdcfc1;background:#f2f8f2;color:#2e6043;padding:7px 11px;margin-top:8px}',
 '#'+ID+' .mi-range select,#'+ID+' .mi-range input{padding:9px;border:1px solid #d5ded7;border-radius:8px;font:inherit;font-size:13px}',
 '#'+ID+' .mi-eyebrow{font-size:11px;font-weight:850;letter-spacing:.1em;color:#48765a}',
 '#'+ID+' .mi-tag{display:inline-block;padding:5px 9px;background:#fff2d9;color:#926115;border-radius:8px;font-weight:800;font-size:12px}',
@@ -82,8 +90,12 @@ function mount(){
  const nav=$('nav'),main=document.querySelector('main.main');if(!nav||!main)return;
  if(!$(ID)){
   const v=document.createElement('section');v.id=ID;v.className='view';v.setAttribute('aria-label','Marketing Intelligence');
-  v.innerHTML='<div class="mi-head"><div><div class="mi-eyebrow">SAMPLAS · MARKETING INTELLIGENCE</div><h2>마케팅 데이터 분석</h2><p class="mi-muted">기간을 바꾸고 매출·고객·유입의 변화를 탐색해.</p></div><div><span class="mi-tag" id="miStatus">조회 대기</span> <button id="miReload" type="button">다시 확인</button></div></div><div class="mi-range"><label>분석 기간<select id="miPreset"><option value="1">최근 완료 월</option><option value="3">최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option><option value="custom">직접 선택</option></select></label><label>시작 월<input id="miStart" type="month"></label><label>종료 월<input id="miEnd" type="month"></label><label>비교 기간<select id="miCompare"><option value="previous">직전 동일 기간</option><option value="year">전년 동일 기간</option><option value="custom">직접 비교</option></select></label><label>비교 시작 월<input id="miCompareStart" type="month" disabled></label><label>비교 종료 월<input id="miCompareEnd" type="month" disabled></label><span id="miPeriodHint" class="mi-muted"></span></div><div id="miBody" class="mi-loading">조회 전</div>';
+  v.innerHTML='<div class="mi-head"><div><div class="mi-eyebrow">SAMPLAS · MARKETING INTELLIGENCE</div><h2>마케팅 데이터 분석</h2><p class="mi-muted">기간을 바꾸고 매출·고객·유입의 변화를 탐색해.</p></div><div><span class="mi-tag" id="miStatus">조회 대기</span> <button id="miReload" type="button">다시 확인</button></div></div><div class="mi-range"><label>분석 기간<select id="miPreset"><option value="1">최근 완료 월</option><option value="3">최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option><option value="custom">직접 선택</option></select></label><label>시작 월<input id="miStart" type="month"></label><label>종료 월<input id="miEnd" type="month"></label><label>비교 기간<select id="miCompare"><option value="previous">직전 동일 기간</option><option value="year">전년 동일 기간</option><option value="custom">직접 비교</option></select></label><label>비교 시작 월<input id="miCompareStart" type="month" disabled></label><label>비교 종료 월<input id="miCompareEnd" type="month" disabled></label><span id="miPeriodHint" class="mi-muted"></span></div><div id="miTabs" class="mi-tabs" role="tablist" aria-label="분석 영역"></div><div id="miInspect" aria-live="polite"></div><div id="miBody" class="mi-loading">조회 전</div>';
   main.appendChild(v);$('miReload').addEventListener('click',load);
+  $('miTabs').addEventListener('click',e=>{const b=e.target.closest('[data-mi-tab]');if(!b)return;state.tab=b.getAttribute('data-mi-tab');state.detail=null;showExplorerTab()});
+  $('miBody').addEventListener('click',e=>{const b=e.target.closest('[data-mi-segment]');if(!b||!state.loadedRows)return;state.detail=Number(b.getAttribute('data-mi-segment'));showSegmentDetail()});
+  $('miInspect').addEventListener('click',e=>{if(e.target.closest('[data-mi-close]')){state.detail=null;showSegmentDetail()}});
+  showExplorerTab();
   $('miPreset').addEventListener('change',e=>{state.preset=e.target.value;syncPeriod();load()});
   $('miCompare').addEventListener('change',e=>{state.compare=e.target.value;if(state.compare==='custom'&&(!state.compareStart||!state.compareEnd)){const length=mn(state.end)-mn(state.start);state.compareEnd=ym(mn(state.start)-1);state.compareStart=ym(mn(state.compareEnd)-length)}syncPeriod();load()});
   for(const id of ['miCompareStart','miCompareEnd'])$(id).addEventListener('change',()=>{state.compareStart=$('miCompareStart').value;state.compareEnd=$('miCompareEnd').value;load()});
@@ -219,6 +231,7 @@ async function load(){
  if(token!==state.serial)return;state.loaded=true;state.loading=false;
  const n=months.length,group=k=>responses.slice(k*n,(k+1)*n).map(r=>r?.ok?r.value:null);
  const current=group(0).map((x,i)=>row(months[i],x)),previous=group(1).map((x,i)=>row(prevMonths[i],x)),acquisition=group(2),qualities=group(3),oldAcq=group(4),oldQuality=group(5),cohort=responses[6*n]?.ok?responses[6*n].value:null;
+ state.loadedRows={current,previous,months,prevMonths,acquisition,qualities,cohort};state.detail=null;
  const orders=sum(current,'orders'),oldOrders=sum(previous,'orders');
  const sales=sum(current,'amount'),oldSales=sum(previous,'amount'),newCount=sum(current,'new'),oldNew=sum(previous,'new'),repeat=sum(current,'repeat'),oldRepeat=sum(previous,'repeat'),unknown=sum(current,'unknown');
  const aov=orders>0&&sales!==null?sales/orders:null,priorAov=oldOrders>0&&oldSales!==null?oldSales/oldOrders:null;
@@ -253,7 +266,78 @@ async function load(){
  '<article class="mi-panel"><h3>고객은 다시 구매했을까?</h3><div class="mi-note">'+(mature.length?'30일 관찰이 끝난 월: '+esc(mature.join(' / ')):'30일 재구매율: 신뢰할 수 있는 관찰 완료 월 확인 불가')+'</div><p>첫 구매 후 다시 사는 비율이야. <b>관찰 기간이 지나지 않은 고객은 0%로 취급하지 않아.</b></p></article></section>'+
  '<div class="mi-section"><h3>데이터 신뢰도</h3></div><div class="mi-panel"><span class="mi-tag">'+(unique.length?'잠정 분석 · 추가 확인 필요':'기본 검증 완료')+'</span><p style="margin-top:9px">현재 신뢰할 수 있는 관측치만 보여주고, 미확인 값을 0으로 바꾸지 않아. 검증 전에는 광고 예산 변경·쿠폰 발급·CRM 메시지 발송을 권하지 않아.</p><details><summary>확인해야 할 데이터 문제 보기 ('+unique.length+'종류)</summary><ul style="font-size:12px;line-height:1.85">'+(unique.length?unique.map(x=>'<li>'+esc(x)+'</li>').join(''):'<li>추가 경고 없음</li>')+'</ul><p class="mi-error">월별로 반복되는 동일 경고는 합쳐서 보여줘. 기술 오류 코드나 70개 경고 목록을 나열하지 않아.</p></details></div>'+
  '<p class="mi-footer">출처: SAMPLAS Marketing OS CRM 월별·유입·품질·코호트 API. '+months[0]+' ~ '+months.at(-1)+' · '+compareLabel+'. 미마감 수치는 잠정치야. 신규 고객 감소의 실제 원인이나 예상 매출 증가는 확정하지 않았어. 광고 플랫폼 전환은 실매출로 합산하지 않아.</p>';
- $('miBody').className='';$('miBody').innerHTML=html;$('miStatus').textContent=unique.length?'잠정 데이터':'데이터 조회 완료';
+ $('miBody').className='';$('miBody').innerHTML=html;$('miStatus').textContent=unique.length?'잠정 데이터':'데이터 조회 완료';organizeExplorer();
+}
+
+const EXPLORER_TABS=[['overview','매출 구조'],['customers','고객 분석'],['acquisition','유입 · 광고'],['products','상품 · 콘텐츠']];
+function showExplorerTab(){
+ const tabs=$('miTabs');if(tabs)tabs.innerHTML=EXPLORER_TABS.map(([key,label])=>'<button type="button" role="tab" data-mi-tab="'+key+'" aria-selected="'+(state.tab===key)+'">'+label+'</button>').join('');
+ for(const pane of document.querySelectorAll('#miBody .mi-pane'))pane.hidden=pane.getAttribute('data-mi-pane')!==state.tab;
+ if(state.tab==='acquisition')loadAdEvidence();
+ showSegmentDetail();
+}
+function organizeExplorer(){
+ const body=$('miBody');if(!body||!body.children.length)return;
+ // Known composition of the verified legacy read-only analysis renderer.
+ const original=Array.from(body.children);
+ if(original.length<13)return; // fail safe: retain original report rather than erase it
+ const groups=[
+  ['overview',[0,1,2,3]],
+  ['customers',[7,8,9]],
+  ['acquisition',[4,5]],
+ ];
+ const layout=document.createDocumentFragment();
+ for(const [name,indices] of groups){
+  const section=document.createElement('section');section.className='mi-pane';section.setAttribute('data-mi-pane',name);
+  for(const idx of indices)if(original[idx])section.appendChild(original[idx]);
+  if(name==='acquisition'){const ads=document.createElement('div');ads.id='miAdsEvidence';section.appendChild(ads)}
+  layout.appendChild(section);
+ }
+ const productPane=document.createElement('section');productPane.className='mi-pane';productPane.setAttribute('data-mi-pane','products');
+ productPane.innerHTML='<div class="mi-provisional"><h3>브랜드·상품별 판매 기여</h3><p>현재 제품·브랜드 API는 있지만 고객 유형별 주문 매출과 연결된 검증 자료가 부족해. 동일 주문에서 매출을 중복 없이 분배하는 검증 전에는 상품별 기여도를 표시하지 않아.</p><p class="mi-muted">연결 예정: 상품 실결제 매출, 주문 수, 할인, 재고, 고객 유형 및 매출 기여도</p></div>'+
+ '<div class="mi-provisional"><h3>SAMPLAS / VEIL 콘텐츠 비교</h3><p>게시물별 도달·저장·참여 데이터와 실제 구매를 연결할 근거가 필요해. 먼저 계정별 피드·릴스·행사/팝업 분류와 게시물 매핑을 검증해야 해.</p><p class="mi-muted">현재 상태: 콘텐츠 → 구매 귀속 미검증. 임의 ROAS나 인과관계 표시 없음</p></div>';
+ layout.appendChild(productPane);
+ const quality=document.createElement('div');quality.className='mi-pane-quality';
+ for(const idx of [10,11,12])if(original[idx])quality.appendChild(original[idx]);
+ body.replaceChildren(layout,quality);
+ const labels=['신규 회원','재구매 회원','비회원','개인결제','첫 구매 이력 미확인','회원 구분 불가'];
+ const segments=body.querySelectorAll('[data-mi-pane="overview"] .mi-legend-item');
+ segments.forEach((row,i)=>{
+  if(i>=labels.length)return;
+  const button=document.createElement('button');button.type='button';button.className='mi-segment-button';button.setAttribute('data-mi-segment',String(i));button.textContent='월별 근거 보기';
+  row.appendChild(button);
+ });
+ showExplorerTab();
+}
+function showSegmentDetail(){
+ const el=$('miInspect');if(!el)return;
+ const data=state.loadedRows,ix=state.detail;
+ if(ix===null||!data||!Number.isInteger(ix)||ix<0||ix>5){el.innerHTML='';return}
+ const specs=[
+  ['신규 회원 매출','newRevenue','검증된 첫 구매 회원 주문 매출'],
+  ['재구매 회원 매출','repeat','이전 구매 이력이 확인된 회원 매출'],
+  ['비회원 주문 매출','guestRevenue','네이버페이를 포함하는 비회원 주문'],
+  ['개인결제창 매출','personalRevenue','회원/스타일리스트 유형으로 확정할 수 없는 별도 결제 방식'],
+  ['첫 구매 이력 미확인 회원 매출','unverifiedRevenue','과거 주문 이력 부족으로 신규/재구매 구분이 불가능한 회원'],
+  ['회원 구분 불가 매출','identityUnknownRevenue','주문 회원 식별 자체가 불확실한 거래']
+ ];
+ const [name,key,meaning]=specs[ix];
+ const body=data.current.map(x=>'<tr><td>'+esc(x?.month??'기간 미확인')+'</td><td>'+money(x?.[key])+'</td></tr>').join('');
+ el.innerHTML='<section class="mi-inspect"><button type="button" data-mi-close style="float:right">닫기</button><h3>'+esc(name)+'</h3><p>'+esc(meaning)+'</p><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>월</th><th>매출</th></tr></thead><tbody>'+body+'</tbody></table></div><p>출처: Cafe24 CRM /api/crm/monthly. 현재 기간의 자료가 NOT_FINAL 또는 PARTIAL이면 확정 수치가 아니야.</p></section>';
+}
+async function loadAdEvidence(){
+ const target=$('miAdsEvidence'),rows=state.loadedRows;if(!target||!rows)return;
+ const serial=state.serial;
+ target.innerHTML='<div class="mi-provisional">광고 플랫폼 지표 확인 중…</div>';
+ const last=rows.months.at(-1);
+ const since=rows.months[0]+'-01',until=new Date(Date.UTC(Number(last.slice(0,4)),Number(last.slice(5)),0)).toISOString().slice(0,10);
+ try{
+  const result=await get('/api/advertising/overview?since='+since+'&until='+until);
+  if(serial!==state.serial||state.tab!=='acquisition')return;
+  if(!Array.isArray(result.channels))throw Error('No channel data');
+  target.innerHTML='<div class="mi-section"><h3>광고 플랫폼 보고 지표</h3><span class="mi-muted">Cafe24 구매 귀속 매출과 별개</span></div><div class="mi-breakdown"><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>채널</th><th>광고비</th><th>노출</th><th>클릭</th><th>플랫폼 전환</th><th>데이터 경고</th></tr></thead><tbody>'+
+    result.channels.map(x=>'<tr><td>'+esc(x.channel)+'</td><td>'+money(x.spend)+'</td><td>'+fmt(x.impressions)+'</td><td>'+fmt(x.clicks)+'</td><td>'+fmt(x.platformConversions)+'</td><td>'+esc(x.issues?.length?x.issues.length+'건 · 검증 필요':'확인')+'</td></tr>').join('')+'</tbody></table></div><p class="mi-muted">출처: Meta·NAVER 플랫폼. 전환과 전환 매출을 Cafe24 실제 매출로 합산하지 않아. 특히 통화·추적 누락 여부를 확인해야 해.</p></div>';
+ }catch(e){if(serial===state.serial)target.innerHTML='<div class="mi-provisional">광고 데이터 조회 실패. 매출 및 유입 데이터는 그대로 확인할 수 있어. 임의 수치를 표시하지 않아.</div>'}
 }
 document.addEventListener('click',e=>{
  const link=e.target.closest?.('['+MARK+']');if(link){e.preventDefault();enter();return}
