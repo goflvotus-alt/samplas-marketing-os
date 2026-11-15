@@ -143,6 +143,7 @@ function mount(){
     if(e.target.closest('[data-mi-close]'))closeMiInspector()
     const seg=e.target.closest('[data-mi-trace-segment]');if(seg)openOrderTrace(seg.getAttribute('data-mi-trace-segment'));
     const page=e.target.closest('[data-mi-trace-page]');if(page){state.tracePage=Number(page.getAttribute('data-mi-trace-page'));loadOrderTrace()}
+    if(e.target.closest('[data-mi-trace-retry]')){loadOrderTrace()}
     if(e.target.closest('[data-mi-trace-close]')){closeMiInspector()}
     if(e.target===$('miInspect'))closeMiInspector()
   });
@@ -431,7 +432,10 @@ async function loadOrderTrace(){
    '<div class="mi-trace-controls"><button type="button" data-mi-trace-page="'+(page-1)+'"'+(page===1?' disabled':'')+'>이전</button><span>'+page+' / '+max+' 페이지</span><button type="button" data-mi-trace-page="'+(page+1)+'"'+(page>=max?' disabled':'')+'>다음</button></div>'+
    '<p class="mi-inline-note">Cafe24 주문 원본 + Analytics 주문 유입 기준. 구매 상품은 상품명·수량이며 할인/반품이 분배된 상품별 순매출이 아니야. 주문별 검색어는 수집되지 않아. 개인식별 정보는 제공하지 않아.</p></section>';
  }catch(e){
-  if(reqId===state.traceSerial)el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+'</h3><p>주문 상세 근거 조회에 실패했어. 로그인이 필요한 내부 조회이거나 원천 주문 자료가 없을 수 있어.</p></section>';
+  if(reqId===state.traceSerial){
+   const message=String(e?.message||'조회 실패').includes('401')?'운영자 세션 확인이 필요해. 로그인한 뒤 다시 시도해 줘.':'주문 상세 자료 조회에 실패했어. 요청한 월의 원천 주문 데이터 또는 서버 상태를 확인해야 해.';
+   el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+'</h3><p>'+message+'</p><div class="mi-trace-controls"><button type="button" data-mi-trace-retry>다시 조회</button></div></section>';
+  }
  }
 }
 
@@ -463,7 +467,7 @@ async function loadVisitEvidence(){
    '<p class="mi-inline-note">출처: Cafe24 Analytics /visitors/view, /visitpaths/domains, /visitpaths/keyworddetails. 최초 구매 유입은 CRM 주문 연결 기준, 방문 통계는 세션 기준으로 서로 달라. 검색어 표의 구매 건수는 카페24 애널리틱스 원칙이며 환불·취소 반영과 집계 시점이 CRM과 달라.</p>'+
    ((domains.limited||keywords.limited)?'<p class="mi-inline-note">최대 100개 원천 행 중 상위 일부만 표시한 결과야. 전체 방문·키워드 분포로 취급하지 않아.</p>':'')+'</section>';
  }catch{
-  if(token===state.trafficSerial)box.innerHTML='<section class="mi-traffic"><h3>방문 채널·검색어</h3><p>카페24 애널리틱스에서 방문·검색어 데이터를 읽지 못했어. 현재 숫자 대체 불가. 첫 구매 유입 채널과 광고 지표는 별도로 볼 수 있어.</p></section>';
+  if(token===state.trafficSerial)box.innerHTML='<section class="mi-traffic"><h3>방문 채널·검색어</h3><p>카페24 방문·검색어 원천 API 조회에 실패했어. 유입 채널별 신규 고객 수와 방문자 수를 같은 숫자로 취급하지 않아.</p><p class="mi-muted">운영자 세션 또는 카페24 Analytics의 권한·응답 형식을 점검해야 해.</p></section>';
  }
 }
 async function loadAdEvidence(){
