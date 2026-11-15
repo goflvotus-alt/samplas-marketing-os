@@ -5441,7 +5441,7 @@ export async function buildMonthlyArchive(month) {
   const postSum = (items, key) => (items || []).reduce((total, item) => total + Number(item?.[key] || 0), 0);
   const topPostsBy = (selector, count = 3) => [...posts].sort((left, right) => Number(selector(right) || 0) - Number(selector(left) || 0)).slice(0, count);
   const averageSaveRate = average(posts.map((post) => postMetrics(post).saveRate));
-  const contentTypes = ["릴스", "카드뉴스", "피드"];
+  const contentTypes = ["릴스", "신상 입고", "카드뉴스", "피드"];
   const formatMix = contentTypes.map((type) => {
     const group = posts.filter((post) => (post.type || "피드") === type);
     return {
@@ -10470,9 +10470,19 @@ function sumPostInteractionsOrNull(posts) {
 }
 
 function contentType(item) {
-  if (item.media_product_type === "REELS") return "릴스";
-  if (item.media_type === "CAROUSEL_ALBUM") return "카드뉴스";
-  if (item.media_type === "VIDEO") return "릴스";
+  // CAROUSEL_ALBUM describes Instagram format, not the editorial purpose.
+  // Two user-reviewed posts are explicit classification examples.
+  const permalink = String(item.permalink || "");
+  if (permalink.includes("/p/DeJ1hyJEod5")) return "카드뉴스";
+  if (permalink.includes("/p/DeOxvFYkovw")) return "신상 입고";
+
+  if (item.media_product_type === "REELS" || item.media_type === "VIDEO") return "릴스";
+  const caption = String(item.caption || "").toLowerCase();
+  if (/\b(release now|now available|new arrivals?|just arrived|new drop|restock(?:ed)?|[0-9]{2}(?:ss|aw|fw)\s+(?:[0-9a-z ]*\s)?(?:release|delivery))\b/i.test(caption) ||
+      /신상\s*입고|신규\s*입고|입고\s*(?:완료|안내)|신상품\s*(?:출시|입고)|[0-9]{2}(?:ss|aw|fw)\s*(?:[0-9a-z ]*\s)?(?:릴리즈|입고)/i.test(caption)) return "신상 입고";
+  if (/\b(card\s*news|editorial|guide|how\s*to|explainer|tips?)\b/i.test(caption) ||
+      /카드\s*뉴스|가이드|알아보기|살펴보기|스타일링\s*팁|착용\s*방법|브랜드\s*스토리/i.test(caption)) return "카드뉴스";
+  // Unknown carousels stay ordinary feeds rather than being mislabeled as card news.
   return "피드";
 }
 
