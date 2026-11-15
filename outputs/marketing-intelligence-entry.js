@@ -42,6 +42,7 @@ const css=[
 '#'+ID+' .mi-loading{background:#f3f6f3;border-radius:11px;padding:48px;text-align:center;color:#6b786e}',
 '#'+ID+' .mi-error{font-size:12px;color:#8b5b25}',
 '.nav [data-marketing-intelligence-entry].active{background:#252d29!important;color:#fff!important;border:1px solid #496452!important}',
+'.main.mi-marketing-mode .topbar .controls{display:none}',
 '@media(max-width:960px){#'+ID+' .mi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}',
 '@media(max-width:650px){#'+ID+' .mi-grid,#'+ID+' .mi-duo{grid-template-columns:1fr}#'+ID+' .mi-head{display:block}#'+ID+' .mi-head button{margin-top:10px}#'+ID+' .mi-hero{padding:18px}#'+ID+' h2{font-size:24px}}'
 ].join('\n');
@@ -61,7 +62,7 @@ function mount(){
  }
 }
 function enter(){
- mount();state.active=true;
+ mount();state.active=true;document.querySelector('main.main')?.classList.add('mi-marketing-mode');
  document.querySelectorAll('main .view.active').forEach(e=>e.classList.remove('active'));
  $(ID)?.classList.add('active');
  $('nav')?.querySelectorAll('.active').forEach(e=>e.classList.remove('active'));
@@ -69,7 +70,7 @@ function enter(){
  if($('topbarTitle'))$('topbarTitle').textContent='Marketing Intelligence';
  if(!state.loading&&!state.loaded)load();
 }
-function leave(){state.active=false;$(ID)?.classList.remove('active');$('nav')?.querySelector('['+MARK+']')?.classList.remove('active')}
+function leave(){state.active=false;document.querySelector('main.main')?.classList.remove('mi-marketing-mode');$(ID)?.classList.remove('active');$('nav')?.querySelector('['+MARK+']')?.classList.remove('active')}
 async function get(url){
  const r=await fetch(url,{credentials:'same-origin',headers:{Accept:'application/json'}});
  if(!r.ok)throw Error('HTTP '+r.status);
