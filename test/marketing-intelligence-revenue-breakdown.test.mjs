@@ -38,3 +38,25 @@ test('mismatch does not count as reconciled',()=>{
  const data=rows.map(x=>({...x}));data[0].personalRevenue+=1;
  const r=analyze(data);assert.equal(r.complete,true);assert.equal(r.discrepancy,-1);
 });
+
+test('comparison table labels actual months and explains observed changes',()=>{
+ const left=source.slice(source.indexOf('const fmt='),source.indexOf('const state='));
+ const functions=source.slice(source.indexOf('const sum='),source.indexOf('function metric('))+'\n'+source.slice(source.indexOf('function revenueBreakdown('),source.indexOf('function renderWhy('));
+ const render=vm.runInNewContext(left+'\n'+functions+'\nrenderBreakdown',{Number,Array,String,Set,Math,Intl});
+ const html=render([rows[3]],[rows[2]],'직전 같은 길이 기간');
+ assert.match(html,/선택 2026-10/);
+ assert.match(html,/비교 2026-09/);
+ assert.match(html,/39,462,706원/);
+ assert.match(html,/30,748,893원/);
+ assert.match(html,/8,713,813원/);
+ assert.match(html,/재구매 회원 매출/);
+ assert.match(html,/\+8,514,810원/);
+ assert.match(html,/개인결제창 주문 매출/);
+ assert.match(html,/-6,123,440원/);
+ assert.match(html,/월별 근거/);
+ assert.match(html,/온라인 매출 합계/);
+});
+test('no undefined variable in segment button rendering',()=>{
+ assert.match(source,/const labels=\[/);
+ assert.match(source,/if\(i>=labels.length\)/);
+});
