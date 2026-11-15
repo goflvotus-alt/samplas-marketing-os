@@ -71,6 +71,22 @@ const css=[
 '#'+ID+' .mi-legend-item strong{margin-left:auto;white-space:nowrap}',
 '#'+ID+' .mi-legend-item em{font-size:11px;font-style:normal;color:#67746c;white-space:nowrap}',
 '#'+ID+' .mi-table-wrap{max-width:100%;overflow-x:auto;margin-top:12px}',
+'#'+ID+' .mi-period-bar{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}',
+'#'+ID+' .mi-period-bar>div{display:flex;flex-direction:column;gap:4px;background:#f3f7f3;border:1px solid #dce6df;border-radius:11px;padding:13px}',
+'#'+ID+' .mi-period-bar strong{font-size:15px}',
+'#'+ID+' .mi-period-bar .mi-period-label{font-weight:800;font-size:11px;color:#496452}',
+'#'+ID+' .mi-period-bar span:last-child{font-size:15px;font-weight:800}',
+'#'+ID+' .mi-findings{margin:17px 0;background:#f5f8f5;border-left:4px solid #488163;padding:14px 16px;border-radius:7px}',
+'#'+ID+' .mi-findings p{font-size:13px;margin:6px 0 0}',
+'#'+ID+' .mi-table-context{margin:17px 0 8px}',
+'#'+ID+' .mi-table-context p{font-size:12px;color:#566c5c;margin-top:4px}',
+'#'+ID+' .mi-table caption{caption-side:top;text-align:left;padding-bottom:7px;font-size:12px;color:#526b5b}',
+'#'+ID+' .mi-table td{vertical-align:middle}',
+'#'+ID+' .mi-cell-explain{font-size:11px;font-weight:400;max-width:310px;color:#657267;line-height:1.6;margin-top:4px}',
+'#'+ID+' .mi-down{color:#a23f3f;font-weight:750}',
+'#'+ID+' .mi-up{color:#276b49;font-weight:750}',
+'#'+ID+' .mi-total-row{background:#edf3ee;font-weight:800}',
+'@media(max-width:650px){#'+ID+' .mi-period-bar{grid-template-columns:1fr}}',
 '#'+ID+' .mi-table{border-collapse:collapse;width:100%;min-width:620px;font-size:12px}',
 '#'+ID+' .mi-table th,#'+ID+' .mi-table td{padding:10px 9px;border-bottom:1px solid #e8ede9;text-align:right;font-variant-numeric:tabular-nums}',
 '#'+ID+' .mi-table th:first-child,#'+ID+' .mi-table td:first-child{text-align:left;white-space:nowrap}',
@@ -157,27 +173,37 @@ function revenueBreakdown(rows){
 }
 function renderBreakdown(rows,previous,compareLabel='비교 기간'){
  const data=revenueBreakdown(rows),prior=revenueBreakdown(previous);
+ const rangeLabel=list=>list?.length&&list.every(x=>x?.month)?(list.length===1?list[0].month:list[0].month+' ~ '+list.at(-1).month):'기간 확인 불가';
+ const currentPeriod=rangeLabel(rows),previousPeriod=rangeLabel(previous);
+ const periodsKnown=currentPeriod!=='기간 확인 불가'&&previousPeriod!=='기간 확인 불가';
+ const totalDifference=data.total!==null&&prior.total!==null?data.total-prior.total:null;
  const reconciled=data.complete&&data.discrepancy===0;
  const legend=data.items.map(x=>'<div class="mi-legend-item"><span class="mi-dot" style="background:'+x.color+'"></span><div>'+esc(x.name)+' <em>'+(x.share===null?'비중 미확인':x.share.toFixed(1)+'%')+'</em></div><strong>'+money(x.amount)+'</strong></div>').join('');
  const stack=reconciled?'<div class="mi-stack" role="img" aria-label="온라인 매출 구성 비중">'+data.items.filter(x=>x.amount>0).map(x=>'<span title="'+esc(x.name)+' '+x.share.toFixed(1)+'%" style="width:'+x.share.toFixed(5)+'%;background:'+x.color+'"></span>').join('')+'</div>':'<p class="mi-error">세부 매출 합계와 총매출의 검증이 완료되지 않아 구성 비율 그래프를 표시하지 않아.</p>';
- const movement=data.items.map(x=>{const previousItem=prior.items.find(p=>p.key===x.key);const before=previousItem?previousItem.amount:null;const difference=x.amount!==null&&before!==null?x.amount-before:null;return {label:x.name,current:x.amount,prior:before,difference}}).filter(x=>x.current!==0||x.prior!==0);
- const movementRows=movement.map(x=>'<tr><td>'+esc(x.label)+'</td><td>'+money(x.prior)+'</td><td>'+money(x.current)+'</td><td>'+((x.difference===null)?'비교 불가':(x.difference>0?'+':'')+money(x.difference))+'</td></tr>').join('');
- const totalDiff=data.total!==null&&prior.total!==null?data.total-prior.total:null;
+ const movement=data.items.map((x,index)=>{const previousItem=prior.items.find(p=>p.key===x.key);const before=previousItem?previousItem.amount:null;const difference=x.amount!==null&&before!==null?x.amount-before:null;return {index,label:x.name,current:x.amount,prior:before,difference,share:x.share,description:x.desc}}).filter(x=>x.current!==0||x.prior!==0);
+ const movementRows=movement.map(x=>'<tr><td><b>'+esc(x.label)+'</b><div class="mi-cell-explain">'+esc(x.description)+'</div></td><td>'+money(x.prior)+'</td><td>'+money(x.current)+'</td><td>'+(x.share===null?'확인 불가':x.share.toFixed(1)+'%')+'</td><td class="'+(x.difference!==null&&x.difference<0?'mi-down':x.difference>0?'mi-up':'')+'">'+(x.difference===null?'비교 불가':(x.difference>0?'+':'')+money(x.difference))+'</td><td><button type="button" class="mi-segment-button" data-mi-segment="'+x.index+'">월별 근거</button></td></tr>').join('');
+ const totalDiff=totalDifference;
  const negative=movement.filter(x=>x.difference!==null&&x.difference<0).sort((a,b)=>a.difference-b.difference)[0];
  const positive=movement.filter(x=>x.difference!==null&&x.difference>0).sort((a,b)=>b.difference-a.difference)[0];
+ const netSentence=totalDiff===null?'변화 판단 불가':totalDiff>0?'온라인 매출이 '+money(totalDiff)+' 증가했어.':totalDiff<0?'온라인 매출이 '+money(Math.abs(totalDiff))+' 감소했어.':'온라인 매출 총액은 변하지 않았어.';
+ const strongest=negative&&positive?'가장 큰 감소 항목은 '+negative.label+' ('+money(negative.difference)+'), 가장 큰 증가 항목은 '+positive.label+' (+'+money(positive.difference)+')이야.':
+  negative?'가장 크게 감소한 항목은 '+negative.label+' ('+money(negative.difference)+')이야.':
+  positive?'가장 크게 증가한 항목은 '+positive.label+' (+'+money(positive.difference)+')이야.':'항목별 변화는 확인되지 않았거나 비교할 데이터가 부족해.';
  const rowsHtml=rows.map(x=>{
   if(!x)return '<tr><td>월 데이터 없음</td><td colspan="6">조회 실패 · 확인 불가</td></tr>';
   return '<tr><td>'+esc(x.month)+'</td>'+[x.amount,x.newRevenue,x.repeat,x.guestRevenue,x.personalRevenue,x.unverifiedRevenue].map(v=>'<td>'+money(v)+'</td>').join('')+'</tr>';
  }).join('');
- return '<section class="mi-breakdown"><h3>온라인 매출은 누가 만들었을까?</h3><p class="mi-muted">회원 구매 이력과 주문 유형을 기준으로 나눈 <b>서로 겹치지 않는 매출 구성</b>이야. 고객 직업/등급 구분이 아니야.</p>'+
+ return '<section class="mi-breakdown"><div class="mi-period-bar"><div><span class="mi-period-label">선택한 분석 기간</span><strong>'+esc(currentPeriod)+'</strong><span>'+money(data.total)+'</span></div><div><span class="mi-period-label">'+esc(compareLabel)+'</span><strong>'+esc(previousPeriod)+'</strong><span>'+money(prior.total)+'</span></div></div>'+
+ '<h3>온라인 매출을 구성하는 주문 유형</h3><p class="mi-muted">아래 분류는 회원 구매 이력과 결제 방식을 기준으로 나눈 거야. <b>누가 신규 고객인지 모르는 금액을 신규 매출로 추정하지 않아.</b></p>'+
  '<div class="mi-total">'+money(data.total)+'</div>'+stack+
  '<div class="mi-legend">'+legend+'</div>'+
- '<p class="mi-muted">'+(reconciled?'구성 항목 합계가 온라인 매출과 정확히 일치해.':'아직 합계가 맞지 않아. 차액 또는 누락 데이터부터 점검해야 해.')+' 아래 항목 중 개인결제창 주문은 CRM 신규·재구매 분석에 포함하지 않아.</p>'+
- '<div class="mi-note" style="margin-top:13px"><b>선택한 비교 기간과 대조하면</b><div>비교 기간 '+money(prior.total)+' → 선택 기간 '+money(data.total)+' · 변화 '+(totalDiff===null?'비교 불가':(totalDiff>0?'+':'')+money(totalDiff))+' ('+change(data.total,prior.total)+')</div><p class="mi-muted">고객 유형별 증감은 매출 구성 변화야. 특정 채널이나 콘텐츠가 원인이라는 뜻은 아니야.</p></div>'+ 
- '<div class="mi-duo" style="margin:12px 0"><div class="mi-note"><b>가장 큰 감소 구분</b><div>'+(negative?esc(negative.label)+' '+money(negative.difference):'비교 데이터 부족')+'</div></div><div class="mi-note"><b>감소를 일부 상쇄한 증가 구분</b><div>'+(positive?esc(positive.label)+' +'+money(positive.difference):'확인된 증가 구분 없음')+'</div></div></div>'+
- '<div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>주문·고객 구분</th><th>비교 기간</th><th>선택 기간</th><th>매출 차이</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>'+
- '<details><summary>월별로 누가 얼마나 구매했는지 보기</summary><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>월</th><th>온라인 전체</th><th>신규 회원</th><th>재구매 회원</th><th>비회원</th><th>개인결제</th><th>구매 이력 미확인</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></details>'+
- '<details><summary>각 매출 구분은 무엇을 의미할까?</summary><ul style="padding-left:20px;font-size:12px;line-height:1.9">'+data.items.map(x=>'<li><b>'+esc(x.name)+'</b>: '+esc(x.desc)+'</li>').join('')+'</ul><p class="mi-muted">스타일리스트·직원·프레스 등 고객 유형별 온라인 매출은 현재 주문 데이터만으로 구분 불가해. 별도 검증된 주문-고객 연결이 필요해.</p></details></section>';
+ '<p class="mi-muted">'+(reconciled?'각 매출 구분의 합계가 선택 기간 온라인 매출과 일치해.':'구성 항목 합계 검증이 되지 않았어. 누락·불일치 확인이 필요해.')+' 비회원·개인결제는 회원 첫 구매·재구매 매출과 다른 구분이야.</p>'+
+ '<div class="mi-findings" role="group" aria-label="이번 기간 매출 변화 요약"><b>이 표에서 먼저 볼 것</b><p>'+esc(netSentence)+' '+esc(strongest)+'</p><p class="mi-muted">이것은 매출 변화를 항목별로 분해한 결과야. 매출 변화의 실제 원인이나 광고 기여가 확인됐다는 뜻은 아니야.</p></div>'+
+ '<div class="mi-table-context"><b>고객·주문 유형별 매출 비교</b><p>왼쪽부터 각 구분의 매출, 선택 기간 전체 매출에서 차지하는 비율, 비교 기간 대비 증감이야. 항목별 의미는 이름 아래에, 월별 상세는 오른쪽에서 볼 수 있어.</p></div>'+
+ '<div class="mi-table-wrap"><table class="mi-table"><caption>선택 기간 '+esc(currentPeriod)+' / 비교 기간 '+esc(previousPeriod)+' / 단위 원</caption><thead><tr><th scope="col">주문·고객 구분</th><th scope="col">비교 '+esc(previousPeriod)+'</th><th scope="col">선택 '+esc(currentPeriod)+'</th><th scope="col">선택 기간 비중</th><th scope="col">매출 증감</th><th scope="col">상세</th></tr></thead><tbody>'+movementRows+
+ '<tr class="mi-total-row"><th scope="row">온라인 매출 합계</th><td>'+money(prior.total)+'</td><td>'+money(data.total)+'</td><td>'+(data.total===null?'확인 불가':'100%')+'</td><td>'+(totalDiff===null?'비교 불가':(totalDiff>0?'+':'')+money(totalDiff))+'</td><td>전체</td></tr></tbody></table></div>'+
+ '<details><summary>월별 매출 구성 펼쳐보기</summary><p class="mi-muted">선택한 각 월의 고객·주문별 매출이야. 합계에 포함된 다른 달도 함께 확인할 수 있어.</p><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>월</th><th>온라인 전체</th><th>신규 회원</th><th>재구매 회원</th><th>비회원</th><th>개인결제</th><th>구매 이력 미확인</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></details>'+
+ '<details><summary>집계 방식·고객 구분에 대한 설명</summary><ul style="padding-left:20px;font-size:12px;line-height:1.9">'+data.items.map(x=>'<li><b>'+esc(x.name)+'</b>: '+esc(x.desc)+'</li>').join('')+'</ul><p class="mi-muted">스타일리스트·직원·프레스 고객 유형은 현재 온라인 주문 데이터만으로 분리할 수 없어. 비회원은 신규 고객과 동일하지 않아.</p></details></section>';
 }
 function renderWhy(rows,acquisition,oldAcq){
  const unknown=sum(rows,'unknown');
@@ -300,6 +326,7 @@ function organizeExplorer(){
  const quality=document.createElement('div');quality.className='mi-pane-quality';
  for(const idx of [10,11,12])if(original[idx])quality.appendChild(original[idx]);
  body.replaceChildren(layout,quality);
+ const labels=['신규 회원','재구매 회원','비회원','개인결제','구매 이력 미확인','회원 구분 불가'];
  const segments=body.querySelectorAll('[data-mi-pane="overview"] .mi-legend-item');
  segments.forEach((row,i)=>{
   if(i>=labels.length)return;
