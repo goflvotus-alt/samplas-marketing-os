@@ -9,7 +9,7 @@ function harness(fail=false){
  function classes(){const set=new Set();return {add:v=>set.add(v),remove:v=>set.delete(v),contains:v=>set.has(v)}}
  function el(id){
   if(registry.has(id))return registry.get(id);
-  const n={id,style:{},attributes:{},children:[],textContent:'',classList:classes(),events:{},_html:'',
+  const n={id,style:{},attributes:{},children:[],textContent:'',value:'',disabled:false,classList:classes(),events:{},_html:'',
    setAttribute(k,v){this.attributes[k]=v},
    getAttribute(k){return this.attributes[k]},
    appendChild(child){this.children.push(child);if(child.id)registry.set(child.id,child)},
@@ -17,7 +17,7 @@ function harness(fail=false){
    querySelector(q){return q.includes('data-marketing-intelligence-entry')?this.children.find(x=>x.attributes?.['data-marketing-intelligence-entry']):null},
    querySelectorAll(){return[]},
    addEventListener(type,fn){this.events[type]=fn},
-   set innerHTML(v){this._html=v;if(id==='MarketingIntelligenceAction')for(const key of ['miBody','miReload','miStatus'])el(key)},
+   set innerHTML(v){this._html=v;if(id==='MarketingIntelligenceAction')for(const key of ['miBody','miReload','miStatus','miPreset','miStart','miEnd','miCompare','miPeriodHint'])el(key)},
    get innerHTML(){return this._html},
   };registry.set(id,n);return n;
  }
@@ -51,14 +51,15 @@ test('Marketing Intelligence is a local OS panel, not external navigation',()=>{
 test('partial CRM produces readable actions, never seventy raw diagnostics',async()=>{
  const h=harness();h.click();for(let i=0;i<30&&!h.el('miBody').innerHTML;i++)await flush();
  const body=h.el('miBody').innerHTML;
- assert.match(body,/다음 달 우선 실행 과제/);
+ assert.match(body,/매출과 고객 구성 변화/);
+ assert.doesNotMatch(body,/다음 달 우선순위는/);
  assert.match(body,/신규 구매 확인 회원/);
  assert.match(body,/재구매 회원 매출/);
  assert.match(body,/잠정/);
  assert.match(body,/데이터 신뢰도/);
  assert.doesNotMatch(body,/POST_SNAPSHOT_CANCELS_UNVERIFIED/);
  assert.doesNotMatch(body,/판단 차단 사유 70건/);
- assert.equal(h.requests(),25);
+ assert.equal(h.requests(),7);
 });
 test('API failure does not invent revenue or customer numbers',async()=>{
  const h=harness(true);h.click();for(let i=0;i<30&&!h.el('miBody').innerHTML;i++)await flush();
@@ -66,4 +67,24 @@ test('API failure does not invent revenue or customer numbers',async()=>{
  assert.match(body,/확인 불가/);
  assert.match(body,/일부 데이터 조회 실패/);
  assert.doesNotMatch(body,/신규 구매 확인 회원<\/small><strong>0명/);
+});
+
+test('defaults to one completed month and supports custom periods',async()=>{
+ const h=harness();h.click();
+ for(let i=0;i<30&&!h.el('miBody').innerHTML;i++)await flush();
+ assert.equal(h.el('miStart').value,h.el('miEnd').value);
+ assert.equal(h.el('miStart').disabled,true);
+ h.el('miPreset').events.change({target:{value:'3'}});
+ for(let i=0;i<30&&h.requests()<26;i++)await flush();
+ assert.equal(h.el('miStart').disabled,true);
+ assert.equal(h.requests(),26); // 7 default + 19 for three months
+ h.el('miPreset').events.change({target:{value:'custom'}});
+ assert.equal(h.el('miStart').disabled,false);
+});
+test('period controls and analysis are neutral instead of prescriptive',async()=>{
+ const h=harness();h.click();
+ for(let i=0;i<30&&!h.el('miBody').innerHTML;i++)await flush();
+ assert.doesNotMatch(h.el('MarketingIntelligenceAction').innerHTML,/다음 달, 온라인 매출을 어떻게 올릴까/);
+ assert.doesNotMatch(h.el('miBody').innerHTML,/다음 달 우선 실행 과제/);
+ assert.match(h.el('MarketingIntelligenceAction').innerHTML,/비교 기간/);
 });
