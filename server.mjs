@@ -1152,16 +1152,20 @@ const server = isMainModule ? createServer(async (req, res) => {
           // Never disclose order IDs, real member IDs, customer names or addresses.
           if (!(isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req) || isAuthorizedOperatorRequest(req))) return json(res, { ok: false, error: "Operator session required" }, 401);
           const segment = url.searchParams.get("segment") || "ALL";
+          const from = url.searchParams.get("from") || month;
+          const to = url.searchParams.get("to") || month;
+          const monthNum = m => Number(m.slice(0,4))*12 + Number(m.slice(5));
+          const validRange = isMonth(from) && isMonth(to) && monthNum(from) <= monthNum(to) && monthNum(to) - monthNum(from) < 12;
           const page = Number(url.searchParams.get("page") || "1");
           const limit = Number(url.searchParams.get("limit") || "25");
           const firstOnly = url.searchParams.get("firstOnly") === "true";
           const channel = url.searchParams.get("channel") || null, medium = url.searchParams.get("medium") || null;
-          if (!isMonth(month) || !["ALL", "NEW", "REPEAT", "GUEST", "UNVERIFIED", "PERSONAL", "UNKNOWN"].includes(segment) ||
+          if (!validRange || !["ALL", "MEMBER", "NEW", "REPEAT", "GUEST", "UNVERIFIED", "PERSONAL", "UNKNOWN"].includes(segment) ||
               !Number.isInteger(page) || page < 1 || page > 10000 ||
               !Number.isInteger(limit) || limit < 1 || limit > 50 ||
               (channel && channel.length > 120) || (medium && medium.length > 120))
             return json(res, { ok: false, error: "Invalid order trace filters" }, 400);
-          const result = crm.crmOrderTrace(await ds(), month, segment, { page, limit, firstOnly, channel, medium });
+          const result = crm.crmOrderTrace(await ds(), month, segment, { page, limit, firstOnly, channel, medium, from, to });
           return json(res, { ok: true, data: result, meta: { completeness: "PARTIAL", source: "cafe24_cached_order_evidence", note: "Products are item names/quantities, not reconciled product-level paid amounts; no customer PII" } });
         }
         if (url.pathname === "/api/crm/cohort") {
