@@ -369,7 +369,37 @@ function showSegmentDetail(){
  ];
  const [name,key,meaning]=specs[ix];
  const body=data.current.map(x=>'<tr><td>'+esc(x?.month??'기간 미확인')+'</td><td>'+money(x?.[key])+'</td></tr>').join('');
- el.innerHTML='<section class="mi-inspect"><button type="button" data-mi-close style="float:right">닫기</button><h3>'+esc(name)+'</h3><p>'+esc(meaning)+'</p><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>월</th><th>매출</th></tr></thead><tbody>'+body+'</tbody></table></div><p>출처: Cafe24 CRM /api/crm/monthly. 현재 기간의 자료가 NOT_FINAL 또는 PARTIAL이면 확정 수치가 아니야.</p></section>';
+ el.innerHTML='<section class="mi-inspect"><button type="button" data-mi-close style="float:right">닫기</button><h3>'+esc(name)+'</h3><p>'+esc(meaning)+'</p><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>월</th><th>매출</th></tr></thead><tbody>'+body+'</tbody></table></div><p>출처: Cafe24 CRM /api/crm/monthly. 현재 기간의 자료가 NOT_FINAL 또는 PARTIAL이면 확정 수치가 아니야.</p><button type="button" data-mi-trace-segment="'+['NEW','REPEAT','GUEST','PERSONAL','UNVERIFIED','UNKNOWN'][ix]+'">구매한 상품과 주문별 근거 확인</button></section>';
+}
+
+function openOrderTrace(segment) {
+ if(!state.loadedRows || !['ALL','NEW','REPEAT','GUEST','PERSONAL','UNVERIFIED','UNKNOWN'].includes(segment))return;
+ state.trace=segment;state.tracePage=1;state.traceMonth=state.loadedRows.months.at(-1);state.detail=null;
+ loadOrderTrace();
+}
+async function loadOrderTrace(){
+ const el=$('miInspect'),data=state.loadedRows;if(!el||!data||!state.trace)return;
+ const reqId=++state.traceSerial,month=state.traceMonth||data.months.at(-1),group=state.trace,page=state.tracePage;
+ const title=group==='ALL'?'전체 온라인 주문':group==='NEW'?'신규 구매 회원과 구매 상품':'선택한 주문 유형';
+ const monthSelector='<label>조회 월 <select id="miTraceMonth">'+data.months.map(m=>'<option value="'+m+'"'+(m===month?' selected':'')+'>'+m+'</option>').join('')+'</select></label>';
+ el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+'</h3><div class="mi-trace-controls">'+monthSelector+'</div><p>실제 주문·상품 데이터를 확인하고 있어.</p></section>';
+ try{
+  const result=await get('/api/crm/order-trace?month='+encodeURIComponent(month)+'&segment='+group+'&page='+page+'&limit=20');
+  if(reqId!==state.traceSerial || state.trace!==group || state.traceMonth!==month)return;
+  const rows=Array.isArray(result.rows)?result.rows:[];
+  const html=rows.map(r=>{
+   const items=r.products?.length?r.products.map(x=>'<div class="mi-purchased-product">'+esc(x.name)+' · '+fmt(x.quantity)+'개'+(x.productNo?' <span class="mi-muted">#'+esc(x.productNo)+'</span>':'')+'</div>').join(''):'<span class="mi-muted">상품 원본 확인 불가</span>';
+   return '<tr><td>'+esc(r.date)+'</td><td>'+esc(r.anonymousCustomer||'회원 식별 안 됨')+'</td><td>'+money(r.paidAmount)+'</td><td>'+items+'</td><td>'+esc(r.acquisition?.channel||'UNKNOWN')+(r.acquisition?.medium?' / '+esc(r.acquisition.medium):'')+'</td></tr>';
+  }).join('');
+  const max=Math.max(1,Math.ceil(Number(result.totals?.orders||0)/20));
+  el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+' · '+esc(month)+'</h3>'+
+   '<p class="mi-muted">확인된 주문 '+fmt(result.totals?.orders)+'건 · 주문 결제액 '+money(result.totals?.paidAmount)+' · 구분 가능한 회원 '+(result.totals?.members==null?'해당 없음':fmt(result.totals.members)+'명')+'</p>'+
+   '<div class="mi-trace-controls">'+monthSelector+'</div><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>구매일</th><th>익명 회원</th><th>실결제 주문 금액</th><th>구매 상품과 수량</th><th>주문 유입 분류</th></tr></thead><tbody>'+(html||'<tr><td colspan="5">표시할 주문이 없어.</td></tr>')+'</tbody></table></div>'+
+   '<div class="mi-trace-controls"><button type="button" data-mi-trace-page="'+(page-1)+'"'+(page===1?' disabled':'')+'>이전</button><span>'+page+' / '+max+' 페이지</span><button type="button" data-mi-trace-page="'+(page+1)+'"'+(page>=max?' disabled':'')+'>다음</button></div>'+
+   '<p class="mi-inline-note">Cafe24 주문 원본 + Analytics 주문 유입 기준. 구매 상품은 상품명·수량이며 할인/반품이 분배된 상품별 순매출이 아니야. 주문별 검색어는 수집되지 않아. 개인식별 정보는 제공하지 않아.</p></section>';
+ }catch(e){
+  if(reqId===state.traceSerial)el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+'</h3><p>주문 상세 근거 조회에 실패했어. 로그인이 필요한 내부 조회이거나 원천 주문 자료가 없을 수 있어.</p></section>';
+ }
 }
 async function loadAdEvidence(){
  const target=$('miAdsEvidence'),rows=state.loadedRows;if(!target||!rows)return;
