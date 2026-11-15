@@ -132,10 +132,26 @@ export function buildCrmDataset({ cacheRecords = [], snapshots = [], pseudonymiz
     }
   }
 
+  // Product evidence may be present in an earlier API cache but omitted by a later tracking snapshot.
+  // Preserve source fidelity: historical item names are never claimed as up-to-date refund-adjusted lines.
+  const productEvidence = new Map();
+  for (const candidate of candidates) {
+    const id = String(candidate.order?.order_id ?? "");
+    if (!id) continue;
+    const count = cafe24OrderItems(candidate.order).filter(x => String(x?.product_name || x?.productName || x?.name || "").trim()).length;
+    if (!count) continue;
+    const previous = productEvidence.get(id);
+    if (!previous || count > previous.count || (count === previous.count && candidate.observedAt > previous.observedAt))
+      productEvidence.set(id, { order: candidate.order, count, observedAt: candidate.observedAt });
+  }
+
   const orders = [...latest.values()].map(({ order, observedAt, source }) => {
     const amount = cafe24OrderAmount(order);
     const who = identity.get(String(order.order_id)) || null;
     const memberId = String(who?.member_id || "").trim();
+    const oldItems = productEvidence.get(String(order.order_id)) || null;
+    const latestHasItems = cafe24OrderItems(order).length > 0;
+    const productsSource = latestHasItems ? order : (oldItems?.order || order);
     return {
       id: String(order.order_id),
       date: trustedCafe24OrderDate(order),
@@ -155,12 +171,13 @@ export function buildCrmDataset({ cacheRecords = [], snapshots = [], pseudonymiz
       source,
       // Read-only order evidence, never address/contact/member ID. No item-price allocation:
       // order-level paid amount includes claims, discounts and NaverPay adjustments.
-      productItems: cafe24OrderItems(order).filter((item) => !isCafe24CanceledItem(item)).slice(0, 30).map((item) => ({
+      productItems: cafe24OrderItems(productsSource).filter((item) => !isCafe24CanceledItem(item)).slice(0, 30).map((item) => ({
         name: String(item?.product_name ?? item?.productName ?? item?.name ?? "").slice(0, 170),
         productNo: /^\d+$/.test(String(item?.product_no ?? item?.productNo ?? "")) ? String(item?.product_no ?? item?.productNo) : null,
         quantity: cafe24ItemQuantity(item)
       })).filter((item) => item.name),
-      itemCountAvailable: cafe24OrderItems(order).length > 0
+      itemCountAvailable: cafe24OrderItems(productsSource).length > 0,
+      productItemsFromEarlierObservation: !latestHasItems && Boolean(oldItems)
     };
   }).sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
 
@@ -502,7 +519,7 @@ export function crmOrderTrace(ds, month, segment = "ALL", { page = 1, limit = 25
         anonymousCustomer: o.member ? "회원-" + o.member.slice(0, 8).toUpperCase() : null,
         firstVerifiedPurchase: Boolean(o.member && members.get(o.member)?.verified && members.get(o.member)?.first?.id === o.id),
         products: o.productItems || [],
-        productEvidence: o.itemCountAvailable ? "ORDER_ITEMS_SNAPSHOT" : "PRODUCT_ITEMS_NOT_IN_CACHE",
+        productEvidence: !o.itemCountAvailable ? "PRODUCT_ITEMS_NOT_IN_CACHE" : o.productItemsFromEarlierObservation ? "EARLIER_ORDER_OBSERVATION_UNVERIFIED_CANCELLATIONS" : "ORDER_ITEMS_LATEST_OBSERVATION",
         acquisition: {
           channel: analytics ? (String(analytics.ad || "").trim() || "(no ad / direct)") : "UNKNOWN",
           medium: analytics ? (String(analytics.medium || "").trim() || null) : null,
