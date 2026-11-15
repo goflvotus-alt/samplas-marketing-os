@@ -17,7 +17,7 @@ function harness(fail=false){
    querySelector(q){return q.includes('data-marketing-intelligence-entry')?this.children.find(x=>x.attributes?.['data-marketing-intelligence-entry']):null},
    querySelectorAll(){return[]},
    addEventListener(type,fn){this.events[type]=fn},
-   set innerHTML(v){this._html=v;if(id==='MarketingIntelligenceAction')for(const key of ['miBody','miReload','miStatus','miPreset','miStart','miEnd','miCompare','miPeriodHint'])el(key)},
+   set innerHTML(v){this._html=v;if(id==='MarketingIntelligenceAction')for(const key of ['miBody','miReload','miStatus','miPreset','miStart','miEnd','miCompare','miCompareStart','miCompareEnd','miPeriodHint'])el(key)},
    get innerHTML(){return this._html},
   };registry.set(id,n);return n;
  }
@@ -87,4 +87,19 @@ test('period controls and analysis are neutral instead of prescriptive',async()=
  assert.doesNotMatch(h.el('MarketingIntelligenceAction').innerHTML,/다음 달, 온라인 매출을 어떻게 올릴까/);
  assert.doesNotMatch(h.el('miBody').innerHTML,/다음 달 우선 실행 과제/);
  assert.match(h.el('MarketingIntelligenceAction').innerHTML,/비교 기간/);
+});
+
+test('custom comparison enables independent month inputs',async()=>{
+ const h=harness();h.click();for(let i=0;i<30&&!h.el('miBody').innerHTML;i++)await flush();
+ h.el('miCompare').events.change({target:{value:'custom'}});
+ assert.equal(h.el('miCompareStart').disabled,false);
+ assert.equal(h.el('miCompareEnd').disabled,false);
+ assert.ok(h.el('miCompareStart').value);
+ assert.ok(h.el('miCompareEnd').value);
+});
+test('revenue diagnosis includes order volume and average payment',async()=>{
+ const h=harness();h.click();for(let i=0;i<30&&!h.el('miBody').innerHTML;i++)await flush();
+ assert.match(h.el('miBody').innerHTML,/온라인 주문 수/);
+ assert.match(h.el('miBody').innerHTML,/주문당 평균 결제금액/);
+ assert.match(h.el('miBody').innerHTML,/첫 구매 유입 채널/);
 });
