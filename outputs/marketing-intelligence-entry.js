@@ -41,6 +41,25 @@ const css=[
 '#'+ID+' .mi-footer{color:#687b70;font-size:12px;line-height:1.7;margin-top:17px}',
 '#'+ID+' .mi-loading{background:#f3f6f3;border-radius:11px;padding:48px;text-align:center;color:#6b786e}',
 '#'+ID+' .mi-error{font-size:12px;color:#8b5b25}',
+'#'+ID+' .mi-breakdown{background:white;border:1px solid #dce5de;border-radius:14px;padding:20px;min-width:0}',
+'#'+ID+' .mi-total{font-size:28px;font-weight:850;letter-spacing:-.03em;margin:8px 0 13px}',
+'#'+ID+' .mi-stack{display:flex;width:100%;height:24px;border-radius:7px;overflow:hidden;gap:2px;background:#eef1ed}',
+'#'+ID+' .mi-stack>span{height:100%;min-width:0}',
+'#'+ID+' .mi-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 18px;margin:17px 0}',
+'#'+ID+' .mi-legend-item{display:flex;gap:9px;align-items:center;font-size:12px;line-height:1.5}',
+'#'+ID+' .mi-dot{width:11px;height:11px;border-radius:3px;flex:0 0 auto}',
+'#'+ID+' .mi-legend-item strong{margin-left:auto;white-space:nowrap}',
+'#'+ID+' .mi-legend-item em{font-size:11px;font-style:normal;color:#67746c;white-space:nowrap}',
+'#'+ID+' .mi-table-wrap{max-width:100%;overflow-x:auto;margin-top:12px}',
+'#'+ID+' .mi-table{border-collapse:collapse;width:100%;min-width:620px;font-size:12px}',
+'#'+ID+' .mi-table th,#'+ID+' .mi-table td{padding:10px 9px;border-bottom:1px solid #e8ede9;text-align:right;font-variant-numeric:tabular-nums}',
+'#'+ID+' .mi-table th:first-child,#'+ID+' .mi-table td:first-child{text-align:left;white-space:nowrap}',
+'#'+ID+' .mi-table th{font-weight:800;background:#f4f7f4;color:#4d6353}',
+'#'+ID+' .mi-why{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}',
+'#'+ID+' .mi-why-item{padding:15px;border:1px solid #e1e7e2;border-radius:10px;background:#fff}',
+'#'+ID+' .mi-why-item h4{margin:0 0 7px;font-size:15px}',
+'#'+ID+' .mi-why-item p{font-size:12px;color:#526455;line-height:1.8}',
+'@media(max-width:700px){#'+ID+' .mi-legend,#'+ID+' .mi-why{grid-template-columns:1fr}#'+ID+' .mi-breakdown{padding:15px}}',
 '.nav [data-marketing-intelligence-entry].active{background:#252d29!important;color:#fff!important;border:1px solid #496452!important}',
 '.main.mi-marketing-mode .topbar .controls{display:none}',
 '@media(max-width:960px){#'+ID+' .mi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}',
@@ -80,12 +99,60 @@ async function get(url){
 }
 const prev=m=>String(Number(m.slice(0,4))-1)+m.slice(4);
 const sum=(list,key)=>list.length&&list.every(x=>x&&Number.isFinite(x[key]))?list.reduce((a,x)=>a+x[key],0):null;
-const row=(month,x)=>x?{month,amount:x.total?.amount,new:x.newMembers?.members,repeat:x.repeatMembers?.amount,unknown:x.unverifiedMembers?.members,meta:x.__meta}:null;
+const row=(month,x)=>x?{month,amount:x.total?.amount,new:x.newMembers?.members,newRevenue:x.newMembers?.amount,repeat:x.repeatMembers?.amount,guestRevenue:x.guests?.amount,naverPayGuest:x.guests?.naverPay?.amount,personalRevenue:x.personalPayment?.amount,unverifiedRevenue:x.unverifiedMembers?.amount,identityUnknownRevenue:x.identityUnknown?.amount,unknown:x.unverifiedMembers?.members,meta:x.__meta}:null;
 function metric(title,value,then,description,negative){
  return '<article class="mi-kpi"><small>'+esc(title)+'</small><strong>'+esc(value)+'</strong><p><b'+(negative?' class="down"':'')+'>'+esc(then)+'</b></p><p>'+esc(description)+'</p></article>';
 }
 function task(num,title,signal,step,kpi){
  return '<article class="mi-action"><span class="mi-index">'+num+'</span><h4>'+esc(title)+'</h4><p>'+esc(signal)+'</p><div class="mi-next"><b>다음 달 할 일</b><div>'+esc(step)+'</div><b>성과를 판단할 기준</b><div>'+esc(kpi)+'</div></div></article>';
+}
+
+function revenueBreakdown(rows){
+ const specs=[
+  {key:'newRevenue',name:'신규 회원 구매 매출',color:'#287c60',desc:'첫 구매 회원이 이 기간에 만든 매출. 회원 첫 구매 구분은 구매 이력 검증 영향을 받아.'},
+  {key:'repeat',name:'재구매 회원 매출',color:'#78a58c',desc:'이전 구매 이력이 확인된 회원이 다시 구매한 매출.'},
+  {key:'guestRevenue',name:'비회원 주문 매출',color:'#dbad60',desc:'비회원 주문 금액. 네이버페이 주문이 포함되며 신규 고객이라는 의미는 아니야.'},
+  {key:'personalRevenue',name:'개인결제창 주문 매출',color:'#7d8dad',desc:'개인결제창 주문으로 별도 집계된 금액. 스타일리스트·직원 매출이라고 단정할 수 없어.'},
+  {key:'unverifiedRevenue',name:'최초 구매 이력 미확인 회원',color:'#a4aeb2',desc:'과거 구매 이력을 확인하지 못한 회원의 매출. 신규나 재구매에 임의 배분하지 않아.'},
+  {key:'identityUnknownRevenue',name:'회원·비회원 분류 불가',color:'#c3b8bd',desc:'주문 데이터에서 회원 여부조차 확인되지 않은 금액.'}
+ ];
+ const total=sum(rows,'amount');let known=0;
+ const items=specs.map(spec=>{
+  const amount=sum(rows,spec.key);
+  if(amount!==null)known+=amount;
+  return {...spec,amount,share:total!==null&&total>0&&amount!==null?amount/total*100:null};
+ });
+ const complete=total!==null&&items.every(x=>x.amount!==null);
+ const discrepancy=complete?total-known:null;
+ return {total,items,complete,discrepancy};
+}
+function renderBreakdown(rows){
+ const data=revenueBreakdown(rows);
+ const reconciled=data.complete&&data.discrepancy===0;
+ const legend=data.items.map(x=>'<div class="mi-legend-item"><span class="mi-dot" style="background:'+x.color+'"></span><div>'+esc(x.name)+' <em>'+(x.share===null?'비중 미확인':x.share.toFixed(1)+'%')+'</em></div><strong>'+money(x.amount)+'</strong></div>').join('');
+ const stack=reconciled?'<div class="mi-stack" role="img" aria-label="온라인 매출 구성 비중">'+data.items.filter(x=>x.amount>0).map(x=>'<span title="'+esc(x.name)+' '+x.share.toFixed(1)+'%" style="width:'+x.share.toFixed(5)+'%;background:'+x.color+'"></span>').join('')+'</div>':'<p class="mi-error">세부 매출 합계와 총매출의 검증이 완료되지 않아 구성 비율 그래프를 표시하지 않아.</p>';
+ const rowsHtml=rows.map(x=>{
+  if(!x)return '<tr><td>월 데이터 없음</td><td colspan="6">조회 실패 · 확인 불가</td></tr>';
+  return '<tr><td>'+esc(x.month)+'</td>'+[x.amount,x.newRevenue,x.repeat,x.guestRevenue,x.personalRevenue,x.unverifiedRevenue].map(v=>'<td>'+money(v)+'</td>').join('')+'</tr>';
+ }).join('');
+ return '<section class="mi-breakdown"><h3>온라인 매출은 누가 만들었을까?</h3><p class="mi-muted">회원 구매 이력과 주문 유형을 기준으로 나눈 <b>서로 겹치지 않는 매출 구성</b>이야. 고객 직업/등급 구분이 아니야.</p>'+
+ '<div class="mi-total">'+money(data.total)+'</div>'+stack+
+ '<div class="mi-legend">'+legend+'</div>'+
+ '<p class="mi-muted">'+(reconciled?'구성 항목 합계가 온라인 매출과 정확히 일치해.':'아직 합계가 맞지 않아. 차액 또는 누락 데이터부터 점검해야 해.')+' 아래 항목 중 개인결제창 주문은 CRM 신규·재구매 분석에 포함하지 않아.</p>'+
+ '<details><summary>월별로 누가 얼마나 구매했는지 보기</summary><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>월</th><th>온라인 전체</th><th>신규 회원</th><th>재구매 회원</th><th>비회원</th><th>개인결제</th><th>구매 이력 미확인</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></details>'+
+ '<details><summary>각 매출 구분은 무엇을 의미할까?</summary><ul style="padding-left:20px;font-size:12px;line-height:1.9">'+data.items.map(x=>'<li><b>'+esc(x.name)+'</b>: '+esc(x.desc)+'</li>').join('')+'</ul><p class="mi-muted">스타일리스트·직원·프레스 등 고객 유형별 온라인 매출은 현재 주문 데이터만으로 구분 불가해. 별도 검증된 주문-고객 연결이 필요해.</p></details></section>';
+}
+function renderWhy(rows,acquisition,oldAcq){
+ const unknown=sum(rows,'unknown');
+ const guests=sum(rows,'guestRevenue'),naverGuest=sum(rows,'naverPayGuest');
+ const naverPct=guests!==null&&guests>0&&naverGuest!==null?naverGuest/guests*100:null;
+ const acquisitionReliable=acquisition.every(x=>x?.__meta?.completeness==='COMPLETE'&&x.analyticsCoverage==='COMPLETE')&&oldAcq.every(x=>x?.__meta?.completeness==='COMPLETE'&&x.analyticsCoverage==='COMPLETE');
+ return '<section class="mi-why">'+
+ '<article class="mi-why-item"><h4>왜 신규 구매를 늘려야 할까?</h4><p>신규 회원 매출은 전체 주문 중 일부에 불과해. 신규 첫 구매가 늘어도 전체 매출이 얼마나 오를지는 구매 전환·객단가를 함께 확인해야 해. 현재 채널 귀속 분석은 '+(acquisitionReliable?'조회 기준 통과':'자료 검증 전이라 원인 확정 불가')+' 상태야.</p></article>'+
+ '<article class="mi-why-item"><h4>비회원 매출이 큰 이유는?</h4><p>비회원 매출 '+money(guests)+' 중 네이버페이 주문 '+money(naverGuest)+(naverPct!==null?' ('+naverPct.toFixed(1)+'%)':'')+'이야. 네이버페이 주문을 모두 신규 고객으로 볼 수 없으므로 회원 전환 기회를 조사해야 해.</p></article>'+
+ '<article class="mi-why-item"><h4>개인결제는 누구의 매출일까?</h4><p>개인결제창은 일반 회원 구매와 다른 주문 방식이야. 스타일리스트 매출인지, 특정 고객의 결제인지 현재 데이터만으로 알 수 없어. 주문 유형과 고객 관계를 연결하기 전에는 분류를 확정하지 않아.</p></article>'+
+ '<article class="mi-why-item"><h4>왜 재구매 판단이 조심스러울까?</h4><p>최초 구매 이력 미확인 고객이 '+(unknown===null?'확인 불가':fmt(unknown)+'명')+' 있어. 이들을 재구매 회원이나 신규 회원으로 임의 분류하지 않아. 코호트는 관찰이 완료된 기간만 비교해야 해.</p></article>'+
+ '</section>';
 }
 async function load(){
  if(!$('miBody'))return;const token=++state.serial;state.loaded=false;state.loading=true;
@@ -122,6 +189,8 @@ async function load(){
  metric('온라인 실결제 매출',money(sales),change(sales,oldSales),'온라인 주문 금액이 전년보다 얼마나 변했는지',delta(sales,oldSales)<0)+
  metric('신규 구매 확인 회원',newCount===null?'확인 불가':fmt(newCount)+'명',change(newCount,oldNew),'처음 구매한 회원 수, 미확인 회원 제외',fall<0)+
  metric('재구매 회원 매출',money(repeat),change(repeat,oldRepeat),'기존 구매 회원이 다시 구매한 금액',repeatFall<0)+'</section>'+
+ '<div class="mi-section"><h3>매출을 구성하는 고객과 주문</h3><span class="mi-muted">합계 검증 · 월별 상세</span></div>'+renderBreakdown(current)+
+ '<div class="mi-section"><h3>그래서 왜 이런 매출이 나왔을까?</h3><span class="mi-muted">관측 근거와 미확인 원인을 구분해</span></div>'+renderWhy(current,acquisition,oldAcq)+
  '<div class="mi-section"><h3>다음 달 우선 실행 과제</h3><span class="mi-tag">자동 집행 없음 · 조사/실험 제안</span></div><section class="mi-grid">'+
  task('01','신규 첫 구매가 막히는 지점 찾기',newCount!==null&&oldNew!==null?'신규 구매 회원 '+fmt(oldNew)+'명 → '+fmt(newCount)+'명 ('+change(newCount,oldNew)+', 잠정)':'신규 첫 구매 수의 전년 비교가 불완전해.','유입 채널별 구매 경로를 확인하고 10만 원 미만 입문 상품의 재고·노출·구매 동선을 점검해.','첫 구매 회원 수 · 첫 구매 전환율 · 신규 첫 주문 매출')+
  task('02','기존 고객의 두 번째 구매 기회 찾기',repeat!==null&&oldRepeat!==null?'재구매 회원 매출 전년 대비 '+change(repeat,oldRepeat)+' (잠정)':'재구매 매출 비교 자료를 확인해야 해.','관찰이 끝난 30·60·90일 코호트만 분석하고 재입고 안내·스타일링 콘텐츠·후속 구매 실험을 설계해.','두 번째 구매율 · 재구매 매출 · 할인 차감 이익')+
