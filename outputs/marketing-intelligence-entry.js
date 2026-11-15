@@ -283,7 +283,7 @@ function organizeExplorer(){
  if(original.length<13)return; // fail safe: retain original report rather than erase it
  const groups=[
   ['overview',[0,1,2,3]],
-  ['customers',[7,8,9]],
+  ['customers',[6,7,8,9]],
   ['acquisition',[4,5]],
  ];
  const layout=document.createDocumentFragment();
@@ -300,7 +300,6 @@ function organizeExplorer(){
  const quality=document.createElement('div');quality.className='mi-pane-quality';
  for(const idx of [10,11,12])if(original[idx])quality.appendChild(original[idx]);
  body.replaceChildren(layout,quality);
- const labels=['신규 회원','재구매 회원','비회원','개인결제','첫 구매 이력 미확인','회원 구분 불가'];
  const segments=body.querySelectorAll('[data-mi-pane="overview"] .mi-legend-item');
  segments.forEach((row,i)=>{
   if(i>=labels.length)return;
