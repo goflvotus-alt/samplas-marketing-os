@@ -20,7 +20,7 @@ import { createReadStream } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { loadCanonicalCafe24OrderCache } from "./cafe24-order-cache.mjs";
-import { cafe24OrderAmount, cafe24OrderItems, trustedCafe24OrderDate } from "./cafe24-order-amount.mjs";
+import { cafe24OrderAmount, cafe24OrderItems, cafe24ItemQuantity, isCafe24CanceledItem, trustedCafe24OrderDate } from "./cafe24-order-amount.mjs";
 
 export const CRM_WINDOWS = [30, 60, 90, 180, 365];
 const DAY_MS = 86_400_000;
@@ -152,7 +152,15 @@ export function buildCrmDataset({ cacheRecords = [], snapshots = [], pseudonymiz
       unpaid: String(order.paid || "") === "F",
       openClaims: cafe24OrderItems(order).filter((i) => OPEN_CLAIM_STATUS.test(String(i?.order_status || ""))).length,
       observedAt,
-      source
+      source,
+      // Read-only order evidence, never address/contact/member ID. No item-price allocation:
+      // order-level paid amount includes claims, discounts and NaverPay adjustments.
+      productItems: cafe24OrderItems(order).filter((item) => !isCafe24CanceledItem(item)).slice(0, 30).map((item) => ({
+        name: String(item?.product_name ?? item?.productName ?? item?.name ?? "").slice(0, 170),
+        productNo: /^\d+$/.test(String(item?.product_no ?? item?.productNo ?? "")) ? String(item?.product_no ?? item?.productNo) : null,
+        quantity: cafe24ItemQuantity(item)
+      })).filter((item) => item.name),
+      itemCountAvailable: cafe24OrderItems(order).length > 0
     };
   }).sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
 
@@ -446,6 +454,70 @@ export function crmAcquisition(ds, month) {
     firstPurchaseChannels: groupBy(firstPurchases),
     allOrderChannels: groupBy(allValid),
     matchRate: { validOrders: allValid.length, matchedToAnalytics: matched, unknown: allValid.length - matched }
+  };
+}
+
+
+// CRM order trace, permitted only behind the authenticated server route.
+// Each row is anonymous; no order_id, member_id, delivery/contact information or PII is returned.
+// Classification exactly mirrors crmMonthly's month-level customer groups.
+export function crmOrderTrace(ds, month, segment = "ALL", { page = 1, limit = 25, firstOnly = false } = {}) {
+  const validSegments = new Set(["ALL", "NEW", "REPEAT", "GUEST", "UNVERIFIED", "PERSONAL", "UNKNOWN"]);
+  if (!validSegments.has(segment) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    throw new Error("invalid segment or month");
+  }
+  const pageNo = Number(page), pageSize = Number(limit);
+  if (!Number.isInteger(pageNo) || pageNo < 1 || pageNo > 10000 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) {
+    throw new Error("invalid page or limit");
+  }
+  const { members } = analyseMembers(ds);
+  const firstDay = month + "-01";
+  const segmentOf = (o) => {
+    if (o.personalPayment) return "PERSONAL";
+    if (!o.identityKnown) return "UNKNOWN";
+    if (!o.member) return "GUEST";
+    const member = members.get(o.member);
+    if (member?.valid.some((purchase) => purchase.date < firstDay)) return "REPEAT";
+    if (member?.verified && member.first?.month === month) return "NEW";
+    return "UNVERIFIED";
+  };
+  const rows = ds.orders.filter((o) => o.month === month && o.valid && (segment === "ALL" || segmentOf(o) === segment) &&
+    (!firstOnly || (segmentOf(o) === "NEW" && members.get(o.member)?.first?.id === o.id)));
+  const ordered = [...rows].sort((a, b) => b.time - a.time || b.id.localeCompare(a.id));
+  const slice = ordered.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+  const totalPaidAmount = rows.reduce((sum, o) => sum + o.amount, 0);
+  return {
+    month, segment, page: pageNo, pageSize, firstOnly,
+    totals: {
+      orders: rows.length,
+      paidAmount: totalPaidAmount,
+      members: segment === "GUEST" || segment === "PERSONAL" || segment === "UNKNOWN" ? null : new Set(rows.map(o => o.member).filter(Boolean)).size
+    },
+    rows: slice.map((o) => {
+      const analytics = ds.analytics.get(o.id);
+      return {
+        date: o.date,
+        paidAmount: o.amount,
+        segment: segmentOf(o),
+        anonymousCustomer: o.member ? "회원-" + o.member.slice(0, 8).toUpperCase() : null,
+        firstVerifiedPurchase: Boolean(o.member && members.get(o.member)?.verified && members.get(o.member)?.first?.id === o.id),
+        products: o.productItems || [],
+        productEvidence: o.itemCountAvailable ? "ORDER_ITEMS_SNAPSHOT" : "PRODUCT_ITEMS_NOT_IN_CACHE",
+        acquisition: {
+          channel: analytics ? (String(analytics.ad || "").trim() || "(no ad / direct)") : "UNKNOWN",
+          medium: analytics ? (String(analytics.medium || "").trim() || null) : null,
+          searchQuery: null,
+          searchQueryStatus: "NOT_COLLECTED"
+        }
+      };
+    }),
+    evidence: {
+      paidAmountBasis: "canonical Cafe24 order paid amount; product-level payment allocation not proven",
+      memberGrouping: "pseudonymized first-valid-purchase history",
+      analytics: "Cafe24 Analytics orderdetails, joined by order ID; no visitor sessions/keywords",
+      incompleteProductItemsPossible: true,
+      personalInformationReturned: false
+    }
   };
 }
 
