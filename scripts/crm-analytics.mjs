@@ -520,8 +520,8 @@ export function crmOrderTrace(ds, month, segment = "ALL", { page = 1, limit = 25
         segment: segmentOf(o),
         anonymousCustomer: o.member ? "회원-" + o.member.slice(0, 8).toUpperCase() : null,
         firstVerifiedPurchase: Boolean(o.member && members.get(o.member)?.verified && members.get(o.member)?.first?.id === o.id),
-        products: o.productItems || [],
-        productEvidence: !o.itemCountAvailable ? "PRODUCT_ITEMS_NOT_IN_CACHE" : o.productItemsFromEarlierObservation ? "EARLIER_ORDER_OBSERVATION_UNVERIFIED_CANCELLATIONS" : "ORDER_ITEMS_LATEST_OBSERVATION",
+        products: o.personalPayment ? [] : (o.productItems || []),
+        productEvidence: o.personalPayment ? "PERSONAL_PAYMENT_NAME_SUPPRESSED" : !o.itemCountAvailable ? "PRODUCT_ITEMS_NOT_IN_CACHE" : o.productItemsFromEarlierObservation ? "EARLIER_ORDER_OBSERVATION_UNVERIFIED_CANCELLATIONS" : "ORDER_ITEMS_LATEST_OBSERVATION",
         acquisition: {
           channel: analytics ? (String(analytics.ad || "").trim() || "(no ad / direct)") : "UNKNOWN",
           medium: analytics ? (String(analytics.medium || "").trim() || null) : null,
