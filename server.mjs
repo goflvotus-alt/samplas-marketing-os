@@ -1125,7 +1125,7 @@ const server = isMainModule ? createServer(async (req, res) => {
     }
     if (url.pathname === "/api/marketing-intelligence/traffic") {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
-      if (!isAuthorizedInternalRequest(req)) return json(res, { ok: false, error: "Unauthorized" }, 401);
+      if (!(isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req) || isAuthorizedOperatorRequest(req))) return json(res, { ok: false, error: "Operator session required" }, 401);
       const since = url.searchParams.get("since"), until = url.searchParams.get("until");
       const datePattern = /^\d{4}-\d{2}-\d{2}$/;
       const startTime = Date.parse(since + "T00:00:00Z"), endTime = Date.parse(until + "T00:00:00Z");
@@ -1150,7 +1150,7 @@ const server = isMainModule ? createServer(async (req, res) => {
         if (url.pathname === "/api/crm/order-trace") {
           // Order/product evidence is more granular than the public CRM totals.
           // Never disclose order IDs, real member IDs, customer names or addresses.
-          if (!isAuthorizedInternalRequest(req)) return json(res, { ok: false, error: "Unauthorized" }, 401);
+          if (!(isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req) || isAuthorizedOperatorRequest(req))) return json(res, { ok: false, error: "Operator session required" }, 401);
           const segment = url.searchParams.get("segment") || "ALL";
           const page = Number(url.searchParams.get("page") || "1");
           const limit = Number(url.searchParams.get("limit") || "25");
