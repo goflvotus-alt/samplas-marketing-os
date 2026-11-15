@@ -17,7 +17,7 @@ function harness(fail=false){
    querySelector(q){return q.includes('data-marketing-intelligence-entry')?this.children.find(x=>x.attributes?.['data-marketing-intelligence-entry']):null},
    querySelectorAll(){return[]},
    addEventListener(type,fn){this.events[type]=fn},
-   set innerHTML(v){this._html=v;if(id==='MarketingIntelligenceAction')for(const key of ['miBody','miReload','miStatus','miPreset','miStart','miEnd','miCompare','miCompareStart','miCompareEnd','miPeriodHint'])el(key)},
+   set innerHTML(v){this._html=v;if(id==='MarketingIntelligenceAction')for(const key of ['miBody','miReload','miStatus','miPreset','miStart','miEnd','miCompare','miCompareStart','miCompareEnd','miPeriodHint','miTabs','miInspect'])el(key)},
    get innerHTML(){return this._html},
   };registry.set(id,n);return n;
  }
@@ -102,4 +102,23 @@ test('revenue diagnosis includes order volume and average payment',async()=>{
  assert.match(h.el('miBody').innerHTML,/온라인 주문 수/);
  assert.match(h.el('miBody').innerHTML,/주문당 평균 결제금액/);
  assert.match(h.el('miBody').innerHTML,/첫 구매 유입 채널/);
+});
+
+test('explorer has four subject tabs and retains period filters',async()=>{
+ const h=harness();h.click();
+ for(let i=0;i<30&&!h.el('miBody').innerHTML;i++)await flush();
+ const tabs=h.el('miTabs').innerHTML;
+ assert.match(tabs,/매출 구조/);
+ assert.match(tabs,/고객 분석/);
+ assert.match(tabs,/유입 · 광고/);
+ assert.match(tabs,/상품 · 콘텐츠/);
+ assert.equal(h.el('miStart').value,h.el('miEnd').value);
+});
+test('drilldown and data evidence are source-backed and do not fake product attribution',()=>{
+ assert.match(code,/function showSegmentDetail/);
+ assert.match(code,/data-mi-segment/);
+ assert.match(code,/function organizeExplorer/);
+ assert.match(code,/귀속 미검증|구매 귀속|연결은 별도 검증/);
+ assert.match(code,/\/api\/advertising\/overview/);
+ assert.doesNotMatch(code,/window\.open\(/);
 });
