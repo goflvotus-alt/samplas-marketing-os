@@ -478,64 +478,86 @@ export function crmAcquisition(ds, month) {
 // CRM order trace, permitted only behind the authenticated server route.
 // Each row is anonymous; no order_id, member_id, delivery/contact information or PII is returned.
 // Classification exactly mirrors crmMonthly's month-level customer groups.
-export function crmOrderTrace(ds, month, segment = "ALL", { page = 1, limit = 25, firstOnly = false, channel = null, medium = null } = {}) {
-  const validSegments = new Set(["ALL", "NEW", "REPEAT", "GUEST", "UNVERIFIED", "PERSONAL", "UNKNOWN"]);
-  if (!validSegments.has(segment) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-    throw new Error("invalid segment or month");
-  }
+export function crmOrderTrace(ds, month, segment = "ALL", { page = 1, limit = 25, firstOnly = false, channel = null, medium = null, from = null, to = null } = {}) {
+  const validSegments = new Set(["ALL", "MEMBER", "NEW", "REPEAT", "GUEST", "UNVERIFIED", "PERSONAL", "UNKNOWN"]);
+  const isMonth = m => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(m || ""));
+  const start = from || month, end = to || month;
+  const span = isMonth(start) && isMonth(end) ? (Number(end.slice(0,4))*12+Number(end.slice(5))) - (Number(start.slice(0,4))*12+Number(start.slice(5))) + 1 : 0;
+  if (!validSegments.has(segment) || !span || span > 12) throw new Error("invalid segment or month range");
   const pageNo = Number(page), pageSize = Number(limit);
-  if (!Number.isInteger(pageNo) || pageNo < 1 || pageNo > 10000 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) {
-    throw new Error("invalid page or limit");
-  }
+  if (!Number.isInteger(pageNo) || pageNo < 1 || pageNo > 10000 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new Error("invalid page or limit");
   const { members } = analyseMembers(ds);
-  const firstDay = month + "-01";
-  const segmentOf = (o) => {
+  const segmentOf = o => {
     if (o.personalPayment) return "PERSONAL";
     if (!o.identityKnown) return "UNKNOWN";
     if (!o.member) return "GUEST";
-    const member = members.get(o.member);
-    if (member?.valid.some((purchase) => purchase.date < firstDay)) return "REPEAT";
-    if (member?.verified && member.first?.month === month) return "NEW";
+    const m = members.get(o.member);
+    if (m?.valid.some(purchase => purchase.date < o.month + "-01")) return "REPEAT";
+    if (m?.verified && m.first?.month === o.month) return "NEW";
     return "UNVERIFIED";
   };
-  const rows = ds.orders.filter((o) => o.month === month && o.valid && (segment === "ALL" || segmentOf(o) === segment) &&
-    (!firstOnly || (segmentOf(o) === "NEW" && members.get(o.member)?.first?.id === o.id)) &&
+  const mainSegment = group => ["NEW","REPEAT","UNVERIFIED"].includes(group) ? "MEMBER" : group;
+  // Preserve the Analytics classification (including direct / untracked distinction).
+  const matchesChannel = o =>
     (!channel || (String(ds.analytics.get(o.id)?.ad || "").trim() || (ds.analytics.has(o.id) ? "(no ad / direct)" : "UNKNOWN")) === channel) &&
-    (!medium || String(ds.analytics.get(o.id)?.medium || "").trim() === medium));
-  const ordered = [...rows].sort((a, b) => b.time - a.time || b.id.localeCompare(a.id));
-  const slice = ordered.slice((pageNo - 1) * pageSize, pageNo * pageSize);
-  const totalPaidAmount = rows.reduce((sum, o) => sum + o.amount, 0);
+    (!medium || String(ds.analytics.get(o.id)?.medium || "").trim() === medium);
+  const all = ds.orders.filter(o => o.valid && o.month >= start && o.month <= end && matchesChannel(o));
+  const ordered = [...all].sort((a,b) => b.time-a.time || b.id.localeCompare(a.id));
+  const groupMatches = (o,key) => key === "ALL" || segmentOf(o) === key || (key === "MEMBER" && mainSegment(segmentOf(o)) === "MEMBER");
+  const filtered = ordered.filter(o => groupMatches(o,segment) &&
+    (!firstOnly || (segmentOf(o) === "NEW" && members.get(o.member)?.first?.id === o.id)));
+  const safePreview = o => ({
+    date: o.date,
+    paidAmount: o.amount,
+    anonymousCustomer: o.member ? "회원-" + o.member.slice(0,8).toUpperCase() : null,
+    product: !o.personalPayment ? String(o.productItems?.[0]?.name || "상품 원본 미확인").slice(0,100) : "개인결제",
+    segment: segmentOf(o)
+  });
+  const aggregate = list => ({
+    orders: list.length,
+    paidAmount: list.reduce((sum,o) => sum + o.amount, 0),
+    members: new Set(list.map(o=>o.member).filter(Boolean)).size,
+    preview: list.slice(0,3).map(safePreview)
+  });
+  // Order counts reconcile exactly. Stylist is *not* a verifiable online CRM category.
+  // Client classifications in the Clients workspace principally include offline sales and cannot be joined by presumed name.
+  const groups = ["MEMBER","GUEST","PERSONAL","UNKNOWN"];
+  const overview = {
+    all: aggregate(ordered),
+    buckets: groups.map(key => ({ key, ...aggregate(ordered.filter(o => groupMatches(o,key))) })),
+    memberTypes: ["NEW","REPEAT","UNVERIFIED"].map(key => ({ key, ...aggregate(ordered.filter(o => groupMatches(o,key))) })),
+    stylist: { status: "UNVERIFIED_NOT_A_SEPARATE_ONLINE_ORDER_GROUP", orders: null, paidAmount: null },
+    basis: "canonical paid order; member vs guest vs personal payment vs unknown, disjoint groups"
+  };
+  const selected = aggregate(filtered);
+  const slice = filtered.slice((pageNo-1)*pageSize,pageNo*pageSize);
   return {
-    month, segment, page: pageNo, pageSize, firstOnly, channel, medium,
-    totals: {
-      orders: rows.length,
-      paidAmount: totalPaidAmount,
-      members: segment === "GUEST" || segment === "PERSONAL" || segment === "UNKNOWN" ? null : new Set(rows.map(o => o.member).filter(Boolean)).size
-    },
-    rows: slice.map((o) => {
+    month: span === 1 ? start : null,
+    period: { from:start,to:end,months:span },
+    segment,page:pageNo,pageSize,firstOnly,channel,medium,
+    totals: { orders:selected.orders,paidAmount:selected.paidAmount,
+      members: ["ALL","MEMBER","NEW","REPEAT","UNVERIFIED"].includes(segment) ? selected.members : null },
+    overview,
+    rows: slice.map(o => {
       const analytics = ds.analytics.get(o.id);
       return {
-        date: o.date,
-        paidAmount: o.amount,
-        segment: segmentOf(o),
-        anonymousCustomer: o.member ? "회원-" + o.member.slice(0, 8).toUpperCase() : null,
-        firstVerifiedPurchase: Boolean(o.member && members.get(o.member)?.verified && members.get(o.member)?.first?.id === o.id),
-        products: o.personalPayment ? [] : (o.productItems || []),
-        productEvidence: o.personalPayment ? "PERSONAL_PAYMENT_NAME_SUPPRESSED" : !o.itemCountAvailable ? "PRODUCT_ITEMS_NOT_IN_CACHE" : o.productItemsFromEarlierObservation ? "EARLIER_ORDER_OBSERVATION_UNVERIFIED_CANCELLATIONS" : "ORDER_ITEMS_LATEST_OBSERVATION",
-        acquisition: {
-          channel: analytics ? (String(analytics.ad || "").trim() || "(no ad / direct)") : "UNKNOWN",
-          medium: analytics ? (String(analytics.medium || "").trim() || null) : null,
-          searchQuery: null,
-          searchQueryStatus: "NOT_COLLECTED"
+        date:o.date,paidAmount:o.amount,segment:segmentOf(o),
+        anonymousCustomer:o.member ? "회원-" + o.member.slice(0,8).toUpperCase() : null,
+        firstVerifiedPurchase:Boolean(o.member && members.get(o.member)?.verified && members.get(o.member)?.first?.id === o.id),
+        products:o.personalPayment ? [] : (o.productItems || []),
+        productEvidence:o.personalPayment ? "PERSONAL_PAYMENT_NAME_SUPPRESSED" : !o.itemCountAvailable ? "PRODUCT_ITEMS_NOT_IN_CACHE" : o.productItemsFromEarlierObservation ? "EARLIER_ORDER_OBSERVATION_UNVERIFIED_CANCELLATIONS" : "ORDER_ITEMS_LATEST_OBSERVATION",
+        acquisition:{
+          channel:analytics ? (String(analytics.ad || "").trim() || "(no ad / direct)") : "UNKNOWN",
+          medium:analytics ? (String(analytics.medium || "").trim() || null) : null,
+          searchQuery:null,searchQueryStatus:"NOT_COLLECTED"
         }
       };
     }),
-    evidence: {
-      paidAmountBasis: "canonical Cafe24 order paid amount; product-level payment allocation not proven",
-      memberGrouping: "pseudonymized first-valid-purchase history",
-      analytics: "Cafe24 Analytics orderdetails, joined by order ID; no visitor sessions/keywords",
-      incompleteProductItemsPossible: true,
-      personalInformationReturned: false
+    evidence:{
+      paidAmountBasis:"canonical Cafe24 order paid amount; product-level payment allocation not proven",
+      memberGrouping:"pseudonymized first-valid-purchase history",
+      analytics:"Cafe24 Analytics orderdetails, joined by order ID; no visitor sessions/keywords",
+      incompleteProductItemsPossible:true, personalInformationReturned:false
     }
   };
 }

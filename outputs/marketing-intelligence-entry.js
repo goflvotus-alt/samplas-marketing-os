@@ -41,6 +41,44 @@ const css=[
 '#'+ID+' .mi-order-card summary strong{font-size:15px;color:#203c2c}',
 '#'+ID+' .mi-order-card .mi-order-products{margin-top:12px;padding-top:10px;border-top:1px solid #dce5dc}',
 '#'+ID+' .mi-order-card .mi-order-products>div{padding:5px 0}',
+
+'#'+ID+' #miInspect:not(:empty)>.mi-trace{width:min(1110px,100%);padding:24px;max-height:calc(100dvh - 36px)}',
+'#'+ID+' .mi-trace-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0}',
+'#'+ID+' .mi-trace-stat{border:1px solid #e1e9e2;border-radius:12px;padding:12px;background:#f7faf7}',
+'#'+ID+' .mi-trace-stat small{display:block;font-size:11px;color:#63766a;font-weight:750}',
+'#'+ID+' .mi-trace-stat strong{display:block;font-size:19px;margin-top:5px;color:#183e2a}',
+'#'+ID+' .mi-trace-layout{display:grid;grid-template-columns:255px minmax(0,1fr);gap:16px;min-height:400px}',
+'#'+ID+' .mi-trace-nav{border:1px solid #e0e9e2;border-radius:13px;padding:12px;align-self:start;background:#f8faf8}',
+'#'+ID+' .mi-trace-nav h4{font-size:12px;margin:2px 0 10px;color:#576a5e}',
+'#'+ID+' .mi-order-filter-wrap{position:relative;margin:4px 0}',
+'#'+ID+' .mi-order-filter{width:100%;display:flex;justify-content:space-between;align-items:center;gap:7px;text-align:left;border:1px solid transparent!important;background:transparent!important;padding:10px 9px!important;color:#263f2e;border-radius:8px;font-size:13px;font-weight:650}',
+'#'+ID+' .mi-order-filter:hover,#'+ID+' .mi-order-filter:focus-visible{border-color:#c1d5c7!important;background:#eff7f0!important}',
+'#'+ID+' .mi-order-filter[aria-pressed=true]{background:#dceee1!important;border-color:#9fbda9!important;color:#1e5939}',
+'#'+ID+' .mi-order-filter strong{font-variant-numeric:tabular-nums;font-size:13px;white-space:nowrap}',
+'#'+ID+' .mi-order-filter-child{margin-left:12px;width:calc(100% - 12px);font-size:12px}',
+'#'+ID+' .mi-order-filter-wrap .mi-order-preview{display:none;position:absolute;z-index:2301;left:calc(100% + 8px);top:0;width:min(320px,70vw);box-sizing:border-box;background:#192c22;color:#f5fff5;padding:14px;border-radius:10px;box-shadow:0 15px 40px #0004;pointer-events:none}',
+'#'+ID+' .mi-order-filter-wrap:hover .mi-order-preview,#'+ID+' .mi-order-filter-wrap:focus-within .mi-order-preview{display:block}',
+'#'+ID+' .mi-order-preview p{color:#e5eee6;font-size:11px;line-height:1.5;margin:8px 0;border-top:1px solid #466153;padding-top:8px}',
+'#'+ID+' .mi-order-preview p span{color:#c5d5c7;display:block;max-width:100%;overflow-wrap:anywhere}',
+'#'+ID+' .mi-order-preview strong{font-size:12px;color:#fff}',
+'#'+ID+' .mi-order-unverified{border-top:1px solid #dde8e0;padding:12px 8px 6px;font-size:12px;color:#54665b;line-height:1.7}',
+'#'+ID+' .mi-order-results{min-width:0;max-height:min(65vh,690px);overflow-y:auto;padding:0 3px 5px 0}',
+'#'+ID+' .mi-order-results h4{margin:2px 0 10px;font-size:16px}',
+'#'+ID+' .mi-order-card{padding:0!important;margin:8px 0!important;border-radius:10px!important}',
+'#'+ID+' .mi-order-card summary{padding:12px!important;list-style:none;display:flex;justify-content:space-between;gap:14px;align-items:center}',
+'#'+ID+' .mi-order-card summary::-webkit-details-marker{display:none}',
+'#'+ID+' .mi-order-card summary small{display:block;color:#64776a;font-size:11px;margin-top:3px}',
+'#'+ID+' .mi-order-card .mi-order-products{padding:0 12px 12px}',
+'#'+ID+' .mi-trace-lead{font-size:13px;line-height:1.7;color:#526a59}',
+'#'+ID+' .mi-period-evidence{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:17px 0}',
+'#'+ID+' .mi-evidence-col{background:#fafcfa;border:1px solid #dfe8df;border-radius:12px;padding:14px;min-width:0}',
+'#'+ID+' .mi-evidence-col h4{font-size:13px;margin:0 0 10px}',
+'#'+ID+' .mi-evidence-row{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px 0;border-top:1px solid #e6eee7;font-size:12px}',
+'#'+ID+' .mi-evidence-bar{height:7px;border-radius:20px;background:#e6ede7;overflow:hidden}',
+'#'+ID+' .mi-evidence-bar span{display:block;height:100%;background:#427a58;border-radius:20px}',
+'#'+ID+' .mi-evidence-row button{grid-column:1/-1;justify-self:end;color:#20583d;background:#f0f8f1;border:1px solid #b5d0bd}',
+'@media(max-width:840px){#'+ID+' .mi-trace-layout{grid-template-columns:1fr}#'+ID+' .mi-trace-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}#'+ID+' .mi-trace-nav h4,#'+ID+' .mi-order-unverified{grid-column:1/-1}#'+ID+' .mi-order-results{max-height:none}#'+ID+' .mi-order-filter-wrap .mi-order-preview{left:0;top:calc(100% + 4px)}}',
+'@media(max-width:580px){#'+ID+' .mi-trace-summary{grid-template-columns:1fr 1fr}#'+ID+' .mi-period-evidence{grid-template-columns:1fr}#'+ID+' #miInspect:not(:empty)>.mi-trace{padding:15px}#'+ID+' .mi-order-preview{max-width:85vw}}',
 '#'+ID+' .mi-auth-form{display:flex;flex-wrap:wrap;gap:9px;align-items:end;margin:15px 0}',
 '#'+ID+' .mi-auth-form label{display:grid;gap:5px;font-size:12px;font-weight:700}',
 '#'+ID+' .mi-auth-form input{min-width:145px;padding:9px;border:1px solid #c8d6cb;border-radius:8px;font:inherit}',
@@ -145,13 +183,19 @@ function mount(){
   });
   $('miInspect').addEventListener('click',e=>{
     if(e.target.closest('[data-mi-close]'))closeMiInspector()
-    const seg=e.target.closest('[data-mi-trace-segment]');if(seg)openOrderTrace(seg.getAttribute('data-mi-trace-segment'));
+    const seg=e.target.closest('[data-mi-trace-segment]');if(seg){openOrderTrace(seg.getAttribute('data-mi-trace-segment'));return}
+    const month=e.target.closest('[data-mi-evidence-month]');if(month){openOrderTrace(month.getAttribute('data-mi-evidence-segment'),{month:month.getAttribute('data-mi-evidence-month')});return}
+    const group=e.target.closest('[data-mi-order-group]');if(group){
+      const selected=group.getAttribute('data-mi-order-group');
+      if(['ALL','MEMBER','NEW','REPEAT','UNVERIFIED','GUEST','PERSONAL','UNKNOWN'].includes(selected)){state.trace=selected;state.tracePage=1;loadOrderTrace()}
+      return;
+    }
     const page=e.target.closest('[data-mi-trace-page]');if(page){state.tracePage=Number(page.getAttribute('data-mi-trace-page'));loadOrderTrace()}
     if(e.target.closest('[data-mi-trace-retry]')){loadOrderTrace()}
     if(e.target.closest('[data-mi-trace-close]')){closeMiInspector()}
     if(e.target===$('miInspect'))closeMiInspector()
   });
-  $('miInspect').addEventListener('change',e=>{if(e.target.id==='miTraceMonth'){state.traceMonth=e.target.value;state.tracePage=1;loadOrderTrace()}});
+  $('miInspect').addEventListener('change',e=>{if(e.target.id==='miTraceMonth'){state.traceMonth=e.target.value||null;state.tracePage=1;loadOrderTrace()}});
   $('miInspect').addEventListener('submit',handleMiAuthSubmit);
   $('miBody').addEventListener('submit',handleMiAuthSubmit);
   $('miBody').addEventListener('change',e=>{if(e.target.id==='miTrafficMonth'){state.trafficMonth=e.target.value;loadVisitEvidence()}});
@@ -415,57 +459,144 @@ function showSegmentDetail(){
  const data=state.loadedRows,ix=state.detail;
  if(ix===null||!data||!Number.isInteger(ix)||ix<0||ix>5){el.innerHTML='';return}
  const specs=[
-  ['신규 회원 매출','newRevenue','검증된 첫 구매 회원 주문 매출'],
-  ['재구매 회원 매출','repeat','이전 구매 이력이 확인된 회원 매출'],
-  ['비회원 주문 매출','guestRevenue','네이버페이를 포함하는 비회원 주문'],
-  ['개인결제창 매출','personalRevenue','회원/스타일리스트 유형으로 확정할 수 없는 별도 결제 방식'],
-  ['첫 구매 이력 미확인 회원 매출','unverifiedRevenue','과거 주문 이력 부족으로 신규/재구매 구분이 불가능한 회원'],
-  ['회원 구분 불가 매출','identityUnknownRevenue','주문 회원 식별 자체가 불확실한 거래']
+  ['신규 회원 매출','newRevenue','NEW','검증된 첫 구매 회원 주문'],
+  ['재구매 회원 매출','repeat','REPEAT','이전에 구매한 이력이 확인된 회원'],
+  ['비회원 주문 매출','guestRevenue','GUEST','네이버페이 포함, 신규 고객과 동일하지 않음'],
+  ['개인결제창 주문 매출','personalRevenue','PERSONAL','스타일리스트 여부는 아직 판별 불가'],
+  ['구매 이력 미확인 회원','unverifiedRevenue','UNVERIFIED','첫 구매/재구매를 분류할 근거 부족'],
+  ['회원 여부 추적 불가','identityUnknownRevenue','UNKNOWN','회원과 비회원을 판별할 근거 부족']
  ];
- const [name,key,meaning]=specs[ix];
- const body=data.current.map(x=>'<tr><td>'+esc(x?.month??'기간 미확인')+'</td><td>'+money(x?.[key])+'</td></tr>').join('');
- el.innerHTML='<section class="mi-inspect"><button type="button" data-mi-close style="float:right">닫기</button><h3>'+esc(name)+'</h3><p>'+esc(meaning)+'</p><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>월</th><th>매출</th></tr></thead><tbody>'+body+'</tbody></table></div><p>출처: Cafe24 CRM /api/crm/monthly. 현재 기간의 자료가 NOT_FINAL 또는 PARTIAL이면 확정 수치가 아니야.</p><button type="button" data-mi-trace-segment="'+['NEW','REPEAT','GUEST','PERSONAL','UNVERIFIED','UNKNOWN'][ix]+'">구매한 상품과 주문별 근거 확인</button></section>';
+ const [name,key,segment,definition]=specs[ix];
+ const total=sum(data.current,key),previous=sum(data.previous,key);
+ const difference=total!==null&&previous!==null?total-previous:null;
+ const all=[...data.current,...data.previous].filter(x=>x&&Number.isFinite(x[key]));
+ const top=Math.max(1,...all.map(x=>x[key]));
+ const rows=(list,kind)=>list.map(x=>{
+   const month=x?.month,amount=x?.[key],pct=Number.isFinite(amount)?Math.max(0,Math.min(100,amount/top*100)):0;
+   return '<div class="mi-evidence-row"><strong>'+esc(month||'월 미확인')+'</strong><div class="mi-evidence-bar"><span style="width:'+pct.toFixed(2)+'%"></span></div><b>'+money(amount)+'</b>'+
+    (month?'<button type="button" data-mi-evidence-month="'+esc(month)+'" data-mi-evidence-segment="'+segment+'">'+esc(month)+' 주문 확인</button>':'')+'</div>';
+ }).join('')||'<p class="mi-muted">비교 가능한 자료 없음</p>';
+ const period=list=>list?.length?list[0]+' ~ '+list.at(-1):'조회 불가';
+ el.innerHTML='<section class="mi-inspect" role="dialog" aria-modal="true" aria-label="'+esc(name)+' 월별 근거"><button type="button" data-mi-close aria-label="상세 닫기">닫기 ✕</button>'+
+  '<span class="mi-eyebrow">MONTHLY EVIDENCE · 월별 매출 근거</span><h3>'+esc(name)+'</h3><p class="mi-muted">'+esc(definition)+'</p>'+
+  '<div class="mi-trace-summary"><div class="mi-trace-stat"><small>선택 기간 매출</small><strong>'+money(total)+'</strong></div><div class="mi-trace-stat"><small>비교 기간 매출</small><strong>'+money(previous)+'</strong></div><div class="mi-trace-stat"><small>매출 변화</small><strong>'+(difference===null?'비교 불가':(difference>0?'+':'')+money(difference))+'</strong></div></div>'+
+  '<div class="mi-period-evidence"><div class="mi-evidence-col"><h4>선택 기간 · '+esc(period(data.months))+'</h4>'+rows(data.current,'selected')+'</div>'+
+  '<div class="mi-evidence-col"><h4>비교 기간 · '+esc(period(data.prevMonths))+'</h4>'+rows(data.previous,'compared')+'</div></div>'+
+  '<p class="mi-inline-note">각 월의 막대는 여기 표시된 월 중 최댓값에 대한 상대적인 크기야. 주문 확인을 누르면 해당 월의 실제 주문·상품 목록을 볼 수 있어.</p>'+
+  '<p class="mi-inline-note">Cafe24 CRM 기준, 구매 이력 검증이 부족하거나 월 마감이 완료되지 않은 값은 잠정치야.</p></section>';
 }
-
-function openOrderTrace(segment,filter=null) {
- if(!state.loadedRows || !['ALL','NEW','REPEAT','GUEST','PERSONAL','UNVERIFIED','UNKNOWN'].includes(segment))return;
- state.trace=segment;state.tracePage=1;state.traceFilter=filter;
- state.traceMonth=state.loadedRows.months.at(-1);
- if(filter?.channel){
+function openOrderTrace(segment,filter=null){
+ if(!state.loadedRows||!['ALL','MEMBER','NEW','REPEAT','GUEST','PERSONAL','UNVERIFIED','UNKNOWN'].includes(segment))return;
+ state.trace=segment;state.tracePage=1;state.traceFilter=filter||null;
+ state.traceMonth=filter?.month||null;
+ if(filter?.channel&&!filter.month){
   const idx=state.loadedRows.acquisition.findLastIndex(a=>a?.firstPurchaseChannels?.some(row=>(row.channel||'UNKNOWN')===filter.channel&&(row.medium||null)===(filter.medium||null)));
   if(idx>=0)state.traceMonth=state.loadedRows.months[idx];
  }
  state.detail=null;
  loadOrderTrace();
 }
+function renderMiTraceOverview(data,group){
+ const overview=data?.overview;
+ if(!overview?.all||!Array.isArray(overview.buckets))return '<p class="mi-error">고객 유형별 주문 요약을 검증하지 못했어. 숫자를 임의로 배분하지 않아.</p>';
+ const all=overview.all,groups=overview.buckets,memberTypes=overview.memberTypes||[];
+ const label={ALL:'전체 주문',MEMBER:'회원',NEW:'신규 구매 회원',REPEAT:'재구매 회원',UNVERIFIED:'구매 이력 미확인 회원',
+   GUEST:'비회원',PERSONAL:'개인결제',UNKNOWN:'추적 불가'};
+ const get=k=>k==='ALL'?all:[...groups,...memberTypes].find(x=>x.key===k);
+ const preview=record=>{
+  const list=record?.preview||[];
+  return '<div class="mi-order-preview" role="tooltip"><strong>최근 주문 미리보기</strong>'+
+    (list.length?list.map(r=>'<p>'+esc(r.date)+' · '+money(r.paidAmount)+'<span>'+esc(r.anonymousCustomer||'비회원 / 미식별')+' · '+esc(r.product||'상품 미확인')+'</span></p>').join(''):'<p>이 기간에 해당 주문이 없어.</p>')+
+    '<p>클릭하면 전체 주문 목록과 구매 상품을 볼 수 있어.</p></div>';
+ };
+ const navButton=(k,child=false)=>{
+  const rec=get(k),num=rec?.orders;
+  return '<div class="mi-order-filter-wrap"><button type="button" class="mi-order-filter'+(child?' mi-order-filter-child':'')+'" data-mi-order-group="'+k+'" aria-pressed="'+(group===k)+'" aria-label="'+esc(label[k])+' '+fmt(num)+'건. 클릭해 주문 보기">'+
+    '<span>'+esc(label[k])+'</span><strong>'+(Number.isFinite(num)?fmt(num)+'건':'조회 불가')+'</strong></button>'+preview(rec)+'</div>';
+ };
+ const groupCount=groups.reduce((n,g)=>n+g.orders,0);
+ const groupAmount=groups.reduce((n,g)=>n+g.paidAmount,0);
+ const reconciled=groupCount===all.orders&&groupAmount===all.paidAmount;
+ return '<div class="mi-trace-summary"><div class="mi-trace-stat"><small>전체 온라인 주문</small><strong>'+fmt(all.orders)+'건</strong></div>'+
+   '<div class="mi-trace-stat"><small>온라인 실결제 매출</small><strong>'+money(all.paidAmount)+'</strong></div>'+
+   '<div class="mi-trace-stat"><small>유형별 주문 합계</small><strong>'+(reconciled?'일치 · '+fmt(groupCount)+'건':'검증 필요')+'</strong></div></div>'+
+   '<p class="mi-trace-lead">왼쪽에서 회원 유형을 선택해 주문을 좁혀봐. <b>유형에 마우스를 올리면 최근 주문 3건을 미리 확인</b>할 수 있어.</p>'+
+   '<div class="mi-trace-layout"><nav class="mi-trace-nav" aria-label="주문 고객 유형 필터"><h4>고객·결제 유형별 주문</h4>'+
+   navButton('ALL')+navButton('MEMBER')+
+   '<div class="mi-order-filter-children">'+memberTypes.map(x=>navButton(x.key,true)).join('')+'</div>'+
+   '<div class="mi-order-unverified" tabindex="0" title="Clients의 오프라인 스타일리스트 분류는 Cafe24 온라인 주문과 검증된 연결키가 없어 별도로 셀 수 없어."><b>스타일리스트 · 확인 불가</b><div>온라인 주문으로 분리할 식별 근거 없음</div></div>'+
+   navButton('GUEST')+navButton('PERSONAL')+navButton('UNKNOWN')+'</nav>'+
+   '<div class="mi-order-results" id="miTraceResults"></div></div>';
+}
+function miProductEvidenceLabel(state){
+ if(state==='PRODUCT_ITEMS_NOT_IN_CACHE')return '상품 원본 미수집';
+ if(state==='EARLIER_ORDER_OBSERVATION_UNVERIFIED_CANCELLATIONS')return '이전 기록에 있는 상품명 · 이후 취소 여부 미검증';
+ if(state==='PERSONAL_PAYMENT_NAME_SUPPRESSED')return '개인결제 상품명 비공개';
+ if(state==='ORDER_ITEMS_LATEST_OBSERVATION')return '';
+ return '상품 원천 상태 확인 필요';
+}
 async function loadOrderTrace(){
- const el=$('miInspect'),data=state.loadedRows;if(!el||!data||!state.trace)return;
- const reqId=++state.traceSerial,month=state.traceMonth||data.months.at(-1),group=state.trace,page=state.tracePage;
- const title=group==='ALL'?'전체 온라인 주문':group==='NEW'?'신규 구매 회원과 구매 상품':'선택한 주문 유형';
- const filter=state.traceFilter;
- const sourceLabel=filter?.channel?' · 첫 구매 유입 '+filter.channel+(filter.medium?' / '+filter.medium:''):'';
- const monthSelector='<label>조회 월 <select id="miTraceMonth">'+data.months.map(m=>'<option value="'+m+'"'+(m===month?' selected':'')+'>'+m+'</option>').join('')+'</select></label>';
- el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+'</h3><div class="mi-trace-controls">'+monthSelector+'</div><p>실제 주문·상품 데이터를 확인하고 있어.</p></section>';
+ const el=$('miInspect'),data=state.loadedRows;
+ if(!el||!data||!state.trace)return;
+ const reqId=++state.traceSerial,group=state.trace,page=state.tracePage,filter=state.traceFilter;
+ const month=state.traceMonth;
+ const start=month||data.months[0],end=month||data.months.at(-1);
+ const title='온라인 주문 상세 분석';
+ const sourceLabel=filter?.channel?' · 유입 '+filter.channel+(filter.medium?' / '+filter.medium:''):'';
+ const monthOptions=[...new Set([...data.prevMonths,...data.months])].filter(Boolean).sort();
+ const select='<label>조회 기간 <select id="miTraceMonth"><option value=""'+(month?'':' selected')+'>선택 기간 전체 ('+data.months[0]+' ~ '+data.months.at(-1)+')</option>'+
+  monthOptions.map(m=>'<option value="'+esc(m)+'"'+(m===month?' selected':'')+'>'+esc(m)+'</option>').join('')+'</select></label>';
+ const sameContext=state.traceContext===start+'|'+end+'|'+(filter?.channel||'')+'|'+(filter?.medium||'')+'|'+Boolean(filter?.firstOnly);
+ if(!sameContext){state.traceContext=null;state.traceOverview=null}
+ if(!el.querySelector('.mi-trace')||!sameContext){
+  el.innerHTML='<section class="mi-trace" role="dialog" aria-modal="true" aria-label="'+title+'"><button type="button" data-mi-trace-close aria-label="주문 상세 닫기">닫기 ✕</button><span class="mi-eyebrow">ORDER EXPLORER</span><h3>'+title+esc(sourceLabel)+'</h3><div class="mi-trace-controls">'+select+'</div><p>고객 유형과 주문 내역을 조회하고 있어.</p></section>';
+ }else{
+  const results=$('miTraceResults');if(results)results.innerHTML='<p class="mi-muted">주문 필터를 적용하고 있어.</p>';
+ }
  try{
-  const result=await get('/api/crm/order-trace?month='+encodeURIComponent(month)+'&segment='+group+'&page='+page+'&limit=20'+(filter?.firstOnly?'&firstOnly=true':'')+(filter?.channel?'&channel='+encodeURIComponent(filter.channel):'')+(filter?.medium?'&medium='+encodeURIComponent(filter.medium):''));
-  if(reqId!==state.traceSerial || state.trace!==group || state.traceMonth!==month)return;
-  const rows=Array.isArray(result.rows)?result.rows:[];
-  const html=rows.map((r,i)=>{
-   const items=r.products?.length?r.products.map(x=>'<div class="mi-purchased-product">'+esc(x.name)+' · '+fmt(x.quantity)+'개'+(x.productNo?' <span class="mi-muted">상품번호 '+esc(x.productNo)+'</span>':'')+'</div>').join(''):'<span class="mi-muted">상품 원본 미수집. 확인되지 않은 상품을 추정하지 않아.</span>';
-   return '<details class="mi-order-card"'+(i===0?' open':'')+'><summary><span>'+esc(r.date)+' · '+esc(r.anonymousCustomer||'비회원 / 미식별')+' <span class="mi-muted">상세 펼치기</span></span><strong>'+money(r.paidAmount)+'</strong></summary><div class="mi-order-products"><b>구매 상품·수량</b>'+items+'<p class="mi-muted">주문 기록 유입: '+esc(r.acquisition?.channel||'UNKNOWN')+(r.acquisition?.medium?' / '+esc(r.acquisition.medium):'')+'</p><p class="mi-muted">상품 원천 상태: '+esc(r.productEvidence||'미확인')+'</p></div></details>';
+  const result=await get('/api/crm/order-trace?month='+encodeURIComponent(start)+'&from='+encodeURIComponent(start)+'&to='+encodeURIComponent(end)+
+     '&segment='+encodeURIComponent(group)+'&page='+page+'&limit=20'+(filter?.firstOnly?'&firstOnly=true':'')+
+     (filter?.channel?'&channel='+encodeURIComponent(filter.channel):'')+(filter?.medium?'&medium='+encodeURIComponent(filter.medium):''));
+  if(reqId!==state.traceSerial||state.trace!==group||state.traceMonth!==month)return;
+  if(!result?.overview?.all||!Array.isArray(result.overview.buckets))throw new Error('UNRECONCILED_OVERVIEW');
+  state.traceContext=start+'|'+end+'|'+(filter?.channel||'')+'|'+(filter?.medium||'')+'|'+Boolean(filter?.firstOnly);
+  state.traceOverview=result.overview;
+  const all=result.overview.all,buckets=result.overview.buckets;
+  if(buckets.reduce((n,g)=>n+g.orders,0)!==all.orders||buckets.reduce((n,g)=>n+g.paidAmount,0)!==all.paidAmount)throw new Error('UNRECONCILED_TOTALS');
+  const titleByGroup={ALL:'전체 주문',MEMBER:'회원 주문',NEW:'신규 구매 회원',REPEAT:'재구매 회원',UNVERIFIED:'구매 이력 미확인',GUEST:'비회원 주문',PERSONAL:'개인결제 주문',UNKNOWN:'추적 불가 주문'};
+  const records=Array.isArray(result.rows)?result.rows:[];
+  const cards=records.map(r=>{
+   const productItems=r.products?.length?r.products.map(x=>'<div class="mi-purchased-product">'+esc(x.name||'상품명 미확인')+' · '+fmt(x.quantity)+'개'+(x.productNo?' <span class="mi-muted">#'+esc(x.productNo)+'</span>':'')+'</div>').join(''):'<span class="mi-muted">'+(r.segment==='PERSONAL'?'개인결제 상품명 비공개':'상품 원본 미수집')+'</span>';
+   const status=miProductEvidenceLabel(r.productEvidence);
+   const channel=r.acquisition?.channel==='UNKNOWN'?'주문 유입 기록 없음':r.acquisition?.channel==='(no ad / direct)'?'광고 식별 없음 / 직접 유입 가능':r.acquisition?.channel||'조회 불가';
+   return '<details class="mi-order-card"><summary><span><b>'+esc(r.date)+' · '+esc(r.anonymousCustomer||'비회원 / 미식별')+'</b><small>'+esc(titleByGroup[r.segment]||'주문')+' · '+esc(r.products?.[0]?.name||'구매 상품 확인하기')+'</small></span><strong>'+money(r.paidAmount)+'</strong></summary>'+
+   '<div class="mi-order-products"><b>구매 상품 및 수량</b>'+productItems+
+   '<p class="mi-muted">기록된 유입: '+esc(channel)+(r.acquisition?.medium?' / '+esc(r.acquisition.medium):'')+'</p>'+
+   (status?'<p class="mi-muted">상품 데이터: '+esc(status)+'</p>':'')+'</div></details>';
   }).join('');
   const max=Math.max(1,Math.ceil(Number(result.totals?.orders||0)/20));
-  el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+' · '+esc(month)+esc(sourceLabel)+'</h3>'+
-   '<p class="mi-muted">확인된 주문 '+fmt(result.totals?.orders)+'건 · 주문 결제액 '+money(result.totals?.paidAmount)+' · 구분 가능한 회원 '+(result.totals?.members==null?'해당 없음':fmt(result.totals.members)+'명')+'</p>'+
-   '<div class="mi-trace-controls">'+monthSelector+'</div><div class="mi-order-list">'+(html||'<div class="mi-provisional">해당 조건의 주문 없음</div>')+'</div>'+
-   '<div class="mi-trace-controls"><button type="button" data-mi-trace-page="'+(page-1)+'"'+(page===1?' disabled':'')+'>이전</button><span>'+page+' / '+max+' 페이지</span><button type="button" data-mi-trace-page="'+(page+1)+'"'+(page>=max?' disabled':'')+'>다음</button></div>'+
-   '<p class="mi-inline-note">Cafe24 주문 원본 + Analytics 주문 유입 기준. 구매 상품은 상품명·수량이며 할인/반품이 분배된 상품별 순매출이 아니야. 주문별 검색어는 수집되지 않아. 개인식별 정보는 제공하지 않아.</p></section>';
- }catch(e){
-  if(reqId===state.traceSerial){
-   const unauthorized=String(e?.message||'조회 실패').includes('401');
-   const message=unauthorized?'주문 상세는 운영자 인증이 필요해. 아래에서 인증하면 선택한 조건으로 이어서 조회해.':'주문 상세 자료 조회에 실패했어. 요청한 월의 원천 주문 데이터 또는 서버 상태를 확인해야 해.';
-   el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+'</h3><p>'+message+'</p>'+(unauthorized?operatorAuthForm():'')+'<div class="mi-trace-controls"><button type="button" data-mi-trace-retry>다시 조회</button></div></section>';
+  const resultHtml='<h4>'+esc(titleByGroup[group])+' · '+fmt(result.totals?.orders)+'건</h4>'+
+   '<p class="mi-muted">결제액 '+money(result.totals?.paidAmount)+' · 주문 '+fmt(result.totals?.orders)+'건'+
+   (Number.isFinite(result.totals?.members)?' · 식별 회원 '+fmt(result.totals.members)+'명':'')+'</p>'+
+   '<div class="mi-order-list">'+(cards||'<div class="mi-provisional">이 유형에 해당하는 주문이 없어.</div>')+'</div>'+
+   '<div class="mi-trace-controls"><button type="button" data-mi-trace-page="'+(page-1)+'"'+(page===1?' disabled':'')+'>이전</button><span>'+page+' / '+max+' 페이지</span><button type="button" data-mi-trace-page="'+(page+1)+'"'+(page>=max?' disabled':'')+'>다음</button></div>';
+  if(!sameContext||!el.querySelector('.mi-trace-layout')){
+   el.innerHTML='<section class="mi-trace" role="dialog" aria-modal="true" aria-label="'+title+'"><button type="button" data-mi-trace-close aria-label="주문 상세 닫기">닫기 ✕</button><span class="mi-eyebrow">ORDER EXPLORER · 온라인 주문</span><h3>'+title+esc(sourceLabel)+'</h3>'+
+    '<div class="mi-trace-controls">'+select+'</div>'+renderMiTraceOverview(result,group)+
+    '<p class="mi-inline-note">회원은 첫 구매·재구매·이력 미확인을 포함하고, 개인결제는 스타일리스트로 자동 분류하지 않아. 고객 유형 간 주문이 중복되지 않도록 합계 검증했어.</p>'+
+    '<p class="mi-inline-note">상품별 순매출은 별도 검증되지 않았으며, 개인결제·미수집 상품 정보는 공개하지 않아.</p></section>';
+  }else{
+    const sidebar=el.querySelector('.mi-trace-nav');
+    if(sidebar){
+      sidebar.querySelectorAll('[data-mi-order-group]').forEach(button=>button.setAttribute('aria-pressed',String(button.getAttribute('data-mi-order-group')===group)));
+    }
   }
+  const target=$('miTraceResults');if(target)target.innerHTML=resultHtml;
+ }catch(e){
+  if(reqId!==state.traceSerial)return;
+  const unauthorized=String(e?.message||'').includes('401');
+  const msg=unauthorized?'운영자 인증이 필요해. 인증하면 주문 분석을 다시 열어줄게.':'주문 상세 데이터 또는 분류 합계 확인에 실패했어. 원천 자료를 확인해야 하며 숫자를 임의로 표시하지 않아.';
+  el.innerHTML='<section class="mi-trace" role="dialog" aria-modal="true" aria-label="'+title+'"><button type="button" data-mi-trace-close style="float:right">닫기 ✕</button><h3>'+title+'</h3><p>'+msg+'</p>'+(unauthorized?operatorAuthForm():'')+'<button type="button" data-mi-trace-retry>다시 조회</button></section>';
  }
 }
 
