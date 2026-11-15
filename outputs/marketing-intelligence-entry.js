@@ -89,8 +89,10 @@ function task(num,title,signal,step,kpi){
 async function load(){
  if(!$('miBody'))return;const token=++state.serial;state.loaded=false;state.loading=true;
  $('miStatus').textContent='조회 중';$('miBody').className='mi-loading';$('miBody').textContent='신규 고객과 재구매 데이터를 비교하는 중이야.';
- const months=['2026-07','2026-08','2026-09','2026-10'];
- const urls=[...months.map(m=>'/api/crm/monthly?month='+m),...months.map(m=>'/api/crm/monthly?month='+prev(m)),...months.map(m=>'/api/crm/acquisition?month='+m),...months.map(m=>'/api/crm/data-quality?month='+m),...months.map(m=>'/api/crm/acquisition?month='+prev(m)),...months.map(m=>'/api/crm/data-quality?month='+prev(m)),'/api/crm/cohort?from=2026-07&to=2026-10&windows=30,60,90'];
+ const seoulNow=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
+ const completedMonth=new Date(seoulNow.getFullYear(),seoulNow.getMonth()-1,1);
+ const months=Array.from({length:4},(_,i)=>{const d=new Date(completedMonth.getFullYear(),completedMonth.getMonth()-3+i,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')});
+ const urls=[...months.map(m=>'/api/crm/monthly?month='+m),...months.map(m=>'/api/crm/monthly?month='+prev(m)),...months.map(m=>'/api/crm/acquisition?month='+m),...months.map(m=>'/api/crm/data-quality?month='+m),...months.map(m=>'/api/crm/acquisition?month='+prev(m)),...months.map(m=>'/api/crm/data-quality?month='+prev(m)),'/api/crm/cohort?from='+months[0]+'&to='+months[3]+'&windows=30,60,90'];
  const responses=new Array(urls.length);let i=0;
  await Promise.all(Array.from({length:4},async()=>{while(i<urls.length){const n=i++;try{responses[n]={ok:true,value:await get(urls[n])}}catch(e){responses[n]={ok:false,error:e.message}}}}));
  if(token!==state.serial)return;state.loading=false;state.loaded=true;
@@ -114,7 +116,7 @@ async function load(){
  const title=fall!==null&&fall<=-20?'다음 달 우선순위는 신규 고객의 첫 구매를 늘리는 거야.':repeatFall!==null&&repeatFall<0?'다음 달에는 재구매를 늘릴 방법부터 점검하자.':'다음 달 매출을 늘릴 실험을 데이터로 선택하자.';
  const subtitle=fall!==null?'첫 구매 회원이 전년 같은 기간 대비 '+change(newCount,oldNew)+' 변했어. '+(unique.length?'수치는 아직 잠정치이므로 원인과 실행 전에 검증이 필요해.':'이 변화를 중심으로 실행 과제를 정리했어.'):'전년 비교값이 불충분해서 신규 고객 변화를 단정할 수 없어.';
  const html=
- '<section class="mi-hero"><div class="mi-eyebrow" style="color:#aad0b6">2026년 7~10월 vs 2025년 동일 기간 · 다음 달 전략</div><h3>'+esc(title)+'</h3><p>'+esc(subtitle)+'</p></section>'+
+ '<section class="mi-hero"><div class="mi-eyebrow" style="color:#aad0b6">'+months[0]+' ~ '+months[3]+' vs 전년 동일 기간 · 다음 달 전략</div><h3>'+esc(title)+'</h3><p>'+esc(subtitle)+'</p></section>'+
  '<section class="mi-grid" aria-label="온라인 매출 성장 지표">'+
  metric('온라인 실결제 매출',money(sales),change(sales,oldSales),'온라인 주문 금액이 전년보다 얼마나 변했는지',delta(sales,oldSales)<0)+
  metric('신규 구매 확인 회원',newCount===null?'확인 불가':fmt(newCount)+'명',change(newCount,oldNew),'처음 구매한 회원 수, 미확인 회원 제외',fall<0)+
@@ -127,7 +129,7 @@ async function load(){
  '<article class="mi-panel"><h3>신규 고객은 정말 줄었을까?</h3><div class="mi-note">전년 '+(oldNew===null?'확인 불가':fmt(oldNew)+'명')+' → 현재 '+(newCount===null?'확인 불가':fmt(newCount)+'명')+' · '+change(newCount,oldNew)+'</div><p>방문자 수나 인스타그램 팔로워가 아닌 <b>실제 첫 구매 회원</b>이야. '+(acquisition.filter(Boolean).length===4&&oldAcq.filter(Boolean).length===4?'유입 데이터는 조회됐지만 출처 미식별과 태깅 문제는 별도 검증해야 해.':'일부 유입 기록을 조회하지 못해 채널 원인을 확정할 수 없어.')+'</p></article>'+
  '<article class="mi-panel"><h3>고객은 다시 구매했을까?</h3><div class="mi-note">'+(mature.length?'30일 관찰이 끝난 월: '+esc(mature.join(' / ')):'30일 재구매율: 신뢰할 수 있는 관찰 완료 월 확인 불가')+'</div><p>첫 구매 후 다시 사는 비율이야. <b>관찰 기간이 지나지 않은 고객은 0%로 취급하지 않아.</b></p></article></section>'+
  '<div class="mi-section"><h3>데이터 신뢰도</h3></div><div class="mi-panel"><span class="mi-tag">'+(unique.length?'잠정 분석 · 추가 확인 필요':'기본 검증 완료')+'</span><p style="margin-top:9px">현재 신뢰할 수 있는 관측치만 보여주고, 미확인 값을 0으로 바꾸지 않아. 검증 전에는 광고 예산 변경·쿠폰 발급·CRM 메시지 발송을 권하지 않아.</p><details><summary>확인해야 할 데이터 문제 보기 ('+unique.length+'종류)</summary><ul style="font-size:12px;line-height:1.85">'+(unique.length?unique.map(x=>'<li>'+esc(x)+'</li>').join(''):'<li>추가 경고 없음</li>')+'</ul><p class="mi-error">월별로 반복되는 동일 경고는 합쳐서 보여줘. 기술 오류 코드나 70개 경고 목록을 나열하지 않아.</p></details></div>'+
- '<p class="mi-footer">출처: SAMPLAS Marketing OS CRM 월별·유입·품질·코호트 API. 2026년 7~10월과 2025년 같은 기간 비교. 미마감 수치는 잠정치야. 신규 고객 감소의 실제 원인이나 예상 매출 증가는 확정하지 않았어. 광고 플랫폼 전환은 실매출로 합산하지 않아.</p>';
+ '<p class="mi-footer">출처: SAMPLAS Marketing OS CRM 월별·유입·품질·코호트 API. 최근 완료 4개월과 전년 동일 기간 비교. 미마감 수치는 잠정치야. 신규 고객 감소의 실제 원인이나 예상 매출 증가는 확정하지 않았어. 광고 플랫폼 전환은 실매출로 합산하지 않아.</p>';
  $('miBody').className='';$('miBody').innerHTML=html;$('miStatus').textContent=unique.length?'잠정 데이터':'데이터 조회 완료';
 }
 document.addEventListener('click',e=>{
