@@ -161,7 +161,7 @@ function renderBreakdown(rows,previous,compareLabel='비교 기간'){
  '<p class="mi-muted">'+(reconciled?'구성 항목 합계가 온라인 매출과 정확히 일치해.':'아직 합계가 맞지 않아. 차액 또는 누락 데이터부터 점검해야 해.')+' 아래 항목 중 개인결제창 주문은 CRM 신규·재구매 분석에 포함하지 않아.</p>'+
  '<div class="mi-note" style="margin-top:13px"><b>선택한 비교 기간과 대조하면</b><div>비교 기간 '+money(prior.total)+' → 선택 기간 '+money(data.total)+' · 변화 '+(totalDiff===null?'비교 불가':(totalDiff>0?'+':'')+money(totalDiff))+' ('+change(data.total,prior.total)+')</div><p class="mi-muted">고객 유형별 증감은 매출 구성 변화야. 특정 채널이나 콘텐츠가 원인이라는 뜻은 아니야.</p></div>'+ 
  '<div class="mi-duo" style="margin:12px 0"><div class="mi-note"><b>가장 큰 감소 구분</b><div>'+(negative?esc(negative.label)+' '+money(negative.difference):'비교 데이터 부족')+'</div></div><div class="mi-note"><b>감소를 일부 상쇄한 증가 구분</b><div>'+(positive?esc(positive.label)+' +'+money(positive.difference):'확인된 증가 구분 없음')+'</div></div></div>'+
- '<div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>주문·고객 구분</th><th>전년 같은 기간</th><th>올해 같은 기간</th><th>매출 차이</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>'+
+ '<div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>주문·고객 구분</th><th>비교 기간</th><th>선택 기간</th><th>매출 차이</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>'+
  '<details><summary>월별로 누가 얼마나 구매했는지 보기</summary><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>월</th><th>온라인 전체</th><th>신규 회원</th><th>재구매 회원</th><th>비회원</th><th>개인결제</th><th>구매 이력 미확인</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></details>'+
  '<details><summary>각 매출 구분은 무엇을 의미할까?</summary><ul style="padding-left:20px;font-size:12px;line-height:1.9">'+data.items.map(x=>'<li><b>'+esc(x.name)+'</b>: '+esc(x.desc)+'</li>').join('')+'</ul><p class="mi-muted">스타일리스트·직원·프레스 등 고객 유형별 온라인 매출은 현재 주문 데이터만으로 구분 불가해. 별도 검증된 주문-고객 연결이 필요해.</p></details></section>';
 }
@@ -184,13 +184,13 @@ async function load(){
  if(!valid){state.loading=false;$('miStatus').textContent='기간 오류';$('miBody').className='mi-loading';$('miBody').textContent='2025년 1월 이후 완료된 월 가운데 최대 12개월을 선택해.';return}
  const months=Array.from({length:mn(state.end)-mn(state.start)+1},(_,i)=>ym(mn(state.start)+i));
  const prevMonths=months.map((m,i)=>state.compare==='year'?ym(mn(m)-12):ym(mn(state.start)-months.length+i));
- if(prevMonths[0]<'2025-01'){state.loading=false;$('miStatus').textContent='비교 범위 오류';$('miBody').className='mi-loading';$('miBody').textContent='선택한 비교 기간의 데이터가 수집 범위 밖이야. 기간이나 비교 방법을 바꿔.';return}
+ // Missing historical comparison months do not block the selected current period.
  const compareLabel=state.compare==='year'?'전년 같은 기간':'직전 같은 길이 기간';
  $('miPeriodHint').textContent=months[0]+' ~ '+months.at(-1)+' · '+compareLabel;
  $('miStatus').textContent='조회 중';$('miBody').className='mi-loading';$('miBody').textContent='선택한 월의 CRM 데이터 확인 중';
- const urls=[...months.map(m=>'/api/crm/monthly?month='+m),...prevMonths.map(m=>'/api/crm/monthly?month='+m),...months.map(m=>'/api/crm/acquisition?month='+m),...months.map(m=>'/api/crm/data-quality?month='+m),...prevMonths.map(m=>'/api/crm/acquisition?month='+m),...prevMonths.map(m=>'/api/crm/data-quality?month='+m),'/api/crm/cohort?from='+months[0]+'&to='+months.at(-1)+'&windows=30,60,90'];
+ const urls=[...months.map(m=>'/api/crm/monthly?month='+m),...prevMonths.map(m=>m<'2025-01'?null:'/api/crm/monthly?month='+m),...months.map(m=>'/api/crm/acquisition?month='+m),...months.map(m=>'/api/crm/data-quality?month='+m),...prevMonths.map(m=>m<'2025-01'?null:'/api/crm/acquisition?month='+m),...prevMonths.map(m=>m<'2025-01'?null:'/api/crm/data-quality?month='+m),'/api/crm/cohort?from='+months[0]+'&to='+months.at(-1)+'&windows=30,60,90'];
  const responses=new Array(urls.length);let cursor=0;
- await Promise.all(Array.from({length:4},async()=>{while(cursor<urls.length){const i=cursor++;try{responses[i]={ok:true,value:await get(urls[i])}}catch(e){responses[i]={ok:false,error:e.message}}}}));
+ await Promise.all(Array.from({length:4},async()=>{while(cursor<urls.length){const i=cursor++;try{if(!urls[i]){responses[i]={ok:false,error:'BEFORE_COVERAGE'};continue}responses[i]={ok:true,value:await get(urls[i])}}catch(e){responses[i]={ok:false,error:e.message}}}}));
  if(token!==state.serial)return;state.loaded=true;state.loading=false;
  const n=months.length,group=k=>responses.slice(k*n,(k+1)*n).map(r=>r?.ok?r.value:null);
  const current=group(0).map((x,i)=>row(months[i],x)),previous=group(1).map((x,i)=>row(prevMonths[i],x)),acquisition=group(2),qualities=group(3),oldAcq=group(4),oldQuality=group(5),cohort=responses[6*n]?.ok?responses[6*n].value:null;
