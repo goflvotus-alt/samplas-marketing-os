@@ -17,8 +17,9 @@ const toItem=(m,x)=>({month:m,total:x.total?.amount,orders:x.total?.orders,new:x
 const rangeForMonth=m=>{const [y,mo]=m.split('-').map(Number),last=new Date(Date.UTC(y,mo,0)).getUTCDate();return `${m}-01&until=${m}-${String(last).padStart(2,'0')}`};
 const getAdsMonth=m=>get(`${API.ads}?since=${rangeForMonth(m)}`);
 const adMetrics=(rows,channel)=>{if(!rows.length||rows.some(x=>!x))return null;const matches=rows.map(x=>x.channels?.find(z=>z.channel===channel));if(matches.some(x=>!x||x.status!=='available'||!Number.isFinite(x.spend)||!Number.isFinite(x.clicks)||!Number.isFinite(x.platformConversions)))return null;return {spend:matches.reduce((a,x)=>a+x.spend,0),clicks:matches.reduce((a,x)=>a+x.clicks,0),conversions:matches.reduce((a,x)=>a+x.platformConversions,0),issues:[...new Set(matches.flatMap(x=>x.issues||[]))]}};
-async function load(){const months=selectMonths();if(!months.length){$('notice').textContent='종료 월은 시작 월 이후여야 합니다.';return}state.mode='loading';$('mode').textContent='조회 중';$('notice').textContent='운영 API 읽기 전용 조회 중. 전년 동일 월과 비교합니다.';
-const pair=await Promise.allSettled([...months.map(m=>get(`${API.crm}?month=${m}`)),...months.map(m=>get(`${API.crm}?month=${Number(m.slice(0,4))-1}-${m.slice(5)}`)),...months.map(m=>get(`${API.acquisition}?month=${m}`)),...months.map(m=>get(`${API.quality}?month=${m}`)),...months.map(getAdsMonth),...months.map(m=>getAdsMonth(`${Number(m.slice(0,4))-1}-${m.slice(5)}`)),...months.map(m=>get(API.acquisition+'?month='+(Number(m.slice(0,4))-1)+'-'+m.slice(5))),...months.map(m=>get(API.quality+'?month='+(Number(m.slice(0,4))-1)+'-'+m.slice(5))) ]);const n=months.length;
+let loadVersion=0;
+async function load(){const version=++loadVersion;const months=selectMonths();if(!months.length){state.mode='invalid';$('mode').textContent='기간 오류';$('stamp').textContent='비교 기간 없음';$('detail').classList.add('hidden');$('detail').innerHTML='';for(const id of ['kpis','queue','bars','channels','adsPanel','quality','cohortPanel','experiments'])$(id).innerHTML='<div class="empty">기간 선택 확인 필요</div>';$('notice').textContent='종료 월은 시작 월 이후여야 합니다.';return}state.mode='loading';$('detail').classList.add('hidden');$('detail').innerHTML='';for(const id of ['kpis','queue','bars','channels','adsPanel','quality','cohortPanel','experiments'])$(id).innerHTML='<div class="empty">조회 중 · 이전 기간 판단 제외</div>';$('stamp').textContent='기간 검증 중';$('mode').textContent='조회 중';$('notice').textContent='운영 API 읽기 전용 조회 중. 전년 동일 월과 비교합니다.';
+const pair=await Promise.allSettled([...months.map(m=>get(`${API.crm}?month=${m}`)),...months.map(m=>get(`${API.crm}?month=${Number(m.slice(0,4))-1}-${m.slice(5)}`)),...months.map(m=>get(`${API.acquisition}?month=${m}`)),...months.map(m=>get(`${API.quality}?month=${m}`)),...months.map(getAdsMonth),...months.map(m=>getAdsMonth(`${Number(m.slice(0,4))-1}-${m.slice(5)}`)),...months.map(m=>get(API.acquisition+'?month='+(Number(m.slice(0,4))-1)+'-'+m.slice(5))),...months.map(m=>get(API.quality+'?month='+(Number(m.slice(0,4))-1)+'-'+m.slice(5))) ]);if(version!==loadVersion)return;const n=months.length;
 state.months=pair.slice(0,n).map((r,i)=>r.status==='fulfilled'?toItem(months[i],r.value):null);state.previous=pair.slice(n,2*n).map((r,i)=>r.status==='fulfilled'?toItem(`${Number(months[i].slice(0,4))-1}-${months[i].slice(5)}`,r.value):null);state.acquisition=pair.slice(2*n,3*n).map(r=>r.status==='fulfilled'?r.value:null);state.quality=pair.slice(3*n,4*n).map(r=>r.status==='fulfilled'?r.value:null);state.ads=pair.slice(4*n,5*n).map(r=>r.status==='fulfilled'?r.value:null);state.previousAds=pair.slice(5*n,6*n).map(r=>r.status==='fulfilled'?r.value:null);state.previousAcquisition=pair.slice(6*n,7*n).map(r=>r.status==='fulfilled'?r.value:null);state.previousQuality=pair.slice(7*n,8*n).map(r=>r.status==='fulfilled'?r.value:null);
 const failed=pair.filter(r=>r.status==='rejected').length;
 const priorFrom=String(Number(months[0].slice(0,4))-1)+'-'+months[0].slice(5);
@@ -27,6 +28,7 @@ const cohortResponses=await Promise.allSettled([
   get(API.cohort+'?from='+months[0]+'&to='+months.at(-1)+'&windows=30,60,90'),
   get(API.cohort+'?from='+priorFrom+'&to='+priorTo+'&windows=30,60,90')
 ]);
+if(version!==loadVersion)return;
 state.cohort=cohortResponses[0].status==='fulfilled'?cohortResponses[0].value:null;
 state.previousCohort=cohortResponses[1].status==='fulfilled'?cohortResponses[1].value:null;
 state.decisionReasons=decisionBlockers();
@@ -37,12 +39,14 @@ $('mode').className='status '+(state.mode==='limited'?'warn':'');
 $('notice').textContent=state.mode==='limited'?'각 분석 영역의 판단 가능 범위가 다릅니다. 잠정 신호는 조사 제안만 제공하며 예산·CRM 실행은 권고하지 않습니다.':'검증된 지표별 조사 제안을 제공하며 인과·증분 성과는 확정하지 않습니다.';
 $('stamp').textContent=months[0]+' ~ '+months.at(-1);render()}
 const sum=(a,k)=>a.every(x=>x&&Number.isFinite(x[k]))?a.reduce((s,x)=>s+x[k],0):null;const pct=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b>0?100*(a/b-1):null;
-function demo(){const m=['07','08','09','10'];const n26=[20,25,24,21],n25=[29,50,60,45],r26=[6288110,4624280,8140140,16654950],r25=[8446690,5484630,15909200,11695120];state.months=m.map((x,i)=>({month:`2026-${x}`,new:n26[i],repeatAmount:r26[i],unverified:[6,3,2,3][i],total:[35000863,34722620,30748893,39462706][i],orders:[122,109,108,106][i]}));state.previous=m.map((x,i)=>({month:`2025-${x}`,new:n25[i],repeatAmount:r25[i],unverified:[5,10,13,7][i],total:[28630776,39662199,49896355,41309719][i],orders:[116,150,153,136][i]}));state.acquisition=[{firstPurchaseChannels:[{channel:'(no ad / direct)',members:15},{channel:'ig',medium:'social',members:2},{channel:'meta',medium:'paid',members:2},{channel:'네이버',medium:'shopping',members:1}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:20},{channel:'ig',medium:'social',members:3},{channel:'네이버',medium:'shopping',members:2}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:16},{channel:'ig',medium:'social',members:1},{channel:'ig',medium:'paid',members:2},{channel:'meta',medium:'paid',members:1},{channel:'네이버',medium:'shopping',members:4}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:17},{channel:'ig',medium:'social',members:3},{channel:'네이버',medium:'shopping',members:1}]}];state.quality=m.map(x=>({closeStatus:'NOT_FINAL',__meta:{completeness:'PARTIAL'},issues:['SAMPLE']}));state.previousAcquisition=[];state.previousQuality=[];state.cohort=null;state.previousCohort=null;state.decisionReasons=['검증 샘플은 전략 추천 불가'];state.ads=[];state.previousAds=[];state.mode='demo';state.rules=null;$('year').value='2026';$('fromMonth').value='07';$('toMonth').value='10';$('mode').textContent='검증 샘플 · 실시간 아님';$('mode').className='status warn';$('stamp').textContent='2026-07 ~ 2026-10';$('notice').textContent='이 화면은 이전에 실제 API에서 검증된 월별 수치를 내장한 시연 모드야. 현재 운영 서버의 실시간 데이터가 아니며 마감 전 잠정 집계다.';render()}
+function demo(){++loadVersion;$('detail').classList.add('hidden');$('detail').innerHTML='';const m=['07','08','09','10'];const n26=[20,25,24,21],n25=[29,50,60,45],r26=[6288110,4624280,8140140,16654950],r25=[8446690,5484630,15909200,11695120];state.months=m.map((x,i)=>({month:`2026-${x}`,new:n26[i],repeatAmount:r26[i],unverified:[6,3,2,3][i],total:[35000863,34722620,30748893,39462706][i],orders:[122,109,108,106][i]}));state.previous=m.map((x,i)=>({month:`2025-${x}`,new:n25[i],repeatAmount:r25[i],unverified:[5,10,13,7][i],total:[28630776,39662199,49896355,41309719][i],orders:[116,150,153,136][i]}));state.acquisition=[{firstPurchaseChannels:[{channel:'(no ad / direct)',members:15},{channel:'ig',medium:'social',members:2},{channel:'meta',medium:'paid',members:2},{channel:'네이버',medium:'shopping',members:1}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:20},{channel:'ig',medium:'social',members:3},{channel:'네이버',medium:'shopping',members:2}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:16},{channel:'ig',medium:'social',members:1},{channel:'ig',medium:'paid',members:2},{channel:'meta',medium:'paid',members:1},{channel:'네이버',medium:'shopping',members:4}]},{firstPurchaseChannels:[{channel:'(no ad / direct)',members:17},{channel:'ig',medium:'social',members:3},{channel:'네이버',medium:'shopping',members:1}]}];state.quality=m.map(x=>({closeStatus:'NOT_FINAL',__meta:{completeness:'PARTIAL'},issues:['SAMPLE']}));state.previousAcquisition=[];state.previousQuality=[];state.cohort=null;state.previousCohort=null;state.decisionReasons=['검증 샘플은 전략 추천 불가'];state.ads=[];state.previousAds=[];state.mode='demo';state.rules=null;$('year').value='2026';$('fromMonth').value='07';$('toMonth').value='10';$('mode').textContent='검증 샘플 · 실시간 아님';$('mode').className='status warn';$('stamp').textContent='2026-07 ~ 2026-10';$('notice').textContent='이 화면은 이전에 실제 API에서 검증된 월별 수치를 내장한 시연 모드야. 현재 운영 서버의 실시간 데이터가 아니며 마감 전 잠정 집계다.';render()}
 function evidenceRules(){
  const issues={new:[],repeat:[],ads:[],cohort:[]};
  const contexts=[['대상 기간',state.months,state.acquisition,state.quality],['전년 기간',state.previous,state.previousAcquisition,state.previousQuality]];
- const requireBothMonthly=contexts.every(([,months])=>months.length>0&&months.every(m=>m&&Number.isFinite(m.new)&&Number.isFinite(m.repeatAmount)));
- if(!requireBothMonthly){issues.new.push('전년 및 현재 신규 고객 수 누락');issues.repeat.push('전년 및 현재 재구매 매출 누락')}
+ const hasNewEvidence=contexts.every(([,months])=>months.length>0&&months.every(m=>m&&Number.isFinite(m.new)));
+ const hasRepeatEvidence=contexts.every(([,months])=>months.length>0&&months.every(m=>m&&Number.isFinite(m.repeatAmount)));
+ if(!hasNewEvidence)issues.new.push('전년 및 현재 신규 고객 수 누락');
+ if(!hasRepeatEvidence)issues.repeat.push('전년 및 현재 재구매 매출 누락');
  for(const [label,months,acqs,qualities] of contexts){
   for(let i=0;i<months.length;i++){
    const m=months[i],a=acqs[i],q=qualities[i],id=m?.month||label+' '+(i+1)+'월';
@@ -73,9 +77,9 @@ function evidenceRules(){
  }
  const uniq=x=>[...new Set(x)];
  for(const k of Object.keys(issues))issues[k]=uniq(issues[k]);
- return {issues,hasNewEvidence:requireBothMonthly,hasRepeatEvidence:requireBothMonthly,
-  newStatus:!requireBothMonthly?'BLOCKED':issues.new.length?'REVIEW':'VERIFIED',
-  repeatStatus:!requireBothMonthly?'BLOCKED':issues.repeat.length?'REVIEW':'VERIFIED',
+ return {issues,hasNewEvidence,hasRepeatEvidence,
+  newStatus:!hasNewEvidence?'BLOCKED':issues.new.length?'REVIEW':'VERIFIED',
+  repeatStatus:!hasRepeatEvidence?'BLOCKED':issues.repeat.length?'REVIEW':'VERIFIED',
   adsStatus:issues.ads.length?'BLOCKED':'REVIEW',
   cohortStatus:issues.cohort.length?'REVIEW':'VERIFIED'};
 }
@@ -129,7 +133,7 @@ $('quality').innerHTML='<p class="sub">'+(blocked?'샘플 또는 조회 중: 전
 const cohortRows=(payload,label)=>{
  if(!Array.isArray(payload?.cohorts))return '<div class="message">'+escapeText(label)+' 코호트 확인 불가</div>';
  return '<h4>'+escapeText(label)+'</h4><table><thead><tr><th>첫 구매월</th><th>확인 고객</th><th>30일</th><th>60일</th><th>90일</th></tr></thead><tbody>'+
- payload.cohorts.map(c=>'<tr><td>'+escapeText(c.month)+'</td><td>'+fmt(c.members)+'</td>'+[30,60,90].map(w=>{const x=c.cells?.find(z=>z.window===w);return '<td>'+(x?.status==='MATURE'&&Number.isFinite(x.rate)?fmt(x.rate)+'%':'미성숙 · 판단 제외')+'</td>'}).join('')+'</tr>').join('')+'</tbody></table>';
+ payload.cohorts.map(c=>'<tr><td>'+escapeText(c.month)+'</td><td>'+fmt(c.members)+'</td>'+[30,60,90].map(w=>{const x=c.cells?.find(z=>z.window===w);return '<td>'+(x?.status==='MATURE'&&Number.isFinite(x.rate)?fmt(x.rate)+'%':x?.status==='IMMATURE'?'미성숙 · 판단 제외':x?.status==='UNVERIFIED'?'이력 미검증 · 판단 제외':x?.status==='EMPTY'?'대상 고객 없음':'확인 불가 · 판단 제외')+'</td>'}).join('')+'</tr>').join('')+'</tbody></table>';
 };
 $('cohortPanel').innerHTML='<p class="sub">IMMATURE는 0%로 처리하지 않으며 비교에서 제외합니다.</p>'+cohortRows(state.cohort,'대상 기간')+cohortRows(state.previousCohort,'전년 동일 기간');
 
