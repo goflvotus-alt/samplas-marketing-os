@@ -124,6 +124,7 @@ import { classifyProductCategory } from "./scripts/category-classification-rules
 // NEXT-CROSS-BRAND-PARTIAL-PERIOD-plan.md §6 그대로 구현).
 import { resolveCrossBrandPeriodCutoff } from "./scripts/cross-brand-period-cutoff.mjs";
 import { createTrackingTestScheduler } from "./scripts/tracking-test-run.mjs";
+import { createCrmAnalyticsCollector } from "./scripts/crm-analytics-collect.mjs";
 
 const root = resolve(".");
 const outputDir = join(root, "outputs");
@@ -1666,6 +1667,11 @@ const server = isMainModule ? createServer(async (req, res) => {
   // One-off tracking test: armed only by WORK_DIR/tracking-test/schedule.json, runs as a child process.
   const trackingTestTick = createTrackingTestScheduler({ env });
   setInterval(() => trackingTestTick().catch(() => console.error("[TRACKING_TEST] check failed")), 60000);
+  // CRM acquisition: Cafe24 Analytics daily 04:00 KST (last 7 days) + monthly on the 3rd 04:30 KST. Off unless CRM_ANALYTICS_COLLECT=on.
+  if (env.CRM_ANALYTICS_COLLECT === "on") {
+    const crmAnalyticsTick = createCrmAnalyticsCollector({ workDir, env, fetchAnalytics: fetchCafe24AnalyticsOrderDetails });
+    setInterval(() => crmAnalyticsTick().catch(() => console.error("[CRM_ANALYTICS_COLLECT] check failed")), 60000);
+  }
 }) : null;
 
 server?.on("error", (error) => {
