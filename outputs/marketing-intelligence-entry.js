@@ -496,34 +496,107 @@ function openOrderTrace(segment,filter=null){
  state.detail=null;
  loadOrderTrace();
 }
+function renderMiTraceOverview(data,group){
+ const overview=data?.overview;
+ if(!overview?.all||!Array.isArray(overview.buckets))return '<p class="mi-error">고객 유형별 주문 요약을 검증하지 못했어. 숫자를 임의로 배분하지 않아.</p>';
+ const all=overview.all,groups=overview.buckets,memberTypes=overview.memberTypes||[];
+ const label={ALL:'전체 주문',MEMBER:'회원',NEW:'신규 구매 회원',REPEAT:'재구매 회원',UNVERIFIED:'구매 이력 미확인 회원',
+   GUEST:'비회원',PERSONAL:'개인결제',UNKNOWN:'추적 불가'};
+ const get=k=>k==='ALL'?all:[...groups,...memberTypes].find(x=>x.key===k);
+ const preview=record=>{
+  const list=record?.preview||[];
+  return '<div class="mi-order-preview" role="tooltip"><strong>최근 주문 미리보기</strong>'+
+    (list.length?list.map(r=>'<p>'+esc(r.date)+' · '+money(r.paidAmount)+'<span>'+esc(r.anonymousCustomer||'비회원 / 미식별')+' · '+esc(r.product||'상품 미확인')+'</span></p>').join(''):'<p>이 기간에 해당 주문이 없어.</p>')+
+    '<p>클릭하면 전체 주문 목록과 구매 상품을 볼 수 있어.</p></div>';
+ };
+ const navButton=(k,child=false)=>{
+  const rec=get(k),num=rec?.orders;
+  return '<div class="mi-order-filter-wrap"><button type="button" class="mi-order-filter'+(child?' mi-order-filter-child':'')+'" data-mi-order-group="'+k+'" aria-pressed="'+(group===k)+'" aria-label="'+esc(label[k])+' '+fmt(num)+'건. 클릭해 주문 보기">'+
+    '<span>'+esc(label[k])+'</span><strong>'+(Number.isFinite(num)?fmt(num)+'건':'조회 불가')+'</strong></button>'+preview(rec)+'</div>';
+ };
+ const groupCount=groups.reduce((n,g)=>n+g.orders,0);
+ const groupAmount=groups.reduce((n,g)=>n+g.paidAmount,0);
+ const reconciled=groupCount===all.orders&&groupAmount===all.paidAmount;
+ return '<div class="mi-trace-summary"><div class="mi-trace-stat"><small>전체 온라인 주문</small><strong>'+fmt(all.orders)+'건</strong></div>'+
+   '<div class="mi-trace-stat"><small>온라인 실결제 매출</small><strong>'+money(all.paidAmount)+'</strong></div>'+
+   '<div class="mi-trace-stat"><small>유형별 주문 합계</small><strong>'+(reconciled?'일치 · '+fmt(groupCount)+'건':'검증 필요')+'</strong></div></div>'+
+   '<p class="mi-trace-lead">왼쪽에서 회원 유형을 선택해 주문을 좁혀봐. <b>유형에 마우스를 올리면 최근 주문 3건을 미리 확인</b>할 수 있어.</p>'+
+   '<div class="mi-trace-layout"><nav class="mi-trace-nav" aria-label="주문 고객 유형 필터"><h4>고객·결제 유형별 주문</h4>'+
+   navButton('ALL')+navButton('MEMBER')+
+   '<div class="mi-order-filter-children">'+memberTypes.map(x=>navButton(x.key,true)).join('')+'</div>'+
+   '<div class="mi-order-unverified" tabindex="0" title="Clients의 오프라인 스타일리스트 분류는 Cafe24 온라인 주문과 검증된 연결키가 없어 별도로 셀 수 없어."><b>스타일리스트 · 확인 불가</b><div>온라인 주문으로 분리할 식별 근거 없음</div></div>'+
+   navButton('GUEST')+navButton('PERSONAL')+navButton('UNKNOWN')+'</nav>'+
+   '<div class="mi-order-results" id="miTraceResults"></div></div>';
+}
+function miProductEvidenceLabel(state){
+ if(state==='PRODUCT_ITEMS_NOT_IN_CACHE')return '상품 원본 미수집';
+ if(state==='EARLIER_ORDER_OBSERVATION_UNVERIFIED_CANCELLATIONS')return '이전 기록에 있는 상품명 · 이후 취소 여부 미검증';
+ if(state==='PERSONAL_PAYMENT_NAME_SUPPRESSED')return '개인결제 상품명 비공개';
+ if(state==='ORDER_ITEMS_LATEST_OBSERVATION')return '';
+ return '상품 원천 상태 확인 필요';
+}
 async function loadOrderTrace(){
- const el=$('miInspect'),data=state.loadedRows;if(!el||!data||!state.trace)return;
- const reqId=++state.traceSerial,month=state.traceMonth||data.months.at(-1),group=state.trace,page=state.tracePage;
- const title=group==='ALL'?'전체 온라인 주문':group==='NEW'?'신규 구매 회원과 구매 상품':'선택한 주문 유형';
- const filter=state.traceFilter;
- const sourceLabel=filter?.channel?' · 첫 구매 유입 '+filter.channel+(filter.medium?' / '+filter.medium:''):'';
- const monthSelector='<label>조회 월 <select id="miTraceMonth">'+data.months.map(m=>'<option value="'+m+'"'+(m===month?' selected':'')+'>'+m+'</option>').join('')+'</select></label>';
- el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+'</h3><div class="mi-trace-controls">'+monthSelector+'</div><p>실제 주문·상품 데이터를 확인하고 있어.</p></section>';
+ const el=$('miInspect'),data=state.loadedRows;
+ if(!el||!data||!state.trace)return;
+ const reqId=++state.traceSerial,group=state.trace,page=state.tracePage,filter=state.traceFilter;
+ const month=state.traceMonth;
+ const start=month||data.months[0],end=month||data.months.at(-1);
+ const title='온라인 주문 상세 분석';
+ const sourceLabel=filter?.channel?' · 유입 '+filter.channel+(filter.medium?' / '+filter.medium:''):'';
+ const monthOptions=[...new Set([...data.prevMonths,...data.months])].filter(Boolean).sort();
+ const select='<label>조회 기간 <select id="miTraceMonth"><option value=""'+(month?'':' selected')+'>선택 기간 전체 ('+data.months[0]+' ~ '+data.months.at(-1)+')</option>'+
+  monthOptions.map(m=>'<option value="'+esc(m)+'"'+(m===month?' selected':'')+'>'+esc(m)+'</option>').join('')+'</select></label>';
+ const sameContext=state.traceContext===start+'|'+end+'|'+(filter?.channel||'')+'|'+(filter?.medium||'')+'|'+Boolean(filter?.firstOnly);
+ if(!sameContext){state.traceContext=null;state.traceOverview=null}
+ if(!el.querySelector('.mi-trace')||!sameContext){
+  el.innerHTML='<section class="mi-trace" role="dialog" aria-modal="true" aria-label="'+title+'"><button type="button" data-mi-trace-close aria-label="주문 상세 닫기">닫기 ✕</button><span class="mi-eyebrow">ORDER EXPLORER</span><h3>'+title+esc(sourceLabel)+'</h3><div class="mi-trace-controls">'+select+'</div><p>고객 유형과 주문 내역을 조회하고 있어.</p></section>';
+ }else{
+  const results=$('miTraceResults');if(results)results.innerHTML='<p class="mi-muted">주문 필터를 적용하고 있어.</p>';
+ }
  try{
-  const result=await get('/api/crm/order-trace?month='+encodeURIComponent(month)+'&segment='+group+'&page='+page+'&limit=20'+(filter?.firstOnly?'&firstOnly=true':'')+(filter?.channel?'&channel='+encodeURIComponent(filter.channel):'')+(filter?.medium?'&medium='+encodeURIComponent(filter.medium):''));
-  if(reqId!==state.traceSerial || state.trace!==group || state.traceMonth!==month)return;
-  const rows=Array.isArray(result.rows)?result.rows:[];
-  const html=rows.map((r,i)=>{
-   const items=r.products?.length?r.products.map(x=>'<div class="mi-purchased-product">'+esc(x.name)+' · '+fmt(x.quantity)+'개'+(x.productNo?' <span class="mi-muted">상품번호 '+esc(x.productNo)+'</span>':'')+'</div>').join(''):'<span class="mi-muted">상품 원본 미수집. 확인되지 않은 상품을 추정하지 않아.</span>';
-   return '<details class="mi-order-card"'+(i===0?' open':'')+'><summary><span>'+esc(r.date)+' · '+esc(r.anonymousCustomer||'비회원 / 미식별')+' <span class="mi-muted">상세 펼치기</span></span><strong>'+money(r.paidAmount)+'</strong></summary><div class="mi-order-products"><b>구매 상품·수량</b>'+items+'<p class="mi-muted">주문 기록 유입: '+esc(r.acquisition?.channel||'UNKNOWN')+(r.acquisition?.medium?' / '+esc(r.acquisition.medium):'')+'</p><p class="mi-muted">상품 원천 상태: '+esc(r.productEvidence||'미확인')+'</p></div></details>';
+  const result=await get('/api/crm/order-trace?month='+encodeURIComponent(start)+'&from='+encodeURIComponent(start)+'&to='+encodeURIComponent(end)+
+     '&segment='+encodeURIComponent(group)+'&page='+page+'&limit=20'+(filter?.firstOnly?'&firstOnly=true':'')+
+     (filter?.channel?'&channel='+encodeURIComponent(filter.channel):'')+(filter?.medium?'&medium='+encodeURIComponent(filter.medium):''));
+  if(reqId!==state.traceSerial||state.trace!==group||state.traceMonth!==month)return;
+  if(!result?.overview?.all||!Array.isArray(result.overview.buckets))throw new Error('UNRECONCILED_OVERVIEW');
+  state.traceContext=start+'|'+end+'|'+(filter?.channel||'')+'|'+(filter?.medium||'')+'|'+Boolean(filter?.firstOnly);
+  state.traceOverview=result.overview;
+  const all=result.overview.all,buckets=result.overview.buckets;
+  if(buckets.reduce((n,g)=>n+g.orders,0)!==all.orders||buckets.reduce((n,g)=>n+g.paidAmount,0)!==all.paidAmount)throw new Error('UNRECONCILED_TOTALS');
+  const titleByGroup={ALL:'전체 주문',MEMBER:'회원 주문',NEW:'신규 구매 회원',REPEAT:'재구매 회원',UNVERIFIED:'구매 이력 미확인',GUEST:'비회원 주문',PERSONAL:'개인결제 주문',UNKNOWN:'추적 불가 주문'};
+  const records=Array.isArray(result.rows)?result.rows:[];
+  const cards=records.map(r=>{
+   const productItems=r.products?.length?r.products.map(x=>'<div class="mi-purchased-product">'+esc(x.name||'상품명 미확인')+' · '+fmt(x.quantity)+'개'+(x.productNo?' <span class="mi-muted">#'+esc(x.productNo)+'</span>':'')+'</div>').join(''):'<span class="mi-muted">'+(r.segment==='PERSONAL'?'개인결제 상품명 비공개':'상품 원본 미수집')+'</span>';
+   const status=miProductEvidenceLabel(r.productEvidence);
+   const channel=r.acquisition?.channel==='UNKNOWN'?'주문 유입 기록 없음':r.acquisition?.channel==='(no ad / direct)'?'광고 식별 없음 / 직접 유입 가능':r.acquisition?.channel||'조회 불가';
+   return '<details class="mi-order-card"><summary><span><b>'+esc(r.date)+' · '+esc(r.anonymousCustomer||'비회원 / 미식별')+'</b><small>'+esc(titleByGroup[r.segment]||'주문')+' · '+esc(r.products?.[0]?.name||'구매 상품 확인하기')+'</small></span><strong>'+money(r.paidAmount)+'</strong></summary>'+
+   '<div class="mi-order-products"><b>구매 상품 및 수량</b>'+productItems+
+   '<p class="mi-muted">기록된 유입: '+esc(channel)+(r.acquisition?.medium?' / '+esc(r.acquisition.medium):'')+'</p>'+
+   (status?'<p class="mi-muted">상품 데이터: '+esc(status)+'</p>':'')+'</div></details>';
   }).join('');
   const max=Math.max(1,Math.ceil(Number(result.totals?.orders||0)/20));
-  el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+' · '+esc(month)+esc(sourceLabel)+'</h3>'+
-   '<p class="mi-muted">확인된 주문 '+fmt(result.totals?.orders)+'건 · 주문 결제액 '+money(result.totals?.paidAmount)+' · 구분 가능한 회원 '+(result.totals?.members==null?'해당 없음':fmt(result.totals.members)+'명')+'</p>'+
-   '<div class="mi-trace-controls">'+monthSelector+'</div><div class="mi-order-list">'+(html||'<div class="mi-provisional">해당 조건의 주문 없음</div>')+'</div>'+
-   '<div class="mi-trace-controls"><button type="button" data-mi-trace-page="'+(page-1)+'"'+(page===1?' disabled':'')+'>이전</button><span>'+page+' / '+max+' 페이지</span><button type="button" data-mi-trace-page="'+(page+1)+'"'+(page>=max?' disabled':'')+'>다음</button></div>'+
-   '<p class="mi-inline-note">Cafe24 주문 원본 + Analytics 주문 유입 기준. 구매 상품은 상품명·수량이며 할인/반품이 분배된 상품별 순매출이 아니야. 주문별 검색어는 수집되지 않아. 개인식별 정보는 제공하지 않아.</p></section>';
- }catch(e){
-  if(reqId===state.traceSerial){
-   const unauthorized=String(e?.message||'조회 실패').includes('401');
-   const message=unauthorized?'주문 상세는 운영자 인증이 필요해. 아래에서 인증하면 선택한 조건으로 이어서 조회해.':'주문 상세 자료 조회에 실패했어. 요청한 월의 원천 주문 데이터 또는 서버 상태를 확인해야 해.';
-   el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+'</h3><p>'+message+'</p>'+(unauthorized?operatorAuthForm():'')+'<div class="mi-trace-controls"><button type="button" data-mi-trace-retry>다시 조회</button></div></section>';
+  const resultHtml='<h4>'+esc(titleByGroup[group])+' · '+fmt(result.totals?.orders)+'건</h4>'+
+   '<p class="mi-muted">결제액 '+money(result.totals?.paidAmount)+' · 주문 '+fmt(result.totals?.orders)+'건'+
+   (Number.isFinite(result.totals?.members)?' · 식별 회원 '+fmt(result.totals.members)+'명':'')+'</p>'+
+   '<div class="mi-order-list">'+(cards||'<div class="mi-provisional">이 유형에 해당하는 주문이 없어.</div>')+'</div>'+
+   '<div class="mi-trace-controls"><button type="button" data-mi-trace-page="'+(page-1)+'"'+(page===1?' disabled':'')+'>이전</button><span>'+page+' / '+max+' 페이지</span><button type="button" data-mi-trace-page="'+(page+1)+'"'+(page>=max?' disabled':'')+'>다음</button></div>';
+  if(!sameContext||!el.querySelector('.mi-trace-layout')){
+   el.innerHTML='<section class="mi-trace" role="dialog" aria-modal="true" aria-label="'+title+'"><button type="button" data-mi-trace-close aria-label="주문 상세 닫기">닫기 ✕</button><span class="mi-eyebrow">ORDER EXPLORER · 온라인 주문</span><h3>'+title+esc(sourceLabel)+'</h3>'+
+    '<div class="mi-trace-controls">'+select+'</div>'+renderMiTraceOverview(result,group)+
+    '<p class="mi-inline-note">회원은 첫 구매·재구매·이력 미확인을 포함하고, 개인결제는 스타일리스트로 자동 분류하지 않아. 고객 유형 간 주문이 중복되지 않도록 합계 검증했어.</p>'+
+    '<p class="mi-inline-note">상품별 순매출은 별도 검증되지 않았으며, 개인결제·미수집 상품 정보는 공개하지 않아.</p></section>';
+  }else{
+    const sidebar=el.querySelector('.mi-trace-nav');
+    if(sidebar){
+      sidebar.querySelectorAll('[data-mi-order-group]').forEach(button=>button.setAttribute('aria-pressed',String(button.getAttribute('data-mi-order-group')===group)));
+    }
   }
+  const target=$('miTraceResults');if(target)target.innerHTML=resultHtml;
+ }catch(e){
+  if(reqId!==state.traceSerial)return;
+  const unauthorized=String(e?.message||'').includes('401');
+  const msg=unauthorized?'운영자 인증이 필요해. 인증하면 주문 분석을 다시 열어줄게.':'주문 상세 데이터 또는 분류 합계 확인에 실패했어. 원천 자료를 확인해야 하며 숫자를 임의로 표시하지 않아.';
+  el.innerHTML='<section class="mi-trace" role="dialog" aria-modal="true" aria-label="'+title+'"><button type="button" data-mi-trace-close style="float:right">닫기 ✕</button><h3>'+title+'</h3><p>'+msg+'</p>'+(unauthorized?operatorAuthForm():'')+'<button type="button" data-mi-trace-retry>다시 조회</button></section>';
  }
 }
 
