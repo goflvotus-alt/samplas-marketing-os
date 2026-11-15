@@ -183,13 +183,19 @@ function mount(){
   });
   $('miInspect').addEventListener('click',e=>{
     if(e.target.closest('[data-mi-close]'))closeMiInspector()
-    const seg=e.target.closest('[data-mi-trace-segment]');if(seg)openOrderTrace(seg.getAttribute('data-mi-trace-segment'));
+    const seg=e.target.closest('[data-mi-trace-segment]');if(seg){openOrderTrace(seg.getAttribute('data-mi-trace-segment'));return}
+    const month=e.target.closest('[data-mi-evidence-month]');if(month){openOrderTrace(month.getAttribute('data-mi-evidence-segment'),{month:month.getAttribute('data-mi-evidence-month')});return}
+    const group=e.target.closest('[data-mi-order-group]');if(group){
+      const selected=group.getAttribute('data-mi-order-group');
+      if(['ALL','MEMBER','NEW','REPEAT','UNVERIFIED','GUEST','PERSONAL','UNKNOWN'].includes(selected)){state.trace=selected;state.tracePage=1;loadOrderTrace()}
+      return;
+    }
     const page=e.target.closest('[data-mi-trace-page]');if(page){state.tracePage=Number(page.getAttribute('data-mi-trace-page'));loadOrderTrace()}
     if(e.target.closest('[data-mi-trace-retry]')){loadOrderTrace()}
     if(e.target.closest('[data-mi-trace-close]')){closeMiInspector()}
     if(e.target===$('miInspect'))closeMiInspector()
   });
-  $('miInspect').addEventListener('change',e=>{if(e.target.id==='miTraceMonth'){state.traceMonth=e.target.value;state.tracePage=1;loadOrderTrace()}});
+  $('miInspect').addEventListener('change',e=>{if(e.target.id==='miTraceMonth'){state.traceMonth=e.target.value||null;state.tracePage=1;loadOrderTrace()}});
   $('miInspect').addEventListener('submit',handleMiAuthSubmit);
   $('miBody').addEventListener('submit',handleMiAuthSubmit);
   $('miBody').addEventListener('change',e=>{if(e.target.id==='miTrafficMonth'){state.trafficMonth=e.target.value;loadVisitEvidence()}});
@@ -453,23 +459,37 @@ function showSegmentDetail(){
  const data=state.loadedRows,ix=state.detail;
  if(ix===null||!data||!Number.isInteger(ix)||ix<0||ix>5){el.innerHTML='';return}
  const specs=[
-  ['신규 회원 매출','newRevenue','검증된 첫 구매 회원 주문 매출'],
-  ['재구매 회원 매출','repeat','이전 구매 이력이 확인된 회원 매출'],
-  ['비회원 주문 매출','guestRevenue','네이버페이를 포함하는 비회원 주문'],
-  ['개인결제창 매출','personalRevenue','회원/스타일리스트 유형으로 확정할 수 없는 별도 결제 방식'],
-  ['첫 구매 이력 미확인 회원 매출','unverifiedRevenue','과거 주문 이력 부족으로 신규/재구매 구분이 불가능한 회원'],
-  ['회원 구분 불가 매출','identityUnknownRevenue','주문 회원 식별 자체가 불확실한 거래']
+  ['신규 회원 매출','newRevenue','NEW','검증된 첫 구매 회원 주문'],
+  ['재구매 회원 매출','repeat','REPEAT','이전에 구매한 이력이 확인된 회원'],
+  ['비회원 주문 매출','guestRevenue','GUEST','네이버페이 포함, 신규 고객과 동일하지 않음'],
+  ['개인결제창 주문 매출','personalRevenue','PERSONAL','스타일리스트 여부는 아직 판별 불가'],
+  ['구매 이력 미확인 회원','unverifiedRevenue','UNVERIFIED','첫 구매/재구매를 분류할 근거 부족'],
+  ['회원 여부 추적 불가','identityUnknownRevenue','UNKNOWN','회원과 비회원을 판별할 근거 부족']
  ];
- const [name,key,meaning]=specs[ix];
- const body=data.current.map(x=>'<tr><td>'+esc(x?.month??'기간 미확인')+'</td><td>'+money(x?.[key])+'</td></tr>').join('');
- el.innerHTML='<section class="mi-inspect"><button type="button" data-mi-close style="float:right">닫기</button><h3>'+esc(name)+'</h3><p>'+esc(meaning)+'</p><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>월</th><th>매출</th></tr></thead><tbody>'+body+'</tbody></table></div><p>출처: Cafe24 CRM /api/crm/monthly. 현재 기간의 자료가 NOT_FINAL 또는 PARTIAL이면 확정 수치가 아니야.</p><button type="button" data-mi-trace-segment="'+['NEW','REPEAT','GUEST','PERSONAL','UNVERIFIED','UNKNOWN'][ix]+'">구매한 상품과 주문별 근거 확인</button></section>';
+ const [name,key,segment,definition]=specs[ix];
+ const total=sum(data.current,key),previous=sum(data.previous,key);
+ const difference=total!==null&&previous!==null?total-previous:null;
+ const all=[...data.current,...data.previous].filter(x=>x&&Number.isFinite(x[key]));
+ const top=Math.max(1,...all.map(x=>x[key]));
+ const rows=(list,kind)=>list.map(x=>{
+   const month=x?.month,amount=x?.[key],pct=Number.isFinite(amount)?Math.max(0,Math.min(100,amount/top*100)):0;
+   return '<div class="mi-evidence-row"><strong>'+esc(month||'월 미확인')+'</strong><div class="mi-evidence-bar"><span style="width:'+pct.toFixed(2)+'%"></span></div><b>'+money(amount)+'</b>'+
+    (month?'<button type="button" data-mi-evidence-month="'+esc(month)+'" data-mi-evidence-segment="'+segment+'">'+esc(month)+' 주문 확인</button>':'')+'</div>';
+ }).join('')||'<p class="mi-muted">비교 가능한 자료 없음</p>';
+ const period=list=>list?.length?list[0]+' ~ '+list.at(-1):'조회 불가';
+ el.innerHTML='<section class="mi-inspect" role="dialog" aria-modal="true" aria-label="'+esc(name)+' 월별 근거"><button type="button" data-mi-close aria-label="상세 닫기">닫기 ✕</button>'+
+  '<span class="mi-eyebrow">MONTHLY EVIDENCE · 월별 매출 근거</span><h3>'+esc(name)+'</h3><p class="mi-muted">'+esc(definition)+'</p>'+
+  '<div class="mi-trace-summary"><div class="mi-trace-stat"><small>선택 기간 매출</small><strong>'+money(total)+'</strong></div><div class="mi-trace-stat"><small>비교 기간 매출</small><strong>'+money(previous)+'</strong></div><div class="mi-trace-stat"><small>매출 변화</small><strong>'+(difference===null?'비교 불가':(difference>0?'+':'')+money(difference))+'</strong></div></div>'+
+  '<div class="mi-period-evidence"><div class="mi-evidence-col"><h4>선택 기간 · '+esc(period(data.months))+'</h4>'+rows(data.current,'selected')+'</div>'+
+  '<div class="mi-evidence-col"><h4>비교 기간 · '+esc(period(data.prevMonths))+'</h4>'+rows(data.previous,'compared')+'</div></div>'+
+  '<p class="mi-inline-note">각 월의 막대는 여기 표시된 월 중 최댓값에 대한 상대적인 크기야. 주문 확인을 누르면 해당 월의 실제 주문·상품 목록을 볼 수 있어.</p>'+
+  '<p class="mi-inline-note">Cafe24 CRM 기준, 구매 이력 검증이 부족하거나 월 마감이 완료되지 않은 값은 잠정치야.</p></section>';
 }
-
-function openOrderTrace(segment,filter=null) {
- if(!state.loadedRows || !['ALL','NEW','REPEAT','GUEST','PERSONAL','UNVERIFIED','UNKNOWN'].includes(segment))return;
- state.trace=segment;state.tracePage=1;state.traceFilter=filter;
- state.traceMonth=state.loadedRows.months.at(-1);
- if(filter?.channel){
+function openOrderTrace(segment,filter=null){
+ if(!state.loadedRows||!['ALL','MEMBER','NEW','REPEAT','GUEST','PERSONAL','UNVERIFIED','UNKNOWN'].includes(segment))return;
+ state.trace=segment;state.tracePage=1;state.traceFilter=filter||null;
+ state.traceMonth=filter?.month||null;
+ if(filter?.channel&&!filter.month){
   const idx=state.loadedRows.acquisition.findLastIndex(a=>a?.firstPurchaseChannels?.some(row=>(row.channel||'UNKNOWN')===filter.channel&&(row.medium||null)===(filter.medium||null)));
   if(idx>=0)state.traceMonth=state.loadedRows.months[idx];
  }
