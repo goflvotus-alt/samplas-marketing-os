@@ -41,6 +41,10 @@ const css=[
 '#'+ID+' .mi-order-card summary strong{font-size:15px;color:#203c2c}',
 '#'+ID+' .mi-order-card .mi-order-products{margin-top:12px;padding-top:10px;border-top:1px solid #dce5dc}',
 '#'+ID+' .mi-order-card .mi-order-products>div{padding:5px 0}',
+'#'+ID+' .mi-auth-form{display:flex;flex-wrap:wrap;gap:9px;align-items:end;margin:15px 0}',
+'#'+ID+' .mi-auth-form label{display:grid;gap:5px;font-size:12px;font-weight:700}',
+'#'+ID+' .mi-auth-form input{min-width:145px;padding:9px;border:1px solid #c8d6cb;border-radius:8px;font:inherit}',
+'#'+ID+' .mi-auth-status{font-size:12px;color:#9a4738}',
 '@media(max-width:650px){#'+ID+' #miInspect:not(:empty){padding:8px}#'+ID+' #miInspect:not(:empty)>.mi-inspect,#'+ID+' #miInspect:not(:empty)>.mi-trace{padding:17px;max-height:calc(100dvh - 16px)}}',
 '#'+ID+' .mi-inspect p{font-size:13px}',
 '#'+ID+' .mi-provisional{border:1px dashed #bdcdc2;background:#f7faf7;padding:22px;border-radius:13px;margin:12px 0}',
@@ -148,6 +152,8 @@ function mount(){
     if(e.target===$('miInspect'))closeMiInspector()
   });
   $('miInspect').addEventListener('change',e=>{if(e.target.id==='miTraceMonth'){state.traceMonth=e.target.value;state.tracePage=1;loadOrderTrace()}});
+  $('miInspect').addEventListener('submit',handleMiAuthSubmit);
+  $('miBody').addEventListener('submit',handleMiAuthSubmit);
   $('miBody').addEventListener('change',e=>{if(e.target.id==='miTrafficMonth'){state.trafficMonth=e.target.value;loadVisitEvidence()}});
 
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('miInspect')?.innerHTML){closeMiInspector()}});
@@ -377,6 +383,29 @@ function organizeExplorer(){
  });
  showExplorerTab();
 }
+function operatorAuthForm(){
+ return '<form data-mi-auth-form class="mi-auth-form" autocomplete="off"><label>운영자 아이디<input name="login" autocomplete="username" required></label><label>운영자 비밀번호<input name="password" type="password" autocomplete="current-password" required></label><button type="submit">인증 후 상세 조회</button><span class="mi-auth-status" role="status"></span></form><p class="mi-muted">운영자 계정으로 인증하며 비밀번호를 저장하지 않아.</p>';
+}
+async function handleMiAuthSubmit(e){
+ const form=e.target.closest?.('[data-mi-auth-form]');if(!form)return;
+ e.preventDefault();
+ const login=String(form.elements.namedItem('login')?.value||'');
+ const password=String(form.elements.namedItem('password')?.value||'');
+ const status=form.querySelector('.mi-auth-status');
+ if(!login||!password)return;
+ if(status)status.textContent='권한을 확인하고 있어.';
+ form.elements.namedItem('password').value='';
+ try{
+  const response=await fetch('/api/operator/session',{method:'POST',credentials:'same-origin',headers:{Authorization:'Basic '+btoa(login+':'+password),Accept:'application/json'}});
+  const result=await response.json().catch(()=>null);
+  if(!response.ok||result?.ok!==true)throw Error('LOGIN_FAILED');
+  if(status)status.textContent='인증 완료. 상세 조회 중…';
+  if(state.trace)loadOrderTrace();
+  if(state.tab==='acquisition')loadVisitEvidence();
+ }catch{
+  if(status)status.textContent='운영자 인증 실패. 계정이나 권한을 확인해 줘.';
+ }
+}
 function closeMiInspector(){
  state.trace=null;state.detail=null;state.traceSerial++;
  const el=$('miInspect');if(el)el.innerHTML='';
@@ -433,8 +462,9 @@ async function loadOrderTrace(){
    '<p class="mi-inline-note">Cafe24 주문 원본 + Analytics 주문 유입 기준. 구매 상품은 상품명·수량이며 할인/반품이 분배된 상품별 순매출이 아니야. 주문별 검색어는 수집되지 않아. 개인식별 정보는 제공하지 않아.</p></section>';
  }catch(e){
   if(reqId===state.traceSerial){
-   const message=String(e?.message||'조회 실패').includes('401')?'운영자 세션 확인이 필요해. 로그인한 뒤 다시 시도해 줘.':'주문 상세 자료 조회에 실패했어. 요청한 월의 원천 주문 데이터 또는 서버 상태를 확인해야 해.';
-   el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+'</h3><p>'+message+'</p><div class="mi-trace-controls"><button type="button" data-mi-trace-retry>다시 조회</button></div></section>';
+   const unauthorized=String(e?.message||'조회 실패').includes('401');
+   const message=unauthorized?'주문 상세는 운영자 인증이 필요해. 아래에서 인증하면 선택한 조건으로 이어서 조회해.':'주문 상세 자료 조회에 실패했어. 요청한 월의 원천 주문 데이터 또는 서버 상태를 확인해야 해.';
+   el.innerHTML='<section class="mi-trace"><button type="button" data-mi-trace-close style="float:right">닫기</button><h3>'+title+'</h3><p>'+message+'</p>'+(unauthorized?operatorAuthForm():'')+'<div class="mi-trace-controls"><button type="button" data-mi-trace-retry>다시 조회</button></div></section>';
   }
  }
 }
@@ -466,8 +496,9 @@ async function loadVisitEvidence(){
    (available(keywords)?'<div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>검색어</th><th>검색엔진</th><th>유입 횟수</th><th>애널리틱스 구매 건수</th></tr></thead><tbody>'+(keywordRows||'<tr><td colspan="4">검색어 기록 없음</td></tr>')+'</tbody></table></div>':'<div class="mi-provisional">검색어 통계가 아직 연결되지 않았거나 조회할 수 없어. 검색어를 임의 생성하지 않아.</div>')+'</div></div>'+
    '<p class="mi-inline-note">출처: Cafe24 Analytics /visitors/view, /visitpaths/domains, /visitpaths/keyworddetails. 최초 구매 유입은 CRM 주문 연결 기준, 방문 통계는 세션 기준으로 서로 달라. 검색어 표의 구매 건수는 카페24 애널리틱스 원칙이며 환불·취소 반영과 집계 시점이 CRM과 달라.</p>'+
    ((domains.limited||keywords.limited)?'<p class="mi-inline-note">최대 100개 원천 행 중 상위 일부만 표시한 결과야. 전체 방문·키워드 분포로 취급하지 않아.</p>':'')+'</section>';
- }catch{
-  if(token===state.trafficSerial)box.innerHTML='<section class="mi-traffic"><h3>방문 채널·검색어</h3><p>카페24 방문·검색어 원천 API 조회에 실패했어. 유입 채널별 신규 고객 수와 방문자 수를 같은 숫자로 취급하지 않아.</p><p class="mi-muted">운영자 세션 또는 카페24 Analytics의 권한·응답 형식을 점검해야 해.</p></section>';
+ }catch(error){
+  const unauthorized=String(error?.message||'').includes('401');
+  if(token===state.trafficSerial)box.innerHTML='<section class="mi-traffic"><h3>방문 채널·검색어</h3><p>'+(unauthorized?'방문·검색어 상세는 운영자 인증이 필요해.':'카페24 방문·검색어 원천 API 조회에 실패했어.')+'</p>'+(unauthorized?operatorAuthForm():'<p class="mi-muted">카페24 Analytics 권한이나 응답 형식을 점검해야 해. 방문 횟수를 추정하지 않아.</p>')+'</section>';
  }
 }
 async function loadAdEvidence(){
