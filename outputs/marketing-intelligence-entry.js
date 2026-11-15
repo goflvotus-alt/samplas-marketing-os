@@ -126,11 +126,14 @@ function revenueBreakdown(rows){
  const discrepancy=complete?total-known:null;
  return {total,items,complete,discrepancy};
 }
-function renderBreakdown(rows){
- const data=revenueBreakdown(rows);
+function renderBreakdown(rows,previous){
+ const data=revenueBreakdown(rows),prior=revenueBreakdown(previous);
  const reconciled=data.complete&&data.discrepancy===0;
  const legend=data.items.map(x=>'<div class="mi-legend-item"><span class="mi-dot" style="background:'+x.color+'"></span><div>'+esc(x.name)+' <em>'+(x.share===null?'비중 미확인':x.share.toFixed(1)+'%')+'</em></div><strong>'+money(x.amount)+'</strong></div>').join('');
  const stack=reconciled?'<div class="mi-stack" role="img" aria-label="온라인 매출 구성 비중">'+data.items.filter(x=>x.amount>0).map(x=>'<span title="'+esc(x.name)+' '+x.share.toFixed(1)+'%" style="width:'+x.share.toFixed(5)+'%;background:'+x.color+'"></span>').join('')+'</div>':'<p class="mi-error">세부 매출 합계와 총매출의 검증이 완료되지 않아 구성 비율 그래프를 표시하지 않아.</p>';
+ const movement=data.items.map(x=>{const previousItem=prior.items.find(p=>p.key===x.key);const before=previousItem?previousItem.amount:null;const difference=x.amount!==null&&before!==null?x.amount-before:null;return {label:x.name,current:x.amount,prior:before,difference}}).filter(x=>x.current!==0||x.prior!==0);
+ const movementRows=movement.map(x=>'<tr><td>'+esc(x.label)+'</td><td>'+money(x.prior)+'</td><td>'+money(x.current)+'</td><td>'+((x.difference===null)?'비교 불가':(x.difference>0?'+':'')+money(x.difference))+'</td></tr>').join('');
+ const totalDiff=data.total!==null&&prior.total!==null?data.total-prior.total:null;
  const rowsHtml=rows.map(x=>{
   if(!x)return '<tr><td>월 데이터 없음</td><td colspan="6">조회 실패 · 확인 불가</td></tr>';
   return '<tr><td>'+esc(x.month)+'</td>'+[x.amount,x.newRevenue,x.repeat,x.guestRevenue,x.personalRevenue,x.unverifiedRevenue].map(v=>'<td>'+money(v)+'</td>').join('')+'</tr>';
@@ -139,6 +142,8 @@ function renderBreakdown(rows){
  '<div class="mi-total">'+money(data.total)+'</div>'+stack+
  '<div class="mi-legend">'+legend+'</div>'+
  '<p class="mi-muted">'+(reconciled?'구성 항목 합계가 온라인 매출과 정확히 일치해.':'아직 합계가 맞지 않아. 차액 또는 누락 데이터부터 점검해야 해.')+' 아래 항목 중 개인결제창 주문은 CRM 신규·재구매 분석에 포함하지 않아.</p>'+
+ '<div class="mi-note" style="margin-top:13px"><b>작년 같은 기간과 비교하면</b><div>온라인 매출 변화: '+(totalDiff===null?'비교 불가':(totalDiff>0?'+':'')+money(totalDiff))+' ('+change(data.total,prior.total)+')</div><p class="mi-muted">고객 유형별 증감은 매출 구성 변화야. 특정 채널이나 콘텐츠가 원인이라는 뜻은 아니야.</p></div>'+
+ '<div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>주문·고객 구분</th><th>전년 같은 기간</th><th>올해 같은 기간</th><th>매출 차이</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>'+
  '<details><summary>월별로 누가 얼마나 구매했는지 보기</summary><div class="mi-table-wrap"><table class="mi-table"><thead><tr><th>월</th><th>온라인 전체</th><th>신규 회원</th><th>재구매 회원</th><th>비회원</th><th>개인결제</th><th>구매 이력 미확인</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></details>'+
  '<details><summary>각 매출 구분은 무엇을 의미할까?</summary><ul style="padding-left:20px;font-size:12px;line-height:1.9">'+data.items.map(x=>'<li><b>'+esc(x.name)+'</b>: '+esc(x.desc)+'</li>').join('')+'</ul><p class="mi-muted">스타일리스트·직원·프레스 등 고객 유형별 온라인 매출은 현재 주문 데이터만으로 구분 불가해. 별도 검증된 주문-고객 연결이 필요해.</p></details></section>';
 }
@@ -189,7 +194,7 @@ async function load(){
  metric('온라인 실결제 매출',money(sales),change(sales,oldSales),'온라인 주문 금액이 전년보다 얼마나 변했는지',delta(sales,oldSales)<0)+
  metric('신규 구매 확인 회원',newCount===null?'확인 불가':fmt(newCount)+'명',change(newCount,oldNew),'처음 구매한 회원 수, 미확인 회원 제외',fall<0)+
  metric('재구매 회원 매출',money(repeat),change(repeat,oldRepeat),'기존 구매 회원이 다시 구매한 금액',repeatFall<0)+'</section>'+
- '<div class="mi-section"><h3>매출을 구성하는 고객과 주문</h3><span class="mi-muted">합계 검증 · 월별 상세</span></div>'+renderBreakdown(current)+
+ '<div class="mi-section"><h3>매출을 구성하는 고객과 주문</h3><span class="mi-muted">합계 검증 · 월별 상세</span></div>'+renderBreakdown(current,previous)+
  '<div class="mi-section"><h3>그래서 왜 이런 매출이 나왔을까?</h3><span class="mi-muted">관측 근거와 미확인 원인을 구분해</span></div>'+renderWhy(current,acquisition,oldAcq)+
  '<div class="mi-section"><h3>다음 달 우선 실행 과제</h3><span class="mi-tag">자동 집행 없음 · 조사/실험 제안</span></div><section class="mi-grid">'+
  task('01','신규 첫 구매가 막히는 지점 찾기',newCount!==null&&oldNew!==null?'신규 구매 회원 '+fmt(oldNew)+'명 → '+fmt(newCount)+'명 ('+change(newCount,oldNew)+', 잠정)':'신규 첫 구매 수의 전년 비교가 불완전해.','유입 채널별 구매 경로를 확인하고 10만 원 미만 입문 상품의 재고·노출·구매 동선을 점검해.','첫 구매 회원 수 · 첫 구매 전환율 · 신규 첫 주문 매출')+
