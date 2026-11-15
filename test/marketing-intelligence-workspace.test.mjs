@@ -35,7 +35,7 @@ function harness(fail=false){
   else data={cohorts:[{month:'2026-07',cells:[{window:30,status:'IMMATURE',rate:null}]}]};
   return {ok:true,json:async()=>({ok:true,data,meta:{completeness:'PARTIAL'}})};
  };
- const doc={readyState:'complete',head,getElementById:id=>registry.get(id)||null,createElement:()=>({style:{},attributes:{},classList:classes(),setAttribute(k,v){this.attributes[k]=v},addEventListener(type,fn){this.events??={};this.events[type]=fn},textContent:''}),
+ const doc={readyState:'complete',head,getElementById:id=>registry.get(id)||null,createElement:tag=>tag==='section'?el('MarketingIntelligenceAction'):({style:{},attributes:{},classList:classes(),setAttribute(k,v){this.attributes[k]=v},addEventListener(type,fn){this.events??={};this.events[type]=fn},textContent:''}),
   querySelector:q=>q==='main.main'?main:null,querySelectorAll:()=>[],addEventListener:(type,fn)=>handlers.set(type,fn)};
  vm.runInNewContext(code,{document:doc,fetch,location:{hash:''},MutationObserver:class{observe(){}},Intl,Date,Array,Math,Number,String,Set,Promise,Error});
  const link=nav.children.find(x=>x.attributes?.['data-marketing-intelligence-entry']);
