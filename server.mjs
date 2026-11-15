@@ -1131,6 +1131,21 @@ const server = isMainModule ? createServer(async (req, res) => {
         const isMonth = (v) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(v || ""));
         const month = url.searchParams.get("month");
         const ds = () => crm.cachedCrmDataset({ workDir, snapshotDirs: [join(workDir, "tracking-test")] });
+        if (url.pathname === "/api/crm/order-trace") {
+          // Order/product evidence is more granular than the public CRM totals.
+          // Never disclose order IDs, real member IDs, customer names or addresses.
+          if (!isAuthorizedInternalRequest(req)) return json(res, { ok: false, error: "Unauthorized" }, 401);
+          const segment = url.searchParams.get("segment") || "ALL";
+          const page = Number(url.searchParams.get("page") || "1");
+          const limit = Number(url.searchParams.get("limit") || "25");
+          const firstOnly = url.searchParams.get("firstOnly") === "true";
+          if (!isMonth(month) || !["ALL", "NEW", "REPEAT", "GUEST", "UNVERIFIED", "PERSONAL", "UNKNOWN"].includes(segment) ||
+              !Number.isInteger(page) || page < 1 || page > 10000 ||
+              !Number.isInteger(limit) || limit < 1 || limit > 50)
+            return json(res, { ok: false, error: "Invalid order trace filters" }, 400);
+          const result = crm.crmOrderTrace(await ds(), month, segment, { page, limit, firstOnly });
+          return json(res, { ok: true, data: result, meta: { completeness: "PARTIAL", source: "cafe24_cached_order_evidence", note: "Products are item names/quantities, not reconciled product-level paid amounts; no customer PII" } });
+        }
         if (url.pathname === "/api/crm/cohort") {
           const from = url.searchParams.get("from"), to = url.searchParams.get("to");
           const windows = (url.searchParams.get("windows") || crm.CRM_WINDOWS.join(",")).split(",").map(Number);
