@@ -99,7 +99,11 @@ test("collector: state survives restarts, no overlap, failed jobs retried at mos
   let t = kst("2026-11-20T04:00:00");
   const logs = [];
   const fetchAnalytics = fakeAnalytics();
-  const mk = () => createCrmAnalyticsCollector({ workDir: work, fetchAnalytics, now: () => t, log: (l) => logs.push(l), pauseMs: 0, retryMs: 0 });
+  let reportRefreshes = 0;
+  const mk = () => createCrmAnalyticsCollector({
+    workDir: work, fetchAnalytics, now: () => t, log: (l) => logs.push(l), pauseMs: 0, retryMs: 0,
+    onCollected: () => { reportRefreshes++; }
+  });
   const tick = mk();
   await Promise.all([tick(), tick()]);
   assert.equal(fetchAnalytics.calls.length, 3, "Nov 1..19 in three 7-day windows, run once");
@@ -107,6 +111,7 @@ test("collector: state survives restarts, no overlap, failed jobs retried at mos
   assert.equal(state.daily, "2026-11-20");
   await mk()(); // a restarted server does not repeat today's job
   assert.equal(fetchAnalytics.calls.length, 3);
+  assert.equal(reportRefreshes, 1, "successful daily collection refreshes report once");
   assert.doesNotMatch(logs.join("\n"), /pii|O-2026/);
 
   const broken = fakeAnalytics({ fail: () => 503 });
@@ -140,5 +145,5 @@ test("CRM: collected files change only acquisition, never orders, amounts or mem
 
 test("server wiring: collector is registered only when CRM_ANALYTICS_COLLECT=on", async () => {
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
-  assert.match(server, /if \(env\.CRM_ANALYTICS_COLLECT === "on"\) \{\n\s+const crmAnalyticsTick = createCrmAnalyticsCollector\(\{ workDir, env, fetchAnalytics: fetchCafe24AnalyticsOrderDetails \}\);/);
+  assert.match(server, /if \(env\.CRM_ANALYTICS_COLLECT === "on"\) \{\n\s+const crmAnalyticsTick = createCrmAnalyticsCollector\(\{\s+workDir, env, fetchAnalytics: fetchCafe24AnalyticsOrderDetails,\s+onCollected:/);
 });

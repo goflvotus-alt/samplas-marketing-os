@@ -130,7 +130,7 @@ export async function collectMonth({ fetchAnalytics, outDir, month, until, pause
 
 // Returns the per-minute tick for server.mjs. One job at a time per process (Render instances with a
 // persistent disk never overlap). A failed job is retried after 60 minutes, at most 3 attempts per key.
-export function createCrmAnalyticsCollector({ workDir, fetchAnalytics, env = process.env, now = () => new Date(), log = console.log, pauseMs, retryMs }) {
+export function createCrmAnalyticsCollector({ workDir, fetchAnalytics, env = process.env, now = () => new Date(), log = console.log, pauseMs, retryMs, onCollected }) {
   const outDir = join(workDir, "tracking-test", "crm-analytics-backfill");
   const statePath = join(outDir, "collect-state.json");
   const dailyDays = Math.min(Math.max(parseInt(env.CRM_ANALYTICS_DAILY_DAYS || "7", 10) || 7, 1), 62);
@@ -157,6 +157,10 @@ export function createCrmAnalyticsCollector({ workDir, fetchAnalytics, env = pro
         await mkdir(outDir, { recursive: true });
         await writeFile(`${statePath}.tmp`, JSON.stringify(next));
         await rename(`${statePath}.tmp`, statePath);
+        if (onCollected && job.kind === "daily") {
+          // Reuse the CRM schedule. Report warming must not delay or fail the collector.
+          void Promise.resolve().then(onCollected).catch(() => {});
+        }
       }
     } catch (error) {
       log(`[CRM_ANALYTICS_COLLECT] tick failed: ${error.message}`);

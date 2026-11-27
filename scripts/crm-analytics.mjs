@@ -338,6 +338,19 @@ function analyseMembers(ds) {
   return { members, days, covered };
 }
 
+export function crmAttributionCustomerTypes(ds, orderIds) {
+  const { members } = analyseMembers(ds);
+  const ids = new Set(orderIds);
+  return Object.fromEntries(ds.orders.filter(order => ids.has(order.id)).map(order => {
+    const member = members.get(order.member);
+    const type = !order.identityKnown || order.personalPayment ? "UNVERIFIED"
+      : !order.member ? "GUEST"
+      : member?.valid.some(other => other.time < order.time) ? "REPEAT"
+      : member?.verified && member.first?.id === order.id ? "NEW" : "UNVERIFIED";
+    return [order.id, type];
+  }));
+}
+
 function dataThrough(ds) {
   return ds.spans.reduce((max, s) => (s.until > max ? s.until : max), "0000-00-00");
 }
