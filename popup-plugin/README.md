@@ -9,6 +9,8 @@ It forwards MCP JSON-RPC to Marketing OS `POST /api/ai-audit/popup/mcp` (`script
   - `getPopupStaffBoard` reads the web app's STAFF BOARD.
   - `updatePopupStaffBoard` saves placements for the dates given. It is version-checked and keeps every other date.
   - Both write the same `staffBoard` field the web app's drag and drop uses.
+- **Settlement, LOGISTICS, VMD, PRESS (updatePopupProject operations):** `update_logistics` (sales file, commission policy incl. TIERED, 사입 `purchaseCost`, code rules), `upsert_logistics_source`, `set_visitor_counts`, `update_vmd_archive`, `upsert_vmd_zone`, `link_vmd_photo`/`unlink_vmd_photo`, `add_press_item`/`update_press_item`/`set_press_status`. A file named in a change must already exist in the project folder, or nothing is saved (`file_not_found`).
+- **DAY REPORT / FINAL REPORT:** `getPopupDayReport` reads the numbers the web app computes (`/api/popup/logistics-report`, override with `POPUP_VIEW_URL`). `syncPopupFinalReport` writes them into `report.headline`, `report.comparison.dailySales` and `report.dailyVisitors` only when the DAY REPORT was computed from `expectedVersion`; a FINAL report needs `allowFinal`, and the reply re-reads the DAY REPORT (`recheck.matches`).
 - **Compatible:** `listPopupProjects`, `getPopupProject` and `updatePopupProject` keep their names. `updatePopupProject` still accepts the old `{name, body: {project, expectedVersion}}` form.
 - **Secret:** the site's existing `SAMPLAS_INTERNAL_TOKEN`, sent as `x-samplas-internal-token`. It is never logged or returned.
 - **Owner check:** an authenticated ChatGPT user (`oai-authenticated-user-id`) is required for every method except `initialize`/`ping`. When `POPUP_PLUGIN_OWNER_IDS` is set, only those ids are allowed.
