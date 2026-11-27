@@ -1,5 +1,6 @@
 // Independent payment-date totals. Never replace missing evidence with Meta or Marketing OS sales.
 import {firstCafe24MoneyOrNull,cafe24OrderAmount,isCafe24CanceledOrRefunded,isCafe24StoredValuePayment} from './cafe24-order-amount.mjs';
+import {analyticsRangeBelowLimit} from './weekly-data-completeness.mjs';
 import {buildActualProductsSold} from './meta-actual-products-sold.mjs';
 
 export function paymentDay(value) {
@@ -13,7 +14,7 @@ export function buildRevenueEvidence({since,until,paymentOrders,analytics,metaAd
   coverage:paymentOrders?.coverage??null,status:'UNVERIFIED',onlineRevenue:null,onlineOrders:null,verifiedRevenue:null,verifiedOrders:null,
   rawOrders:paymentOrders?.orders?.length??null,uniqueOrders:0,duplicateOrders:0,validOrders:0,excludedUnpaid:0,excludedCanceled:0,
   grossPayment:null,adjustment:null,linkedOrders:null,unlinkedOrders:null,unknownLinkOrders:null,reasons:[],
-  basis:'KST 결제일 화~월 주문 코호트 · 조회 시점 canonical 잔여 결제액(배송비 포함) · 완료 취소/환불 제외 · 부분취소 잔여액 1회 · 적립금 정책은 기존 canonical 유지',
+  basis:'KST 결제일 보고 기간 주문 코호트 · 조회 시점 canonical 잔여 결제액(배송비 포함) · 완료 취소/환불 제외 · 부분취소 잔여액 1회 · 적립금 정책은 기존 canonical 유지',
   limitations:'세 매출은 합산 금지. 미연결은 광고 비기여를 뜻하지 않음. Analytics는 주문일 조회이므로 이전 주문의 후일 결제는 연결 누락 가능. Meta 구매 이벤트와 주문 1:1 대조 아님. 후속 환불은 기존 REFUND_TRACKING 별도.'};
  const complete=(c)=>c?.completeness==='COMPLETE'&&c.scope?.since===since&&c.scope?.until===until;
  if(!e.queryOk||paymentOrders.dateType!=='pay_date'||!complete(e.coverage)){e.reasons.push('PAYMENT_DATE_ORDERS_UNVERIFIED');return e;}
@@ -49,7 +50,7 @@ export function buildRevenueEvidence({since,until,paymentOrders,analytics,metaAd
  if(e.reasons.length)return e;
  e.onlineRevenue=net;e.onlineOrders=valid.length;e.status='PARTIAL';
  const rows=analytics?.data?.orderdetails||analytics?.orderdetails;
- if(analytics?.ok!==true||!Array.isArray(rows)||rows.length>=100||!complete(analytics.coverage)){
+ if(analytics?.ok!==true||!analyticsRangeBelowLimit(analytics,rows,since,until)||!complete(analytics.coverage)){
   e.unknownLinkOrders=valid.length;e.reasons.push('ANALYTICS_UNVERIFIED');return e;
  }
  // Conflicting acquisition rows cannot be resolved by picking the last row.

@@ -16,6 +16,7 @@
 //   NOTE: "purchases"/"purchase value"/"roas" are Meta's own attributed conversions
 //   (action_type "purchase"), not Cafe24 actual revenue — never mixed with Cafe24 data
 //   in the attribution KPIs; Cafe24 actual orders are a separate sheet.
+import { calendarMonthPeriod } from './report-period.mjs';
 import { mkdir, rename, writeFile, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -387,26 +388,29 @@ export function checkAttributionSplit(split, summary) {
 // Orchestrator
 // ---------------------------------------------------------------------------
 
-export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, onePage = false, requireCompleteData = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, fetchAccountTotals, fetchAttribution, fetchRefundOrders, fetchItemPayments, fetchMetaProducts, fetchAdTracking, adGrades = requireCompleteData, outputDir, env = process.env, saveReport, publicationMode = referenceDateKey && onePage && requireCompleteData ? 'auto' : 'draft', now = () => new Date() } = {}) {
+export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, month, onePage = false, requireCompleteData = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, fetchAccountTotals, fetchAttribution, fetchRefundOrders, fetchItemPayments, fetchMetaProducts, fetchAdTracking, adGrades = requireCompleteData, outputDir, env = process.env, saveReport, publicationMode = referenceDateKey && onePage && requireCompleteData ? 'auto' : 'draft', now = () => new Date() } = {}) {
   // The existing scheduler supplies referenceDateKey + strict onePage; library calls remain drafts.
   const generatedAt = now().toISOString();
   if (typeof fetchByLevel !== "function") throw new Error("generateWeeklyMetaAdsReport requires fetchByLevel(since, until, level)");
   // Explicit report periods do not change the established scheduler's default week.
   if (period && (!/^\d{4}-\d{2}-\d{2}$/.test(period.since || '') || !/^\d{4}-\d{2}-\d{2}$/.test(period.until || '') || Date.parse(period.until) - Date.parse(period.since) !== 6 * 86400000 || [period.since,period.until].some(d => !Number.isFinite(Date.parse(d)) || new Date(d).toISOString().slice(0,10) !== d))) throw new Error('Explicit Meta report period must be seven valid consecutive dates.');
-  const { since, until } = period || previousMondayToSundayRange(referenceDateKey);
-  const { since: previousSince, until: previousUntil } = previousWeekRange({ since, until });
+  const { since, until } = month ? calendarMonthPeriod(month) : period || previousMondayToSundayRange(referenceDateKey);
+  const { since: previousSince, until: previousUntil } = month ? calendarMonthPeriod(month, -1) : previousWeekRange({ since, until });
 
   const issuedOutputDir = outputDir || resolveMetaWeeklyReportOutputDir(env);
+  const official = publicationMode === 'recovery' || publicationMode === 'monthly';
   const scheduled = scheduledMetaPublication({at:new Date(generatedAt),since,until,mode:publicationMode,onePage,requireCompleteData});
   if (['auto','scheduled'].includes(publicationMode) && !scheduled) return {ok:false,since,until,filePath:null,publication:null,error:'AUTO_PUBLICATION_WINDOW_CLOSED'};
-  if (scheduled) {
+  const recordIssue = scheduled || publicationMode === 'recovery';
+  if (recordIssue) {
     const storage = await inspectIssuedStorage({outputDir:issuedOutputDir,env});
     if (!storage.ok) return {ok:false,since,until,filePath:null,publication:null,error:'ISSUED_STORAGE_UNVERIFIED'};
-    try {
-      const prior = await readIssuedMetaReport({outputDir:issuedOutputDir,since,until});
-      if (prior) return {ok:true,since,until,filePath:prior.filePath,publication:{...prior,alreadyIssued:true}};
-    } catch { return {ok:false,since,until,filePath:null,publication:null,error:'ISSUED_REPORT_INVALID'}; }
+    let prior;
+    try { prior = await readIssuedMetaReport({outputDir:issuedOutputDir,since,until}); }
+    catch { return {ok:false,since,until,filePath:null,publication:null,error:'ISSUED_REPORT_INVALID'}; }
+    if (prior) return {ok:true,since,until,filePath:prior.filePath,publication:{...prior,alreadyIssued:true}};
   }
+
   const [current, previous] = await Promise.all([
     fetchAllMetaLevels(since, until, fetchByLevel),
     fetchAllMetaLevels(previousSince, previousUntil, fetchByLevel)
@@ -476,7 +480,7 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, on
   };
 
   let comparison = null;
-  if (requireCompleteData) {
+  if (!month && requireCompleteData) {
     let issued;
     try { issued = await readIssuedMetaReport({outputDir:issuedOutputDir,since:previousSince,until:previousUntil}); }
     catch { return {ok:false,since,until,filePath:null,publication:null,error:'PREVIOUS_ISSUED_REPORT_INVALID'}; }
@@ -494,18 +498,22 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, on
   // Supplementary views: a failure is shown as 미검증 in its own section and never blocks publication.
   if (requireCompleteData && fetchAttribution) model.attribution = checkAttributionSplit(await Promise.resolve().then(() => fetchAttribution(since, until)).catch(() => null), model.summary);
   attachWeeklyOrderMatch(model.salesTrace, model.revenueEvidence.current, { attribution: model.attribution });
-  if (requireCompleteData && fetchRefundOrders) {
+  if (!month && requireCompleteData && fetchRefundOrders) {
     try { model.refundTracking = await trackIssuedRefunds({ outputDir: issuedOutputDir, before: since, weeks: 8, fetchOrders: fetchRefundOrders, asOf: now().toISOString(), previous: { since: previousSince, comparison } }); }
     catch (error) { model.refundTracking = { error: String(error?.message || error), periods: [] }; }
   }
   const review = reviewMetaPublication({model,current,previous,actualOrders,actualAnalytics,previousOrders,previousAnalytics,comparison,accountTotals});
-  if (scheduled && review.result === 'FAIL') return {ok:false,since,until,filePath:null,publication:null,review,comparison,error:'AUTO_REVIEW_FAILED'};
+  if ((scheduled || official) && review.result === 'FAIL') return {ok:false,since,until,filePath:null,publication:null,review,comparison,error:'AUTO_REVIEW_FAILED'};
   if (requireCompleteData) model.verification = {result:review.result,unknowns:review.unknowns,failures:review.failures,actual:review.actual,mode:scheduled?'scheduled':publicationMode};
+  if (month) model.cadence = 'monthly';
   const workbook = await buildWeeklyMetaReportWorkbook(model, { onePage });
-  if (scheduled) {
-    const record = publicationRecord({model,actualOrders,generatedAt,reviewedAt:now().toISOString(),review});
+  if (recordIssue) {
+    const record = publicationRecord({model,actualOrders,generatedAt,reviewedAt:now().toISOString(),review,mode:scheduled?'scheduled':'recovery'});
     const publication = await storeIssuedMetaReport({outputDir:issuedOutputDir,workbook,record,save:saveReport ? () => saveReport(workbook,{since,until,env}) : null});
     return {ok:true,since,until,...publication.delivery,filePath:publication.delivery?.filePath||publication.filePath,publication,review,comparison};
+  }
+  if (month && official) {
+    workbook.getWorksheet("ISSUE_EVIDENCE").getCell("A1").value = JSON.stringify({ since, until, review });
   }
   if (saveReport) {
     const saved = await saveReport(workbook, { since, until, env });

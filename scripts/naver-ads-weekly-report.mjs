@@ -1,3 +1,4 @@
+import { calendarMonthPeriod } from './report-period.mjs';
 import { verifyAdgroupSection, naverWeeklyReview, assertNoReportPlaceholders } from "./naver-weekly-adgroup-integrity.mjs";
 // Naver Search Ads Weekly Report generator.
 //
@@ -403,21 +404,28 @@ export async function writeWeeklyReportFile(workbook, { since, until, outputDir 
 // share this exact same fetch/model/workbook pipeline instead of each having their own
 // copy of the report-building logic. Omitting it preserves the original local-filesystem
 // behavior unchanged (this is what the CLI and all existing tests still do).
-export async function generateWeeklyNaverAdsReport({ referenceDateKey, fetchPerformance, outputDir, env = process.env, saveReport } = {}) {
+export async function generateWeeklyNaverAdsReport({ referenceDateKey, month, requireCompleteData = false, fetchPerformance, outputDir, env = process.env, saveReport } = {}) {
   if (typeof fetchPerformance !== "function") throw new Error("generateWeeklyNaverAdsReport requires fetchPerformance(since, until)");
-  const { since, until } = previousTuesdayToMondayRange(referenceDateKey);
-  const { since: previousSince, until: previousUntil } = previousWeekRange({ since, until });
+  const { since, until } = month ? calendarMonthPeriod(month) : previousTuesdayToMondayRange(referenceDateKey);
+  const { since: previousSince, until: previousUntil } = month ? calendarMonthPeriod(month, -1) : previousWeekRange({ since, until });
 
   const [current, previous] = await Promise.all([
     fetchPerformance(since, until),
     fetchPerformance(previousSince, previousUntil)
   ]);
 
+  if (requireCompleteData && [[current, since, until], [previous, previousSince, previousUntil]].some(([data, start, end]) =>
+    !(data?.ok === true && Array.isArray(data.campaigns)) || data.partial === true || data.coverage?.completeness === 'PARTIAL' ||
+    (data.since && data.since !== start) || (data.until && data.until !== end))) {
+    return { ok: false, since, until, error: "Incomplete report source data", filePath: null };
+  }
+
   const model = buildWeeklyReportModel({ current, previous, since, until, previousSince, previousUntil });
   if (!model.ok) {
     return { ok: false, since, until, error: model.error, filePath: null };
   }
 
+  if (month) model.cadence = "monthly";
   const workbook = await buildWeeklyReportWorkbook(model);
 
   if (saveReport) {

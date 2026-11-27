@@ -17,6 +17,7 @@
 //     available month snapshot and labels it explicitly as such, never blended into the
 //     weekly post totals.
 //   - A metric the API doesn't expose in either shape is UNAVAILABLE, never fabricated.
+import { calendarMonthPeriod } from './report-period.mjs';
 import { mkdir, rename, writeFile, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -299,21 +300,28 @@ export async function writeInstagramWeeklyReportFile(workbook, { since, until, o
 // Orchestrator
 // ---------------------------------------------------------------------------
 
-export async function generateWeeklyInstagramReport({ referenceDateKey, fetchRange, outputDir, env = process.env, saveReport } = {}) {
+export async function generateWeeklyInstagramReport({ referenceDateKey, month, requireCompleteData = false, fetchRange, outputDir, env = process.env, saveReport } = {}) {
   if (typeof fetchRange !== "function") throw new Error("generateWeeklyInstagramReport requires fetchRange(since, until)");
-  const { since, until } = previousTuesdayToMondayRange(referenceDateKey);
-  const { since: previousSince, until: previousUntil } = previousWeekRange({ since, until });
+  const { since, until } = month ? calendarMonthPeriod(month) : previousTuesdayToMondayRange(referenceDateKey);
+  const { since: previousSince, until: previousUntil } = month ? calendarMonthPeriod(month, -1) : previousWeekRange({ since, until });
 
   const [current, previous] = await Promise.all([
     fetchRange(since, until),
     fetchRange(previousSince, previousUntil)
   ]);
 
+  if (requireCompleteData && [[current, since, until], [previous, previousSince, previousUntil]].some(([data, start, end]) =>
+    !(rangeOk(data)) || data.partial === true || data.coverage?.completeness === 'PARTIAL' ||
+    (data.since && data.since !== start) || (data.until && data.until !== end))) {
+    return { ok: false, since, until, error: "Incomplete report source data", filePath: null };
+  }
+
   const model = buildWeeklyInstagramReportModel({ current, previous, since, until, previousSince, previousUntil });
   if (!model.ok) {
     return { ok: false, since, until, error: model.error, filePath: null };
   }
 
+  if (month) model.cadence = "monthly";
   const workbook = await buildWeeklyInstagramReportWorkbook(model);
 
   if (saveReport) {

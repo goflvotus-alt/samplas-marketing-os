@@ -1,9 +1,10 @@
 // Publication evidence only. Canonical Cafe24 amounts and attribution are unchanged.
-import {readFile,readdir,open,mkdir,rename,realpath,unlink} from 'node:fs/promises';
+import {readFile,readdir,open,mkdir,rename,realpath} from 'node:fs/promises';
 import {join,dirname,resolve,relative,isAbsolute} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
+import {isReportDate} from './report-period.mjs';
 import ExcelJS from 'exceljs';
-import {accountReconciles} from './weekly-data-completeness.mjs';
+import {accountReconciles,analyticsRangeBelowLimit} from './weekly-data-completeness.mjs';
 import {cafe24OrderAmount,cafe24OrderItems,cafe24ItemAmount,isCafe24CanceledItem,isCafe24CanceledOrRefunded} from './cafe24-order-amount.mjs';
 
 // The policy name is the compatibility contract with earlier releases (da0c941, 1392fb2), whose reader
@@ -29,6 +30,12 @@ export function scheduledMetaPublication({at,since,until,mode,onePage,requireCom
  const kst=new Date(at.getTime()+9*3600000);
  const date=offset=>new Date(kst.getTime()+offset*86400000).toISOString().slice(0,10);
  return kst.getUTCDay()===2&&kst.getUTCHours()===10&&since===date(-7)&&until===date(-1);
+}
+
+function validRecoveryPeriod({since,until,generatedAt}) {
+ const at=time(generatedAt),kstDay=new Date(at+9*3600000);
+ return Number.isFinite(at)&&isReportDate(since)&&isReportDate(until)&&new Date(since).getUTCDay()===2&&
+  Date.parse(until)-Date.parse(since)===6*86400000&&until<kstDay.toISOString().slice(0,10);
 }
 
 function actualById(products){
@@ -65,6 +72,14 @@ function partialOrUnverified(value,allowUnknown=false){
 
 // PASS: every source verified. UNKNOWN: no known gap, but some source could not be verified (published with
 // the reasons on page one). FAIL: a known gap or inconsistency (never published).
+function verifiedAdminCount(count,coverage,scope) {
+ if(!Number.isInteger(count)||count<0)return false;
+ if(count<500)return true;
+ return count<1000&&coverage?.kind==='cafe24_orders'&&coverage.completeness==='COMPLETE'&&
+  coverage.scope?.since===scope.since&&coverage.scope?.until===scope.until&&coverage.observed?.terminalPage===true&&
+  coverage.observed?.rowCount===count&&coverage.observed?.limit===1000;
+}
+
 export function reviewMetaPublication({model,current,previous,actualOrders,actualAnalytics,previousOrders,previousAnalytics,comparison,accountTotals={}}){
  const failures=[],unknowns=[],coverage={};
  const periods={current:{since:model.since,until:model.until},previous:{since:model.previousSince,until:model.previousUntil}};
@@ -86,9 +101,9 @@ export function reviewMetaPublication({model,current,previous,actualOrders,actua
   coverage[`${name}.orders`]=input?.coverage?.completeness||'UNKNOWN';
   coverage[`${name}.analytics`]=data?.coverage?.completeness||'UNKNOWN';
   const analytics=data?.data?.orderdetails||data?.orderdetails;
-  if(!data||data.ok!==true||!Array.isArray(analytics)||analytics.length>=100||partialOrUnverified(data,true))failures.push(`${name}:ANALYTICS_COVERAGE_INCOMPLETE`);
+  if(!data||data.ok!==true||!analyticsRangeBelowLimit(data,analytics,periods[name].since,periods[name].until)||partialOrUnverified(data,true))failures.push(`${name}:ANALYTICS_COVERAGE_INCOMPLETE`);
   else if(data.coverage?.completeness!=='COMPLETE')unknowns.push(`${name}:ANALYTICS_COVERAGE_UNKNOWN`);
-  if(input?.source!=='cafe24_inflow_queries'||input.analyticsOrdersComplete!==true||!Array.isArray(input.analyticsOrders)||input.analyticsOrders.length>=500||!Array.isArray(input.trackingQueries)||input.trackingQueries.length!==5||input.trackingQueries.some(q=>q.ok!==true||q.complete!==true||!Number.isInteger(q.count)||q.count<0||q.count>=500)||rawOrders(input).conflicts.size||partialOrUnverified(input,true))failures.push(`${name}:ORDER_PROVENANCE_REQUIRED`);
+  if(input?.source!=='cafe24_inflow_queries'||input.analyticsOrdersComplete!==true||!Array.isArray(input.analyticsOrders)||!verifiedAdminCount(input.analyticsOrders.length,input.analyticsOrdersCoverage,periods[name])||!Array.isArray(input.trackingQueries)||input.trackingQueries.length!==5||input.trackingQueries.some(q=>q.ok!==true||q.complete!==true||!verifiedAdminCount(q.count,q.coverage,periods[name]))||rawOrders(input).conflicts.size||partialOrUnverified(input,true))failures.push(`${name}:ORDER_PROVENANCE_REQUIRED`);
   else if(input.coverage?.completeness!=='COMPLETE')unknowns.push(`${name}:ORDER_COVERAGE_UNKNOWN`);
  }
  const {orders,conflicts}=rawOrders(actualOrders);
@@ -154,7 +169,7 @@ export function reconcileMetaPublication({issued,currentProducts,currentOrders,a
  return {...base,status:unknown?'UNKNOWN_ADJUSTMENT':'RECONCILED',refundAdjustment:unknown?null:confirmed};
 }
 
-export function publicationRecord({model,actualOrders,generatedAt,reviewedAt,review}){
+export function publicationRecord({model,actualOrders,generatedAt,reviewedAt,review,mode='scheduled'}){
  const raw=rawOrders(actualOrders).orders,first=new Map();
  for(const r of model.actualProducts?.rows||[])if(!first.has(String(r.order_id)))first.set(String(r.order_id),r);
  const graded=id=>{const r=first.get(id);return r?.attribution_grade?{grade:r.attribution_grade,amountStatus:r.amount_status}:{};};
@@ -164,7 +179,7 @@ export function publicationRecord({model,actualOrders,generatedAt,reviewedAt,rev
  const grades=model.actualProducts.summary.grades;
  // Refund ledger: cumulative confirmed adjustment per issued order as this report shows it.
  const reportedAdjustments=model.refundTracking?.reportedAdjustments||[];
- return {schemaVersion:1,policy:POLICY,recordFormat:RECORD_FORMAT,mode:'scheduled',since:model.since,until:model.until,generatedAt,issuedAt:reviewedAt,reviewedAt,review,...(model.revenueEvidence?{revenueEvidence:model.revenueEvidence}:{}),summary:{metaPaidOrderCount:model.actualProducts.summary.metaPaidOrderCount,metaPaidRevenue:model.actualProducts.summary.metaPaidRevenue,actualVerified:review.actual?.current===true,...(grades?{grades}:{})},orders,candidates,reportedAdjustments};
+ return {schemaVersion:1,policy:POLICY,recordFormat:RECORD_FORMAT,mode,since:model.since,until:model.until,generatedAt,issuedAt:reviewedAt,reviewedAt,review,...(model.revenueEvidence?{revenueEvidence:model.revenueEvidence}:{}),summary:{metaPaidOrderCount:model.actualProducts.summary.metaPaidOrderCount,metaPaidRevenue:model.actualProducts.summary.metaPaidRevenue,actualVerified:review.actual?.current===true,...(grades?{grades}:{})},orders,candidates,reportedAdjustments};
 }
 
 const shiftDay=(d,n)=>new Date(Date.parse(`${d}T00:00:00Z`)+n*864e5).toISOString().slice(0,10);
@@ -229,12 +244,38 @@ export async function trackIssuedRefunds({outputDir,before,weeks=8,fetchOrders,a
  return result;
 }
 
+function validateIssuedRecord(m,since,until){
+ if(m.schemaVersion!==1||m.policy!==POLICY||!['scheduled','recovery'].includes(m.mode)||!publishable(m.review)||m.since!==since||m.until!==until||!(m.mode==='scheduled'?scheduledMetaPublication({at:new Date(m.generatedAt),since,until,mode:m.mode,onePage:true,requireCompleteData:true}):validRecoveryPeriod(m))||!(time(m.reviewedAt)>=time(m.generatedAt))||m.issuedAt!==m.reviewedAt||!Array.isArray(m.orders))throw Error('ISSUED_REVIEW_INVALID');
+ if(new Set(m.orders.map(o=>o.orderId)).size!==m.orders.length||m.orders.some(o=>!o.orderId||!inPeriod(o.orderDate,since,until)||!Number.isSafeInteger(o.amount)||o.amount<0)||m.orders.length!==m.summary?.metaPaidOrderCount||m.orders.reduce((s,o)=>s+o.amount,0)!==m.summary?.metaPaidRevenue)throw Error('ISSUED_LEDGER_INVALID');
+}
+
+export async function restoreIssuedMetaReport({outputDir,workbook,bytes,since,until}) {
+ const parts=[];
+ workbook.getWorksheet('ISSUE_EVIDENCE').eachRow(row=>parts.push(row.getCell(1).value));
+ const record=JSON.parse(parts.join(''));
+ validateIssuedRecord(record,since,until);
+ return withPeriodLock(outputDir,since,until,async({parent,final})=>{
+  const existing=await readIssuedMetaReport({outputDir,since,until});
+  const hash=sha(bytes);
+  if(existing){
+   if(existing.kind!=='legacy_import'&&existing.sha256!==hash)throw Error('ISSUED_DELIVERY_HASH_MISMATCH');
+   return;
+  }
+  const stage=join(parent,`.pending-${randomUUID()}`);
+  await mkdir(stage,{mode:0o700});
+  await durableWrite(join(stage,'report.xlsx'),bytes);
+  await durableWrite(join(stage,'manifest.json'),JSON.stringify({...record,sha256:hash},null,2));
+  await syncDir(stage);
+  await rename(stage,final);
+  await syncDir(parent);
+ });
+}
+
 export async function readIssuedMetaReport({outputDir,since,until}){
  const dir=periodDir(outputDir,since,until);let m;
  try{m=JSON.parse(await readFile(join(dir,'manifest.json'),'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw Error('ISSUED_MANIFEST_INVALID');}
  if(m.kind==='legacy_import')return readLegacyManifest(dir,m,since,until);
- if(m.schemaVersion!==1||m.policy!==POLICY||m.mode!=='scheduled'||!publishable(m.review)||m.since!==since||m.until!==until||!scheduledMetaPublication({at:new Date(m.generatedAt),since,until,mode:m.mode,onePage:true,requireCompleteData:true})||!(time(m.reviewedAt)>=time(m.generatedAt))||m.issuedAt!==m.reviewedAt||!Array.isArray(m.orders))throw Error('ISSUED_REVIEW_INVALID');
- if(new Set(m.orders.map(o=>o.orderId)).size!==m.orders.length||m.orders.some(o=>!o.orderId||!inPeriod(o.orderDate,since,until)||!Number.isSafeInteger(o.amount)||o.amount<0)||m.orders.length!==m.summary?.metaPaidOrderCount||m.orders.reduce((s,o)=>s+o.amount,0)!==m.summary?.metaPaidRevenue)throw Error('ISSUED_LEDGER_INVALID');
+ validateIssuedRecord(m,since,until);
  const bytes=await readFile(join(dir,'report.xlsx'));
  if(sha(bytes)!==m.sha256)throw Error('ISSUED_HASH_MISMATCH');
  const w=new ExcelJS.Workbook();await w.xlsx.load(bytes);
@@ -260,7 +301,7 @@ async function durableWrite(path,bytes){const h=await open(path,'wx',0o600);try{
 async function syncDir(path){const h=await open(path,'r');try{await h.sync();}finally{await h.close();}}
 
 export async function storeIssuedMetaReport({outputDir,workbook,record,save}){
- if(!publishable(record.review)||record.mode!=='scheduled')throw Error('ISSUED_REVIEW_INVALID');
+ if(!publishable(record.review)||!['scheduled','recovery'].includes(record.mode)||(record.mode==='recovery'&&!validRecoveryPeriod(record)))throw Error('ISSUED_REVIEW_INVALID');
  return withPeriodLock(outputDir,record.since,record.until,async({parent,final})=>{
  const existing=await readIssuedMetaReport({outputDir,since:record.since,until:record.until});
  if(existing)return {...existing,alreadyIssued:true};
@@ -274,19 +315,24 @@ export async function storeIssuedMetaReport({outputDir,workbook,record,save}){
  const writeBuffer=workbook.xlsx.writeBuffer;workbook.xlsx.writeBuffer=async()=>bytes;
  let delivery;
  try{if(save)delivery=await save();}finally{workbook.xlsx.writeBuffer=writeBuffer;}
- if(delivery?.alreadyExists===true||/PREVIEW/i.test(delivery?.filePath||''))throw Error('UNVERIFIED_EXISTING_DELIVERY');
+ if((delivery?.alreadyExists===true&&delivery?.contentMatches!==true)||/PREVIEW/i.test(delivery?.filePath||''))throw Error('UNVERIFIED_EXISTING_DELIVERY');
  // An already-issued nonempty directory cannot be replaced by rename (including a race).
  await rename(stage,final);await syncDir(parent);
  return {...manifest,filePath:join(final,'report.xlsx'),manifestPath:join(final,'manifest.json'),alreadyIssued:false,delivery};
  });
 }
 
+// Dropbox strict-add and the nonempty final directory are the durable guards.
+// Keep the in-process guard ephemeral so a crash cannot strand a period.
+const issuingPeriods = new Set();
 async function withPeriodLock(outputDir,since,until,work){
- const final=periodDir(outputDir,since,until),parent=dirname(final);
- await mkdir(parent,{recursive:true});
- const lockPath=join(parent,`.${since}_${until}.lock`);
- let lock;try{lock=await open(lockPath,'wx',0o600);}catch(e){if(e.code==='EEXIST')throw Error('ISSUED_PUBLICATION_BUSY');throw e;}
- try{return await work({parent,final});}finally{await lock.close();await unlink(lockPath);}
+ const final=periodDir(resolve(outputDir),since,until),parent=dirname(final);
+ if(issuingPeriods.has(final))throw Error('ISSUED_PUBLICATION_BUSY');
+ issuingPeriods.add(final);
+ try{
+  await mkdir(parent,{recursive:true});
+  return await work({parent,final});
+ }finally{issuingPeriods.delete(final);}
 }
 
 // ---------------------------------------------------------------------------

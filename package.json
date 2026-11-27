@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "exceljs": "^4.4.0",
-    "jose": "6.2.12"
+    "jose": "6.2.12",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

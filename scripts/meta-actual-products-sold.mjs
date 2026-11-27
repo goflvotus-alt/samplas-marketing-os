@@ -1,3 +1,4 @@
+import { analyticsRangeBelowLimit } from './weekly-data-completeness.mjs';
 // Cafe24 actual order/items are the source of truth for sold products.
 // Cafe24 Analytics is used only for order-level acquisition attribution.
 // Meta product_id attribution is NEVER treated as an actually sold SKU.
@@ -372,7 +373,7 @@ export function buildActualProductsSold({
   let candidateOrders = data.orders, candidateMissingAdmin = 0;
   if (queryMode && Object.hasOwn(data, "analyticsOrders")) {
     const acquisition = analyticsRows(analytics);
-    if (!data.analyticsOrdersComplete || !Array.isArray(data.analyticsOrders) || !analytics || analytics.ok === false || (!Array.isArray(analytics.orderdetails) && !Array.isArray(analytics.data?.orderdetails)) || acquisition.length >= 100) return {
+    if (!data.analyticsOrdersComplete || !Array.isArray(data.analyticsOrders) || !analytics || analytics.ok === false || (!Array.isArray(analytics.orderdetails) && !Array.isArray(analytics.data?.orderdetails)) || !analyticsRangeBelowLimit(analytics, acquisition, since, until)) return {
       available: false, rows: [], reason: "Cafe24 Analytics or actual order coverage incomplete; no Meta revenue substitution."
     };
     const paidIds = new Set(acquisition.filter(row => String(row.ad || '').toLowerCase() === 'ig' && String(row.medium || '').toLowerCase() === 'paid').map(row => text(row.order_id)).filter(Boolean));

@@ -48,7 +48,12 @@ function freshContext(overrides = {}) {
     capturingResponse: () => ({}),
     handleNaverAdsReadOnlyRoute: async () => {},
     resolveWeeklyReportDestination: () => ({ mode: "dropbox" }),
-    saveWeeklyReportToDropbox: async () => ({ uploaded: true }),
+    dueWeeklyPeriod: now => ({ cadence: "weekly", ...previousTuesdayToMondayRange(now.toISOString().slice(0, 10)) }),
+    runOfficialReport: async (request, now, scheduled) => {
+      assert.equal(request.platform, "naver");
+      assert.equal(scheduled, true);
+      return overrides.generateWeeklyNaverAdsReport();
+    },
     isWeeklyNaverReportDue: () => true,
     seoulDateKey: () => "2026-09-29",
     safeErrorMessage: (error) => String(error?.message || error),
