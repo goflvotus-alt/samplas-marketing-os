@@ -31,6 +31,7 @@ function jsonResponse(body, ok = true, status = ok ? 200 : 400) {
 // Dispatches by URL so a single mock covers the whole token->exists->upload chain.
 function makeFetchMock({ tokenOk = true, existsResult = "not_found", existsSize = 12345, uploadOk = true, uploadSizeOverride } = {}) {
   const calls = [];
+  let uploadedBytes;
   const fetchImpl = async (url, options = {}) => {
     calls.push({ url: String(url), options });
     if (String(url).includes("oauth2/token")) {
@@ -39,12 +40,15 @@ function makeFetchMock({ tokenOk = true, existsResult = "not_found", existsSize 
         : jsonResponse({ error: "invalid_grant", error_description: "refresh token revoked" }, false, 401);
     }
     if (String(url).includes("files/get_metadata")) {
+      if (uploadedBytes) return jsonResponse({ size: uploadedBytes.length });
       if (existsResult === "exists") return jsonResponse({ name: "x.xlsx", size: existsSize });
       if (existsResult === "server_error") return jsonResponse({ error_summary: "internal" }, false, 500);
       return jsonResponse({ error_summary: "path/not_found/", error: { ".tag": "path", path: { ".tag": "not_found" } } }, false, 409);
     }
+    if (String(url).includes("files/download")) return new Response(uploadedBytes);
     if (String(url).includes("files/upload")) {
       if (!uploadOk) return jsonResponse({ error_summary: "insufficient_space/" }, false, 507);
+      uploadedBytes = options.body;
       const bodyLength = options.body ? options.body.length : 0;
       const decodedArg = JSON.parse(options.headers["Dropbox-API-Arg"].replace(/\\u([0-9a-f]{4})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))));
       return jsonResponse({
@@ -61,7 +65,13 @@ function makeFetchMock({ tokenOk = true, existsResult = "not_found", existsSize 
 
 async function makeTinyWorkbook() {
   const workbook = new ExcelJS.Workbook();
-  workbook.addWorksheet("SUMMARY").addRow(["test"]);
+  const report = workbook.addWorksheet("REPORT");
+  report.getCell("A1").value = "NAVER SEARCH ADS WEEKLY REPORT";
+  report.getCell("A2").value = "SAMPLAS  |  2026-09-15 – 2026-09-21";
+  for (const cell of ["A6", "E6", "E10"]) report.getCell(cell).value = 100;
+  workbook.addWorksheet("ISSUE_EVIDENCE", { state: "veryHidden" }).addRow([
+    JSON.stringify({ since: "2026-09-15", until: "2026-09-21", review: { result: "PASS" } })
+  ]);
   return workbook;
 }
 
@@ -185,45 +195,6 @@ test("a non-409, non-2xx get_metadata response (real failure) rejects instead of
   await assert.rejects(() => dropboxFileExists("/x.xlsx", { accessToken: "t", fetchImpl }));
 });
 
-// 8 / Blocker 2. existing weekly file -> duplicate-safe ONLY when its size actually
-// matches the report this run would have produced. A same-name file of a different size
-// (truncated, corrupted, a leftover from a previous failed attempt, or manually placed)
-// must never be silently accepted as a valid prior success.
-test("8a. an already-existing Dropbox file of the SAME size is treated as already-done — no upload call is made", async () => {
-  const workbook = await makeTinyWorkbook();
-  const expectedSize = (await workbook.xlsx.writeBuffer()).length;
-  const { fetchImpl, calls } = makeFetchMock({ existsResult: "exists", existsSize: expectedSize });
-  const result = await saveWeeklyReportToDropbox(workbook, { since: "2026-09-15", until: "2026-09-21", env: FAKE_ENV, fetchImpl });
-  assert.equal(result.uploaded, false);
-  assert.equal(result.alreadyExists, true);
-  assert.equal(result.size, expectedSize);
-  assert.equal(calls.some((c) => c.url.includes("files/upload")), false);
-});
-
-test("8b. an already-existing Dropbox file of a DIFFERENT size is rejected — no upload, no false success", async () => {
-  const workbook = await makeTinyWorkbook();
-  const realSize = (await workbook.xlsx.writeBuffer()).length;
-  const { fetchImpl, calls } = makeFetchMock({ existsResult: "exists", existsSize: realSize + 500 }); // corrupted/wrong artifact
-  await assert.rejects(
-    () => saveWeeklyReportToDropbox(workbook, { since: "2026-09-15", until: "2026-09-21", env: FAKE_ENV, fetchImpl }),
-    /size mismatch/i
-  );
-  assert.equal(calls.some((c) => c.url.includes("files/upload")), false);
-});
-
-test("8c. ambiguous prior-upload-timeout scenario: a retry that finds a same-size file succeeds without a duplicate upload", async () => {
-  // Simulates: first run's upload actually reached Dropbox but the response was lost to a
-  // network timeout (so the first saveWeeklyReportToDropbox call itself would have thrown).
-  // The next scheduler poll retries from scratch; get_metadata now finds a file whose size
-  // matches exactly what this run would produce, so it's accepted as the real prior success.
-  const workbook = await makeTinyWorkbook();
-  const realSize = (await workbook.xlsx.writeBuffer()).length;
-  const { fetchImpl, calls } = makeFetchMock({ existsResult: "exists", existsSize: realSize });
-  const result = await saveWeeklyReportToDropbox(workbook, { since: "2026-09-15", until: "2026-09-21", env: FAKE_ENV, fetchImpl });
-  assert.equal(result.alreadyExists, true);
-  assert.equal(calls.filter((c) => c.url.includes("files/upload")).length, 0);
-});
-
 test("dropboxFileExists correctly distinguishes a 409 not_found from a real error", async () => {
   const notFound = makeFetchMock({ existsResult: "not_found" });
   assert.deepEqual(await dropboxFileExists("/x.xlsx", { accessToken: "t", fetchImpl: notFound.fetchImpl }), { exists: false });
@@ -273,7 +244,7 @@ test("resolvePlatformDropboxDestination with no defaultDir (Instagram) stays loc
 test("saveWeeklyReportToDropboxAtPath: upload succeeds at the exact given path", async () => {
   const { fetchImpl, calls } = makeFetchMock({ existsResult: "not_found" });
   const workbook = await makeTinyWorkbook();
-  const targetPath = "/SAMPLAS WORK/병구 작업/메타 광고/리포트/META_ADS_WEEKLY_2026-09-22_2026-09-28.xlsx";
+  const targetPath = "/Custom/NAVER_ADS_WEEKLY_2026-09-15_2026-09-21.xlsx";
   const result = await saveWeeklyReportToDropboxAtPath(workbook, { targetPath, env: FAKE_ENV, fetchImpl });
   assert.equal(result.uploaded, true);
   assert.equal(result.filePath, targetPath);
@@ -282,32 +253,11 @@ test("saveWeeklyReportToDropboxAtPath: upload succeeds at the exact given path",
   assert.equal(arg.path, targetPath);
 });
 
-test("saveWeeklyReportToDropboxAtPath: a same-size existing file at the path is accepted without re-upload (duplicate prevention)", async () => {
-  const workbook = await makeTinyWorkbook();
-  const expectedSize = (await workbook.xlsx.writeBuffer()).length;
-  const { fetchImpl, calls } = makeFetchMock({ existsResult: "exists", existsSize: expectedSize });
-  const result = await saveWeeklyReportToDropboxAtPath(workbook, { targetPath: "/x/INSTAGRAM_WEEKLY_2026-09-22_2026-09-28.xlsx", env: FAKE_ENV, fetchImpl });
-  assert.equal(result.uploaded, false);
-  assert.equal(result.alreadyExists, true);
-  assert.equal(calls.some((c) => c.url.includes("files/upload")), false);
-});
-
-test("saveWeeklyReportToDropboxAtPath: a different-size existing file rejects instead of silently trusting it", async () => {
-  const workbook = await makeTinyWorkbook();
-  const realSize = (await workbook.xlsx.writeBuffer()).length;
-  const { fetchImpl, calls } = makeFetchMock({ existsResult: "exists", existsSize: realSize + 999 });
-  await assert.rejects(
-    () => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: "/x/META_ADS_WEEKLY_2026-09-22_2026-09-28.xlsx", env: FAKE_ENV, fetchImpl }),
-    /size mismatch/i
-  );
-  assert.equal(calls.some((c) => c.url.includes("files/upload")), false);
-});
-
 test("saveWeeklyReportToDropboxAtPath: an upload failure (e.g. insufficient space) rejects rather than reporting a false success", async () => {
   const { fetchImpl } = makeFetchMock({ existsResult: "not_found", uploadOk: false });
   const workbook = await makeTinyWorkbook();
   await assert.rejects(
-    () => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: "/x/META_ADS_WEEKLY_2026-09-22_2026-09-28.xlsx", env: FAKE_ENV, fetchImpl }),
+    () => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: "/x/NAVER_ADS_WEEKLY_2026-09-15_2026-09-21.xlsx", env: FAKE_ENV, fetchImpl }),
     /insufficient_space/
   );
 });

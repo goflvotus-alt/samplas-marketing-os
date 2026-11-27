@@ -67,3 +67,51 @@ export function accountReconciles(levelTotals,account,scope){
  if(account?.kind!=='meta_account_totals'||account.completeness!=='COMPLETE'||account.scope?.since!==scope.since||account.scope?.until!==scope.until||!account.totals)return false;
  return ADDITIVE.every(k=>numeric(levelTotals?.[k])&&cents(levelTotals[k])===cents(account.totals[k]));
 }
+
+// Only split a capped Analytics response. An API failure or an invalid slice
+// keeps the original range unpublishable.
+export async function fetchReportAnalyticsRange(since, until, fetchRange) {
+  const initial = await fetchRange(since, until);
+  if (!initial?.coverage?.reasons?.includes('ANALYTICS_LIMIT_OR_NEXT_PAGE')) return initial;
+  const parts = [];
+  async function visit(start, end, response) {
+    const coverage = response?.coverage;
+    const rows = response?.data?.orderdetails;
+    if (response?.ok && coverage?.completeness === 'COMPLETE'
+      && coverage.scope?.since === start && coverage.scope?.until === end && Array.isArray(rows) && rows.length < 100) {
+      parts.push({ since: start, until: end, count: rows.length, rows });
+      return true;
+    }
+    if (start === end || !coverage?.reasons?.includes('ANALYTICS_LIMIT_OR_NEXT_PAGE')) return false;
+    const day = offset => new Date(offset).toISOString().slice(0, 10);
+    const midpoint = Date.parse(start) + Math.floor((Date.parse(end) - Date.parse(start)) / 172800000) * 86400000;
+    const left = day(midpoint), right = day(midpoint + 86400000);
+    return await visit(start, left, await fetchRange(start, left))
+      && await visit(right, end, await fetchRange(right, end));
+  }
+  if (!await visit(since, until, initial)) return initial;
+  const rows = parts.flatMap(part => part.rows);
+  return {
+    ok: true, data: { orderdetails: rows },
+    coverage: {
+      ...result('cafe24_analytics_partitioned', { since, until }, 'COMPLETE'),
+      parts: parts.map(({ since, until, count }) => ({ since, until, count }))
+    }
+  };
+}
+
+export function analyticsRangeBelowLimit(data, rows, since, until) {
+  if (!Array.isArray(rows)) return false;
+  if (rows.length < 100) return true;
+  const coverage = data?.coverage;
+  if (coverage?.kind !== 'cafe24_analytics_partitioned' || coverage.completeness !== 'COMPLETE'
+    || coverage.scope?.since !== since || coverage.scope?.until !== until || !Array.isArray(coverage.parts)) return false;
+  let next = Date.parse(since), count = 0;
+  for (const part of coverage.parts) {
+    if (Date.parse(part.since) !== next || Date.parse(part.until) < next
+      || !Number.isInteger(part.count) || part.count < 0 || part.count >= 100) return false;
+    next = Date.parse(part.until) + 86400000;
+    count += part.count;
+  }
+  return next === Date.parse(until) + 86400000 && count === rows.length;
+}

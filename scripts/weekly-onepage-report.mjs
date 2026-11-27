@@ -19,7 +19,7 @@ function base(workbook,model,title) {
  s.views=[{showGridLines:false,zoomScale:85}];s.properties.defaultRowHeight=21;
  // A3 portrait keeps the required detailed metrics readable on one printed page.
  s.pageSetup={orientation:'portrait',paperSize:8,fitToPage:true,fitToWidth:1,fitToHeight:1,printArea:'A1:L57',margins:{left:.25,right:.25,top:.3,bottom:.3,header:0,footer:0}};
- box(s,1,1,12,title,{size:22,bold:true,color:C.white,bg:C.ink,height:44});
+ box(s,1,1,12,model.cadence==='monthly'?title.replace('WEEKLY','MONTHLY'):title,{size:22,bold:true,color:C.white,bg:C.ink,height:44});
  box(s,2,1,12,`SAMPLAS  |  ${model.since} – ${model.until}`,{size:11,color:C.white,bg:C.ink,height:28});
  box(s,3,1,12,`직전 동일 기간  ${model.previousSince||'N/A'} – ${model.previousUntil||'N/A'}`,{size:10,color:C.muted,height:24});
  return s;
@@ -160,6 +160,12 @@ export function metaOnePage(workbook,model) {
  if(matchSection)s.pageSetup.printArea=`A1:L${actionRow+14}`;
  actions(s,[{priority:'P1',action:'Analytics ig/paid와 Admin order_id 일치 주문을 지속 검증',success:'추적 누락·미매칭 분리'},{priority:'P1',action:'기존 ghost_mall_id 필터와 Analytics 유료 주문을 중복 없이 비교',success:'동일 주문 결제 1회 집계'},{priority:'P2',action:'광고 판단은 Meta 성과와 확인된 실제 주문 근거를 별도 확인',success:'귀속 매출 혼합 금지'}],actionRow,matchSection?'05':'04');
  notes(s,['Meta Marketing API Insights · source-metric 그대로 사용','Cafe24 Analytics: 유입 근거만 사용 / Admin Orders: 상품 및 실결제 근거','동일 주문번호 결제 1회 · canonical 취소/환불 및 부분취소 규칙 유지',g?'광고 ID 유입 = Cafe24 Analytics 광고 ID 기록 · Meta 개별 구매와 1:1 아님 · 노출 구매는 주문 연결 불가 · META_ATTRIBUTION/REFUND_TRACKING 시트':'기존 공통 REPORT 1페이지 레이아웃 재사용 · 상세 시트 별도 유지','현재/비교 기간은 KST 날짜 범위 · 자동 리포트는 완료된 화~월 7일과 직전 7일 비교','세 매출 합산 금지 · 전주도 동일 결제일 기준 재조회 · 미추적 주문을 광고 비기여로 단정하지 않음'],actionRow+6);
+ if(model.cadence==='monthly'){
+  for(const address of ['A27','A30']){
+   const cell=s.getCell(address);
+   if(typeof cell.value==='string')cell.value=cell.value.replace('이번 주','이번 달').replace('다음 주','다음 달');
+  }
+ }
  return s;
 }
 export function instagramDecision(post,posts) {
@@ -209,6 +215,11 @@ export function instagramOnePage(workbook,model) {
  });
  detail(s,['게시일','종류','콘텐츠명','도달','조회','좋아요','댓글','저장','공유','참여율','판단'],rows);actions(s,scheduled);
  notes(s,[`SOURCE: Instagram Graph API · 기간별 콘텐츠 (캐시 기준) · ${model.since} – ${model.until}`,`계정 지표: 요청 주간 Graph total_value. 팔로워: ${note} · ${followers.reason||'현재 수집 기록 없음'}. ${Object.entries(current.reasons||{}).map(([k,v])=>`${k}: ${v}`).join(' / ')}`,`게시물 Reach 합계 ${number(sum.reach,'명')}은 중복 포함 수치입니다. 계정 주간 고유 도달로 사용하거나 합산 비교하지 않습니다.`,`참여율 = 실제 참여 ÷ 해당 콘텐츠 도달. 도달 0·누락 시 N/A. Story ${model.stories===null?'주간 기록 미제공 (데이터 부족).':'확보 기록만 표시 · 전체 기간 coverage 불완전.'}`,`상세 ${Math.min(rows.length,8)} / ${number(rows.length,'건')} 표시 (날짜순). 확대는 동일 포맷 내 실측 반응을 확인한 콘텐츠 반복 테스트입니다.`,'콘텐츠별 프로필 방문·팔로우 기여는 미측정이므로 제외했습니다. 0은 실측값, N/A는 미제공입니다.']);
+ if(model.cadence==='monthly'){
+  s.eachRow(row=>row.eachCell(cell=>{
+   if(cell.type===3&&typeof cell.value==='string')cell.value=cell.value.replace(/이번 주/g,'이번 달').replace(/다음 주/g,'다음 달').replace(/주간/g,'월간');
+  }));
+ }
  return s;
 }
 // Row 4 banner: PASS only when campaign and adgroup sections both verified; otherwise PARTIAL with the section reason.
@@ -234,6 +245,12 @@ export function naverOnePage(workbook,model) {
  searchDemandTables(s,model.searchDemand);actions(s,scheduled,56,'06');
  s.pageSetup.printArea='A1:L69';
  notes(s,[`SOURCE: Naver Search Ads · 기간별 캠페인 통계 · ${model.since} – ${model.until}`,model.adgroups?.available?`SOURCE: /ncc/adgroups + 광고그룹 ID별 /stats. 실측 ${model.adgroups.coverage?.successful??0}/${model.adgroups.coverage?.total??rows.length} · N/A ${model.adgroups.coverage?.unavailable??0}. 정확히 resolve된 canonical 이름만 표시.`:`${model.adgroups?.verification==='FAILED'?'광고그룹 검증 실패 → 검증된 캠페인 fallback':'광고그룹 조회 불가 → 실제 캠페인 fallback'}: ${model.adgroups?.reason||'상세 미제공'}`,'CTR·CVR는 클릭·전환 효율입니다. ROAS는 광고비 대비 전환매출 배수, CPA·CPC는 전환·클릭당 비용입니다.','전환·매출은 플랫폼 귀속 성과입니다. 실제 주문 실결제액으로 간주하지 않습니다. 0과 N/A를 구분합니다.',`상세 ${Math.min(rows.length,8)} / ${number(rows.length,'건')} 표시. 전체 광고그룹 확인 금액 ${number(model.adgroups.coverage?.knownSpend,'원')} / 캠페인 ${number(sum.spend,'원')} · 미확인 차액 ${number(model.adgroups.coverage?.difference,'원')}. 누락은 0으로 대체하지 않습니다.`,`검색 수요: ${model.searchDemand?.source||'Naver Keyword Tool 월간 검색량의 주간 Snapshot 비교'}. 광고 전환과 별개. 정확한 브랜드 키워드만 사용; <10/누락은 N/A. 수집 ${model.searchDemand?.observedAt||'N/A'} · 미확보 ${(model.searchDemand?.unavailable||[]).length}개.`],61);
+ if(model.cadence==='monthly'){
+  for(const address of ['A27','A30']){
+   const cell=s.getCell(address);
+   if(typeof cell.value==='string')cell.value=cell.value.replace('이번 주','이번 달').replace('다음 주','다음 달');
+  }
+ }
  return s;
 }
 

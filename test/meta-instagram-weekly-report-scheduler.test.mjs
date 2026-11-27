@@ -67,6 +67,13 @@ function freshMetaContext(overrides = {}) {
     logApiError: async () => {},
     previousTuesdayToMondayRange: () => ({since:"2026-09-22",until:"2026-09-28"}),
     seoulDateKey: () => "2026-09-29",
+    dueWeeklyPeriod: () => ({ cadence: "weekly", since: "2026-09-22", until: "2026-09-28" }),
+    runOfficialReport: async (request, now, scheduled) => {
+      assert.equal(request.platform, "meta");
+      assert.equal(request.cadence, "weekly");
+      assert.equal(scheduled, true);
+      return overrides.generateWeeklyMetaAdsReport();
+    },
     ...overrides
   };
   runInNewContext(metaSchedulerSource, context);
@@ -88,6 +95,13 @@ function freshInstagramContext(overrides = {}) {
     safeErrorMessage: (error) => String(error?.message || error),
     logApiError: async () => {},
     seoulDateKey: () => "2026-09-29",
+    dueWeeklyPeriod: () => ({ cadence: "weekly", since: "2026-09-22", until: "2026-09-28" }),
+    runOfficialReport: async (request, now, scheduled) => {
+      assert.equal(request.platform, "instagram");
+      assert.equal(request.cadence, "weekly");
+      assert.equal(scheduled, true);
+      return overrides.generateWeeklyInstagramReport();
+    },
     ...overrides
   };
   runInNewContext(instagramSchedulerSource, context);
@@ -120,20 +134,8 @@ test("Meta: partial Dropbox config fails closed — no report generated, week no
   assert.match(state.lastError, /DROPBOX_REFRESH_TOKEN/);
 });
 
-test("Meta: canonical Dropbox path is dir + META_ADS_WEEKLY_<since>_<until>.xlsx", async () => {
-  let capturedTargetPath;
-  const ctx = freshMetaContext({
-    generateWeeklyMetaAdsReport: async (options) => {
-      const saved = await options.saveReport({}, { since: "2026-09-22", until: "2026-09-28" });
-      return { ok: true, since: "2026-09-22", until: "2026-09-28", ...saved };
-    },
-    saveWeeklyReportToDropboxAtPath: async (workbook, { targetPath }) => { capturedTargetPath = targetPath; return { uploaded: true, filePath: targetPath }; }
-  });
-  await ctx.runMetaWeeklyReportCheck();
-  assert.equal(capturedTargetPath, "/SAMPLAS WORK/병구 작업/메타 광고/리포트/META_ADS_WEEKLY_2026-09-22_2026-09-28.xlsx");
-});
 
-test("Meta: a same-size existing Dropbox file (duplicate prevention / restart safety) still marks the week complete without re-upload", async () => {
+test("Meta: a validated existing Dropbox file (duplicate prevention / restart safety) still marks the week complete without re-upload", async () => {
   const ctx = freshMetaContext({
     generateWeeklyMetaAdsReport: async () => ({ ok: true, since: "2026-09-22", until: "2026-09-28", filePath: "/x/META_ADS_WEEKLY_2026-09-22_2026-09-28.xlsx", uploaded: false, alreadyExists: true })
   });
@@ -246,21 +248,8 @@ test("Instagram: partial Dropbox config fails closed — no report generated, we
   assert.match(state.lastError, /DROPBOX_APP_SECRET/);
 });
 
-test("Instagram: canonical Dropbox path is the confirmed 인스타그램 리포트 dir + INSTAGRAM_WEEKLY_<since>_<until>.xlsx", async () => {
-  let capturedTargetPath;
-  const ctx = freshInstagramContext({
-    resolvePlatformDropboxDestination: () => ({ mode: "dropbox", dir: "/SAMPLAS WORK/병구 작업/인스타그램 리포트" }),
-    generateWeeklyInstagramReport: async (options) => {
-      const saved = await options.saveReport({}, { since: "2026-09-22", until: "2026-09-28" });
-      return { ok: true, since: "2026-09-22", until: "2026-09-28", ...saved };
-    },
-    saveWeeklyReportToDropboxAtPath: async (workbook, { targetPath }) => { capturedTargetPath = targetPath; return { uploaded: true, filePath: targetPath }; }
-  });
-  await ctx.runInstagramWeeklyReportCheck();
-  assert.equal(capturedTargetPath, "/SAMPLAS WORK/병구 작업/인스타그램 리포트/INSTAGRAM_WEEKLY_2026-09-22_2026-09-28.xlsx");
-});
 
-test("Instagram: a same-size existing Dropbox file (restart safety) still marks the week complete without re-upload", async () => {
+test("Instagram: a validated existing Dropbox file (restart safety) still marks the week complete without re-upload", async () => {
   const ctx = freshInstagramContext({
     resolvePlatformDropboxDestination: () => ({ mode: "dropbox", dir: "/SAMPLAS WORK/병구 작업/인스타그램 리포트" }),
     generateWeeklyInstagramReport: async () => ({ ok: true, since: "2026-09-22", until: "2026-09-28", filePath: "/x/INSTAGRAM_WEEKLY_2026-09-22_2026-09-28.xlsx", uploaded: false, alreadyExists: true })
@@ -315,16 +304,7 @@ test("isolation: a Meta scheduler exception does not touch the Instagram schedul
   assert.equal(instagramCtx.__getInstagramSchedulerState().lastError, null);
 });
 
- test("Meta scheduler requests completed Tue-Mon week, one-page template and fail-closed data", async () => {
-  const ctx = freshMetaContext({generateWeeklyMetaAdsReport: async options => {
-    assert.deepEqual(JSON.parse(JSON.stringify(options.period)), {since:"2026-09-22",until:"2026-09-28"});
-    assert.equal(options.onePage,true); assert.equal(options.requireCompleteData,true);
-    return {ok:false,error:"Incomplete attribution"};
-  }});
-  await ctx.runMetaWeeklyReportCheck();
-  assert.equal(ctx.__getMetaSchedulerState().lastRunSinceKey,null);
-  assert.equal(ctx.__getMetaSchedulerState().intervalMs,60000);
- });
+
 
 // --- Failure persistence + failure notice ---
 

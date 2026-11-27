@@ -1,3 +1,5 @@
+import { createRequire } from "node:module";
+import ExcelJS from "exceljs";
 // Dropbox upload for the Naver Ads Weekly Report — Production-only concern, kept fully
 // separate from scripts/naver-ads-weekly-report.mjs (which stays destination-agnostic:
 // it only knows how to build the report model/workbook and, by default, write it to a
@@ -25,10 +27,14 @@
 //   DROPBOX_WEEKLY_REPORT_DIR (Dropbox API path, default below)
 import { weeklyReportFileName } from "./naver-ads-weekly-report.mjs";
 
+// ExcelJS already uses JSZip to read XLSX. Enable its CRC check before parsing sheets.
+const JSZip = createRequire(import.meta.resolve("exceljs"))("jszip");
+
 const DEFAULT_DROPBOX_REPORT_DIR = "/SAMPLAS WORK/병구 작업/네이버 광고 리포트";
 
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_GET_METADATA_URL = "https://api.dropboxapi.com/2/files/get_metadata";
+const DROPBOX_DOWNLOAD_URL = "https://content.dropboxapi.com/2/files/download";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
 
 export function isDropboxConfigured(env = process.env) {
@@ -120,7 +126,7 @@ export async function dropboxFileExists(path, { accessToken, fetchImpl = fetch }
   const text = await response.text();
   if (response.ok) {
     const body = JSON.parse(text);
-    return { exists: true, size: body.size ?? null };
+    return { exists: true, size: body.size ?? null, ...(body.rev ? { rev: body.rev } : {}) };
   }
   let body;
   try { body = JSON.parse(text); } catch { body = null; }
@@ -129,8 +135,8 @@ export async function dropboxFileExists(path, { accessToken, fetchImpl = fetch }
   throw dropboxErrorFromResponse(response.status, text, "existence check");
 }
 
-export async function dropboxUploadFile(path, buffer, { accessToken, fetchImpl = fetch }) {
-  const dropboxApiArg = asciiSafeJson({ path, mode: "add", autorename: false, mute: true, strict_conflict: true });
+export async function dropboxUploadFile(path, buffer, { accessToken, fetchImpl = fetch, rev }) {
+  const dropboxApiArg = asciiSafeJson({ path, mode: rev ? { ".tag": "update", update: rev } : "add", autorename: false, mute: true, strict_conflict: true });
   const response = await fetchImpl(DROPBOX_UPLOAD_URL, {
     method: "POST",
     headers: {
@@ -157,59 +163,133 @@ export async function dropboxUploadFile(path, buffer, { accessToken, fetchImpl =
   return { size: body.size ?? buffer.length, name: body.name, pathDisplay: body.path_display };
 }
 
-// The `saveReport(workbook, { since, until, env })` implementation server.mjs's
-// scheduler injects into generateWeeklyNaverAdsReport() when Dropbox is configured.
-// Idempotent by construction: if the target file already exists in Dropbox (a prior
-// run — this run, an earlier retry, or a run just before a server restart — already
-// succeeded), this returns success WITHOUT uploading again, using the Dropbox file's own
-// existence as the durable "this week is done" marker instead of any new persistent
-// scheduler state or database.
-export async function saveWeeklyReportToDropbox(workbook, { since, until, env = process.env, fetchImpl = fetch } = {}) {
-  const fileName = weeklyReportFileName(since, until);
-  const targetPath = dropboxTargetPath(fileName, env);
-  const accessToken = await getDropboxAccessToken({ env, fetchImpl });
-  const buffer = await workbook.xlsx.writeBuffer();
+const reportLayouts = {
+  NAVER_ADS: { title: "NAVER SEARCH ADS", metrics: ["A6", "E6", "E10"], minimumMetrics: 3 },
+  META_ADS: { title: "META ADS", sheets: ["SUMMARY", "CAMPAIGN", "AD SET", "CREATIVE_AD", "TREND", "AI_ANALYSIS", "ACTUAL_PRODUCTS_SOLD", "RAW"], metrics: ["A6", "D6", "G6"], minimumMetrics: 3 },
+  INSTAGRAM: { title: "INSTAGRAM", metrics: ["E6", "I6", "I10"], minimumMetrics: 1 }
+};
 
-  const existing = await dropboxFileExists(targetPath, { accessToken, fetchImpl });
-  if (existing.exists) {
-    // Same canonical filename is not enough on its own — a truncated/corrupted file, a
-    // manually-placed wrong file, or a leftover from a previous failed attempt would
-    // otherwise be silently accepted as a valid prior success. Size is already available
-    // from get_metadata and the buffer we'd have uploaded, so compare them before trusting
-    // it. A mismatch fails loudly rather than auto-overwriting — overwriting an existing
-    // Dropbox file is a bigger decision than this minimal fix is meant to make.
-    if (existing.size !== buffer.length) {
-      throw new Error(`Existing weekly Dropbox report size mismatch at ${targetPath}: expected ${buffer.length} bytes, found ${existing.size}.`);
+async function validateReportBytes(bytes, targetPath) {
+  try {
+    const fileName = targetPath.split("/").at(-1);
+    const match = /^(NAVER_ADS|META_ADS|INSTAGRAM)_(WEEKLY|MONTHLY)_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})(?:_PREVIEW_[a-f0-9-]+)?\.xlsx$/.exec(fileName);
+    if (!match) throw new Error("unrecognized report filename");
+    const [, platform, cadence, since, until] = match;
+    const layout = reportLayouts[platform];
+    const archive = await JSZip.loadAsync(bytes, { checkCRC32: true });
+    for (const entry of ["[Content_Types].xml", "_rels/.rels", "xl/workbook.xml", "xl/_rels/workbook.xml.rels"]) {
+      if (!archive.file(entry)) throw new Error("missing XLSX package entry");
     }
-    return { filePath: targetPath, uploaded: false, alreadyExists: true, size: existing.size };
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(bytes);
+    if (layout.sheets?.some(name => !workbook.getWorksheet(name))) throw new Error("missing required XLSX worksheet");
+    const report = workbook.getWorksheet("REPORT");
+    if (!report || report.state !== "visible" || report.getCell("A1").text !== `${layout.title} ${cadence} REPORT`) {
+      throw new Error("missing REPORT sheet or incorrect platform");
+    }
+    if (report.getCell("A2").text !== `SAMPLAS  |  ${since} – ${until}`) throw new Error("report period mismatch");
+    const measured = layout.metrics.map(address => report.getCell(address).value);
+    if (/PREVIEW|검증 실패\(FAIL\)/i.test(report.getCell("A4").text)) throw new Error("workbook is not a publishable issue");
+    if (measured.some(value => typeof value === "number" && (!Number.isFinite(value) || value < 0)) ||
+        measured.filter(Number.isFinite).length < layout.minimumMetrics) {
+      throw new Error("required metrics are missing or invalid");
+    }
+    const evidence = workbook.getWorksheet("ISSUE_EVIDENCE");
+    const parts = [];
+    evidence?.eachRow(row => parts.push(row.getCell("A").text));
+    const encoded = parts.join("");
+    if (platform === "NAVER_ADS" && !encoded) {
+      // Older official weekly layouts carry provenance and matching totals on REPORT.
+      const totals = ["C15", "C17", "C22"].map(address => report.getCell(address).value);
+      if (cadence !== "WEEKLY" || report.getCell("A4").text ||
+          report.getCell("A62").text !== `SOURCE: Naver Search Ads · 기간별 캠페인 통계 · ${since} – ${until}` ||
+          totals.some((value, index) => value !== measured[index])) {
+        throw new Error("missing issue evidence sheet or invalid legacy Naver report");
+      }
+    } else if (platform === "NAVER_ADS" || evidence) {
+      if (evidence?.state !== "veryHidden") throw new Error("missing issue evidence sheet");
+      const record = JSON.parse(encoded);
+      const allowedReviews = platform === "NAVER_ADS" ? ["PASS", "PARTIAL"] : ["PASS", "UNKNOWN"];
+      if (record.since !== since || record.until !== until || !allowedReviews.includes(record.review?.result) || record.review.failures?.length) {
+        throw new Error("workbook issue evidence failed validation");
+      }
+    }
+    for (const sheet of workbook.worksheets) {
+      sheet.eachRow(row => row.eachCell(cell => {
+        if (cell.type === ExcelJS.ValueType.Error || cell.effectiveType === ExcelJS.ValueType.Error) {
+          throw new Error("workbook contains spreadsheet errors");
+        }
+      }));
+    }
+    return workbook;
+  } catch (error) {
+    throw new Error(`Invalid report workbook at ${targetPath}: ${error.message}`, { cause: error });
   }
-
-  const uploaded = await dropboxUploadFile(targetPath, buffer, { accessToken, fetchImpl });
-  return { filePath: targetPath, uploaded: true, alreadyExists: false, size: uploaded.size };
 }
 
-// ---------------------------------------------------------------------------
-// Generic, platform-agnostic upload (Meta/Instagram weekly reports reuse this — the
-// Naver-specific saveWeeklyReportToDropbox() above is untouched, kept exactly as-is, so
-// nothing about the already-working Naver→Dropbox path changes). Same idempotency,
-// size-mismatch-fails-loudly, and secret-safety guarantees as the Naver path, just with
-// an explicit targetPath instead of a hardcoded Naver filename/directory.
-// ---------------------------------------------------------------------------
+async function downloadDropboxFile(path, { accessToken, fetchImpl }) {
+  const response = await fetchImpl(DROPBOX_DOWNLOAD_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Dropbox-API-Arg": asciiSafeJson({ path }) }
+  });
+  if (!response.ok) throw dropboxErrorFromResponse(response.status, await response.text(), "download");
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function readPublishedReport(targetPath, connection) {
+  const existing = await dropboxFileExists(targetPath, connection);
+  if (!existing.exists) return null;
+  const bytes = await downloadDropboxFile(targetPath, connection);
+  const workbook = await validateReportBytes(bytes, targetPath);
+  return { filePath: targetPath, uploaded: false, alreadyExists: true, size: bytes.length, bytes, workbook };
+}
+
+export async function findPublishedReport({ targetPath, env = process.env, fetchImpl = fetch }) {
+  return readPublishedReport(targetPath, { accessToken: await getDropboxAccessToken({ env, fetchImpl }), fetchImpl });
+}
+
+export function saveWeeklyReportToDropbox(workbook, { since, until, env = process.env, fetchImpl = fetch } = {}) {
+  return saveWeeklyReportToDropboxAtPath(workbook, { targetPath: dropboxTargetPath(weeklyReportFileName(since, until), env), env, fetchImpl });
+}
 
 export async function saveWeeklyReportToDropboxAtPath(workbook, { targetPath, env = process.env, fetchImpl = fetch } = {}) {
-  const accessToken = await getDropboxAccessToken({ env, fetchImpl });
-  const buffer = await workbook.xlsx.writeBuffer();
-
-  const existing = await dropboxFileExists(targetPath, { accessToken, fetchImpl });
-  if (existing.exists) {
-    if (existing.size !== buffer.length) {
-      throw new Error(`Existing weekly Dropbox report size mismatch at ${targetPath}: expected ${buffer.length} bytes, found ${existing.size}.`);
-    }
-    return { filePath: targetPath, uploaded: false, alreadyExists: true, size: existing.size };
+  const connection = { accessToken: await getDropboxAccessToken({ env, fetchImpl }), fetchImpl };
+  const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+  if (/_PREVIEW_[a-f0-9-]+\.xlsx$/.test(targetPath)) {
+    const uploaded = await dropboxUploadFile(targetPath, buffer, connection);
+    return { filePath: targetPath, uploaded: true, alreadyExists: false, size: uploaded.size };
   }
+  const existingResult = ({ bytes, workbook, ...result }) => ({ ...result, contentMatches: bytes.equals(buffer) });
+  const existing = await readPublishedReport(targetPath, connection);
+  if (existing) return existingResult(existing);
+  await validateReportBytes(buffer, targetPath);
+  try {
+    await dropboxUploadFile(targetPath, buffer, connection);
+  } catch (uploadError) {
+    // A response can be lost after Dropbox commits, or a competing run can win strict add.
+    const published = await readPublishedReport(targetPath, connection);
+    if (published) return existingResult(published);
+    throw uploadError;
+  }
+  const saved = await readPublishedReport(targetPath, connection);
+  if (!saved || !saved.bytes.equals(buffer)) throw new Error("Dropbox report failed post-upload integrity verification");
+  return { filePath: targetPath, uploaded: true, alreadyExists: false, size: saved.size };
+}
 
-  const uploaded = await dropboxUploadFile(targetPath, buffer, { accessToken, fetchImpl });
-  return { filePath: targetPath, uploaded: true, alreadyExists: false, size: uploaded.size };
+export async function reconcileWeeklyFailureNotice({ targetPath, env = process.env, fetchImpl = fetch }) {
+  const connection = { accessToken: await getDropboxAccessToken({ env, fetchImpl }), fetchImpl };
+  const path = targetPath.replace(/\.xlsx$/, "_FAILED.txt");
+  const existing = await dropboxFileExists(path, connection);
+  if (!existing.exists) return;
+  if (!existing.rev) throw new Error("Dropbox failure notice has no revision");
+  const prior = await downloadDropboxFile(`rev:${existing.rev}`, connection);
+  const status = `SAMPLAS REPORT PUBLISHED — HISTORICAL ATTEMPT BELOW\nreport: ${targetPath}\n\n`;
+  const historical = prior.toString("utf8");
+  if (historical.startsWith(status)) return;
+  if (!/^SAMPLAS (?:WEEKLY REPORT FAILED|REPORT ATTEMPT FAILED)\r?\n/.test(historical)) {
+    throw new Error("Unrecognized historical Dropbox failure notice");
+  }
+  await dropboxUploadFile(path, Buffer.concat([Buffer.from(status), prior]), { ...connection, rev: existing.rev });
 }
 
 // Same 3-state fail-closed logic as resolveWeeklyReportDestination() above, generalized
@@ -232,12 +312,12 @@ export function resolvePlatformDropboxDestination(env, { dirEnvKey, defaultDir =
 // payloads, no credentials). Add-only like the reports — an existing notice is never touched.
 export function weeklyFailureNoticeText({ platform, since, until, error, at }) {
   return [
-    "SAMPLAS WEEKLY REPORT FAILED",
+    "SAMPLAS REPORT ATTEMPT FAILED",
     `platform: ${platform}`,
-    `period: ${since} ~ ${until} (KST, Tue-Mon)`,
+    `period: ${since} ~ ${until} (KST)`,
     `lastAttemptAt: ${at}`,
     `reason: ${String(error || "unknown").slice(0, 1000)}`,
-    "No report was published for this period. Missing values were not replaced with 0 or sample data.",
+    "This is an attempt record. The canonical XLSX and its validation determine publication status.",
     ""
   ].join("\n");
 }
@@ -246,6 +326,10 @@ export async function saveWeeklyFailureNoticeToDropbox({ targetPath, text, env =
   const accessToken = await getDropboxAccessToken({ env, fetchImpl });
   const existing = await dropboxFileExists(targetPath, { accessToken, fetchImpl });
   if (existing.exists) return { filePath: targetPath, uploaded: false, alreadyExists: true };
+  const reportPath = targetPath.replace(/_FAILED\.txt$/, ".xlsx");
+  if (reportPath !== targetPath && await readPublishedReport(reportPath, { accessToken, fetchImpl })) {
+    return { filePath: reportPath, uploaded: false, alreadyExists: false, published: true };
+  }
   const uploaded = await dropboxUploadFile(targetPath, Buffer.from(text, "utf8"), { accessToken, fetchImpl });
   return { filePath: targetPath, uploaded: true, alreadyExists: false, size: uploaded.size };
 }

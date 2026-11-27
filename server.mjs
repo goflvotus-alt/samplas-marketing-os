@@ -40,10 +40,8 @@ import {
 } from "./scripts/naver-ads-weekly-report.mjs";
 import {
   resolveWeeklyReportDestination,
-  saveWeeklyReportToDropbox,
   isDropboxConfigured,
   resolvePlatformDropboxDestination,
-  saveWeeklyReportToDropboxAtPath,
   dropboxWeeklyReportDir,
   saveWeeklyFailureNoticeToDropbox,
   weeklyFailureNoticeText
@@ -51,6 +49,7 @@ import {
 import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
 import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs";
 import { runWeeklyReportPreview, handleWeeklyReportPreview } from "./scripts/weekly-report-manual.mjs";
+import { dueMonthlyReport, dueWeeklyPeriod, officialReportPeriod, publishOfficialReport, reportPlatforms } from "./scripts/official-report-publication.mjs";
 import { paymentDay } from "./scripts/meta-weekly-revenue.mjs";
 import { createMetaWeeklyCafe24SourceHandler } from "./scripts/meta-weekly-cafe24-source.mjs";
 import {fetchWeeklyItemPayments} from './scripts/meta-weekly-sales-trace.mjs';
@@ -501,6 +500,25 @@ const server = isMainModule ? createServer(async (req, res) => {
       return json(res, data);
     }
     if (url.pathname === "/api/reports/meta-weekly/cafe24-source") return metaWeeklyCafe24Source(req, res, url);
+    if (url.pathname === "/api/reports/official/recover") {
+      if (req.method !== "POST") return json(res, { ok: false, error: "Method not allowed; POST only." }, 405);
+      if (!isAuthorizedInternalRequest(req)) return json(res, { ok: false, error: "Unauthorized" }, 401);
+      let body;
+      try {
+        body = await readJsonBody(req);
+        if (!reportPlatforms.includes(body?.platform)) throw new Error("invalid_platform");
+        officialReportPeriod(body);
+      } catch {
+        return json(res, { ok: false, error: "invalid_platform_or_closed_period" }, 400);
+      }
+      try {
+        const result = await runOfficialReport(body);
+        return json(res, result, result.ok ? 200 : 502);
+      } catch (error) {
+        await logApiError("official_report_recovery", error, { platform: body.platform, since: body.since, until: body.until });
+        return json(res, { ok: false, error: "official_report_recovery_failed" }, 502);
+      }
+    }
     if (url.pathname === "/api/reports/weekly/run") {
       return handleWeeklyReportPreview(req, res, {
         authorized: isAuthorizedInternalRequest, readBody: readJsonBody, json,
@@ -1723,6 +1741,8 @@ const server = isMainModule ? createServer(async (req, res) => {
   setInterval(runMetaWeeklyReportCheck, metaWeeklyReportScheduler.intervalMs);
   runInstagramWeeklyReportCheck();
   setInterval(runInstagramWeeklyReportCheck, instagramWeeklyReportScheduler.intervalMs);
+  runMonthlyReportCheck();
+  setInterval(runMonthlyReportCheck, 15 * 60 * 1000);
   // VEIL FOUND: one carousel every Friday at 20:00 KST.
   // Poll every five minutes; durable slot state prevents duplicate publication.
   runVeilFoundScheduledCheck();
@@ -3057,17 +3077,17 @@ async function fetchCafe24WeeklyTrackingOrders(startDate, endDate, options) {
   };
   const start = parse(startDate), end = parse(endDate);
   const today = Date.parse(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()) + 'T00:00:00Z');
-  if (!META_WEEKLY_TRACKING_CODES.includes(options.inflowPath) || !Number.isFinite(start) || !Number.isFinite(end) || end < start || end - start > 6 * 86400000 || start < today - 35 * 86400000 || end > today) {
-    throw Object.assign(new Error('Meta weekly inflow query requires a recent bounded weekly period and known tracking code.'), { status: 400 });
+  if (!META_WEEKLY_TRACKING_CODES.includes(options.inflowPath) || !Number.isFinite(start) || !Number.isFinite(end) || end < start || end - start > (options.officialReport ? 30 : 6) * 86400000 || (!options.officialReport && start < today - 35 * 86400000) || end > today) {
+    throw Object.assign(new Error('Meta inflow query requires a bounded report period and known tracking code.'), { status: 400 });
   }
   if (!env.CAFE24_MALL_ID) throw new Error('Cafe24 direct API mall configuration required for Meta weekly tracking.');
   await ensureCafe24AccessToken();
   let body;
-  try { body = await cafe24GetOrders(startDate, endDate, { limit: 500, inflowPath: options.inflowPath, strictOrders: true }); }
+  try { body = await cafe24GetOrders(startDate, endDate, { limit: options.officialReport ? 1000 : 500, inflowPath: options.inflowPath, strictOrders: true }); }
   catch (error) {
     if (!isCafe24InvalidToken(error)) throw error;
     await refreshCafe24TokenSingleFlight();
-    body = await cafe24GetOrders(startDate, endDate, { limit: 500, inflowPath: options.inflowPath, strictOrders: true });
+    body = await cafe24GetOrders(startDate, endDate, { limit: options.officialReport ? 1000 : 500, inflowPath: options.inflowPath, strictOrders: true });
   }
   if (!body || body.error || !Array.isArray(body.orders)) throw new Error('Incomplete Cafe24 inflow query response.');
   return { source: 'cafe24_admin_api_inflow', orders: body.orders, coverage:body.coverage };
@@ -9480,6 +9500,7 @@ async function buildInstagramRangeData(sinceValue, untilValue) {
     since,
     until,
     source: "instagram_range_from_monthly_cache",
+    partial: payloads.some(payload => payload.error || payload.cacheWarning || payload.source === "csv_required"),
     syncedAt,
     posts,
     account: newestPayload.account || emptyInstagramAccount()
@@ -9860,6 +9881,51 @@ async function buildNewBrandsResponse(asOf = new Date(), { coverage = false } = 
   return attachCoverage(result, { cafe24ByCode, naverIndex, aliasesByCode });
 }
 
+async function runOfficialReport(request, now = new Date(), scheduled = false) {
+  const result = await publishOfficialReport(request, {
+    env, now, scheduled,
+    fetchers: {
+      naver: fetchNaverAdsPerformanceForWeeklyReport,
+      instagram: buildInstagramRangeDataForWeeklyReport,
+      meta: {
+        fetchByLevel: buildMetaAdsSummaryForWeeklyReport,
+        fetchActualOrders: fetchCafe24ActualOrdersForWeeklyReport,
+        fetchActualAnalytics: fetchCafe24AnalyticsForWeeklyReport,
+        fetchAccountTotals: fetchMetaAccountTotalsForWeeklyReport,
+        fetchAttribution: fetchMetaAttributionForWeeklyReport,
+        fetchRefundOrders: fetchCafe24OrdersForRefundTracking,
+        fetchItemPayments: fetchCafe24ItemPaymentsForWeeklyReport,
+        fetchMetaProducts: fetchMetaProductsForWeeklyReport,
+        fetchAdTracking: fetchMetaAdTrackingForWeeklyReport
+      }
+    }
+  });
+  if (result.warning) console.warn("[OFFICIAL_REPORT]", result.platform, result.since, result.warning);
+  return result;
+}
+
+const monthlyReportState = new Map();
+async function runMonthlyReportCheck() {
+  const now = new Date();
+  const period = dueMonthlyReport(now);
+  if (!period || (!isDropboxConfigured(env) && env.RENDER !== "true")) return;
+  await Promise.all(reportPlatforms.map(async platform => {
+    const state = monthlyReportState.get(platform);
+    if (state?.running || state?.since === period.since) return;
+    monthlyReportState.set(platform, { running: true });
+    try {
+      const result = await runOfficialReport({ platform, ...period }, now, true);
+      if (!result.ok) throw new Error(result.error);
+      if (!result.warning) monthlyReportState.set(platform, { since: period.since });
+      console.log("[MONTHLY_REPORT] saved", result.filePath);
+    } catch (error) {
+      await logApiError(`${platform}_monthly_report`, error, period);
+    } finally {
+      if (monthlyReportState.get(platform)?.running) monthlyReportState.delete(platform);
+    }
+  }));
+}
+
 // Last failed attempt of a Tuesday window: the reason goes beside the reports as
 // <PREFIX>_<since>_<until>_FAILED.txt so a missing week is never silent. Add-only; never throws.
 async function uploadWeeklyFailureNotice({ platform, prefix, tag, destination, now, error }) {
@@ -9871,6 +9937,7 @@ async function uploadWeeklyFailureNotice({ platform, prefix, tag, destination, n
       text: weeklyFailureNoticeText({ platform, since, until, error, at: now.toISOString() }),
       env
     });
+    if (saved.published) return;
     console.log(`[${tag}] failure notice ${saved.uploaded ? "saved" : "already exists"} ${saved.filePath}`);
   } catch (noticeError) {
     await logApiError(`${platform}_weekly_failure_notice`, noticeError, { since, until });
@@ -9925,14 +9992,15 @@ async function runNaverWeeklyReportCheck() {
     if (destination.mode === "misconfigured") {
       throw new Error(`Dropbox is partially configured — missing: ${destination.missing.join(", ")}. Refusing to fall back to local storage.`);
     }
-    const result = await generateWeeklyNaverAdsReport({
+    const result = destination.mode === "dropbox" || env.RENDER === "true"
+      ? await runOfficialReport({ platform: "naver", ...dueWeeklyPeriod(now) }, now, true)
+      : await generateWeeklyNaverAdsReport({
       referenceDateKey: seoulDateKey(),
       fetchPerformance: fetchNaverAdsPerformanceForWeeklyReport,
       // Pass this file's own already-loaded env (merges .env + process.env) so a
       // .env-only NAVER_ADS_WEEKLY_REPORT_DIR is honored the same way manual CLI runs
       // honor it — both paths must resolve the exact same output directory.
-      env,
-      saveReport: destination.mode === "dropbox" ? saveWeeklyReportToDropbox : undefined
+      env
     });
     if (result.ok) {
       // Only reached if saveReport actually resolved (a Dropbox auth/upload/network
@@ -9940,7 +10008,7 @@ async function runNaverWeeklyReportCheck() {
       // instead) — so this week is marked complete only once the report is durably
       // saved, whether that means "uploaded now" or "already existed in Dropbox from an
       // earlier attempt" (uploaded:false, alreadyExists:true is still a success).
-      naverWeeklyReportScheduler.lastRunSinceKey = result.since;
+      naverWeeklyReportScheduler.lastRunSinceKey = result.warning ? null : result.since;
       naverWeeklyReportScheduler.lastSuccessAt = new Date().toISOString();
       naverWeeklyReportScheduler.lastUploadedReport = result.filePath;
       naverWeeklyReportScheduler.lastError = null;
@@ -10102,13 +10170,14 @@ export async function fetchMetaAdTrackingForWeeklyReport(since, until, {ads=[]} 
 
 // Query provenance is internal metadata; never fabricate Cafe24 response fields.
 const META_WEEKLY_TRACKING_CODES = ['meta_meantime_look', 'meta_ssage', 'meta_adv_catalog', 'meta_adv_image', 'meta_adv_video'];
-export async function fetchCafe24ActualOrdersForWeeklyReport(since, until, { includeAnalyticsOrders = false } = {}) {
+export async function fetchCafe24ActualOrdersForWeeklyReport(since, until, { includeAnalyticsOrders = false, officialReport = false } = {}) {
+  const limit = officialReport ? 1000 : 500;
   const orders = [], trackingQueries = [];
   for (const code of META_WEEKLY_TRACKING_CODES) {
     try {
-      const result = await fetchCafe24Orders(since, until, { limit: 500, inflowPath: code, weeklyMetaTracking: true });
+      const result = await fetchCafe24Orders(since, until, { limit, inflowPath: code, weeklyMetaTracking: true, officialReport });
       if (!result || result.error || result.ok === false || result.source !== 'cafe24_admin_api_inflow' || !Array.isArray(result.orders) || result.orders.some(order => !order || typeof order !== 'object')) throw new Error('Incomplete query result');
-      const complete = result.orders.length < 500;
+      const complete = result.orders.length < limit;
       trackingQueries.push({ code, ok: true, complete, count: result.orders.length, coverage:result.coverage });
       orders.push(...result.orders.map(order => ({ ...order, _metaTrackingCode: code })));
     } catch {
@@ -10131,9 +10200,9 @@ export async function fetchCafe24ActualOrdersForWeeklyReport(since, until, { inc
       if (!trackingQueries.every(query => query.ok && query.complete)) throw new Error('Incomplete weekly tracking coverage.');
       // Reuse the direct Orders reader for the same bounded period, without a ghost filter.
       // The weekly guard above has already validated the period. Never use a cached fallback.
-      const body = await cafe24GetOrders(since, until, { limit: 500, strictOrders: true });
+      const body = await cafe24GetOrders(since, until, { limit, strictOrders: true });
       result.analyticsOrdersCoverage = body?.coverage || {completeness:'UNKNOWN',reasons:['ORDERS_COVERAGE_NOT_RECORDED']};
-      if (Array.isArray(body?.orders) && !body.error && body.orders.length < 500) {
+      if (Array.isArray(body?.orders) && !body.error && body.orders.length < limit) {
         result.analyticsOrders = body.orders;
         result.analyticsOrdersComplete = true;
       }
@@ -10175,7 +10244,9 @@ async function runMetaWeeklyReportCheck() {
     if (destination.mode === "misconfigured") {
       throw new Error(`Dropbox is partially configured — missing: ${destination.missing.join(", ")}. Refusing to fall back to local storage.`);
     }
-    const result = await generateWeeklyMetaAdsReport({
+    const result = destination.mode === "dropbox" || env.RENDER === "true"
+      ? await runOfficialReport({ platform: "meta", ...dueWeeklyPeriod(now) }, now, true)
+      : await generateWeeklyMetaAdsReport({
       referenceDateKey: seoulDateKey(),
       period: previousTuesdayToMondayRange(seoulDateKey()),
       onePage: true,
@@ -10189,13 +10260,10 @@ async function runMetaWeeklyReportCheck() {
       fetchItemPayments: fetchCafe24ItemPaymentsForWeeklyReport,
       fetchMetaProducts: fetchMetaProductsForWeeklyReport,
       fetchAdTracking: fetchMetaAdTrackingForWeeklyReport,
-      env,
-      saveReport: destination.mode === "dropbox"
-        ? (workbook, { since, until }) => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: `${destination.dir.replace(/\/+$/, "")}/META_ADS_WEEKLY_${since}_${until}.xlsx`, env })
-        : undefined
+      env
     });
     if (result.ok) {
-      metaWeeklyReportScheduler.lastRunSinceKey = result.since;
+      metaWeeklyReportScheduler.lastRunSinceKey = result.warning ? null : result.since;
       metaWeeklyReportScheduler.lastSuccessAt = new Date().toISOString();
       metaWeeklyReportScheduler.lastUploadedReport = result.filePath;
       metaWeeklyReportScheduler.lastError = null;
@@ -10259,6 +10327,7 @@ export async function buildInstagramRangeDataForWeeklyReport(since, until) {
     }
     return {
       ok: true,
+      partial: data.partial,
       since: data.since,
       until: data.until,
       source: "instagram_graph_api",
@@ -10288,16 +10357,15 @@ async function runInstagramWeeklyReportCheck() {
     if (destination.mode === "misconfigured") {
       throw new Error(`Dropbox is partially configured — missing: ${destination.missing.join(", ")}. Refusing to fall back to local storage.`);
     }
-    const result = await generateWeeklyInstagramReport({
+    const result = destination.mode === "dropbox" || env.RENDER === "true"
+      ? await runOfficialReport({ platform: "instagram", ...dueWeeklyPeriod(now) }, now, true)
+      : await generateWeeklyInstagramReport({
       referenceDateKey: seoulDateKey(),
       fetchRange: buildInstagramRangeDataForWeeklyReport,
-      env,
-      saveReport: destination.mode === "dropbox"
-        ? (workbook, { since, until }) => saveWeeklyReportToDropboxAtPath(workbook, { targetPath: `${destination.dir.replace(/\/+$/, "")}/INSTAGRAM_WEEKLY_${since}_${until}.xlsx`, env })
-        : undefined
+      env
     });
     if (result.ok) {
-      instagramWeeklyReportScheduler.lastRunSinceKey = result.since;
+      instagramWeeklyReportScheduler.lastRunSinceKey = result.warning ? null : result.since;
       instagramWeeklyReportScheduler.lastSuccessAt = new Date().toISOString();
       instagramWeeklyReportScheduler.lastUploadedReport = result.filePath;
       instagramWeeklyReportScheduler.lastError = null;
