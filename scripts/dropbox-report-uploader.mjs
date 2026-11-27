@@ -1,5 +1,5 @@
+import { createRequire } from "node:module";
 import ExcelJS from "exceljs";
-import JSZip from "jszip";
 // Dropbox upload for the Naver Ads Weekly Report — Production-only concern, kept fully
 // separate from scripts/naver-ads-weekly-report.mjs (which stays destination-agnostic:
 // it only knows how to build the report model/workbook and, by default, write it to a
@@ -26,6 +26,9 @@ import JSZip from "jszip";
 // Optional:
 //   DROPBOX_WEEKLY_REPORT_DIR (Dropbox API path, default below)
 import { weeklyReportFileName } from "./naver-ads-weekly-report.mjs";
+
+// ExcelJS already uses JSZip to read XLSX. Enable its CRC check before parsing sheets.
+const JSZip = createRequire(import.meta.resolve("exceljs"))("jszip");
 
 const DEFAULT_DROPBOX_REPORT_DIR = "/SAMPLAS WORK/병구 작업/네이버 광고 리포트";
 
