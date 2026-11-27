@@ -421,7 +421,8 @@ function ensureOperatorSession() {
 
 async function fetchWithOperatorSession(url, init) {
   const response = await fetch(url, init);
-  if (response.status !== 401 || !String(url).startsWith("/api/") || String(url).startsWith("/api/ai-audit/")) return response;
+  // A route-specific 401 is not a session-expired signal. Do not ask for login again.
+  if (response.status !== 401 || response.headers.get("X-Samplas-Auth") !== "operator-session-required") return response;
   // window.prompt blocks the page, so the caller's abort timer has likely fired; retry on a fresh one.
   return (await ensureOperatorSession()) ? fetch(url, { ...init, signal: AbortSignal.timeout(120000) }) : response;
 }
