@@ -2533,6 +2533,91 @@ export async function fetchNaverAdgroupIndex({ now = Date.now() } = {}) {
   }
 }
 
+// Group stats include both generations of creatives exactly once, including non-UTM traffic.
+export async function fetchNaverAttributionDailyStats(since, until, mapping) {
+  const credentials = naverAdsCredentials();
+  const index = await fetchNaverAdgroupIndex();
+  if (!credentials.ok || !index.ok) return { rows: [], coverage: [], status: 'UNVERIFIED' };
+  const dayMs = 86_400_000;
+  const start = Date.parse(since + 'T00:00:00Z');
+  const end = Date.parse(until + 'T00:00:00Z');
+  const iso = value => new Date(value).toISOString().slice(0, 10);
+  const campaigns = new Set(mapping.map(row => row.campaignId));
+  const mapped = new Map(mapping.map(row => [row.groupId, row]));
+  const registry = await readBrandRegistry().catch(() => ({ brands: [], aliases: [] }));
+  const groups = index.adgroups.filter(group => campaigns.has(group.campaignId) && group.id).map(group => {
+    const brand = resolveBrandFromEngine(group.name, registry);
+    const entry = mapped.get(group.id);
+    return { ...group, brandCode: entry?.brandCode || brand?.brandId || null, brandName: brand?.name || entry?.brandName || group.name };
+  });
+  const byId = new Map(groups.map(group => [group.id, group]));
+  const rows = [];
+  const coverage = [];
+  const campaignRows = [];
+  let observedAt = null;
+  let hadFailures = false;
+
+  async function read(id, from, to) {
+    // Search Ads allows timeIncrement=1 only with one id.
+    const payload = await fetchNaverAdsReadOnly('/stats', {
+      id, fields: JSON.stringify(['impCnt', 'clkCnt', 'salesAmt', 'ccnt', 'convAmt']),
+      timeRange: JSON.stringify({ since: from, until: to }), timeIncrement: '1'
+    }, credentials, AbortSignal.timeout(naverAdsTimeoutMs));
+    if (!Array.isArray(payload?.data)) throw new Error('Invalid daily statistics');
+    if (payload.compTm && (!observedAt || payload.compTm < observedAt)) observedAt = payload.compTm;
+    const days = new Set();
+    return payload.data.map(row => {
+      const day = row.dateStart;
+      if ((row.id && id !== row.id) || days.has(day) || !/^\d{4}-\d{2}-\d{2}$/.test(day ?? '') ||
+          day < from || day > to || (row.dateEnd && row.dateEnd !== day)) throw new Error('Invalid daily statistics keys');
+      days.add(day);
+      const { impressions, clicks, spend, conversionValue } = naverAdsMetrics(row);
+      const group = byId.get(id);
+      return { id, day, impressions, clicks, spend, platformRevenue: conversionValue,
+        groupId: group?.id, brandCode: group?.brandCode, brandName: group?.brandName };
+    });
+  }
+
+  for (let ts = start; ts <= end; ts += 92 * dayMs) {
+    const from = iso(ts);
+    const to = iso(Math.min(end, ts + 91 * dayMs));
+    for (const id of campaigns) {
+      try { campaignRows.push(...await read(id, from, to)); }
+      catch { hadFailures = true; }
+    }
+    for (let offset = 0; offset < groups.length; offset += 5) {
+      const attempts = await Promise.allSettled(groups.slice(offset, offset + 5).map(group => read(group.id, from, to)));
+      for (const result of attempts) {
+        if (result.status === 'fulfilled') rows.push(...result.value);
+        else hadFailures = true;
+      }
+    }
+  }
+
+  // Do not promote a brand with a missing group/day to verified coverage.
+  const idsByDay = new Map();
+  for (const row of rows) {
+    if ([row.impressions, row.clicks, row.spend].some(value => value === null)) continue;
+    if (!idsByDay.has(row.day)) idsByDay.set(row.day, new Set());
+    idsByDay.get(row.day).add(row.id);
+  }
+  const brands = new Map();
+  for (const group of groups) {
+    if (!group.brandCode) continue;
+    if (!brands.has(group.brandCode)) brands.set(group.brandCode, []);
+    brands.get(group.brandCode).push(group.id);
+  }
+  for (const [day, ids] of idsByDay) {
+    if (ids.size === groups.length) coverage.push(day);
+    else for (const [brandCode, members] of brands) {
+      if (members.every(id => ids.has(id))) coverage.push({ since: day, until: day, brandCode, ok: true, completeness: 'COMPLETE' });
+    }
+  }
+  const missingIds = groups.length - new Set(rows.map(row => row.id)).size;
+  return { rows, coverage, campaignRows, campaignCount: campaigns.size, observedAt, missingIds,
+    status: rows.length ? (hadFailures || missingIds ? 'PARTIAL' : 'AVAILABLE') : 'UNVERIFIED' };
+}
+
 // Weekly enrichment shares the existing signed GET client and metric math.
 // Failures affect detail only; campaign totals remain authoritative.
 let weeklyDemandCache = null;

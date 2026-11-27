@@ -159,6 +159,12 @@ const css=[
 '@media(max-width:700px){#'+ID+' .mi-legend,#'+ID+' .mi-why{grid-template-columns:1fr}#'+ID+' .mi-breakdown{padding:15px}}',
 '.nav [data-marketing-intelligence-entry].active{background:#252d29!important;color:#fff!important;border:1px solid #496452!important}',
 '.main.mi-marketing-mode .topbar .controls{display:none}',
+'#'+ID+' .mi-range[hidden],#'+ID+' #miBody[hidden]{display:none!important}',
+'#'+ID+' #miNaverPane,#'+ID+' #miNaverReport{min-width:0;max-width:100%}',
+'#'+ID+' #miNaverReport .mi-grid{margin-top:12px}',
+'#'+ID+' #miNaverRows .mi-table{min-width:940px}',
+'#'+ID+' #miNaverRows button{padding:4px 8px;white-space:nowrap}',
+'@media(max-width:650px){#'+ID+' #miNaverFilters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}#'+ID+' #miNaverFilters input,#'+ID+' #miNaverFilters select{min-width:0;width:100%}}',
 '@media(max-width:960px){#'+ID+' .mi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}',
 '@media(max-width:650px){#'+ID+' .mi-grid,#'+ID+' .mi-duo{grid-template-columns:1fr}#'+ID+' .mi-head{display:block}#'+ID+' .mi-head button{margin-top:10px}#'+ID+' .mi-hero{padding:18px}#'+ID+' h2{font-size:24px}}'
 ].join('\n');
@@ -168,7 +174,7 @@ function mount(){
  if(!$(ID)){
   const v=document.createElement('section');v.id=ID;v.className='view';v.setAttribute('aria-label','Marketing Intelligence');
   v.innerHTML='<div class="mi-head"><div><div class="mi-eyebrow">SAMPLAS · MARKETING INTELLIGENCE</div><h2>마케팅 데이터 분석</h2><p class="mi-muted">기간을 바꾸고 매출·고객·유입의 변화를 탐색해.</p></div><div><span class="mi-tag" id="miStatus">조회 대기</span> <button id="miReload" type="button">다시 확인</button></div></div><div class="mi-range"><label>분석 기간<select id="miPreset"><option value="1">최근 완료 월</option><option value="3">최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option><option value="custom">직접 선택</option></select></label><label>시작 월<input id="miStart" type="month"></label><label>종료 월<input id="miEnd" type="month"></label><label>비교 기간<select id="miCompare"><option value="previous">직전 동일 기간</option><option value="year">전년 동일 기간</option><option value="custom">직접 비교</option></select></label><label>비교 시작 월<input id="miCompareStart" type="month" disabled></label><label>비교 종료 월<input id="miCompareEnd" type="month" disabled></label><span id="miPeriodHint" class="mi-muted"></span></div><div id="miTabs" class="mi-tabs" role="tablist" aria-label="분석 영역"></div><div id="miInspect" aria-live="polite"></div><div id="miBody" class="mi-loading">조회 전</div>';
-  main.appendChild(v);$('miReload').addEventListener('click',load);
+  main.appendChild(v);$('miReload').addEventListener('click',()=>state.tab==='naver'?loadNaverReport():load());
   $('miTabs').addEventListener('click',e=>{const b=e.target.closest('[data-mi-tab]');if(!b)return;state.tab=b.getAttribute('data-mi-tab');state.detail=null;state.trace=null;state.traceSerial++;$('miInspect').innerHTML='';showExplorerTab()});
   $('miBody').addEventListener('click',e=>{
     const source=e.target.closest('[data-mi-source]');
@@ -387,10 +393,16 @@ async function load(){
  $('miBody').className='';$('miBody').innerHTML=html;$('miStatus').textContent=unique.length?'잠정 데이터':'데이터 조회 완료';organizeExplorer();
 }
 
-const EXPLORER_TABS=[['overview','매출 구조'],['customers','고객 분석'],['acquisition','유입 · 광고'],['products','상품 · 콘텐츠']];
+const EXPLORER_TABS=[['overview','매출 구조'],['customers','고객 분석'],['acquisition','유입 · 광고'],['products','상품 · 콘텐츠'],['naver','네이버 실매출']];
 function showExplorerTab(){
  const tabs=$('miTabs');if(tabs)tabs.innerHTML=EXPLORER_TABS.map(([key,label])=>'<button type="button" role="tab" data-mi-tab="'+key+'" aria-selected="'+(state.tab===key)+'">'+label+'</button>').join('');
  for(const pane of document.querySelectorAll('#miBody .mi-pane'))pane.hidden=pane.getAttribute('data-mi-pane')!==state.tab;
+ const naverSelected=state.tab==='naver';
+ if(naverSelected&&!$('miNaverPane')&&$(ID))createNaverPane($(ID));
+ if($('miNaverPane'))$('miNaverPane').hidden=!naverSelected;
+ if($('miBody'))$('miBody').hidden=naverSelected;
+ const legacyRange=$(ID)?.querySelector('.mi-range');if(legacyRange)legacyRange.hidden=naverSelected;
+ if(naverSelected&&!naverReport.request&&state.active)loadNaverReport();
  if(state.tab==='acquisition'){loadAdEvidence();loadVisitEvidence()}
  showSegmentDetail();
 }
@@ -427,6 +439,186 @@ function organizeExplorer(){
  });
  showExplorerTab();
 }
+const naverReport={request:null,serial:0,model:null};
+const naverEndpoint='/api/marketing-intelligence/naver-attribution';
+const naverMetrics=[
+ ['spend','광고비',money],['impressions','노출',fmt],['clicks','클릭',fmt],
+ ['ctr','CTR',n=>Number.isFinite(n)?(n*100).toFixed(2)+'%':'확인 불가'],['cpc','CPC',money],
+ ['orders','귀속 주문',fmt],['paid','실결제',money],['refund','취소·환불',money],
+ ['net','귀속 순매출',money],['roas','실매출 ROAS',n=>Number.isFinite(n)?n.toFixed(2)+'배':'확인 불가'],
+ ['platformRevenue','네이버 플랫폼 전환 매출',money],['newCustomers','신규 구매 고객',fmt],
+ ['repeatCustomers','재구매 고객',fmt]
+];
+const naverStatus={VERIFIED:'확인 완료',COMPLETE:'확인 완료',PENDING:'수집 대기',UNVERIFIED:'미검증',PARTIAL:'부분 확인',UNAVAILABLE:'확인 불가'};
+const reportStatus=value=>naverStatus[value]??value??'미검증';
+function dateOffset(day,offset){
+ const date=new Date(day+'T00:00:00Z');
+ date.setUTCDate(date.getUTCDate()+offset);
+ return date.toISOString().slice(0,10);
+}
+function naverRange(row,filters){
+ const bounds=/^\d{4}-\d{2}-\d{2}$/;
+ if(bounds.test(row.since)&&bounds.test(row.until))return [row.since,row.until];
+ const key=String(row.key??'');
+ if(filters.grain==='month'&&/^\d{4}-\d{2}$/.test(key)){
+  const end=new Date(Date.UTC(Number(key.slice(0,4)),Number(key.slice(5)),0)).toISOString().slice(0,10);
+  return [key+'-01',end];
+ }
+ if(bounds.test(key))return [key,dateOffset(key,filters.grain==='week'?6:0)];
+ return [filters.since,filters.until];
+}
+function createNaverPane(view){
+ const pane=document.createElement('section');
+ pane.id='miNaverPane';pane.className='mi-pane';pane.hidden=true;
+ const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ pane.innerHTML=`<div class="mi-section"><h3>네이버 광고 귀속 실매출</h3><span class="mi-muted">KST · 주문번호 기준</span></div>
+ <form id="miNaverFilters" class="mi-range">
+  <label>시작일<input type="date" name="since" required value="${dateOffset(today,-30)}"></label>
+  <label>종료일<input type="date" name="until" required value="${dateOffset(today,-1)}"></label>
+  <label>집계 단위<select name="grain"><option value="day">일별</option><option value="week" selected>주별</option><option value="month">월별</option></select></label>
+  <label>광고 유입 브랜드<select name="brand"><option value="">전체 브랜드</option></select></label>
+  <button type="submit">조회</button><button type="button" id="miNaverExport" disabled>Excel 다운로드</button>
+ </form>
+ <div id="miNaverReport" aria-live="polite"></div>`;
+ view.appendChild(pane);
+ const form=$('miNaverFilters');
+ form.addEventListener('submit',e=>{e.preventDefault();loadNaverReport(Object.fromEntries(new FormData(form)));});
+ $('miNaverExport').addEventListener('click',downloadNaverReport);
+ $('miNaverReport').addEventListener('submit',handleMiAuthSubmit);
+ $('miNaverReport').addEventListener('change',e=>{if(e.target.id==='miNaverSort')renderNaverRows(e.target.value);});
+ $('miNaverReport').addEventListener('click',e=>{
+  const button=e.target.closest('[data-mi-naver-detail]');if(!button)return;
+  const row=naverReport.model?.[button.dataset.miNaverScope || 'brandRows']?.[Number(button.dataset.miNaverDetail)];
+  openNaverDetail(row);
+ });
+}
+function naverQuery(filters,additional={}){
+ const query=new URLSearchParams({...filters,...additional});
+ if(!query.get('brand'))query.delete('brand');
+ return naverEndpoint+'?'+query;
+}
+async function loadNaverReport(filters=naverReport.request??Object.fromEntries(new FormData($('miNaverFilters')))){
+ const panel=$('miNaverReport');
+ if(!panel)return;
+ naverReport.request=filters;
+ naverReport.model=null;
+ $('miNaverExport').disabled=true;
+ const serial=++naverReport.serial;
+ if(!filters.since||!filters.until||filters.since>filters.until){
+  panel.textContent='시작일과 종료일을 확인해 주세요.';
+  return;
+ }
+ panel.textContent='네이버 광고와 Cafe24 귀속 데이터를 조회하고 있습니다.';
+ try{
+  const data=await get(naverQuery(filters));
+  if(serial!==naverReport.serial)return;
+  naverReport.model=data;
+  const brand=$('miNaverFilters').elements.namedItem('brand');
+  const available=Array.isArray(data.brands)?data.brands:[];
+  brand.replaceChildren(new Option('전체 브랜드',''),...available.map(x=>new Option(x.name??x.code,x.code)));
+  if(filters.brand&&!available.some(x=>x.code===filters.brand))brand.add(new Option(filters.brand,filters.brand));
+  brand.value=filters.brand;
+  const current=data.totals??{},previous=data.previous?.totals??data.previous??{};
+  const period=data.period??filters,comparison=data.comparison??{};
+  const generated=data.generatedAt?new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',dateStyle:'short',timeStyle:'short'}).format(new Date(data.generatedAt))+' KST':'미확인';
+  const cards=naverMetrics.map(([key,title,format])=>{
+   const actual=current[key];
+   const known=actual==null&&current.known?.[key]>0?' · 확인된 부분 '+format(current.known[key]):'';
+   return `<article class="mi-kpi"><small>${title}</small><strong>${esc(format(actual))}</strong><p>직전 기간 ${esc(format(previous[key]))}${esc(known)}</p></article>`;
+  }).join('');
+  panel.innerHTML=`<div class="mi-note"><strong>${esc(reportStatus(data.trackingStatus??current.trackingStatus))}</strong> · 마지막 갱신 ${esc(generated)}
+   <p>선택 ${esc(period.since)} ~ ${esc(period.until)} · 직전 동일 기간 ${esc(comparison.since??'미확인')} ~ ${esc(comparison.until??'미확인')}</p>
+   <p>광고비는 선택 기간 네이버 집계, 매출은 같은 기간 Cafe24 주문 귀속 기준입니다. 취소·환불 상태는 마지막 갱신 시각 기준입니다.</p>
+   <p>광고 통계 ${esc(reportStatus(current.adStatus))} · 네이버 원천 시각 ${esc(data.sources?.statsAt??'미확인')}</p>
+   <p>데이터가 늦게 도착할 수 있습니다. 귀속 매출은 광고로 인한 증분 매출과 별개입니다.</p></div>
+   <section class="mi-grid" aria-label="네이버 광고 및 실제 매출 지표">${cards}</section>
+   <h3>기간별 성과</h3><div id="miNaverPeriods" class="mi-table-wrap" tabindex="0"></div>
+   <div class="mi-section"><h3>브랜드별 광고 성과</h3><label>정렬 <select id="miNaverSort"><option value="spend">광고비 높은 순</option><option value="roas">ROAS 높은 순</option></select></label></div>
+   <button type="button" data-mi-naver-detail="-1">전체 주문 근거 보기</button>
+   <div id="miNaverRows" class="mi-table-wrap" tabindex="0" role="region" aria-label="브랜드별 광고 성과 표"></div>
+   <p id="miNaverExportStatus" class="mi-muted" role="status"></p>`;
+  $('miNaverExport').disabled=false;
+  renderNaverRows('spend');
+ }catch(error){
+  if(serial!==naverReport.serial)return;
+  panel.innerHTML=error.message==='HTTP 401'||error.message==='HTTP 403'
+   ?'<p>네이버 광고 귀속 보고서는 운영자 인증이 필요합니다.</p>'+operatorAuthForm()
+   :'<p role="status">보고서 조회에 실패했습니다. 기간을 확인한 뒤 다시 조회해 주세요.</p>';
+ }
+}
+function renderNaverRows(sort){
+ const model=naverReport.model,container=$('miNaverRows');
+ if(!container||!model)return;
+ const rows=(model.brandRows??[]).map((row,index)=>({row,index}));
+ const dates=$('miNaverPeriods');
+ if(dates) dates.innerHTML='<table class="mi-table"><thead><tr><th>선택 기간</th><th>광고비</th><th>클릭</th><th>귀속 주문</th><th>귀속 순매출</th><th>직전 기간 광고비 / 순매출</th><th>추적 상태</th></tr></thead><tbody>'+model.rows.map((row,index)=>{
+  const prev=model.comparisonRows?.[index];
+  const details=value=>`<button type="button" data-mi-naver-scope="rows" data-mi-naver-detail="${index}">${esc(value)}</button>`;
+  return `<tr><th scope="row">${esc(row.since+' ~ '+row.until)}</th><td>${esc(money(row.spend))}</td><td>${esc(fmt(row.clicks))}</td><td>${details(fmt(row.orders))}</td><td>${details(money(row.net))}</td><td>${prev?esc(prev.since+' ~ '+prev.until+' · '+money(prev.spend)+' / '+money(prev.net)):'—'}</td><td>${esc(reportStatus(row.trackingStatus))}</td></tr>`;
+ }).join('')+'</tbody></table>';
+ rows.sort((a,b)=>(b.row[sort]??-Infinity)-(a.row[sort]??-Infinity));
+ const metrics=naverMetrics;
+ container.innerHTML=`<table class="mi-table"><thead><tr><th scope="col">기간 · 유입 브랜드</th>${metrics.map(([,label])=>'<th scope="col">'+label+'</th>').join('')}<th scope="col">추적</th></tr></thead><tbody>${rows.map(({row,index})=>{
+  const brand=(model.brands??[]).find(b=>b.code===row.brandCode);
+  const title=brand?.name??row.label??row.key;
+  return `<tr><th scope="row">${esc(title)}</th>${metrics.map(([key,,format])=>{
+   const value=esc(format(row[key]));
+   return `<td>${key==='orders'||key==='net'?`<button type="button" data-mi-naver-detail="${index}" aria-label="${esc(title+' 주문 및 매출 근거 보기')}">${value}</button>`:value}</td>`;
+  }).join('')}<td>${esc(reportStatus(row.trackingStatus))}</td></tr>`;
+ }).join('')||`<tr><td colspan="${metrics.length+2}">반환된 성과 행이 없습니다.</td></tr>`}</tbody></table>`;
+}
+async function openNaverDetail(row){
+ const filter={...naverReport.request};
+ if(row){
+  const [since,until]=naverRange(row,filter);
+  filter.since=since>filter.since?since:filter.since;
+  filter.until=until<filter.until?until:filter.until;
+  if(row.brandCode)filter.brand=row.brandCode;
+ }
+ const modal=$('miInspect');
+ const heading='광고 귀속 주문 근거';
+ modal.innerHTML=`<section class="mi-trace" role="dialog" aria-modal="true" aria-label="${heading}"><button type="button" data-mi-trace-close>닫기</button><h3>${heading}</h3><p data-mi-naver-order-content>주문을 조회하고 있습니다.</p></section>`;
+ modal.querySelector('[data-mi-trace-close]').focus();
+ const content=modal.querySelector('[data-mi-naver-order-content]');
+ try{
+  const data=await get(naverQuery(filter,{detail:'1'}));
+  if(!content.isConnected)return;
+  const orders=data.orders??[];
+  const list=document.createElement('div');
+  list.className='mi-order-list';
+  list.innerHTML=orders.map(order=>`<details class="mi-order-card"><summary><strong>${esc(order.orderId)}</strong><span>${esc(order.day)} · 순매출 ${esc(money(order.net))}</span></summary>
+   <p>광고 유입 브랜드 ${esc(order.acquisitionBrand??'미확인')} · 구매 브랜드 ${esc((Array.isArray(order.purchaseBrands)?order.purchaseBrands.join(', '):order.purchaseBrands)||'미확인')}</p>
+   <p>실결제 ${esc(money(order.paid))} · 취소·환불 ${esc(money(order.refund))} · 고객 ${esc(order.customerType??'미확인')} · ${esc(reportStatus(order.status))}</p>
+   <ul>${(order.items??[]).map(item=>`<li>${esc(item.name)} · ${esc(fmt(item.quantity))}개 · ${esc(item.brand??'미확인')}</li>`).join('')}</ul></details>`).join('');
+  if(orders.length)content.replaceWith(list);
+  else content.textContent='표시할 주문 근거가 없습니다. 추적 상태를 확인해 주세요.';
+ }catch(error){
+  if(!content.isConnected)return;
+  content.textContent=error.message==='HTTP 401'||error.message==='HTTP 403'
+   ?'운영자 인증 후 주문 근거를 다시 조회해 주세요.':'주문 근거를 조회할 수 없습니다.';
+ }
+}
+async function downloadNaverReport(){
+ if(!naverReport.model)return;
+ const status=$('miNaverExportStatus');
+ const button=$('miNaverExport');
+ button.disabled=true;
+ status.textContent='Excel을 준비하고 있습니다.';
+ try{
+  const response=await fetch(naverQuery(naverReport.request,{format:'xlsx'}),{credentials:'same-origin'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const url=URL.createObjectURL(await response.blob());
+  const link=document.createElement('a');
+  link.href=url;link.download='NAVER-광고귀속-'+naverReport.request.since+'_'+naverReport.request.until+'.xlsx';
+  link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  status.textContent='Excel 다운로드를 시작했습니다.';
+ }catch(error){
+  status.textContent=error.message==='HTTP 401'||error.message==='HTTP 403'
+   ?'운영자 세션을 확인한 뒤 다시 조회해 주세요.':'Excel 다운로드에 실패했습니다.';
+ }finally{button.disabled=!naverReport.model;}
+}
+
 function operatorAuthForm(){
  return '<form data-mi-auth-form class="mi-auth-form" autocomplete="off"><label>운영자 아이디<input name="login" autocomplete="username" required></label><label>운영자 비밀번호<input name="password" type="password" autocomplete="current-password" required></label><button type="submit">인증 후 상세 조회</button><span class="mi-auth-status" role="status"></span></form><p class="mi-muted">운영자 계정으로 인증하며 비밀번호를 저장하지 않아.</p>';
 }
@@ -446,6 +638,7 @@ async function handleMiAuthSubmit(e){
   if(status)status.textContent='인증 완료. 상세 조회 중…';
   if(state.trace)loadOrderTrace();
   if(state.tab==='acquisition')loadVisitEvidence();
+  if(state.tab==='naver')loadNaverReport();
  }catch{
   if(status)status.textContent='운영자 인증 실패. 계정이나 권한을 확인해 줘.';
  }

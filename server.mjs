@@ -29,7 +29,8 @@ import {
   handleNaverAdsReadOnlyRoute,
   capturingResponse,
   fetchNaverAdgroupIndex,
-  fetchNaverWeeklyEnrichment
+  fetchNaverWeeklyEnrichment,
+  fetchNaverAttributionDailyStats
 } from "./intelligence-service.mjs";
 import {
   generateWeeklyNaverAdsReport,
@@ -125,6 +126,7 @@ import { classifyProductCategory } from "./scripts/category-classification-rules
 import { resolveCrossBrandPeriodCutoff } from "./scripts/cross-brand-period-cutoff.mjs";
 import { createTrackingTestScheduler } from "./scripts/tracking-test-run.mjs";
 import { createCrmAnalyticsCollector } from "./scripts/crm-analytics-collect.mjs";
+import { createNaverAttributionService, naverReportQuery, previousNaverReportDefault } from "./scripts/naver-attribution-service.mjs";
 
 const root = resolve(".");
 const outputDir = join(root, "outputs");
@@ -1123,6 +1125,34 @@ const server = isMainModule ? createServer(async (req, res) => {
     if (url.pathname === "/api/ai-audit/popup/project") {
       return json(res, { error: "Method Not Allowed" }, 405);
     }
+    if (url.pathname === "/api/marketing-intelligence/naver-attribution") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      if (!(isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req) || isAuthorizedOperatorRequest(req))) {
+        return json(res, { ok: false, error: "Operator session required" }, 401);
+      }
+      const query = naverReportQuery(url.searchParams, todayKey());
+      if (!query) return json(res, { ok: false, error: "Invalid KST date, brand, or report format" }, 400);
+      try {
+        const report = await readNaverAttributionReport(query);
+        if (url.searchParams.get("format") === "xlsx") {
+          const { buildNaverAttributionWorkbook } = await import("./scripts/naver-attribution-workbook.mjs");
+          const workbook = await buildNaverAttributionWorkbook(report);
+          res.writeHead(200, {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": `attachment; filename="naver-attribution-${query.since}-${query.until}.xlsx"`,
+            "Cache-Control": "no-store"
+          });
+          return res.end(workbook);
+        }
+        if (url.searchParams.get("detail") !== "1") {
+          const { orders, ...summary } = report;
+          return json(res, summary);
+        }
+        return json(res, report);
+      } catch {
+        return json(res, { ok: false, error: "Naver attribution report unavailable" }, 502);
+      }
+    }
     if (url.pathname === "/api/marketing-intelligence/traffic") {
       if (req.method !== "GET") return json(res, { ok: false, error: "Method Not Allowed" }, 405);
       if (!(isLocalRequest(req) || isAuthorizedInternalRequest(req) || hasOperatorSession(req) || isAuthorizedOperatorRequest(req))) return json(res, { ok: false, error: "Operator session required" }, 401);
@@ -1706,7 +1736,10 @@ const server = isMainModule ? createServer(async (req, res) => {
   setInterval(() => trackingTestTick().catch(() => console.error("[TRACKING_TEST] check failed")), 60000);
   // CRM acquisition: Cafe24 Analytics daily 04:00 KST (last 7 days) + monthly on the 3rd 04:30 KST. Off unless CRM_ANALYTICS_COLLECT=on.
   if (env.CRM_ANALYTICS_COLLECT === "on") {
-    const crmAnalyticsTick = createCrmAnalyticsCollector({ workDir, env, fetchAnalytics: fetchCafe24AnalyticsOrderDetails });
+    const crmAnalyticsTick = createCrmAnalyticsCollector({
+      workDir, env, fetchAnalytics: fetchCafe24AnalyticsOrderDetails,
+      onCollected: () => readNaverAttributionReport(previousNaverReportDefault()).catch(() => console.error("[NAVER_ATTRIBUTION] refresh unavailable"))
+    });
     setInterval(() => crmAnalyticsTick().catch(() => console.error("[CRM_ANALYTICS_COLLECT] check failed")), 60000);
   }
 }) : null;
@@ -7332,6 +7365,57 @@ async function readMarketingVisitAnalytics(since, until) {
   marketingVisitCache.set(key, { at: Date.now(), result });
   if (marketingVisitCache.size>24) marketingVisitCache.delete(marketingVisitCache.keys().next().value);
   return result;
+}
+
+let naverReportService;
+export async function readNaverAttributionReport(query) {
+  if (!naverReportService) {
+    naverReportService = (async () => {
+      const crm = await import("./scripts/crm-analytics.mjs");
+      const snapshotDirs = [join(workDir, "tracking-test")];
+      const mapping = JSON.parse(await readFile(join(root, "config", "naver-attribution-creatives.json"), "utf8"));
+      return createNaverAttributionService({
+        mapping,
+        fetchAds: (since, until) => fetchNaverAttributionDailyStats(since, until, mapping),
+        fetchOrders: (since, until) => fetchCafe24Orders(since, until, { limit: 500 }),
+        fetchAnalytics: fetchNaverReportAnalytics,
+        loadSnapshots: () => crm.loadTrackingSnapshots(snapshotDirs),
+        enrichOrders: async (rows, [since, until]) => {
+          const dataset = await crm.cachedCrmDataset({ workDir, snapshotDirs }).catch(() => null);
+          const customerTypes = dataset ? crm.crmAttributionCustomerTypes(dataset, rows.map(row => String(row.order_id))) : {};
+          const master = await readBrandMasterWithSeed().catch(() => ({ brands: [] }));
+          const names = new Map(master.brands.map(row => [row.brand_code, row.brand_name]));
+          const context = await loadResolverContext({ workDir, brandMaster: master.brands }).catch(() => null);
+          if (context) context.brandCodePeriod = { since, until };
+          const numbers = new Set(rows.flatMap(cafe24OrderItems).map(item => String(item.product_no || "")).filter(no => /^\d+$/.test(no)));
+          const cached = await readCafe24ProductCatalogCache().catch(() => null);
+          const indexed = new Map((cached?.products || []).map(row => [String(row.productNo), row]));
+          const catalog = {};
+          for (const no of numbers) {
+            const product = indexed.get(no) || await fetchCafe24ProductDetail(no).catch(() => null);
+            const code = product && resolveOnlineProductBrandCode(product, no, {}, context);
+            if (code && code !== "UNASSIGNED") catalog[no] = { brandCode: code, brandName: names.get(code) || code };
+          }
+          return { catalog, customerTypes };
+        }
+      });
+    })().catch(error => {
+      naverReportService = null;
+      throw error;
+    });
+  }
+  return (await naverReportService).report(query);
+}
+
+async function fetchNaverReportAnalytics({ startDate, endDate }) {
+  if (!env.CAFE24_PROXY_BASE_URL) return fetchCafe24AnalyticsOrderDetails({ startDate, endDate });
+  const base = env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "");
+  const query = new URLSearchParams({ start_date: startDate, end_date: endDate });
+  const response = await fetch(`${base}/api/diagnostics/cafe24-analytics-orderdetails?${query}`, {
+    headers: cafe24ProxyHeaders(), signal: AbortSignal.timeout(15_000), redirect: "error"
+  });
+  if (!response.ok) throw new Error(`Cafe24 Analytics proxy HTTP ${response.status}`);
+  return response.json();
 }
 
 async function fetchCafe24AnalyticsOrderDetails({
