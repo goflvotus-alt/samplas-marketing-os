@@ -1,6 +1,6 @@
 // Read-only reader: the only injected transport is the existing Graph GET helper.
 // Creative URLs are candidates, not verified redirects or resolved catalog templates.
-const CREATIVE_FIELDS = 'id,object_story_spec,asset_feed_spec,link_url,object_url,url_tags,template_url,template_url_spec,effective_object_story_id';
+export const CREATIVE_FIELDS = 'id,object_story_spec,asset_feed_spec,link_url,object_url,url_tags,template_url,template_url_spec,effective_object_story_id';
 const DESTINATION_KEYS = new Set(['link','link_url','website_url','object_url','template_url','deeplink_url','deep_link_url']);
 function httpUrl(value) {
   if (typeof value !== 'string') return null;

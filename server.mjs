@@ -49,7 +49,7 @@ import {
   weeklyFailureNoticeText
 } from "./scripts/dropbox-report-uploader.mjs";
 import { fetchAllMetaLevels, generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
-import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs";
+import { fetchLandingDiagnostics, CREATIVE_FIELDS as LANDING_CREATIVE_FIELDS } from "./scripts/meta-landing-diagnostics.mjs";
 import { runWeeklyReportPreview, handleWeeklyReportPreview } from "./scripts/weekly-report-manual.mjs";
 import { dueMonthlyReport, dueWeeklyPeriod, officialReportPeriod, publishOfficialReport, reportPlatforms } from "./scripts/official-report-publication.mjs";
 import { buildRevenueEvidence, paymentDay } from "./scripts/meta-weekly-revenue.mjs";
@@ -10185,7 +10185,7 @@ export async function fetchMetaProductsForWeeklyReport(since, until) {
 export async function fetchMetaAdTrackingForWeeklyReport(since, until, {ads=[]} = {}) {
   const ids=[...new Set(ads.map(ad=>ad.adId).filter(Boolean))],rows=[];
   for(let i=0;i<ids.length;i+=100){
-    const body=await graphGet('',{ids:ids.slice(i,i+100).join(','),fields:'id,name,creative{url_tags}'});
+    const body=await graphGet('',{ids:ids.slice(i,i+100).join(','),fields:`id,name,creative{${LANDING_CREATIVE_FIELDS}}`});
     for(const id of ids.slice(i,i+100)){if(!body[id]?.id)throw new Error('META_WEEKLY_AD_TRACKING_INCOMPLETE');rows.push(body[id]);}
   }
   return {rows,completeness:'COMPLETE'};
