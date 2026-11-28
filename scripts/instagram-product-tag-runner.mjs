@@ -14,11 +14,12 @@
 // Anything unclear holds the tags: a missing mapping is TAG_REVIEW_REQUIRED, never a guess.
 // Without product-tags.json the runner uses record.autoMapping (instagram-product-tag-automap.mjs), but only
 // after manual approval or the explicit per-post vision-v1 policy approved it.
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { asciiSafeJson } from "./dropbox-report-uploader.mjs";
-import { applyTagPlan, buildTagPlan, checkTagCandidate, SAMPLAS_META, validateMapping, verifyTagPlan } from "./instagram-product-tags.mjs";
+import { applyTagPlan, buildTagPlan, checkTagCandidate, isCatalogExclusion, SAMPLAS_META, validateMapping, verifyTagPlan } from "./instagram-product-tags.mjs";
 import { buildScheduledMapping, validateScheduledProposal } from "./instagram-scheduled-mapping.mjs";
 import { approveAutoTags, buildAutoMapping, confirmApprovedTags } from "./instagram-product-tag-automap.mjs";
 
@@ -74,23 +75,58 @@ export async function findPublishedMedia(graph, record, { now = Date.now(), expe
   return { state: "PUBLISHED", ...found };
 }
 
-// What the record keeps of a plan: per tag only its slide, product and state.
-// An attempted but unconfirmed POST holds the record before any later run can replan it.
-const summarize = (plan) => {
-  const tags = (plan.slides || []).flatMap((s) => s.tags.map((t) => ({ order: s.order, productNo: t.productNo ?? null, productId: t.productId ?? null, state: t.state === "PRODUCT_TAGGING" ? "POST_OUTCOME_UNKNOWN" : t.state, reason: t.reason ?? (t.state === "PRODUCT_TAGGING" ? "post_outcome_unconfirmed" : null), approval: t.approval ?? null })));
-  return { state: tags.some((t) => t.state === "POST_OUTCOME_UNKNOWN") ? "POST_OUTCOME_UNKNOWN" : tags.some((t) => t.state === "TAG_REVIEW_REQUIRED") ? "TAG_REVIEW_REQUIRED" : plan.state, reason: plan.reason ?? null, tags };
+const mappingExclusions = (mapping) => list(mapping?.slides).flatMap((slide) => {
+  const items = [...list(slide.skipped), ...list(slide.review)];
+  if (mapping.source?.state !== "APPROVED") items.push(...list(slide.tags));
+  return items.flatMap((item) => {
+    const reason = String(item.validationReason ?? item.reason ?? "").split(",").find(isCatalogExclusion);
+    return reason ? [{ order: slide.order, productNo: item.productNo ?? null, productId: item.metaProductId ?? null, reason }] : [];
+  });
+});
+
+// Retain tag evidence and the image-scoped POST journal in the existing atomic record.
+const summarize = (plan, prePlanExclusions = []) => {
+  const images = plan.slides.map((slide) => {
+    const { order, mediaId, attempts = [], tags } = slide;
+    const excluded = prePlanExclusions.some((tag) => tag.order === order);
+    const state = !tags.length ? (excluded ? "EXCLUDED" : "NO_TAGS")
+      : tags.every((tag) => tag.state === "TAG_VERIFIED") && !slide.unreadable && !slide.lostExisting?.length && !slide.unexpectedExisting?.length ? "VERIFIED"
+      : tags.every((tag) => tag.state === "PENDING") && !attempts.length ? "NOT_ATTEMPTED" : "FAILED";
+    return { order, mediaId, state, attempts };
+  });
+  const tags = plan.slides.flatMap((slide) => slide.tags.map((tag) => ({
+    order: slide.order, productNo: tag.productNo ?? null, productId: tag.productId ?? null,
+    state: tag.state === "PRODUCT_TAGGING" ? "POST_OUTCOME_UNKNOWN" : tag.state,
+    reason: tag.reason ?? (tag.state === "PRODUCT_TAGGING" ? "post_outcome_unconfirmed" : null),
+    approval: tag.approval ?? null, eligible: tag.eligible === true
+  })));
+  const excluded = [...prePlanExclusions, ...tags.filter((tag) => isCatalogExclusion(tag.reason))];
+  const verified = tags.filter((tag) => tag.state === "TAG_VERIFIED").length;
+  const planned = tags.filter((tag) => tag.eligible).length;
+  const state = tags.some((tag) => tag.state === "POST_OUTCOME_UNKNOWN") ? "POST_OUTCOME_UNKNOWN" : plan.state;
+  const complete = state === "TAG_VERIFIED" && verified === planned && !excluded.length && images.every((image) => image.state !== "FAILED");
+  return { state: state === "TAG_VERIFIED" && !complete ? "TAG_REVIEW_REQUIRED" : state,
+    outcome: complete ? "COMPLETE" : verified ? "PARTIAL" : "INCOMPLETE",
+    reason: plan.reason ?? plan.stopReason ?? null, counts: { planned, verified, excluded: excluded.length }, excluded, images, tags };
 };
 
 export const isTagJobDone = (record) => ["TAG_VERIFIED", "NO_TAGS"].includes(record?.tags?.state);
-const isTagJobHeld = (record) => record?.tags?.state === "POST_OUTCOME_UNKNOWN" || list(record?.tags?.tags).some((t) => ["PRODUCT_TAGGING", "POST_OUTCOME_UNKNOWN"].includes(t.state));
+const isTagJobHeld = (record) => Boolean(record?.tags?.recoveryRequired) || record?.tags?.state === "POST_OUTCOME_UNKNOWN" ||
+  list(record?.tags?.tags).some((t) => ["PRODUCT_TAGGING", "POST_OUTCOME_UNKNOWN"].includes(t.state));
 
 const running = new Set();
+const RECOVERY_APPROVAL_MS = 10 * 60 * 1000;
+const targetKey = (tag) => JSON.stringify([tag.order, tag.productId, tag.x, tag.y]);
+const targetSetKey = (targets) => JSON.stringify(targets.map(targetKey).sort());
+const sameRecoveryRecord = (record, review) => isTagJobHeld(record) &&
+  Boolean(review?.targets?.length && record.tags.planIdentity && record.tags.planIdentity === review.planIdentity &&
+    record.tags.writeRuns === review.writeRuns);
 
 // readFeedFolder(folderName) -> { location, path, manifest, mapping } (null for a missing file).
 // Writes need record.approvals.acceptUnverifiedVariantApproval, write:true and INSTAGRAM_PRODUCT_TAG_WRITES=on.
-export async function runTagJob({ record, graph, readFeedFolder, getCafe24Product, write = false, env = process.env, now = Date.now(), expected = SAMPLAS_META, checkpoint = async () => {} }) {
+export async function runTagJob({ record, graph, readFeedFolder, getCafe24Product, write = false, recover = false, recoveryTargets, assertRecoveryFresh, env = process.env, now = Date.now(), expected = SAMPLAS_META, checkpoint = async () => {}, checkMediaOwner = async () => {} }) {
   const rec = structuredClone(record);
-  if (isTagJobHeld(rec)) return { record: rec, step: "post_outcome_unknown" };
+  const held = isTagJobHeld(rec);
   if (isTagJobDone(rec)) return { record: rec, step: "done" };
   if (running.has(rec.folderName)) return { record: rec, step: "already_running" };
   running.add(rec.folderName);
@@ -102,7 +138,7 @@ export async function runTagJob({ record, graph, readFeedFolder, getCafe24Produc
     }
     const read = await readFeedFolder(rec.folderName);
     const { location, path, manifest, reason } = read;
-    if (rec.mappingProposal && !rec.autoMapping && manifest && list(manifest.items).length === rec.slideCount) {
+    if (!held && rec.mappingProposal && !rec.autoMapping && manifest && list(manifest.items).length === rec.slideCount) {
       try {
         rec.autoMapping = await buildScheduledMapping({ proposal: rec.mappingProposal, manifest, graph, getCafe24Product, now, expected });
         rec.proposalManifestSha256 = captionSha256(JSON.stringify(manifest));
@@ -142,32 +178,94 @@ export async function runTagJob({ record, graph, readFeedFolder, getCafe24Produc
     const mapping = folderMapping ?? (auto?.source?.state === "APPROVED" ? auto : null);
     rec.files = { location: location ?? null, path: path ?? null, mappingSource: folderMapping ? "folder" : auto ? "auto" : null, checkedAt: at };
     const tagCount = list(mapping?.slides).reduce((n, s) => n + list(s?.tags).length, 0);
+    if (held && (!manifest || !mapping || !tagCount || list(manifest.items).length !== rec.slideCount)) {
+      return { record: rec, step: "recovery_inputs_unavailable" };
+    }
     if (!manifest) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: reason || "manifest_missing", checkedAt: at };
     else if (list(manifest.items).length !== rec.slideCount) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: "manifest_slide_count", checkedAt: at };
-    else if (!mapping) rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: auto ? "auto_mapping_not_approved" : "product_tags_missing", checkedAt: at };
+    else if (!mapping) {
+      const excluded = mappingExclusions(auto);
+      rec.tags = { ...rec.tags, state: "TAG_REVIEW_REQUIRED", reason: auto ? "auto_mapping_not_approved" : "product_tags_missing", checkedAt: at };
+      if (excluded.length) Object.assign(rec.tags, { outcome: "INCOMPLETE", counts: { planned: 0, verified: 0, excluded: excluded.length }, excluded });
+    }
     else if (tagCount === 0 && !validateMapping(mapping, manifest).length) rec.tags = { ...rec.tags, state: "NO_TAGS", reason: null, tags: [], checkedAt: at };
     else {
+      const previous = rec.tags;
+      const writeRuns = previous?.writeRuns || 0;
       let plan = await buildTagPlan({ graph, mapping, manifest, mediaId: rec.publish.mediaId, getCafe24Product, expected });
-      const writeRuns = rec.tags?.writeRuns || 0;
+      const identity = captionSha256(JSON.stringify([rec.publish.mediaId, mapping, plan.slides.map((slide) => [slide.order, slide.mediaId, slide.savedAsset])]));
+      if (held) {
+        const legacyTags = list(previous.tags);
+        const current = summarize(plan).tags;
+        const legacyMatches = legacyTags.length > 0 && legacyTags.length === current.length &&
+          legacyTags.every((old, i) => old.order === current[i].order && old.productNo === current[i].productNo && old.productId === current[i].productId);
+        if (!plan.slides.length || (previous.planIdentity ? previous.planIdentity !== identity : !legacyMatches)) {
+          return { record: rec, step: "recovery_plan_mismatch" };
+        }
+      }
       let wrote = false;
-      let applyReason = null;
-      if (plan.state === "PENDING" && write === true && writeRuns < MAX_WRITE_RUNS) {
+      let applyReason = held ? "recovery_approval_required" : null;
+      if (held && plan.state === "PENDING" && writeRuns >= MAX_WRITE_RUNS) applyReason = "max_write_runs";
+      // Ordinary runs reconcile from fresh reads. Recovery writes require explicit selection by the caller
+      // and a matching pre-POST identity. Legacy records have no such identity.
+      const allowRecovery = held && previous.planIdentity === identity &&
+        !list(previous.tags).some((old) => old.state === "TAG_VERIFIED" && !plan.slides.some((slide) =>
+          slide.order === old.order && slide.tags.some((tag) => tag.productId === old.productId && tag.state === "TAG_VERIFIED")));
+      const pendingTargets = held && plan.state === "PENDING" && allowRecovery && writeRuns < MAX_WRITE_RUNS
+        ? plan.slides.flatMap((slide) => slide.tags.filter((tag) => tag.state === "PENDING")
+          .map(({ productId, x, y }) => ({ order: slide.order, productId, x, y })))
+        : [];
+      if (recover && pendingTargets.some((target) => !recoveryTargets?.some((approved) => targetKey(approved) === targetKey(target)))) {
+        return { record: rec, step: "recovery_targets_changed" };
+      }
+      const keepState = (inProgress = false) => {
+        const summary = summarize(plan, mappingExclusions(auto));
+        for (const image of summary.images) {
+          const old = list(previous?.images).find((saved) => saved.mediaId === image.mediaId);
+          image.attempts = [...list(old?.attempts), ...image.attempts];
+          if (image.state === "NOT_ATTEMPTED" && image.attempts.length) image.state = "FAILED";
+        }
+        if (held) {
+          for (const tag of summary.tags) {
+            if (tag.state !== "PENDING") continue;
+            const old = list(previous.tags).find((saved) => saved.order === tag.order && saved.productId === tag.productId);
+            if (!old || !["PRODUCT_TAGGING", "POST_OUTCOME_UNKNOWN", "TAG_VERIFIED"].includes(old.state)) continue;
+            tag.state = "POST_OUTCOME_UNKNOWN";
+            tag.reason = "readback_missing";
+            const image = summary.images.find((saved) => saved.order === tag.order);
+            if (image) image.state = "FAILED";
+          }
+          if (summary.tags.some((tag) => tag.state === "POST_OUTCOME_UNKNOWN")) summary.state = "POST_OUTCOME_UNKNOWN";
+        }
+        rec.tags = { ...summary, applyReason: summary.state === "TAG_VERIFIED" ? null : applyReason, recoveryRequired: (held || wrote) && summary.state !== "TAG_VERIFIED",
+          planIdentity: held ? previous.planIdentity : identity, writeRuns: writeRuns + Number(wrote), checkedAt: at };
+        if (inProgress) rec.tags.recoveryRequired = true;
+        // Older runners only honor the legacy hold state during a rollback.
+        if (rec.tags.recoveryRequired) rec.tags.state = "POST_OUTCOME_UNKNOWN";
+      };
+      if (plan.state === "PENDING" && write === true && (!held || (recover && allowRecovery && assertRecoveryFresh)) && writeRuns < MAX_WRITE_RUNS) {
+        await checkMediaOwner(rec);
         const applied = await applyTagPlan(graph, plan, { write: true, env, acceptUnverifiedVariantApproval: rec.approvals?.acceptUnverifiedVariantApproval === true, expected,
           beforePost: async () => {
-            // Persist before POST: a crash or failed final save must not make an attempted tag eligible again.
+            if (held) assertRecoveryFresh();
             wrote = true;
-            rec.tags = { ...summarize(plan), writeRuns: writeRuns + 1, checkedAt: at };
+            keepState(true);
+            await checkpoint(rec);
+            if (held) assertRecoveryFresh();
+          },
+          afterPost: async () => {
+            keepState(true);
             await checkpoint(rec);
           }
         });
-        if (applied.applied) {
-          wrote = true;
-          rec.tags = { ...summarize(applied.plan), writeRuns: writeRuns + 1, checkedAt: at };
-          plan = await verifyTagPlan(graph, applied.plan);
-        } else applyReason = applied.reason;
+        applyReason = applied.reason ?? null;
+        if (applied.applied && !plan.stopReason) plan = await verifyTagPlan(graph, plan);
       }
-      rec.tags = { ...summarize(plan), applyReason, writeRuns: writeRuns + (wrote ? 1 : 0), checkedAt: at };
-      if (rec.tags.state === "PENDING" && rec.tags.writeRuns >= MAX_WRITE_RUNS) Object.assign(rec.tags, { state: "TAG_REVIEW_REQUIRED", reason: "max_write_runs" });
+      keepState();
+      if (plan.state === "PENDING" && rec.tags.writeRuns >= MAX_WRITE_RUNS && !held) Object.assign(rec.tags, { state: "TAG_REVIEW_REQUIRED", reason: "max_write_runs" });
+      if (held && !wrote && !isTagJobDone(rec)) {
+        return { record: rec, step: "post_outcome_unknown", ...(!write ? { recoveryPreview: pendingTargets } : {}) };
+      }
     }
     return { record: rec, step: "tags" };
   } catch (error) {
@@ -260,8 +358,52 @@ export function createFeedDropbox({ getToken, fetchImpl = fetch, feedDir = FEED_
 export function createPostStore(dir) {
   const file = (name) => { if (!isFeedFolderName(name)) throw new Error("invalid folder name"); return join(dir, `${name}.json`); };
   return {
+    async withTagLock(operation, folderName) {
+      let handle;
+      let acquired;
+      try {
+        await mkdir(dir, { recursive: true });
+        // All writers for the fixed SAMPLAS account use one stable inode. Never delete it.
+        const lockPath = folderName === undefined ? join(dir, ".tag-writes.lock") : `${file(folderName)}.lock`;
+        handle = await open(lockPath, "a", 0o600);
+        acquired = await new Promise((resolve, reject) => {
+          // The child locks the open file description shared with this process.
+          const child = spawn("flock", ["-n", "-E", "75", "3"], { stdio: ["ignore", "ignore", "ignore", handle.fd] });
+          child.once("error", reject);
+          child.once("close", resolve);
+        });
+      } catch {
+        await handle?.close();
+        return { ok: false, error: "tag_lock_unavailable" };
+      }
+      try {
+        if (acquired !== 0) return { ok: false, error: acquired === 75 ? "tag_lock_busy" : "tag_lock_unavailable" };
+        return await operation();
+      } finally {
+        await handle.close();
+      }
+    },
     async get(name) { try { return JSON.parse(await readFile(file(name), "utf8")); } catch (e) { if (e.code === "ENOENT") return null; throw e; } },
-    async put(record) { await mkdir(dir, { recursive: true }); const f = file(record.folderName); const tmp = `${f}.tmp-${randomUUID()}`; await writeFile(tmp, JSON.stringify(record, null, 2)); await rename(tmp, f); },
+    async put(record) {
+      await mkdir(dir, { recursive: true });
+      const destination = file(record.folderName);
+      const temporary = `${destination}.tmp-${randomUUID()}`;
+      const handle = await open(temporary, "wx", 0o600);
+      try {
+        try {
+          await handle.writeFile(JSON.stringify(record, null, 2));
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        await rename(temporary, destination);
+      } catch (error) {
+        await unlink(temporary).catch(() => {});
+        throw error;
+      }
+      const directory = await open(dir, "r");
+      try { await directory.sync(); } finally { await directory.close(); }
+    },
     async list() { try { return (await readdir(dir)).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)); } catch (e) { if (e.code === "ENOENT") return []; throw e; } }
   };
 }
@@ -269,29 +411,97 @@ export function createPostStore(dir) {
 // Server side: register, run one folder, or tick over every open record (autorun).
 // Tag writes need each record's approval plus the env gate checked in runTagJob.
 export function createProductTagService({ graph, dropbox, getCafe24Product, store, env = process.env, now = () => Date.now() }) {
-  // One change at a time per folder (run, automap, approve), so no call writes a record another one has
-  // changed meanwhile. ponytail: in-process only; one server runs the tags (see Operating limits).
+  // Run takes the account lock before the record lock. Other mutations only need the record lock.
   const queues = new Map();
-  const serial = (name, fn) => {
-    const next = (queues.get(name) ?? Promise.resolve()).then(fn, fn);
+  const serial = (name, fn, accountWide = false) => {
+    const locked = () => {
+      if (!store.withTagLock) return { ok: false, error: "tag_lock_unavailable" };
+      const recordLock = () => store.withTagLock(fn, name);
+      return accountWide ? store.withTagLock(recordLock) : recordLock();
+    };
+    const next = (queues.get(name) ?? Promise.resolve()).then(locked, locked);
     queues.set(name, next.catch(() => {}));
     return next;
   };
-  const run = (folderName) => serial(folderName, async () => {
+  const run = (folderName, { approve = false, recover = false, write = true, review, approvalId } = {}) => serial(folderName, async () => {
     const record = await store.get(folderName);
     if (!record) return { ok: false, error: "not_registered" };
+    if ((approve || recover) && !sameRecoveryRecord(record, review)) {
+      return { ok: false, error: "recovery_review_changed" };
+    }
+    const binding = (review) => captionSha256(JSON.stringify([
+      SAMPLAS_META.igUserId, record.publish?.mediaId, folderName, review.planIdentity, review.writeRuns, targetSetKey(review.targets)
+    ]));
+    if (approve) {
+      const inspected = record.recoveryInspection;
+      const age = now() - inspected?.inspectedAt;
+      if (!inspected || inspected.binding !== binding(review) || !(age >= 0 && age < RECOVERY_APPROVAL_MS)) {
+        return { ok: false, error: "recovery_review_changed" };
+      }
+    }
+    const grant = record.recoveryApproval;
+    const assertRecoveryFresh = () => {
+      const current = now();
+      if (!(current >= grant.issuedAt && current < grant.expiresAt && grant.expiresAt - grant.issuedAt === RECOVERY_APPROVAL_MS)) throw new Error("recovery_approval_expired");
+    };
+    if (recover) {
+      if (!grant || typeof approvalId !== "string" || grant.idHash !== captionSha256(approvalId) || grant.binding !== binding(review)) {
+        return { ok: false, error: "recovery_approval_invalid" };
+      }
+      try { assertRecoveryFresh(); } catch {
+        delete record.recoveryApproval;
+        await store.put(record);
+        return { ok: false, error: "recovery_approval_expired" };
+      }
+      // Consume under the shared lock before any write, even if subsequent validation or POST fails.
+      delete record.recoveryApproval;
+      await store.put(record);
+    }
     let latestRecord = record;
     try {
-      const out = await runTagJob({ record, graph, readFeedFolder: dropbox.readFeedFolder, getCafe24Product, write: true, env, now: now(), checkpoint: (rec) => store.put(rec) });
+      const out = await runTagJob({
+        record, graph, readFeedFolder: dropbox.readFeedFolder, getCafe24Product, write: approve ? false : write, recover, recoveryTargets: review?.targets,
+        assertRecoveryFresh: recover ? assertRecoveryFresh : undefined,
+        env, now: now(), checkpoint: (rec) => store.put(rec),
+        checkMediaOwner: async (rec) => {
+          for (const name of await store.list()) {
+            if (name === folderName) continue;
+            const other = await store.get(name);
+            if (other?.publish?.mediaId === rec.publish.mediaId && (other.tags?.writeRuns > 0 || isTagJobHeld(other))) {
+              throw new Error("tag_media_owned_by_another_record");
+            }
+          }
+        }
+      });
       latestRecord = out.record;
+      if (approve) {
+        if (!out.recoveryPreview?.length || targetSetKey(out.recoveryPreview) !== targetSetKey(review.targets)) {
+          return { ok: false, error: "recovery_review_changed", step: out.step };
+        }
+        const id = randomUUID();
+        const issuedAt = now();
+        if (!Number.isFinite(issuedAt)) return { ok: false, error: "recovery_approval_invalid" };
+        const expiresAt = issuedAt + RECOVERY_APPROVAL_MS;
+        delete out.record.recoveryInspection;
+        out.record.recoveryApproval = { idHash: captionSha256(id), binding: binding(review), issuedAt, expiresAt };
+        await store.put(out.record);
+        return { ok: true, approvalId: id, expiresAt: new Date(expiresAt).toISOString() };
+      }
+      if (!write && !recover) {
+        delete out.record.recoveryInspection;
+        if (out.recoveryPreview?.length) {
+          const { planIdentity, writeRuns } = out.record.tags;
+          out.record.recoveryInspection = { binding: binding({ planIdentity, writeRuns, targets: out.recoveryPreview }), inspectedAt: now() };
+        }
+      }
       if (out.step !== "already_running") await store.put({ ...out.record, lastError: null });
-      return { ok: true, step: out.step, record: out.record };
+      return { ok: true, step: out.step, record: out.record, ...(out.recoveryPreview ? { recoveryPreview: out.recoveryPreview } : {}) };
     } catch (error) {
       const failed = { ...(error?.partialRecord ?? latestRecord), lastError: { message: String(error?.message || error).slice(0, 300), at: new Date(now()).toISOString() } };
       await store.put(failed);
       return { ok: false, error: failed.lastError.message, record: failed };
     }
-  });
+  }, true);
   return {
     register(input) {
       const made = newPostRecord(input);

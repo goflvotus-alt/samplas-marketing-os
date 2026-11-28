@@ -176,7 +176,7 @@ test("POST errors are read back and held without retry, including transient erro
   const p2 = await plan(permanent.graph, [[1, [tag(101, 0.5, 0.5)]]]);
   await applyTagPlan(permanent.graph, p2, GO);
   assert.equal(permanent.state.posts.length, 1);
-  assert.deepEqual(states(await verifyTagPlan(permanent.graph, p2)), ["1:101:POST_OUTCOME_UNKNOWN:post_failed:100"]);
+  assert.deepEqual(states(await verifyTagPlan(permanent.graph, p2)), ["1:101:POST_OUTCOME_UNKNOWN:post_rejected"]);
 });
 
 test("a tag already on the slide is verified only when approved at the mapped position", async () => {
@@ -417,25 +417,60 @@ test("read-only verification can resolve an uncertain outcome without a second P
   assert.equal(state.posts.length, 1);
 });
 
-test("first uncertain POST stops all later slides, even when a later GET resolves it", async () => {
-  for (const mode of ["error-applied", "ack-missing", "read-failure"]) {
-    const f = fakeGraph({ products: PRODUCTS, postFailures: mode === "error-applied" ? [{ applyFirst: true, error: new GraphError(503, {}) }] : [] });
+test("readback_missing or a rejected acknowledgement on the middle image allows the final image", async () => {
+  for (const success of [true, false]) {
+    const f = fakeGraph({ products: PRODUCTS, children: ["c1", "c2", "c3"], tags: { c3: [] } });
+    const three = { items: [...manifest.items, { order: 3, savedAsset: "03.jpg" }] };
+    const p = await plan(f.graph, [[1, [tag(101, 0.5, 0.5)]], [2, [tag(102, 0.6, 0.6)]], [3, [tag(101, 0.7, 0.7)]]], { manifest: three });
+    const post = f.graph.post;
+    f.graph.post = async (path, params) => {
+      const ack = await post(path, params);
+      if (path !== "c2/product_tags") return ack;
+      f.state.tags.c2 = [];
+      return { success, httpStatus: 200 };
+    };
+    await applyTagPlan(f.graph, p, GO);
+    assert.deepEqual(f.state.posts.map((x) => x.child), ["c1", "c2", "c3"]);
+    assert.deepEqual(p.slides.map((slide) => slide.tags[0].state), ["TAG_VERIFIED", "POST_OUTCOME_UNKNOWN", "TAG_VERIFIED"]);
+    assert.equal(p.slides[1].tags[0].reason, success ? "readback_missing" : "post_rejected");
+    assert.equal(p.slides[1].attempts[0].accepted, success);
+    assert.deepEqual(p.slides[1].attempts[0].response, { success, httpStatus: 200, code: null, subcode: null });
+    assert.equal((await verifyTagPlan(f.graph, p)).state, "POST_OUTCOME_UNKNOWN");
+    await applyTagPlan(f.graph, p, GO);
+    assert.equal(f.state.posts.length, 3);
+  }
+});
+
+test("auth, rate limit, uncertain transport and failed readback stop further images", async () => {
+  const cases = [
+    new GraphError(200, { error: { code: 190 } }), new GraphError(429, {}), new GraphError(200, { error: { code: 4 } }),
+    new GraphError(400, { error: { code: 80002 } }),
+    new GraphError(503, {}), null
+  ];
+  for (const error of cases) {
+    const f = fakeGraph({ products: PRODUCTS, postFailures: error ? [{ applyFirst: error.status === 503, error }] : [] });
     const p = await plan(f.graph, [[1, [tag(101, 0.5, 0.5)]], [2, [tag(102, 0.6, 0.6)]]]);
     const post = f.graph.post;
     f.graph.post = async (...args) => {
       const ack = await post(...args);
-      if (mode === "ack-missing") f.state.tags.c1 = [];
-      if (mode === "read-failure") f.state.failTagGet = true;
+      f.state.failTagGet = true;
       return ack;
     };
-    await applyTagPlan(f.graph, p, GO);
-    assert.deepEqual(f.state.posts.map((x) => x.child), ["c1"], mode);
+    assert.equal((await applyTagPlan(f.graph, p, GO)).reason, "write_safety_stop");
+    assert.deepEqual(f.state.posts.map((x) => x.child), ["c1"]);
     assert.equal(p.slides[1].tags[0].state, "PENDING");
-    f.state.failTagGet = false;
-    assert.equal((await verifyTagPlan(f.graph, p)).state, "POST_OUTCOME_UNKNOWN");
     await applyTagPlan(f.graph, p, GO);
     assert.equal(f.state.posts.length, 1);
   }
+});
+
+test("carousel child order changed after planning blocks every write", async () => {
+  const children = ["c1", "c2"];
+  const f = fakeGraph({ products: PRODUCTS, children });
+  const p = await plan(f.graph, [[1, [tag(101, 0.5, 0.5)]], [2, [tag(102, 0.6, 0.6)]]]);
+  children.reverse();
+  assert.equal((await applyTagPlan(f.graph, p, GO)).reason, "slide_not_in_media");
+  assert.equal(f.state.posts.length, 0);
 });
 
 test("group rows: one IG search group whose product group is the product number and holds every searched id, else none", async () => {
@@ -456,9 +491,9 @@ test("group rows: one IG search group whose product group is the product number 
 });
 
 test("Graph errors name the endpoint and codes, never the token", async () => {
-  const graph = createGraphClient({ getToken: async () => "SECRET", fetchImpl: async () => ({ ok: false, status: 403, json: async () => ({ error: { code: 200, message: "(#200) Permissions error" } }) }) });
+  const graph = createGraphClient({ getToken: async () => "SECRET", fetchImpl: async () => ({ ok: false, status: 403, json: async () => ({ error: { code: 200, message: "access_token=SECRET" } }) }) });
   const e = await graph.get(`${CATALOG}/products`, { fields: "id" }).catch((x) => x);
-  assert.equal(e.message, `(#200) Permissions error [GET ${CATALOG}/products 403/200]`);
+  assert.equal(e.message, `Graph request rejected [GET ${CATALOG}/products 403/200]`);
   assert.equal(e.message.includes("SECRET"), false);
 });
 
@@ -488,4 +523,25 @@ test("registration-only credential reaches POST /posts and nothing else; shared 
   assert.deepEqual(gates.filter((g) => g.includes("isTagRegistrationRequest")), ['if (!isAuthorizedInternalRequest(req) && !isTagRegistrationRequest(req, url.pathname)) return json(res, { error: "Unauthorized" }, 401);'], "only the tag-record route gate accepts it");
   assert.match(src, /return isLocalRequest\(req\) \|\| isAuthorizedInternalRequest\(req\) \|\| hasOperatorSession\(req\) \|\| isTagRegistrationRequest\(req, pathname, registrationAuth\);/);
   assert.equal(src.match(/isTagRegistrationRequest\(/g).length, 3, "declared once, used by the /api gate and the tag-record gate only");
+});
+
+test("HTTP 200 product tag rejection records only safe response fields", async () => {
+  for (const body of [
+    { success: false, diagnostic: "SECRET" },
+    { success: "true" },
+    { success: true, error: { code: 190, error_subcode: 463, message: "access_token=SECRET" } }
+  ]) {
+    const graph = createGraphClient({ getToken: async () => "SECRET", fetchImpl: async () => ({
+      ok: true, status: 200, json: async () => body
+    }) });
+    await assert.rejects(graph.post("c1/product_tags", {}), (error) => {
+      assert.equal(error.status, 200);
+      assert.deepEqual(error.response, {
+        httpStatus: 200, success: typeof body.success === "boolean" ? body.success : null,
+        code: body.error?.code ?? null, subcode: body.error?.error_subcode ?? null
+      });
+      assert.doesNotMatch(JSON.stringify(error) + error.message, /SECRET/);
+      return true;
+    });
+  }
 });

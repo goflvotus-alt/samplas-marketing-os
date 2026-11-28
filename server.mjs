@@ -110,6 +110,7 @@ import { syncEcountInventory, REQUIRED_ENV_KEYS as ECOUNT_REQUIRED_ENV_KEYS } fr
 import { createEcountAutoSync, isEcountAutoSyncDue, nextEcountAutoSyncAt, readEcountAutoSyncStatus, kstDateKey as ecountKstDateKey } from "./scripts/ecount-auto-sync.mjs";
 import { buildNewBrands, onboardingDates } from "./scripts/new-brands.mjs";
 import { attachCoverage, summarizeCafe24Products } from "./scripts/new-brand-coverage.mjs";
+import { attachVariants, parseVariantRequest, projectBrandProduct } from "./scripts/cafe24-brand-products.mjs";
 import { createLocalEcountProductSyncRoute } from "./scripts/local-ecount-helper.mjs";
 import { toClientsSummaryView } from "./scripts/clients-summary-view.mjs";
 import { parseIdentityMetadata } from "./scripts/cafe24-code-reuse.mjs";
@@ -705,8 +706,33 @@ const server = isMainModule ? createServer(async (req, res) => {
         }
         if (url.pathname === "/api/instagram-product-tags/run") {
           if (req.method !== "POST") return json(res, { error: "Method not allowed" }, 405);
-          const out = await productTags.run(String((await readJsonBody(req))?.folderName || ""));
-          return json(res, out, out.ok ? 200 : out.error === "not_registered" ? 404 : 500);
+          const body = await readJsonBody(req);
+          const { mode, planIdentity, writeRuns, targets, approvalId } = body ?? {};
+          if (mode !== undefined && mode !== "inspect" && mode !== "approve_recovery" && mode !== "recover_missing") {
+            return json(res, { ok: false, error: "invalid_tag_run_mode" }, 400);
+          }
+          const needsReview = mode === "approve_recovery" || mode === "recover_missing";
+          if (needsReview && (
+            typeof planIdentity !== "string" || !/^[a-f0-9]{64}$/.test(planIdentity) ||
+            !Number.isInteger(writeRuns) || writeRuns < 1 ||
+            !Array.isArray(targets) || targets.length < 1 || targets.length > 20 ||
+            targets.some((tag) => !Number.isInteger(tag?.order) || tag.order < 1 || tag.order > 20 ||
+              typeof tag.productId !== "string" || !tag.productId || tag.productId.length > 128 ||
+              ![tag.x, tag.y].every((value) => Number.isFinite(value) && value >= 0 && value <= 1)) ||
+            ["issuedAt", "approvedAt", "expiresAt"].some((key) => Object.hasOwn(body, key)) ||
+            (mode === "recover_missing" && (typeof approvalId !== "string" || !/^[a-f0-9-]{36}$/.test(approvalId)))
+          )) return json(res, { ok: false, error: "recovery_review_required" }, 400);
+          const out = await productTags.run(String(body?.folderName || ""), {
+            write: mode !== "inspect",
+            approve: mode === "approve_recovery",
+            recover: mode === "recover_missing",
+            review: needsReview ? { planIdentity, writeRuns, targets } : undefined,
+            approvalId
+          });
+          const status = out.ok ? 200 : out.error === "not_registered" ? 404
+            : out.error === "tag_lock_unavailable" ? 503
+            : ["tag_lock_busy", "recovery_review_changed", "recovery_approval_invalid", "recovery_approval_expired"].includes(out.error) ? 409 : 500;
+          return json(res, out, status);
         }
         if (req.method === "GET") {
           const name = url.searchParams.get("folder");
@@ -896,13 +922,16 @@ const server = isMainModule ? createServer(async (req, res) => {
       return json(res, { ok: true, ...(await buildNewBrandsResponse(new Date(), { coverage: url.searchParams.get("coverage") !== "0" })) });
     }
     if (url.pathname === "/api/cafe24/brand-products") {
-      // Read-only: one brand's Cafe24 products (display/selling/sold_out) for NEW BRANDS coverage.
+      // Read-only: one brand's Cafe24 products (display/selling/sold_out, created_date/updated_date) for NEW BRANDS
+      // coverage and NEW ARRIVALS. include=variants&product_nos= adds raw option stock for the listed products.
       if (req.method !== "GET") return json(res, { error: "Method Not Allowed" }, 405);
       if (!isAuthorizedInternalRequest(req) && !isLocalRequest(req)) return json(res, { error: "Unauthorized" }, 401);
       const brandCode = String(url.searchParams.get("brand_code") || "");
       if (!/^[A-Z0-9_]{4,40}$/.test(brandCode)) return json(res, { ok: false, error: "brand_code required" }, 400);
+      const variantRequest = parseVariantRequest(url.searchParams);
+      if (!variantRequest.ok) return json(res, { ok: false, error: variantRequest.error }, 400);
       try {
-        return json(res, { ok: true, brandCode, products: await fetchCafe24BrandProducts(brandCode) });
+        return json(res, { ok: true, brandCode, products: await fetchCafe24BrandProducts(brandCode, { variantsFor: variantRequest.productNos }) });
       } catch (error) {
         return json(res, { ok: false, error: safeErrorMessage(error) }, 502);
       }
@@ -9877,7 +9906,16 @@ async function runEcountAutoSyncCheck() {
 // a local server goes through the proxy (Production) route above. Every returned product
 // must carry that brand_code, otherwise the filter was not applied and nothing is counted.
 const cafe24BrandProductsCache = new Map();
-async function fetchCafe24BrandProducts(brandCode) {
+// variantsFor: product_nos that also get per-option stock (one Cafe24 variants call each, not cached).
+async function fetchCafe24BrandProducts(brandCode, { variantsFor = [] } = {}) {
+  if (variantsFor.length && env.CAFE24_PROXY_BASE_URL) {
+    const response = await fetch(`${env.CAFE24_PROXY_BASE_URL.replace(/\/$/, "")}/api/cafe24/brand-products?brand_code=${encodeURIComponent(brandCode)}&include=variants&product_nos=${variantsFor.join(",")}`, { headers: cafe24ProxyHeaders() });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.ok) throw Object.assign(new Error(body.error || `Cafe24 brand products proxy error ${response.status}`), { status: response.status });
+    if ((body.products || []).some((p) => p.brand_code !== brandCode)) throw new Error("Cafe24 brand_code filter was not applied");
+    return body.products || [];
+  }
+  if (variantsFor.length) return attachVariants(await fetchCafe24BrandProducts(brandCode), variantsFor, fetchCafe24ProductVariantsWithInventory);
   const cached = cafe24BrandProductsCache.get(brandCode);
   if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.products;
   let products = [];
@@ -9894,7 +9932,7 @@ async function fetchCafe24BrandProducts(brandCode) {
       url.searchParams.set("offset", String(offset));
       const body = await cafe24FetchJson(url);
       if (body.error) throw body.error;
-      const page = (body.products || []).map((p) => ({ product_no: p.product_no, brand_code: p.brand_code, product_name: p.product_name, display: p.display, selling: p.selling, sold_out: p.sold_out }));
+      const page = (body.products || []).map(projectBrandProduct);
       products.push(...page);
       if (page.length < 100) break;
     }

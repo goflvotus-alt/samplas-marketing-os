@@ -1,7 +1,10 @@
 // Feed post -> product tags runner against a fake Graph API and fake Dropbox. No network, no real POST.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
+import { promisify } from "node:util";
+import { mkdir, mkdtemp, readFile, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GraphError, SAMPLAS_META, toTagCafe24View } from "../scripts/instagram-product-tags.mjs";
@@ -131,7 +134,8 @@ test("uncertain POST survives a folder move and manual rerun without another POS
   const first = await job(graph, { readFeedFolder: ready(m), write: true, env: ON });
   assert.deepEqual([first.record.files.location, first.record.tags.state], ["READY", "POST_OUTCOME_UNKNOWN"]);
   assert.deepEqual(first.record.tags.tags.map((t) => t.state), ["POST_OUTCOME_UNKNOWN", "PENDING"]);
-  const second = await runTagJob({ record: first.record, graph, readFeedFolder: async () => { throw Error("held job must not replan"); }, getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
+  const second = await runTagJob({ record: first.record, graph, readFeedFolder: ready(m, manifest, "UPLOADED", UPLOADED_PATH), getCafe24Product: cafe24, now: AFTER, write: true, env: ON });
+  assert.equal(second.record.files.location, "UPLOADED");
   assert.deepEqual([second.step, second.record.tags.state, state.posts.map((p) => p.tags)], ["post_outcome_unknown", "POST_OUTCOME_UNKNOWN", [["P101"]]]);
 });
 
@@ -168,9 +172,11 @@ test("failed POST read-back persists an explicit hold across service restarts an
   failReadback = false;
   const restarted = createProductTagService(config);
   assert.deepEqual(await restarted.tick(), []);
-  assert.equal((await restarted.run("TAEGLOBAL-26AW")).step, "post_outcome_unknown");
   assert.equal((await restarted.autoMap("TAEGLOBAL-26AW", {})).error, "post_outcome_unknown");
   assert.equal((await restarted.approveAutoMap("TAEGLOBAL-26AW", [], "operator", "old")).error, "post_outcome_unknown");
+  const reconciled = await restarted.run("TAEGLOBAL-26AW");
+  assert.equal(reconciled.record.tags.state, "TAG_VERIFIED");
+  assert.equal(reconciled.record.tags.images[0].attempts.length, 1);
   assert.equal(state.posts.length, 1);
 });
 
@@ -199,7 +205,8 @@ test("hold is durable before POST even when the final state save fails", async (
 
 test("checkpoint write failure prevents the external POST", async () => {
   const { graph, state } = fakeGraph();
-  const store = { get: async () => record(), put: async () => { throw Error("disk unavailable"); } };
+  const store = { ...createPostStore(await mkdtemp(join(tmpdir(), "ptag-"))),
+    get: async () => record(), put: async () => { throw Error("disk unavailable"); } };
   const svc = createProductTagService({ graph, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, store, env: ON, now: () => AFTER });
   await assert.rejects(svc.run("TAEGLOBAL-26AW"), /disk unavailable/);
   assert.equal(state.posts.length, 0);
@@ -211,7 +218,7 @@ test("one failed final save cannot overwrite the checkpoint with the old pending
   await store.put(record());
   let failed = false;
   const flaky = { ...store, put: async (rec) => {
-    if (state.posts.length && !failed) { failed = true; throw Error("final save failed once"); }
+    if (rec.tags.state === "TAG_VERIFIED" && !failed) { failed = true; throw Error("final save failed once"); }
     await store.put(rec);
   } };
   const config = { graph, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, store: flaky, env: ON, now: () => AFTER };
@@ -452,4 +459,307 @@ test("regression: proposal + AUTO_APPROVE (CARNET/AZVA path) still auto-approves
   assert.equal(out.record.autoApproval.approved, 2);
   assert.equal(out.record.approvals.acceptUnverifiedVariantApproval, true);
   assert.deepEqual([out.record.tags.state, state.posts.length], ["TAG_VERIFIED", 2]);
+});
+
+
+test("partial batch survives restart and explicit recovery sends only missing IDs", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ptag-recovery-"));
+  const store = createPostStore(dir);
+  const { graph, state } = fakeGraph();
+  const post = graph.post;
+  graph.post = async (path, params) => {
+    const ack = await post(path, params);
+    if (state.posts.length === 1) state.tags.c1 = state.tags.c1.filter((tag) => tag.product_id === "P101");
+    return ack;
+  };
+  const tag = (productNo) => ({ productNo, metaProductId: `P${productNo}`, x: 0.5, y: 0.5, approved: true });
+  const m = mapping([[1, [tag(101), tag(102)]], [2, [tag(103)]]]);
+  const config = { graph, dropbox: { readFeedFolder: ready(m) }, getCafe24Product: cafe24, store, env: ON, now: () => AFTER };
+  await store.put(record());
+  const first = await createProductTagService(config).run("TAEGLOBAL-26AW");
+  assert.deepEqual(first.record.tags.counts, { planned: 3, verified: 2, excluded: 0 });
+  assert.equal(first.record.tags.outcome, "PARTIAL");
+  assert.deepEqual(first.record.tags.images.map((image) => image.state), ["FAILED", "VERIFIED"]);
+  const restarted = createProductTagService({ ...config, store: createPostStore(dir) });
+  assert.equal((await restarted.run("TAEGLOBAL-26AW")).record.tags.state, "POST_OUTCOME_UNKNOWN");
+  assert.equal(state.posts.length, 2);
+  const drifted = structuredClone(m);
+  drifted.slides[0].tags[1].x = 0.7;
+  const prepare = async () => {
+    const inspection = await restarted.run("TAEGLOBAL-26AW", { write: false });
+    const review = { planIdentity: inspection.record.tags.planIdentity, writeRuns: 1, targets: inspection.recoveryPreview };
+    const approval = await restarted.run("TAEGLOBAL-26AW", { approve: true, review });
+    assert.equal(approval.ok, true);
+    return { recover: true, review, approvalId: approval.approvalId };
+  };
+  const approved = await prepare();
+  assert.equal((await restarted.run("TAEGLOBAL-26AW", { ...approved, review: { ...approved.review, writeRuns: 2 } })).error, "recovery_review_changed");
+  for (const change of [{ productId: "P101" }, { x: 0.7 }]) {
+    const altered = { ...approved.review, targets: [{ ...approved.review.targets[0], ...change }] };
+    assert.equal((await restarted.run("TAEGLOBAL-26AW", { ...approved, review: altered })).error, "recovery_approval_invalid");
+  }
+  const wrong = createProductTagService({ ...config, dropbox: { readFeedFolder: ready(drifted) } });
+  assert.equal((await wrong.run("TAEGLOBAL-26AW", approved)).step, "recovery_plan_mismatch");
+  assert.equal(state.posts.length, 2);
+  assert.equal((await restarted.run("TAEGLOBAL-26AW", approved)).error, "recovery_approval_invalid");
+  const recovered = await restarted.run("TAEGLOBAL-26AW", await prepare());
+  assert.deepEqual(state.posts.map((item) => item.tags), [["P101", "P102"], ["P103"], ["P102"]]);
+  assert.deepEqual(recovered.record.tags.counts, { planned: 3, verified: 3, excluded: 0 });
+  assert.equal(recovered.record.tags.outcome, "COMPLETE");
+  assert.deepEqual(recovered.record.tags.images.map((image) => image.attempts.length), [2, 1]);
+  assert.equal((await store.get("TAEGLOBAL-26AW")).tags.writeRuns, 2);
+});
+
+test("catalog and variant exclusions are reported separately without suppressing a valid tag", async () => {
+  const { graph, state } = fakeGraph();
+  const get = graph.get;
+  graph.get = (path, params) => path === `${IG}/catalog_product_search` && params.q === "102" ? { data: [] } : get(path, params);
+  const tag = (productNo) => ({ productNo, metaProductId: `P${productNo}`, x: 0.5, y: 0.5, approved: true });
+  const m = mapping([[1, [tag(101), tag(102)]], [2, [tag(103)]]]);
+  const getCafe24Product = async (no) => no === 103 ? { ...(await cafe24(no)), options: [] } : cafe24(no);
+  const out = await job(graph, { readFeedFolder: ready(m), getCafe24Product, write: true, env: ON });
+  assert.deepEqual(state.posts.map((item) => item.tags), [["P101"]]);
+  assert.deepEqual(out.record.tags.counts, { planned: 1, verified: 1, excluded: 2 });
+  assert.deepEqual(out.record.tags.excluded.map((tag) => tag.reason), ["meta_product_id_not_in_group", "cafe24_option_not_found"]);
+  assert.equal(out.record.tags.outcome, "PARTIAL");
+  assert.equal(out.record.tags.state, "POST_OUTCOME_UNKNOWN");
+});
+
+test("legacy hold can reconcile late readback but has no automatic or explicit write eligibility", async () => {
+  const { graph, state } = fakeGraph();
+  const old = record();
+  old.publish = { state: "PUBLISHED", mediaId: "m1" };
+  old.tags = { state: "POST_OUTCOME_UNKNOWN", writeRuns: 1, tags: [
+    { order: 1, productNo: 101, productId: "P101", state: "POST_OUTCOME_UNKNOWN", reason: "readback_missing" }
+  ] };
+  const absent = await job(graph, { record: old, recover: true, write: true, env: ON });
+  assert.equal(absent.record.tags.state, "POST_OUTCOME_UNKNOWN");
+  assert.equal(absent.record.tags.tags[0].state, "POST_OUTCOME_UNKNOWN");
+  assert.equal(state.posts.length, 0);
+  state.tags.c1 = [{ product_id: "P101", x: 0.5, y: 0.5, review_status: "approved" }];
+  const confirmed = await job(graph, { record: absent.record, write: true, env: ON });
+  assert.equal(confirmed.record.tags.state, "TAG_VERIFIED");
+  assert.equal(state.posts.length, 0);
+});
+
+test("automatically approved scheduled mapping records excluded catalog and variant selections", async () => {
+  const { graph, state } = fakeGraph();
+  const p = scheduledProposal();
+  p.mappings[1].variantCode = "UNAVAILABLE";
+  p.mappings.push({ ...p.mappings[1], productNo: 102, variantCode: "BK" });
+  const get = graph.get;
+  graph.get = (path, params) => path === `${IG}/catalog_product_search` && params.q === "102" ? { data: [] } : get(path, params);
+  const service = await serviceForProposal({ graph, env: { ...ON, INSTAGRAM_PRODUCT_TAG_AUTO_APPROVE: "on" } });
+  await service.register(scheduledInput(p));
+  const { record: result } = await service.run(p.folderName);
+  assert.deepEqual(state.posts.map((item) => item.tags), [["P101"]]);
+  assert.deepEqual(result.tags.counts, { planned: 1, verified: 1, excluded: 2 });
+  assert.deepEqual(result.tags.excluded.map((tag) => tag.reason), ["no_in_stock_option", "meta_product_not_found"]);
+  assert.equal(result.tags.outcome, "PARTIAL");
+  assert.equal(result.tags.state, "POST_OUTCOME_UNKNOWN");
+});
+
+test("independent processes preserve the shared lock through an old timestamp and release on owner death", { timeout: 10000 }, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "ptag-lock-"));
+  const ownerScript = `
+    import { createPostStore } from ${JSON.stringify(new URL("../scripts/instagram-product-tag-runner.mjs", import.meta.url).href)};
+    const store = createPostStore(process.argv[1]);
+    const result = await store.withTagLock(async () => {
+      if (process.argv[2] === "hold") {
+        await store.put({ folderName: "held", tags: { state: "POST_OUTCOME_UNKNOWN", writeRuns: 1 } });
+        console.log("post_in_flight");
+        process.stdin.resume();
+        await new Promise((resolve) => process.stdin.once("end", resolve));
+      }
+      return { ok: true };
+    });
+    console.log(JSON.stringify(result));
+  `;
+  const args = ["--input-type=module", "-e", ownerScript, dir];
+  const owner = spawn(process.execPath, [...args, "hold"], { stdio: ["pipe", "pipe", "inherit"] });
+  const exited = once(owner, "exit");
+  t.after(async () => {
+    if (owner.exitCode === null && owner.signalCode === null) owner.kill("SIGKILL");
+    await exited;
+  });
+  const [ready] = await once(owner.stdout, "data");
+  assert.match(String(ready), /post_in_flight/);
+  const old = new Date("2000-01-01T00:00:00Z");
+  await utimes(join(dir, ".tag-writes.lock"), old, old);
+  const contender = async () => JSON.parse((await promisify(execFile)(process.execPath, args)).stdout);
+  assert.deepEqual(await contender(), { ok: false, error: "tag_lock_busy" });
+  const denied = await Promise.all([contender(), contender(), contender()]);
+  assert.deepEqual(denied, Array(3).fill({ ok: false, error: "tag_lock_busy" }));
+  owner.kill("SIGKILL");
+  assert.equal((await exited)[1], "SIGKILL");
+  assert.deepEqual(await contender(), { ok: true });
+  const { graph, state } = fakeGraph();
+  const restarted = createProductTagService({ graph, store: createPostStore(dir),
+    dropbox: { readFeedFolder: readyFolderForLockTest }, getCafe24Product: cafe24, env: ON, now: () => AFTER });
+  assert.equal((await restarted.get("held")).tags.state, "POST_OUTCOME_UNKNOWN");
+  assert.deepEqual(await restarted.tick(), []);
+  assert.equal(state.posts.length, 0);
+});
+
+const readyFolderForLockTest = async () => { throw new Error("held checkpoint must skip Dropbox"); };
+
+test("lock file storage failure blocks the service before Graph or POST", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ptag-lock-failure-"));
+  const store = createPostStore(dir);
+  await store.put(record());
+  await mkdir(join(dir, ".tag-writes.lock"));
+  const { graph, state } = fakeGraph();
+  graph.get = () => assert.fail("Graph must not be called");
+  const svc = createProductTagService({ graph, store, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, env: ON });
+  assert.deepEqual(await svc.run("TAEGLOBAL-26AW"), { ok: false, error: "tag_lock_unavailable" });
+  assert.equal(state.posts.length, 0);
+});
+
+test("a held media claim blocks writes through another folder after restart", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ptag-alias-"));
+  const store = createPostStore(dir);
+  const first = record();
+  first.publish = { state: "PUBLISHED", mediaId: "m1" };
+  first.tags = { state: "POST_OUTCOME_UNKNOWN", writeRuns: 1 };
+  await store.put(first);
+  const other = { ...record(), folderName: "ALT-FOLDER", publish: first.publish };
+  await store.put(other);
+  const { graph, state } = fakeGraph();
+  const svc = createProductTagService({ graph, store: createPostStore(dir),
+    dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, env: ON, now: () => AFTER });
+  assert.equal((await svc.run(other.folderName)).error, "tag_media_owned_by_another_record");
+  assert.equal(state.posts.length, 0);
+});
+
+test("internal recovery route and automatic run share the lock and preserve an existing tag", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ptag-manual-lock-"));
+  const store = createPostStore(dir);
+  const { graph, state } = fakeGraph();
+  const existing = { product_id: "OTHER", x: 0.12, y: 0.34, review_status: "approved" };
+  state.tags.c1.push({ ...existing });
+  const post = graph.post;
+  let first = true;
+  graph.post = async (...args) => {
+    if (first) {
+      first = false;
+      state.posts.push({ child: "c1", tags: ["P101"] });
+      return { success: true };
+    }
+    return post(...args);
+  };
+  const config = { graph, store, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, env: ON, now: () => AFTER };
+  await store.put(record());
+  const service = createProductTagService(config);
+  await service.run(manifest.folderName);
+  const { createProductTagService: otherWorker } = await import("../scripts/instagram-product-tag-runner.mjs?manual-test-worker");
+  const automatic = otherWorker({ ...config, store: createPostStore(dir) });
+  const source = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+  const start = source.indexOf('        if (url.pathname === "/api/instagram-product-tags/run")');
+  const end = source.indexOf('        if (req.method === "GET")', start);
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const route = new AsyncFunction("url", "req", "res", "readJsonBody", "productTags", "json", source.slice(start, end));
+  const request = (body) => route({ pathname: "/api/instagram-product-tags/run" }, { method: "POST" }, null,
+    async () => ({ folderName: manifest.folderName, ...body }), service, (_, payload, status) => ({ payload, status }));
+  const inspection = await request({ mode: "inspect" });
+  assert.equal(inspection.status, 200);
+  assert.equal(state.posts.length, 1);
+  const { planIdentity, writeRuns } = inspection.payload.record.tags;
+  const review = { planIdentity, writeRuns, targets: inspection.payload.recoveryPreview };
+  assert.equal((await request({ mode: "recover_missing", ...review })).status, 400);
+  assert.equal((await request({ mode: "approve_recovery", ...review, issuedAt: 0 })).status, 400);
+  assert.equal((await request({ mode: "approve_recovery", ...review, expiresAt: 0 })).status, 400);
+  const approved = await request({ mode: "approve_recovery", ...review });
+  assert.equal(approved.status, 200);
+  assert.equal(state.posts.length, 1);
+  assert.equal(Date.parse(approved.payload.expiresAt) - AFTER, 600000);
+  assert.equal(JSON.stringify(await service.get(manifest.folderName)).includes(approved.payload.approvalId), false);
+  const recoverBody = { mode: "recover_missing", ...review, approvalId: approved.payload.approvalId };
+  assert.equal((await request({ ...recoverBody, approvedAt: 0 })).status, 400);
+  let started, release;
+  const entered = new Promise((resolve) => { started = resolve; });
+  const hold = new Promise((resolve) => { release = resolve; });
+  graph.post = async (...args) => { started(); await hold; return post(...args); };
+  const recovery = request(recoverBody);
+  await entered;
+  try {
+    assert.deepEqual(await automatic.run(manifest.folderName), { ok: false, error: "tag_lock_busy" });
+    assert.deepEqual(await automatic.run(manifest.folderName, { recover: true, review, approvalId: approved.payload.approvalId }),
+      { ok: false, error: "tag_lock_busy" });
+    assert.deepEqual(await automatic.tick(), []);
+    assert.equal((await automatic.register({ ...record(), folderName: "ANOTHER-FOLDER" })).ok, true);
+  } finally { release(); }
+  const recovered = await recovery;
+  assert.equal(recovered.status, 200);
+  assert.equal(recovered.payload.record.tags.state, "TAG_VERIFIED");
+  assert.deepEqual(state.tags.c1.find((tag) => tag.product_id === "OTHER"), existing);
+  assert.equal(state.posts.length, 2);
+  assert.equal((await request(recoverBody)).status, 409);
+});
+
+test("expired recovery approvals persist across restart and require a fresh inspection", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ptag-expiry-"));
+  const store = createPostStore(dir);
+  const { graph, state } = fakeGraph({ postFailures: [new GraphError(500, {})] });
+  let now = AFTER;
+  const config = { graph, store, dropbox: { readFeedFolder: ready() }, getCafe24Product: cafe24, env: ON, now: () => now };
+  await store.put(record());
+  const name = manifest.folderName;
+  const service = createProductTagService(config);
+  await service.run(name);
+  const inspection = await service.run(name, { write: false });
+  const review = { planIdentity: inspection.record.tags.planIdentity, writeRuns: 1, targets: inspection.recoveryPreview };
+  const approval = await service.run(name, { approve: true, review });
+  assert.equal(approval.ok, true);
+  assert.equal(Date.parse(approval.expiresAt), AFTER + 600000);
+  now += 600000;
+  const restarted = createProductTagService({ ...config, store: createPostStore(dir) });
+  assert.equal((await restarted.run(name, { recover: true, review, approvalId: approval.approvalId })).error, "recovery_approval_expired");
+  assert.equal((await restarted.run(name, { approve: true, review })).error, "recovery_review_changed");
+  assert.equal(state.posts.length, 1);
+  await restarted.run(name, { write: false });
+  const fresh = await restarted.run(name, { approve: true, review });
+  assert.equal(fresh.ok, true);
+  assert.equal((await restarted.run(name, { recover: true, review, approvalId: approval.approvalId })).error, "recovery_approval_invalid");
+  assert.equal((await restarted.run(name, { recover: true, review, approvalId: fresh.approvalId })).record.tags.state, "TAG_VERIFIED");
+  assert.equal(state.posts.length, 2);
+});
+
+test("recovery expiry during Graph preflight prevents the pending POST", async () => {
+  const store = createPostStore(await mkdtemp(join(tmpdir(), "ptag-expiry-preflight-")));
+  const { graph, state } = fakeGraph({ postFailures: [new GraphError(500, {})] });
+  const name = manifest.folderName;
+  let now = AFTER;
+  const service = createProductTagService({ graph, store, dropbox: { readFeedFolder: ready() },
+    getCafe24Product: cafe24, env: ON, now: () => now });
+  await store.put(record());
+  await service.run(name);
+  const inspection = await service.run(name, { write: false });
+  const review = { planIdentity: inspection.record.tags.planIdentity, writeRuns: 1, targets: inspection.recoveryPreview };
+  const approval = await service.run(name, { approve: true, review });
+  const get = graph.get;
+  graph.get = async (...args) => {
+    now = Date.parse(approval.expiresAt);
+    return get(...args);
+  };
+  const attempted = await service.run(name, { recover: true, review, approvalId: approval.approvalId });
+  assert.equal(attempted.error, "recovery_approval_expired");
+  assert.equal(state.posts.length, 1);
+  assert.equal((await store.get(name)).recoveryApproval, undefined);
+});
+
+test('mixed-brand schedule proposal (NEW ARRIVALS): per-slide brand passes, missing brand reviews, no POST before approval',async()=>{
+ const {graph:base,state}=fakeGraph();
+ // Product 202 belongs to another brand; everything else is the TAEGLOBAL fake catalog.
+ const graph={...base,async get(path,params={}){const out=await base.get(path,params);
+  if(path==='G202/products')return {data:out.data.map(r=>({...r,name:'[GROSSI : 그로씨] item 202'}))};return out;}};
+ const mixed=(brands)=>scheduledProposal({brand:'NEW ARRIVALS',mappings:manifest.items.map((m,i)=>({slideIndex:m.order,savedAsset:m.savedAsset,productNo:[101,202][i],...(brands[i]?{brand:brands[i]}:{}),variantCode:'BK',x:.5,y:.5,evidence:'site thumbnail of the exact product_no',confidence:.95,reviewRequired:false}))});
+ const ok=await (await serviceForProposal({graph})).register(scheduledInput(mixed(['TAEGLOBAL','GROSSI'])));
+ assert.equal(ok.ok,true);
+ const service=await serviceForProposal({graph});await service.register(scheduledInput(mixed(['TAEGLOBAL','GROSSI'])));
+ const run=await service.run(manifest.folderName);
+ assert.deepEqual(run.record.autoMapping.slides.map(s=>s.tags.map(t=>[t.productNo,t.status,t.reason??null])),[[[101,'PROPOSED',null]],[[202,'PROPOSED',null]]]);
+ assert.equal(run.record.autoMapping.source.state,'AWAITING_HUMAN_APPROVAL');assert.equal(state.posts.length,0);
+ const other=await serviceForProposal({graph});await other.register(scheduledInput(mixed(['TAEGLOBAL',null])));
+ const held=await other.run(manifest.folderName);
+ assert.deepEqual(held.record.autoMapping.slides[1].tags.map(t=>[t.status,t.reason]),[['TAG_REVIEW_REQUIRED','brand_mismatch']]);
 });

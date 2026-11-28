@@ -14,6 +14,8 @@ export function validateScheduledProposal(p,folderName,slideCount) {
     if(m.metaProductId!=null && (typeof m.metaProductId!=='string' || !/^\d+$/.test(m.metaProductId)))problems.push('proposal_meta_id');
     if([m.color,m.option].some(v=>v!=null && typeof v!=='string'))problems.push('proposal_option');
     if(m.variantCode!=null && (typeof m.variantCode!=='string' || !m.variantCode.trim()))problems.push('proposal_variant');
+    // Mixed-brand posts (NEW ARRIVALS): a mapping may name its own brand; proposal.brand stays required.
+    if(m.brand!=null && (typeof m.brand!=='string' || !/^[A-Za-z0-9][A-Za-z0-9 .&_/-]{0,60}$/.test(m.brand.trim())))problems.push('proposal_brand');
     if(m.confidence!=null && !(typeof m.confidence==='number' && Number.isFinite(m.confidence) && m.confidence>=0 && m.confidence<=1))problems.push('proposal_confidence');
   }
   return [...new Set(problems)];
@@ -24,7 +26,7 @@ export async function buildScheduledMapping({proposal,manifest,graph,getCafe24Pr
   if(!Array.isArray(manifest.items) || manifest.items.some((m,i)=>m.order!==i+1) || proposal.mappings.some(m=>manifest.items[m.slideIndex-1]?.savedAsset!==m.savedAsset))throw new Error('proposal_manifest_mismatch');
   const findings={schemaVersion:1,folderName:proposal.folderName,brand:proposal.brand,analyzer:proposal.preparedBy,
     slides:manifest.items.map(m=>({order:m.order,savedAsset:m.savedAsset,items:proposal.mappings.filter(x=>x.slideIndex===m.order).map(x=>({
-      label:x.label || 'scheduled garment',x:x.x,y:x.y,color:x.color,metaProductId:x.metaProductId,variantCode:x.variantCode,
+      label:x.label || 'scheduled garment',brand:x.brand,x:x.x,y:x.y,color:x.color,metaProductId:x.metaProductId,variantCode:x.variantCode,
       candidates:Number.isInteger(x.productNo)?[{productNo:x.productNo,confidence:x.reviewRequired?0:(x.confidence??0),evidence:x.evidence}]:[]
     }))}))};
   const out=await buildAutoMapping({graph,findings,manifest,getCafe24Product,expected,now});

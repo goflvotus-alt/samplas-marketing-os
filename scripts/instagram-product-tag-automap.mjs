@@ -8,6 +8,7 @@
 //
 // findings: { schemaVersion: 1, folderName, brand?, analyzer: "who/what looked at the images",
 //   slides: [{ order, savedAsset, items: [{ label, x, y,
+//     brand?: "this garment's brand, for mixed-brand posts; defaults to the post brand",
 //     color?: "color seen, needed when the product has several colors",
 //     candidates: [{ productNo, confidence: 0..1, evidence: "what matched (print, hardware, color, cut)" }] }] }] }
 // A candidate below AUTO_CANDIDATE_FLOOR is a noted alternative, not a candidate. Two candidates at or above it
@@ -82,7 +83,7 @@ export async function buildAutoMapping({ graph, findings, manifest, getCafe24Pro
   for (const s of findings.slides) {
     const out = { order: s.order, savedAsset: s.savedAsset, tags: [], review: [] };
     for (const item of list(s.items)) {
-      const p = await proposeTag({ graph, item, brand, getCafe24Product, catalogId: expected.catalogId, igUserId: expected.igUserId });
+      const p = await proposeTag({ graph, item, brand: item.brand ? String(item.brand).toUpperCase() : brand, getCafe24Product, catalogId: expected.catalogId, igUserId: expected.igUserId });
       if (p.tag) out.tags.push(p.tag); else out.review.push(p.review);
     }
     // The same product twice on one slide is one tag; keep the first, send the rest to review.
@@ -113,7 +114,7 @@ export function approveAutoTags(mapping, picks, { by, builtAt, now = Date.now() 
     const tags = [], skipped = [...list(s.skipped)];
     for (const t of list(s.tags)) {
       const key = `${s.order}:${t.productNo}`;
-      if (!want.has(key)) { skipped.push({ ...t, approved: false, status: "SKIPPED", reason: "not_selected_by_operator" }); continue; }
+      if (!want.has(key)) { skipped.push({ ...t, validationReason: t.reason ?? null, approved: false, status: "SKIPPED", reason: "not_selected_by_operator" }); continue; }
       found.add(key);
       if (t.status !== "PROPOSED" || !t.metaProductId) problems.push(`not_proposed:${key}`);
       else tags.push({ ...t, approved: true, status: "PENDING", approvedBy: by, approvedAt: new Date(now).toISOString() });
