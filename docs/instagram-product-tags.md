@@ -15,10 +15,10 @@ Tagging uses the Meta Graph API with the existing Production token (`resolveMeta
      - the catalog item is in the product_no group (`retailer_id` = `<product_no>.<variant code>`) and has `availability: "in stock"`;
      - Cafe24 has selling=T and display=T. Exactly one option has the same variant code, and that option is available (state `IN_STOCK` or `UNLIMITED`). An `UNKNOWN` option goes to review as `cafe24_option_uncertain`. The Cafe24 data must be for this product_no and no older than 10 minutes.
    - Approval is known per product group only. Per-variant approval is recorded as `UNVERIFIED`; only the read-back after tagging can set it to `APPROVED_IN_READBACK`.
-4. `applyTagPlan` is off unless `write: true`, `acceptUnverifiedVariantApproval: true` and `INSTAGRAM_PRODUCT_TAG_WRITES=on`. It reads the slide again right before the POST and sends only product ids that are absent. Each batch is POSTed at most once. After an error it reads the slide again but never rePOSTs missing tags, including after transient errors.
+4. `applyTagPlan` is off unless `write: true`, `acceptUnverifiedVariantApproval: true` and `INSTAGRAM_PRODUCT_TAG_WRITES=on`. It reads the slide again right before the POST and sends only product ids that are absent. Each batch is POSTed at most once per run. A later recovery requires an explicit operator review and the shared writer lock.
 5. `verifyTagPlan` reads the tags back. Each planned tag must be present, approved and within ±0.01 of its x/y. Tags that existed before must still be there.
 
-Tag states: `PENDING`, `PRODUCT_TAGGING`, `TAG_VERIFIED`, `TAG_REVIEW_REQUIRED`, `POST_OUTCOME_UNKNOWN`. Any review item holds the whole post. An unconfirmed attempted POST is `POST_OUTCOME_UNKNOWN`, not a completed or retryable job. GET verification may confirm success; it never sends another POST.
+Tag states: `PENDING`, `PRODUCT_TAGGING`, `TAG_VERIFIED`, `TAG_REVIEW_REQUIRED`, `POST_OUTCOME_UNKNOWN`. A catalog exclusion is counted separately and can leave independent valid tags eligible. A partial write that requires recovery retains `POST_OUTCOME_UNKNOWN` for compatibility with older runners. Inspection only reads Graph.
 
 ## Cafe24 option data
 
@@ -122,3 +122,67 @@ Autorun every 10 minutes, off unless `INSTAGRAM_PRODUCT_TAG_AUTORUN=on`. It runs
 ## Claude-prepared proposals (current PR #49 direction)
 
 See [Claude scheduling → Render shopping tags](instagram-product-tags/claude-render-integration.md). Claude reuses preparation-time image/product findings and sends mappingProposal with verified scheduling registration. Render uses no image inference API, requires no OpenAI key, validates fresh product/stock/group data and requires human approval before POST. Existing manual/file mappings and PR45–48 execution protection are retained.
+
+## Shared writer and internal recovery
+
+The fixed SAMPLAS account uses one exclusive OS lock at
+`$WORK_DIR/instagram-product-tags/posts/.tag-writes.lock`. All server instances and
+operator calls must use the same persistent state directory and lock inode. A
+separate lock per record lets registration and approval continue for independent folders. The
+server requires util-linux `flock` and a filesystem with local kernel flock
+semantics. Run `command -v flock` and `flock --version` on the intended runtime
+before enabling the writer. Render currently uses one instance with its disk mounted
+at `/var/data`; this lock does not coordinate independent mounts across hosts.
+Never remove, rename, or replace the lock file while a writer can run. The open
+descriptor owns the lock until the operation ends or its process exits. There is
+no timed takeover. If the process dies around a POST, the last checkpoint supplies
+the hold after restart. Lock contention or storage failure prevents POST.
+
+For an authorized recovery, use the authenticated internal endpoint
+`POST /api/instagram-product-tags/run`. The registration-only credential cannot
+use this endpoint. Execute the following sequence for one folder.
+
+1. Send `{"folderName":"FOLDER","mode":"inspect"}`. Inspect reads Graph and
+   persists its findings without authorizing recovery. Review the account, media,
+   `record.tags.planIdentity`, `record.tags.writeRuns` and `recoveryPreview`.
+   The preview includes each missing product's slide order and approved x/y.
+   Wait for readback to settle after an uncertain POST. Legacy records without
+   `planIdentity` remain inspection-only.
+2. After an operator explicitly approves the exact preview, send
+   `{"folderName":"FOLDER","mode":"approve_recovery","planIdentity":"<plan hash>",
+   "writeRuns":1,"targets":[{"order":1,"productId":"<Meta product ID>","x":0.5,"y":0.5}]}`.
+   Use the actual plan, run count, and full preview from inspection. This mode
+   rechecks the live plan without a POST and returns `approvalId` and
+   `expiresAt`. The server sets a ten-minute lifetime and stores only a hash of
+   the approval ID. Keep the ID out of logs.
+3. Send the same folder, plan, run count, and targets with
+   `mode: "recover_missing"` and the returned `approvalId`. Do not send
+   timestamps. The server consumes the approval under the shared lock, rereads
+   the live tags, and submits only approved products that remain absent. The
+   server checks expiry again before each POST. The existing write gates and
+   write-run cap apply.
+4. For expired, used, changed or rejected approvals, start again at inspect.
+   A busy lock returns HTTP 409 and an unavailable lock returns 503. Check
+   the returned step for plan or target drift and inspect again to verify counts
+   and coordinates. A submitted approval can be consumed even if no POST occurs.
+5. Use this endpoint for Claude recovery. Direct writes from Render Shell, the
+   Graph API, or the Instagram app bypass mutual exclusion. The Graph API has no
+   conditional update, so an external editor can still write the same product
+   between GET and POST.
+
+## Rollback
+
+1. Stop accepting recovery requests and quiesce all automated tag writers before
+   reverting code. Disable the tag-write and autorun gates through the approved
+   deployment procedure. If stopping a writer requires a restart, treat any
+   interrupted POST as uncertain.
+2. Confirm that no writer is active. With the request and scheduler gates stopped,
+   `flock -n -E 75 "$WORK_DIR/instagram-product-tags/posts/.tag-writes.lock" true`
+   must return 0. Preserve the entire current post store and the lock inode.
+3. Verify every `recoveryRequired: true` record also has
+   `tags.state: "POST_OUTCOME_UNKNOWN"`. Preserve legacy records already in that
+   state. If any record fails this check, keep tag writes stopped and block the
+   rollback from resuming automation.
+4. Revert to the known previous runtime with tag writes stopped. Verify that the
+   old scheduler skips the held records and issues zero writes, then obtain approval
+   before resuming the tag writer. Preserve the post store on future restarts.

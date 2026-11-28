@@ -154,3 +154,18 @@ test("TAEGLOBAL seven pending tags: spaced brand and raw Cafe24 stock agree, nev
     }
   }
 });
+
+test("mixed-brand post: each item checks its own brand; an item without one falls back to the post brand", async () => {
+  const mixed = { brand: "NEW ARRIVALS" };
+  const m = await map([
+    item([{ productNo: 15567, confidence: 0.92 }], { brand: "TAEGLOBAL" }),
+    item([{ productNo: 15568, confidence: 0.92 }], { brand: "Other", x: 0.2 }),
+    item([{ productNo: 15570, confidence: 0.92 }], { x: 0.8 })
+  ], mixed);
+  assert.deepEqual(m.mapping.slides[0].tags.map((t) => [t.productNo, t.status, t.reason]),
+    [[15567, "PROPOSED", null], [15568, "PROPOSED", null], [15570, "TAG_REVIEW_REQUIRED", "brand_mismatch"]]);
+  // The item brand is a filter, not evidence: naming the wrong brand still fails.
+  assert.equal((await tag([{ productNo: 15568, confidence: 0.9 }], { brand: "TAEGLOBAL" })).reason, "brand_mismatch");
+  // Single-brand posts are unchanged.
+  assert.equal((await tag([{ productNo: 15567, confidence: 0.9 }])).status, "PROPOSED");
+});
