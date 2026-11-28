@@ -2496,6 +2496,8 @@ async function verifyNaverPowerlinkTags(details) {
   return verified;
 }
 
+// Past-month orders are served only from the canonical Cafe24 order cache (fetchCafe24Orders).
+const CAFE24_ORDER_LEDGER_SOURCES = new Set(["cafe24_admin_api", "cafe24_canonical_cache_cached"]);
 async function handleAdvertisingOverviewRoute(url, res) {
   const period = naverAdsPerformancePeriod(url); // channel-agnostic since/until validator
   if (!period.ok) return json(res, { ok: false, error: period.error }, 400);
@@ -2529,7 +2531,7 @@ async function handleAdvertisingOverviewRoute(url, res) {
       fetchMarketingOsJson(`/api/diagnostics/cafe24-analytics-orderdetails?${query}`)
     ]);
     const details = analytics.data?.data?.orderdetails;
-    if (orders.ok && analytics.ok && orders.data?.source === "cafe24_admin_api" && Array.isArray(orders.data.orders) && orders.data.orders.length < 500 && analytics.data?.ok === true && Array.isArray(details) && details.length < 100) {
+    if (orders.ok && analytics.ok && CAFE24_ORDER_LEDGER_SOURCES.has(orders.data?.source) && Array.isArray(orders.data.orders) && orders.data.orders.length < 500 && analytics.data?.ok === true && Array.isArray(details) && details.length < 100) {
       const ids = new Set(orders.data.orders.map(order => String(order.order_id)));
       const paid = details.filter(row => String(row.ad || '').toLowerCase() === 'ig' && String(row.medium || '').toLowerCase() === 'paid');
       if (paid.every(row => row.order_id && ids.has(String(row.order_id)))) {
@@ -2539,7 +2541,7 @@ async function handleAdvertisingOverviewRoute(url, res) {
           && /^\d{10,25}$/.test(String(row?.content || "").trim()))) {
           const adQuery = `since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}&level=ad`;
           const catalog = await fetchMarketingOsJson(`/api/meta-ads/summary?${adQuery}`).catch(() => null);
-          if (catalog?.ok && catalog.data?.source === "meta_marketing_api" && Array.isArray(catalog.data.ads)) {
+          if (catalog?.ok && ["meta_marketing_api", "meta_marketing_api_cached"].includes(catalog.data?.source) && Array.isArray(catalog.data.ads)) {
             metaAds = catalog.data.ads;
           }
         }
