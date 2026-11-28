@@ -5,14 +5,19 @@ import {diagnoseAdLanding} from './meta-landing-diagnostics.mjs';
 
 const U='UNAVAILABLE',sum=(rows,key)=>rows.reduce((s,r)=>s+(typeof r[key]==='number'?r[key]:0),0);
 const validPaidOrder = order => order?.paid === 'T' && !isCafe24CanceledOrRefunded(order) && cafe24OrderAmount(order) > 0;
-// url_tags replace/append to clicked URLs (Meta ad-creative reference), so they win over UTM already in the landing/CTA link.
-// ponytail: first landing URL that carries UTM wins; carousel cards with different UTM are not compared.
+// url_tags replace/append to clicked URLs (Meta ad-creative reference), so they win over UTM in each landing/CTA link.
+// Every visible link is judged; a catalog's product-feed links are not visible, so a catalog is never judged ALL.
+const AD_ID_UTM_LABEL={ALL:'예(전체 링크)',PARTIAL:'일부만',NONE:'아니오',UNVERIFIED:'판정 불가'};
 function effectiveUtm(ad){
- const creative=ad?.creative||{},tags=new URLSearchParams(String(creative.url_tags||ad?.url_tags||'').replace(/^\?/,''));
- const linkUrl=diagnoseAdLanding({...ad,creative:{...creative,url_tags:undefined}}).destinationUrls.map(u=>new URL(u)).find(u=>u.searchParams.has('utm_source')||u.searchParams.has('utm_content'));
- const params=new URLSearchParams(linkUrl?.searchParams);for(const [k,v] of tags)params.set(k,v);
- const inTags=[...tags.keys()].some(k=>k.startsWith('utm_')),inLink=!!linkUrl;
- return {params,utmLocation:inTags&&inLink?'url_tags+landing_url':inTags?'url_tags':inLink?'landing_url':'none'};
+ const creative=ad?.creative||{},tags=new URLSearchParams(String(creative.url_tags||ad?.url_tags||'').replace(/^\?/,'')),adId=String(ad?.id||ad?.adId||'');
+ const links=diagnoseAdLanding({...ad,creative:{...creative,url_tags:undefined}}).destinationUrls.map(u=>new URL(u).searchParams);
+ const effective=(links.length?links:[new URLSearchParams()]).map(l=>{const p=new URLSearchParams(l);for(const [k,v] of tags)p.set(k,v);return p;});
+ const ok=effective.map(p=>p.get('utm_content')==='{{ad.id}}'||(!!adId&&p.get('utm_content')===adId)),okCount=ok.filter(Boolean).length;
+ const catalog=JSON.stringify(creative).match(/template_url|template_data|product_set_id/);
+ const adIdUtm=!links.length&&!okCount?'UNVERIFIED':okCount===ok.length&&!catalog&&links.length?'ALL':okCount?'PARTIAL':catalog?'UNVERIFIED':'NONE';
+ const inTags=[...tags.keys()].some(k=>k.startsWith('utm_')),inLink=links.some(l=>[...l.keys()].some(k=>k.startsWith('utm_')));
+ return {params:effective.find((p,i)=>ok[i])||effective[0],adIdUtm,linkCount:links.length,catalog:!!catalog,
+  utmLocation:inTags&&inLink?'url_tags+landing_url':inTags?'url_tags':inLink?'landing_url':'none'};
 }
 const publicText=v=>typeof v==='string'||typeof v==='number'?String(v).replace(/[\x00-\x1f\x7f]/g,' ').replace(/[\w.+-]+@[\w.-]+\.[a-z]+/gi,'[REDACTED]').replace(/\b01[016789][- ]?\d{3,4}[- ]?\d{4}\b/g,'[REDACTED]').slice(0,300):'';
 const money=v=>parseCafe24Money(v);
@@ -93,7 +98,7 @@ export function buildWeeklySalesTrace({since,until,actualOrders,analytics,paymen
  if(analytics?.coverage?.completeness&&analytics.coverage.completeness!=='COMPLETE'||!analytics)warnings.add('ANALYTICS_UNVERIFIED');
  const acquisition=new Map();for(const a of analyticsRows){if(acquisition.has(a.order_id)){warnings.add('DUPLICATE_ANALYTICS_ORDER');acquisition.set(a.order_id,null);}else acquisition.set(a.order_id,a);}
  const adIds=new Set(ads.map(a=>String(a.adId))),byName=new Map();for(const a of ads){const name=String(a.adName||'').trim().normalize('NFC');if(!byName.has(name))byName.set(name,new Set());byName.get(name).add(String(a.adId));}
- const utmRows=(tracking?.rows||[]).map(a=>{const {params,utmLocation}=effectiveUtm(a);const adId=publicText(a.id||a.adId),utmContent=publicText(params.get('utm_content'));return {adId,adName:publicText(a.name||a.adName),utmSource:publicText(params.get('utm_source')),utmMedium:publicText(params.get('utm_medium')),utmCampaign:publicText(params.get('utm_campaign')),utmContent,utmLocation,adIdUtm:utmContent==='{{ad.id}}'||(!!adId&&utmContent===adId),legacyGhost:/^meta_[a-z0-9_]+$/.test(params.get('ghost_mall_id')||'')?params.get('ghost_mall_id'):''};});
+ const utmRows=(tracking?.rows||[]).map(a=>{const {params,utmLocation,adIdUtm,linkCount,catalog}=effectiveUtm(a);const adId=publicText(a.id||a.adId),utmContent=publicText(params.get('utm_content'));return {adId,adName:publicText(a.name||a.adName),utmSource:publicText(params.get('utm_source')),utmMedium:publicText(params.get('utm_medium')),utmCampaign:publicText(params.get('utm_campaign')),utmContent,utmLocation,adIdUtm,linkCount,catalog,legacyGhost:/^meta_[a-z0-9_]+$/.test(params.get('ghost_mall_id')||'')?params.get('ghost_mall_id'):''};});
  const trackedOrders=orders.map(o=>{
   const a=acquisition.get(o.orderId),content=String(a?.content||'').trim();
   const paid=['ig','meta','facebook','instagram','fb'].includes(String(a?.ad||'').toLowerCase())&&String(a?.medium||'').toLowerCase()==='paid';
@@ -208,7 +213,7 @@ export function addWeeklySalesTraceSheets(wb,trace){
  const meta=sheet(wb,'META_PRODUCTS',[['adId','광고 ID'],['adName','광고명',42],['productId','Meta product_id',70],['productNo','Cafe24 상품번호'],['variant','옵션 코드'],['metaPurchases','Meta 귀속 구매 (광고 노출 상품 기준 · 실제 판매 상품 아님)',44],['adPurchases','광고 전체 구매'],['productPurchases','광고 product_id 구매 합계'],['actualQuantity','Cafe24 유지 수량'],['actualAmount','Cafe24 V2 상품 매출'],['match','상품 식별 근거'],['note','한계',90]]);add(meta,trace.metaProducts);add(meta,trace.metaAdDifferences||[]);meta.eachRow((r,n)=>{if(n>1)r.height=60;});if(!trace.metaProducts.length)meta.addRow({note:'UNAVAILABLE — product_id Insights 미확인. 0건으로 해석하지 말 것.'});
  const productNote=meta.addRow({note:`product_id 구매 집계 ${trace.summary.metaProductPurchases??U} / 계정 구매 ${trace.summary.metaAccountPurchases??U}. 차이를 주문·상품에 배분하지 않음. 일치 주문품목이 없는 ID는 실판매 0으로 단정하지 않음.`});productNote.alignment={wrapText:true,vertical:'middle'};productNote.height=54;
  const diagnostics=sheet(wb,'TRACKING_DIAGNOSTICS',[['kind','구분'],['orderId','주문번호'],['adId','광고 ID'],['adName','광고명',42],['source','source'],['medium','medium'],['campaign','campaign'],['content','content'],['grade','G1 ID / G2 광고명 후보'],['attributionStatus','귀속 상태',20],['matchStatus','Meta 광고 매칭 결과',20],['eventMatch','구매 이벤트 연결'],['note','매칭 근거 / 실패 사유',90]]);
- add(diagnostics,trace.tracking.orders.map(r=>({kind:'ORDER_INFLOW',...r})));add(diagnostics,trace.tracking.ads.map(r=>({kind:'AD_UTM',adId:r.adId,adName:r.adName,source:r.utmSource,medium:r.utmMedium,campaign:r.utmCampaign,content:r.utmContent,eventMatch:'NOT TRACEABLE',note:[`UTM 위치=${r.utmLocation}; 광고 ID UTM=${r.adIdUtm?'예':'아니오'}`,r.legacyGhost?`설정된 ghost_mall_id=${r.legacyGhost}; 주문 유입 기록으로의 전달은 미검증`:''].filter(Boolean).join(' · ')})));
+ add(diagnostics,trace.tracking.orders.map(r=>({kind:'ORDER_INFLOW',...r})));add(diagnostics,trace.tracking.ads.map(r=>({kind:'AD_UTM',adId:r.adId,adName:r.adName,source:r.utmSource,medium:r.utmMedium,campaign:r.utmCampaign,content:r.utmContent,eventMatch:'NOT TRACEABLE',note:[`UTM 위치=${r.utmLocation}; 광고 ID UTM=${AD_ID_UTM_LABEL[r.adIdUtm]}; 확인 링크 ${r.linkCount}개${r.catalog?' (카탈로그: 상품 피드 링크 미확인)':''}`,r.legacyGhost?`설정된 ghost_mall_id=${r.legacyGhost}; 주문 유입 기록으로의 전달은 미검증`:''].filter(Boolean).join(' · ')})));
  add(diagnostics,trace.tracking.queries.map(q=>({kind:'LEGACY_QUERY',note:`${q.code}: ok=${q.ok}; complete=${q.complete}; count=${q.count??U}`})));
  diagnostics.addRow({kind:'NO_INFLOW',note:`유입 정보 없는 주문 ${trace.summary.ordersWithoutInflow}건. G1은 유입 ID 일치, G2는 광고명 후보이며 구매 이벤트 연결이 아님.`});for(const warning of trace.warnings)diagnostics.addRow({kind:'WARNING',note:warning});
  const day=trace.basis==='PAY_DATE'?'결제일 (KST)':'주문일 (KST)';

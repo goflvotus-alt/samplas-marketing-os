@@ -103,10 +103,15 @@ test('summary explicitly labels the Cafe24 source snapshot time',()=>{
  addWeeklySalesTraceSheets(wb,buildWeeklySalesTrace({...scope,actualOrders:source([])}));
  assert(JSON.stringify(wb.model).includes('Cafe24 조회 시점 상태 (source snapshot time)'));assert(!JSON.stringify(wb.model).includes('조회 현재 상태'));
 });
-test('AD_UTM reads landing/CTA links, not only url_tags; url_tags override link values',()=>{
- const rows=[{id:'7',creative:{link_url:'https://samplas.co.kr/p?utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}&utm_content={{ad.id}}'}},
-  {id:'8',creative:{object_story_spec:{link_data:{link:'https://samplas.co.kr/?utm_source=meta&utm_content={{ad.id}}'}},url_tags:'utm_content={{ad.name}}'}},
-  {id:'9',creative:{link_url:'https://samplas.co.kr/'}}];
+test('AD_UTM reads every landing/CTA link; url_tags override; carousel and catalog are never judged from one link',()=>{
+ const u=q=>'https://samplas.co.kr/p?'+q,good='utm_source=meta&utm_medium=paid&utm_content={{ad.id}}';
+ const rows=[{id:'7',creative:{link_url:u(good)}},
+  {id:'8',creative:{object_story_spec:{link_data:{link:u(good)}},url_tags:'utm_content={{ad.name}}'}},
+  {id:'9',creative:{link_url:'https://samplas.co.kr/'}},
+  {id:'10',creative:{object_story_spec:{link_data:{child_attachments:[{link:u(good)},{link:u('utm_source=meta&utm_content={{ad.name}}')}]}}}},
+  {id:'11',creative:{object_story_spec:{link_data:{child_attachments:[{link:u(good)},{link:u('utm_source=meta&utm_content=11')}]}}}},
+  {id:'12',creative:{object_story_spec:{template_data:{link:u(good)}}}},
+  {id:'13',creative:{}}];
  const m=buildWeeklySalesTrace({...scope,actualOrders:source([]),analytics:{data:{orderdetails:[]}},ads:[],tracking:{completeness:'COMPLETE',rows}});
- assert.deepEqual(m.tracking.ads.map(r=>[r.adId,r.utmLocation,r.adIdUtm,r.utmContent]),[['7','landing_url',true,'{{ad.id}}'],['8','url_tags+landing_url',false,'{{ad.name}}'],['9','none',false,'']]);
+ assert.deepEqual(m.tracking.ads.map(r=>[r.adId,r.utmLocation,r.adIdUtm]),[['7','landing_url','ALL'],['8','url_tags+landing_url','NONE'],['9','none','NONE'],['10','landing_url','PARTIAL'],['11','landing_url','ALL'],['12','landing_url','PARTIAL'],['13','none','UNVERIFIED']]);
 });
