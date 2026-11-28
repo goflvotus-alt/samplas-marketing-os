@@ -138,6 +138,47 @@ test("unavailable current-week data does not write a file and reports the reason
   assert.match(result.error, /credentials/i);
 });
 
+test("attribution is appended before saving and failed attribution never reaches the publisher", async () => {
+  const since = "2026-09-22";
+  const until = "2026-09-28";
+  const period = { since, until };
+  let saves = 0;
+  const options = {
+    referenceDateKey: "2026-09-29",
+    fetchPerformance: async (from) => from === since ? currentPayload : previousPayload,
+    saveReport: async (book) => {
+      saves++;
+      const reopened = new ExcelJS.Workbook();
+      await reopened.xlsx.load(await book.xlsx.writeBuffer());
+      assert.ok(reopened.getWorksheet("REPORT"));
+      const summary = reopened.getWorksheet("성과 요약");
+      assert.equal(summary.getCell("L2").value, 380000);
+      assert.equal(summary.getCell("N2").value, 900000);
+      assert.equal(summary.getCell("L4").value, 1);
+      return { filePath: "fake-report.xlsx" };
+    }
+  };
+  const report = {
+    ok: true, period, comparison: { since: "2026-09-15", until: "2026-09-21" },
+    totals: { net: 380000, platformRevenue: 900000, trackingStatus: "VERIFIED" },
+    previous: { net: 190000 }, sources: { publicationReady: true }, orders: []
+  };
+  for (const response of [{ ...report, sources: { publicationReady: false } }, { ...report, period: report.comparison }]) {
+    const result = await generateWeeklyNaverAdsReport({ ...options, fetchAttribution: async () => response });
+    assert.equal(result.ok, false);
+    assert.equal(result.error, "NAVER_ATTRIBUTION_SOURCES_INCOMPLETE");
+  }
+  const result = await generateWeeklyNaverAdsReport({
+    ...options,
+    fetchAttribution: async (query) => {
+      assert.deepEqual(query, { ...period, grain: "week" });
+      return report;
+    }
+  });
+  assert.equal(result.ok, true);
+  assert.equal(saves, 1);
+});
+
 // 8. Excel generation
 test("7b. CTR cells use standard Excel percentage ratios, not percentage-point numbers", async () => {
   const model = buildWeeklyReportModel({ current: currentPayload, previous: previousPayload, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });

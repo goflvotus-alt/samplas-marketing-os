@@ -86,7 +86,10 @@ export async function publishOfficialReport({ platform, cadence, since, until },
         result = { ...result, ...delivery };
       }
     } else if (platform === 'naver') {
-      result = await generateWeeklyNaverAdsReport({ ...common, fetchPerformance: fetchers.naver });
+      result = await generateWeeklyNaverAdsReport({
+        ...common, fetchPerformance: fetchers.naver,
+        fetchAttribution: period.month ? undefined : fetchers.naverWeeklyAttribution
+      });
     } else {
       result = await generateWeeklyInstagramReport({ ...common, fetchRange: fetchers.instagram });
     }

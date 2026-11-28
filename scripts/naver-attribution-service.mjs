@@ -120,10 +120,10 @@ export function createNaverAttributionService({
     };
   }
 
-  function read(since, until) {
+  function read(since, until, refresh) {
     const key = since + '|' + until;
     const cached = cache.get(key);
-    if (cached && (!cached.expires || cached.expires > now())) return cached.promise;
+    if (cached && (!cached.expires || (!refresh && cached.expires > now()))) return cached.promise;
     if ([...cache.values()].filter(value => !value.expires).length >= 4) throw new Error('Report source queue is full');
     const entry = {};
     entry.promise = sourceQueue.then(() => collect(since, until)).then(result => {
@@ -144,13 +144,17 @@ export function createNaverAttributionService({
   }
 
   return {
-    async report({ since, until, grain = 'day', brand = null }) {
+    async report({ since, until, grain = 'day', brand = null, refresh = false }) {
       const comparison = previousPeriod(since, until);
-      const source = await read(comparison.since, until);
+      const source = await read(comparison.since, until, refresh);
       const current = buildNaverAttributionReport({ ...source, since, until, grain, brand });
       const previous = buildNaverAttributionReport({ ...source, ...comparison, grain, brand });
+      const publicationReady = current.totals.adStatus === 'VERIFIED'
+        && windows(firstDay && firstDay > since ? firstDay : since, until, 1).every(({ since: day }) =>
+          source.analyticsBatches.some(batch => complete(batch) && batch.since <= day && batch.until >= day)
+          && source.ordersCoverage.some(batch => batch.since <= day && batch.until >= day));
       return { ...current, comparison, previous: previous.totals, comparisonRows: previous.rows,
-        sources: source.sources, mappingCount: mapping.length,
+        sources: { ...source.sources, publicationReady }, mappingCount: mapping.length,
         attributionBasis: 'Cafe24 주문일 KST·기록된 UTM 귀속. 광고비는 동일 KST 기간의 네이버 그룹 통계. 증분 매출 측정값 아님.' };
     }
   };

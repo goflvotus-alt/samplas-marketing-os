@@ -527,6 +527,7 @@ const server = isMainModule ? createServer(async (req, res) => {
           hasPersistentMetaConnection: async () => Boolean((await readMetaTokenRecord())?.accessToken),
           fetchers: {
             naver: fetchNaverAdsPerformanceForWeeklyReport,
+            naverAttribution: query => readNaverAttributionReport({ ...query, refresh: true }),
             instagram: buildInstagramRangeDataForWeeklyReport,
             meta: buildMetaAdsSummaryForWeeklyReport,
             metaAccount: fetchMetaAccountTotalsForWeeklyReport,
@@ -1758,7 +1759,7 @@ const server = isMainModule ? createServer(async (req, res) => {
   if (env.CRM_ANALYTICS_COLLECT === "on") {
     const crmAnalyticsTick = createCrmAnalyticsCollector({
       workDir, env, fetchAnalytics: fetchCafe24AnalyticsOrderDetails,
-      onCollected: () => readNaverAttributionReport(previousNaverReportDefault()).catch(() => console.error("[NAVER_ATTRIBUTION] refresh unavailable"))
+      onCollected: () => readNaverAttributionReport({ ...previousNaverReportDefault(), refresh: true }).catch(() => console.error("[NAVER_ATTRIBUTION] refresh unavailable"))
     });
     setInterval(() => crmAnalyticsTick().catch(() => console.error("[CRM_ANALYTICS_COLLECT] check failed")), 60000);
   }
@@ -9886,6 +9887,7 @@ async function runOfficialReport(request, now = new Date(), scheduled = false) {
     env, now, scheduled,
     fetchers: {
       naver: fetchNaverAdsPerformanceForWeeklyReport,
+      naverWeeklyAttribution: query => readNaverAttributionReport({ ...query, refresh: true }),
       instagram: buildInstagramRangeDataForWeeklyReport,
       meta: {
         fetchByLevel: buildMetaAdsSummaryForWeeklyReport,
@@ -9997,6 +9999,7 @@ async function runNaverWeeklyReportCheck() {
       : await generateWeeklyNaverAdsReport({
       referenceDateKey: seoulDateKey(),
       fetchPerformance: fetchNaverAdsPerformanceForWeeklyReport,
+      fetchAttribution: query => readNaverAttributionReport({ ...query, refresh: true }),
       // Pass this file's own already-loaded env (merges .env + process.env) so a
       // .env-only NAVER_ADS_WEEKLY_REPORT_DIR is honored the same way manual CLI runs
       // honor it — both paths must resolve the exact same output directory.

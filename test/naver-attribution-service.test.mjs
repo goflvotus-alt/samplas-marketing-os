@@ -37,15 +37,18 @@ test('report reuses scheduled snapshots and coalesces refreshes, provides compar
     assert.equal(result.totals.net, 380000);
     assert.equal(result.totals.roas, 380);
     assert.equal(result.previous.net, 0);
+    assert.equal(result.sources.publicationReady, true);
     assert.equal(result.orders[0].purchaseBrands[0], 'OTHER');
   }
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(await buildNaverAttributionWorkbook(data));
   assert.equal(workbook.getWorksheet('주문 근거').getCell('A2').value, orderId);
   assert.equal(workbook.getWorksheet('구매 상품').getCell('D2').value, 'OTHER');
+  await service.report({ ...query, refresh: true });
+  assert.equal(calls, 2);
   now += 101;
   await service.report(query);
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
 });
 
 test('validates KST filters and rejects impossible and future dates', () => {
