@@ -103,3 +103,10 @@ test('summary explicitly labels the Cafe24 source snapshot time',()=>{
  addWeeklySalesTraceSheets(wb,buildWeeklySalesTrace({...scope,actualOrders:source([])}));
  assert(JSON.stringify(wb.model).includes('Cafe24 조회 시점 상태 (source snapshot time)'));assert(!JSON.stringify(wb.model).includes('조회 현재 상태'));
 });
+test('AD_UTM reads landing/CTA links, not only url_tags; url_tags override link values',()=>{
+ const rows=[{id:'7',creative:{link_url:'https://samplas.co.kr/p?utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}&utm_content={{ad.id}}'}},
+  {id:'8',creative:{object_story_spec:{link_data:{link:'https://samplas.co.kr/?utm_source=meta&utm_content={{ad.id}}'}},url_tags:'utm_content={{ad.name}}'}},
+  {id:'9',creative:{link_url:'https://samplas.co.kr/'}}];
+ const m=buildWeeklySalesTrace({...scope,actualOrders:source([]),analytics:{data:{orderdetails:[]}},ads:[],tracking:{completeness:'COMPLETE',rows}});
+ assert.deepEqual(m.tracking.ads.map(r=>[r.adId,r.utmLocation,r.adIdUtm,r.utmContent]),[['7','landing_url',true,'{{ad.id}}'],['8','url_tags+landing_url',false,'{{ad.name}}'],['9','none',false,'']]);
+});
