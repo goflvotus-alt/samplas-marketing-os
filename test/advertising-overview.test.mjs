@@ -267,3 +267,40 @@ test("five evidence levels: ad ID confirmed, tag confirmed, channel only, name e
   // Only the confirmed ad ID counts as ad revenue; the name estimate never does.
   assert.deepEqual(report.verifiedAds.map((a) => [a.adId, a.orderCount, a.paidAmount]), [["120251125886880277", 1, 10000]]);
 });
+
+test("past-month period: canonical Cafe24 order cache and cached Meta ad insights still give the ad-ID order", async () => {
+  // 2026-10-13 shape as served on 2026-11-28: past-month orders come only from the canonical cache.
+  const order = {
+    order_id: "20261013-0000134", order_date: "2026-10-13T20:01:36+09:00", payment_date: "2026-10-13T20:01:36+09:00",
+    paid: "T", canceled: "F", payment_method: ["card"], market_id: "mobile", payment_amount: "107000.00",
+    actual_order_amount: { order_price_amount: "125000.00", payment_amount: "107000.00", shipping_fee: "0.00", membership_discount_amount: "18000.00" },
+    items: [{ product_no: 13735, product_name: "[BONNAE : 본네] Asymmetric dress Black", quantity: 1, product_price: "125000.00" }]
+  };
+  const row = { order_id: order.order_id, order_date: "2026-10-13", ad: "ig", medium: "paid", campaign: "120249957936250277", content: "120249957936240277", order_amount: 107000 };
+  const h = harness({
+    meta: path => ({ ok: true, data: path.includes("/api/cafe24/orders")
+      ? { source: "cafe24_canonical_cache_cached", cacheMode: "past_month_cache_only", orders: [order] }
+      : path.includes("analytics-orderdetails") ? { ok: true, data: { orderdetails: [row] } }
+      : path.includes("/api/meta-ads/summary") ? { source: "meta_marketing_api_cached", cacheMode: "past_month_cached",
+        ads: [{ adId: "120249957936240277", campaignId: "120249957936250277", adName: "Ad" }] }
+      : metaOk }),
+    naver: naverOk
+  });
+  const { body } = await h.request("?since=2026-10-13&until=2026-10-13");
+  assert.equal(body.actualCommerce.available, true);
+  const [found] = body.actualCommerce.orderEvidence.orders;
+  assert.deepEqual([found.orderId, found.evidence, found.adId, found.paidAmount], ["20261013-0000134", "MATCHED_AD_ID", "120249957936240277", 107000]);
+  assert.deepEqual(body.actualCommerce.orderEvidence.verifiedAds.map(ad => [ad.adId, ad.orderCount, ad.paidAmount]), [["120249957936240277", 1, 107000]]);
+});
+
+test("CSV-required or other non-ledger order sources never produce actual commerce", async () => {
+  for (const source of ["csv_required", "csv_import", "product_dashboard_proxy_cached"]) {
+    const h = harness({
+      meta: path => ({ ok: true, data: path.includes("/api/cafe24/orders") ? { source, orders: [] }
+        : path.includes("analytics-orderdetails") ? { ok: true, data: { orderdetails: [] } } : metaOk }),
+      naver: naverOk
+    });
+    const { body } = await h.request("?since=2026-10-13&until=2026-10-13");
+    assert.equal(body.actualCommerce.available, false, source);
+  }
+});
