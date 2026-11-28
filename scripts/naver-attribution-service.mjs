@@ -144,8 +144,7 @@ export function createNaverAttributionService({
   }
 
   return {
-    async report({ since, until, grain = 'day', brand = null, refresh = false }) {
-      const comparison = previousPeriod(since, until);
+    async report({ since, until, grain = 'day', brand = null, refresh = false, comparison = previousPeriod(since, until) }) {
       const source = await read(comparison.since, until, refresh);
       const current = buildNaverAttributionReport({ ...source, since, until, grain, brand });
       const previous = buildNaverAttributionReport({ ...source, ...comparison, grain, brand });

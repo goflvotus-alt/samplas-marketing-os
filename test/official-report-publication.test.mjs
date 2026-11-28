@@ -132,6 +132,70 @@ const naver = async (since, until) => ({
   ok: true, since, until, campaigns: [],
   summary: { spend: 0, clicks: 0, impressions: 0, conversions: 0, conversionValue: 0 }
 });
+
+test('NAVER monthly recovery adds attribution, verifies Dropbox bytes and reuses the issued file', async () => {
+  const { publishOfficialReport } = await import('../scripts/official-report-publication.mjs');
+  const store = storage();
+  const period = { since: '2026-11-01', until: '2026-11-30' };
+  const comparison = { since: '2026-10-01', until: '2026-10-31' };
+  const request = { ...period, platform: 'naver', cadence: 'monthly' };
+  const options = {
+    env, fetchImpl: store.fetchImpl, now: new Date('2026-12-01T01:00Z'),
+    fetchers: { naver, naverMonthlyAttribution: async () => ({ ok: false }) }
+  };
+  assert.equal((await publishOfficialReport(request, options)).ok, false);
+  assert.equal(store.uploads, 0);
+  options.fetchers.naverMonthlyAttribution = async query => {
+    assert.deepEqual(query, { ...period, grain: 'month', comparison });
+    return { ok: true, period, comparison, totals: { net: 380000, platformRevenue: 560000 },
+      previous: { net: 190000 }, sources: { publicationReady: true }, orders: [] };
+  };
+  store.loseResponse = true;
+  const published = await publishOfficialReport(request, options);
+  assert.equal(published.ok, true);
+  assert.match(published.filePath, /NAVER_ADS_MONTHLY_2026-11-01_2026-11-30\.xlsx$/);
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(store.files.get(published.filePath));
+  assert.match(book.getWorksheet('REPORT').getCell('A1').value, /MONTHLY/);
+  const summary = book.getWorksheet('성과 요약');
+  assert.equal(summary.getCell('L2').value, 380000);
+  assert.equal(summary.getCell('N2').value, 560000);
+  assert.equal(summary.getCell('A4').value, '직전 월 대비 증감률');
+  assert.equal(summary.getCell('L4').value, 1);
+  options.fetchers.naverMonthlyAttribution = async () => assert.fail('existing issue must be reused');
+  assert.equal((await publishOfficialReport(request, options)).alreadyExists, true);
+  assert.equal(store.uploads, 1);
+});
+
+test('concurrent NAVER weekly and monthly previews use isolated ranges and add-only paths', async () => {
+  const { runWeeklyReportPreview } = await import('../scripts/weekly-report-manual.mjs');
+  const store = storage();
+  const calls = [];
+  const options = {
+    env,
+    upload: (book, args) => saveWeeklyReportToDropboxAtPath(book, { ...args, fetchImpl: store.fetchImpl }),
+    fetchers: { naver, naverAttribution: async query => {
+      calls.push(query);
+      const { since, until, comparison = { since: '2026-11-10', until: '2026-11-16' } } = query;
+      return { ok: true, period: { since, until }, comparison, totals: {}, previous: {},
+        sources: { publicationReady: true }, orders: [] };
+    } }
+  };
+  const body = { platform: 'naver', mode: 'preview' };
+  const [week, month] = await Promise.all([
+    runWeeklyReportPreview({ ...body, referenceDate: '2026-11-24' }, options),
+    runWeeklyReportPreview({ ...body, month: '2026-10' }, options)
+  ]);
+  assert.match(week.filePath, /WEEKLY_2026-11-17_2026-11-23_PREVIEW_/);
+  assert.match(month.filePath, /MONTHLY_2026-10-01_2026-10-31_PREVIEW_/);
+  assert.equal(store.uploads, 2);
+  assert.equal(calls.find(q => q.grain === 'month').comparison.until, '2026-09-30');
+  for (const result of [week, month]) {
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(store.files.get(result.filePath));
+    assert.equal(book.getWorksheet('성과 요약').getCell('B2').value, result.since);
+  }
+});
 const instagram = async (since, until) => ({
   ok: true, since, until, posts: [],
   accountWeekly: { reach: 0, views: 0, profile_views: 0, website_clicks: 0 }

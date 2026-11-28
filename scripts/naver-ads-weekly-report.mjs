@@ -405,9 +405,10 @@ export async function writeWeeklyReportFile(workbook, { since, until, outputDir 
 // share this exact same fetch/model/workbook pipeline instead of each having their own
 // copy of the report-building logic. Omitting it preserves the original local-filesystem
 // behavior unchanged (this is what the CLI and all existing tests still do).
-export async function generateWeeklyNaverAdsReport({ referenceDateKey, month, requireCompleteData = false, fetchPerformance, fetchAttribution, outputDir, env = process.env, saveReport } = {}) {
+export async function generateWeeklyNaverAdsReport({ referenceDateKey, month, previewUntil, requireCompleteData = false, fetchPerformance, fetchAttribution, outputDir, env = process.env, saveReport } = {}) {
   if (typeof fetchPerformance !== "function") throw new Error("generateWeeklyNaverAdsReport requires fetchPerformance(since, until)");
-  const { since, until } = month ? calendarMonthPeriod(month) : previousTuesdayToMondayRange(referenceDateKey);
+  const { since, until: periodEnd } = month ? calendarMonthPeriod(month) : previousTuesdayToMondayRange(referenceDateKey);
+  const until = month && previewUntil ? previewUntil : periodEnd;
   const { since: previousSince, until: previousUntil } = month ? calendarMonthPeriod(month, -1) : previousWeekRange({ since, until });
 
   const [current, previous] = await Promise.all([
@@ -428,7 +429,10 @@ export async function generateWeeklyNaverAdsReport({ referenceDateKey, month, re
 
   if (month) model.cadence = "monthly";
   const workbook = await buildWeeklyReportWorkbook(model);
-  if (fetchAttribution && !await appendNaverPublicationAttribution(workbook, fetchAttribution, { since, until, grain: 'week' })) {
+  const attributionPeriod = month
+    ? { since, until, grain: 'month', comparison: { since: previousSince, until: previousUntil } }
+    : { since, until, grain: 'week' };
+  if (fetchAttribution && !await appendNaverPublicationAttribution(workbook, fetchAttribution, attributionPeriod)) {
     return { ok: false, since, until, error: 'NAVER_ATTRIBUTION_SOURCES_INCOMPLETE', filePath: null };
   }
 

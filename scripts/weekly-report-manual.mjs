@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { isReportDate } from './report-period.mjs';
 import { generateWeeklyNaverAdsReport, resolveWeeklyReportOutputDir, weeklyReportFileName, seoulDateKey, previousTuesdayToMondayRange } from './naver-ads-weekly-report.mjs';
 import { generateWeeklyInstagramReport, resolveInstagramWeeklyReportOutputDir, instagramWeeklyReportFileName } from './instagram-weekly-report.mjs';
 import { generateWeeklyMetaAdsReport, resolveMetaWeeklyReportOutputDir, metaWeeklyReportFileName } from './meta-ads-weekly-report.mjs';
@@ -15,12 +16,21 @@ function requestError(message,status=400) {return new WeeklyPreviewError(message
 export function validateWeeklyPreviewRequest(body) {
   if(!body||!['meta','instagram','naver'].includes(body.platform))throw requestError('invalid_platform');
   if(body.mode!=='preview')throw requestError('invalid_mode; preview only');
+  if (body.month !== undefined) {
+    const today = seoulDateKey();
+    const start = typeof body.month === 'string' ? body.month + '-01' : '';
+    if (body.platform !== 'naver' || !isReportDate(start) || start < '2025-01-01' || start >= today) throw requestError('invalid_preview_month');
+    const previewUntil = body.month === today.slice(0, 7)
+      ? new Date(Date.parse(today) - 86_400_000).toISOString().slice(0, 10)
+      : undefined;
+    return { platform: 'naver', mode: 'preview', month: body.month, previewUntil };
+  }
   const date=body.referenceDate||seoulDateKey();
   if(typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(`${date}T00:00:00Z`))||new Date(`${date}T00:00:00Z`).toISOString().slice(0,10)!==date)throw requestError('invalid_reference_date');
   return {platform:body.platform,referenceDate:date,mode:'preview'};
 }
 export async function runWeeklyReportPreview(body,{env={},fetchers,hasPersistentMetaConnection,upload=saveWeeklyReportToDropboxAtPath}={}) {
-  const {platform,referenceDate,mode}=validateWeeklyPreviewRequest(body);
+  const {platform,referenceDate,mode,month,previewUntil}=validateWeeklyPreviewRequest(body);
   if(platform==='meta'&&(!hasPersistentMetaConnection||!await hasPersistentMetaConnection()))throw requestError('persistent_meta_connection_required',503);
   const config={
     naver:{generate:generateWeeklyNaverAdsReport,fileName:weeklyReportFileName,outputDir:resolveWeeklyReportOutputDir,options:{fetchPerformance:fetchers?.naver,fetchAttribution:fetchers?.naverAttribution},destination:()=>({...resolveWeeklyReportDestination(env),dir:dropboxWeeklyReportDir(env)})},
@@ -29,9 +39,10 @@ export async function runWeeklyReportPreview(body,{env={},fetchers,hasPersistent
   }[platform];
   const destination=config.destination();
   if(destination.mode==='misconfigured')throw requestError('dropbox_partially_configured',503);
-  const result=await config.generate({referenceDateKey:referenceDate,...config.options,env,saveReport:async(workbook,{since,until})=>{
+  const result=await config.generate({referenceDateKey:referenceDate,month,previewUntil,...config.options,env,saveReport:async(workbook,{since,until})=>{
     // Unique preview name + uploader's existing strict add contract protects official files.
-    const fileName=config.fileName(since,until).replace(/\.xlsx$/i,`_PREVIEW_${randomUUID()}.xlsx`);
+    const baseName = month ? `NAVER_ADS_MONTHLY_${since}_${until}.xlsx` : config.fileName(since,until);
+    const fileName=baseName.replace(/\.xlsx$/i,`_PREVIEW_${randomUUID()}.xlsx`);
     if(destination.mode==='dropbox')return upload(workbook,{targetPath:`${destination.dir.replace(/\/+$/,'')}/${fileName}`,env});
     const outputDir=config.outputDir(env);await mkdir(outputDir,{recursive:true});const filePath=join(outputDir,fileName);
     await writeFile(filePath,await workbook.xlsx.writeBuffer(),{flag:'wx'});return {filePath};

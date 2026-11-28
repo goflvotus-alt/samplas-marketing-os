@@ -13,16 +13,18 @@ export async function buildNaverAttributionWorkbook(report) {
   return book.xlsx.writeBuffer();
 }
 
-export async function appendNaverPublicationAttribution(book, fetchAttribution, { since, until, grain }) {
-  const report = await fetchAttribution({ since, until, grain });
-  if (!report?.ok || report.period?.since !== since || report.period?.until !== until || !report.sources?.publicationReady) {
+export async function appendNaverPublicationAttribution(book, fetchAttribution, period) {
+  const report = await fetchAttribution(period);
+  const { since, until, comparison } = period;
+  if (!report?.ok || report.period?.since !== since || report.period?.until !== until || !report.sources?.publicationReady
+      || (comparison && (report.comparison?.since !== comparison.since || report.comparison?.until !== comparison.until))) {
     return false;
   }
-  addNaverAttributionSheets(book, report, { scheduled: true });
+  addNaverAttributionSheets(book, report, { scheduled: true, monthly: period.grain === 'month' });
   return true;
 }
 
-export function addNaverAttributionSheets(book, report, { scheduled = false } = {}) {
+export function addNaverAttributionSheets(book, report, { scheduled = false, monthly = false } = {}) {
   function sheet(name, headings, rows) {
     const ws = book.addWorksheet(name, { views: [{ state: 'frozen', ySplit: 1 }] });
     ws.addRow(headings);
@@ -45,7 +47,7 @@ export function addNaverAttributionSheets(book, report, { scheduled = false } = 
       return Number.isFinite(current) && Number.isFinite(previous) && previous !== 0
         ? (current - previous) / Math.abs(previous) : null;
     });
-    const row = summary.insertRow(4, ['직전 동일 기간 대비 증감률', null, null, ...change]);
+    const row = summary.insertRow(4, [monthly ? '직전 월 대비 증감률' : '직전 동일 기간 대비 증감률', null, null, ...change]);
     row.numFmt = '0.00%';
     summary.addRow(['네이버 통계 상태', report.sources.statsStatus]);
     summary.addRow(['네이버 통계 갱신', report.sources.statsAt]);
