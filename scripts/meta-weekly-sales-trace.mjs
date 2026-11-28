@@ -3,6 +3,7 @@ import {parseMetaContentId} from './meta-product-registry-link.mjs';
 import {paymentDay} from './meta-weekly-revenue.mjs';
 
 const U='UNAVAILABLE',sum=(rows,key)=>rows.reduce((s,r)=>s+(typeof r[key]==='number'?r[key]:0),0);
+const validPaidOrder = order => order?.paid === 'T' && !isCafe24CanceledOrRefunded(order) && cafe24OrderAmount(order) > 0;
 const publicText=v=>typeof v==='string'||typeof v==='number'?String(v).replace(/[\x00-\x1f\x7f]/g,' ').replace(/[\w.+-]+@[\w.-]+\.[a-z]+/gi,'[REDACTED]').replace(/\b01[016789][- ]?\d{3,4}[- ]?\d{4}\b/g,'[REDACTED]').slice(0,300):'';
 const money=v=>parseCafe24Money(v);
 const purchase=rows=>{const r=Array.isArray(rows)?rows.find(r=>['purchase','offsite_conversion.fb_pixel_purchase'].includes(r.action_type)):null;return r&&Number.isFinite(Number(r.value))?Number(r.value):null;};
@@ -30,7 +31,7 @@ export async function fetchWeeklyItemPayments({codes,get,batchSize=30}){
  return {rows,errors,completeness:errors.length?'PARTIAL':'COMPLETE'};
 }
 
-export function buildWeeklySalesTrace({since,until,actualOrders,analytics,payments,metaProducts,tracking,ads=[],metaSummary}={}){
+export function buildWeeklySalesTrace({since,until,actualOrders,analytics,payments,metaProducts,tracking,customerTypes={},ads=[],metaSummary}={}){
  const warnings=new Set(),orders=[],details=[],seen=new Map(),amounts=new Map();
  for(const p of payments?.rows||[]){if(amounts.has(p.order_item_code)){warnings.add('DUPLICATE_PAYMENT_RECORD');amounts.set(p.order_item_code,null);}else amounts.set(p.order_item_code,money(p.actual_payment_amount)??money(p.payment_amount));}
  let candidates=[],orderDay=trustedCafe24OrderDate,basis='ORDER_DATE';
@@ -74,7 +75,7 @@ export function buildWeeklySalesTrace({since,until,actualOrders,analytics,paymen
   const initialCash=money(o.initial_order_amount?.payment_amount);
   // Stored-value orders carry 0 cash; compare on the restored V2 basis, as ISSUE_EVIDENCE does.
   const stored=initialCash===0&&isCafe24StoredValuePayment(o),initialBasis=stored?cafe24OrderAmount({...o,actual_order_amount:o.initial_order_amount}):initialCash,currentBasis=canceled?0:stored?revenue:currentCash;
-  orders.push({orderId:id,date,revenue,shipping,cash:currentCash,initialCash,storedValue:!canceled&&currentCash===0&&isCafe24StoredValuePayment(o),initialAmount:initialBasis,refundAmount:initialBasis!==null&&currentBasis!==null?initialBasis-currentBasis:null,unallocated,quantity:mine.some(r=>r.retainedQuantity===null)?null:sum(mine,'retainedQuantity'),excluded:canceled});
+  orders.push({orderId:id,date,revenue,paid:o.paid==='T',customerType:validPaidOrder(o)&&['NEW','REPEAT','GUEST'].includes(customerTypes[id])?customerTypes[id]:'UNKNOWN',shipping,cash:currentCash,initialCash,storedValue:!canceled&&currentCash===0&&isCafe24StoredValuePayment(o),initialAmount:initialBasis,refundAmount:initialBasis!==null&&currentBasis!==null?initialBasis-currentBasis:null,unallocated,quantity:mine.some(r=>r.retainedQuantity===null)?null:sum(mine,'retainedQuantity'),excluded:canceled});
  }
  const productsMap=new Map();for(const row of details){const key=JSON.stringify([row.brand,row.productNo,row.variant,row.productName,row.option]);if(!productsMap.has(key))productsMap.set(key,{brand:row.brand,productNo:row.productNo,variant:row.variant,productName:row.productName,option:row.option,lines:[]});productsMap.get(key).lines.push(row);}
  const products=[...productsMap.values()].map(p=>({...p,quantity:p.lines.some(r=>r.retainedQuantity===null)?null:sum(p.lines,'retainedQuantity'),amount:p.lines.some(r=>r.salesAmount===null)?null:sum(p.lines,'salesAmount'),knownAmount:sum(p.lines,'salesAmount'),unknownAmountLines:p.lines.filter(r=>r.salesAmount===null).length}));
@@ -82,12 +83,21 @@ export function buildWeeklySalesTrace({since,until,actualOrders,analytics,paymen
  if(analytics?.coverage?.completeness&&analytics.coverage.completeness!=='COMPLETE'||!analytics)warnings.add('ANALYTICS_UNVERIFIED');
  const acquisition=new Map();for(const a of analyticsRows){if(acquisition.has(a.order_id)){warnings.add('DUPLICATE_ANALYTICS_ORDER');acquisition.set(a.order_id,null);}else acquisition.set(a.order_id,a);}
  const adIds=new Set(ads.map(a=>String(a.adId))),byName=new Map();for(const a of ads){const name=String(a.adName||'').trim().normalize('NFC');if(!byName.has(name))byName.set(name,new Set());byName.get(name).add(String(a.adId));}
- const trackedOrders=orders.map(o=>{const a=acquisition.get(o.orderId),content=String(a?.content||'').trim(),paid=['ig','meta'].includes(String(a?.ad||'').toLowerCase())&&String(a?.medium||'').toLowerCase()==='paid',ids=byName.get(content.normalize('NFC'));
-  return {orderId:o.orderId,source:publicText(a?.ad),medium:publicText(a?.medium),campaign:publicText(a?.campaign),content:publicText(a?.content),grade:paid?(adIds.has(content)?'G1_AD_ID':ids?.size===1?'G2_AD_NAME':'G3_UNMATCHED'):[a?.ad,a?.medium,a?.campaign,a?.content].some(Boolean)?'OTHER_INFLOW':'NO_INFLOW',eventMatch:'NOT TRACEABLE'};
- });
- // The legacy inflow query does not prove that ghost_mall_id was queried or returned.
- warnings.add('GHOST_MALL_ID_UNVERIFIED');
  const utmRows=(tracking?.rows||[]).map(a=>{const params=new URLSearchParams(String(a?.creative?.url_tags||a.url_tags||''));return {adId:publicText(a.id||a.adId),adName:publicText(a.name||a.adName),utmSource:publicText(params.get('utm_source')),utmMedium:publicText(params.get('utm_medium')),utmCampaign:publicText(params.get('utm_campaign')),utmContent:publicText(params.get('utm_content')),legacyGhost:/^meta_[a-z0-9_]+$/.test(params.get('ghost_mall_id')||'')?params.get('ghost_mall_id'):''};});
+ const trackedOrders=orders.map(o=>{
+  const a=acquisition.get(o.orderId),content=String(a?.content||'').trim();
+  const paid=['ig','meta','facebook','instagram','fb'].includes(String(a?.ad||'').toLowerCase())&&String(a?.medium||'').toLowerCase()==='paid';
+  const ids=byName.get(content.normalize('NFC'));
+  const configured=utmRows.filter(t=>adIds.has(t.adId)&&content&&t.utmContent===content&&!content.includes('{{')&&
+   t.utmCampaign&&t.utmCampaign===a?.campaign&&t.utmMedium==='paid'&&t.utmSource.toLowerCase()===String(a?.ad||'').toLowerCase());
+  const names=content&&ids?.size===1?[...ids]:[];
+  const candidates=new Set([...names,...configured.map(t=>t.adId)]);
+  const candidateAdId=candidates.size===1?[...candidates][0]:null;
+  return {orderId:o.orderId,source:publicText(a?.ad),medium:publicText(a?.medium),campaign:publicText(a?.campaign),content:publicText(a?.content),
+   grade:paid?(adIds.has(content)?'G1_AD_ID':candidateAdId?configured.length?'UTM_TAG_MATCH':'G2_AD_NAME':'G3_UNMATCHED'):[a?.ad,a?.medium,a?.campaign,a?.content].some(Boolean)?'OTHER_INFLOW':'NO_INFLOW',
+   candidateAdId:paid?candidateAdId:null,eventMatch:'NOT TRACEABLE'};
+ });
+ warnings.add('GHOST_MALL_ID_UNVERIFIED');
  if(tracking?.completeness!=='COMPLETE')warnings.add('AD_UTM_UNAVAILABLE');
  const adTotals=new Map(ads.map(a=>[String(a.adId??a.ad_id??''),a]));
  const metaGroups=new Map();for(const row of metaProducts?.rows||[]){
@@ -108,7 +118,7 @@ export function buildWeeklySalesTrace({since,until,actualOrders,analytics,paymen
  const dates=[];for(let at=Date.parse(since+'T00:00:00Z');at<=Date.parse(until+'T00:00:00Z');at+=86400000)dates.push(new Date(at).toISOString().slice(0,10));
  const unverified=warnings.has('ALL_ORDERS_UNVERIFIED')||warnings.has('ALL_ORDERS_UNAVAILABLE');
  const daily=dates.map(date=>{const rows=orders.filter(o=>o.date===date);return {date,orders:unverified?null:rows.length,quantity:unverified||rows.some(o=>o.quantity===null)?null:sum(rows,'quantity'),revenue:unverified||rows.some(o=>o.revenue===null)?null:sum(rows,'revenue'),cash:unverified||rows.some(o=>o.cash===null)?null:sum(rows,'cash'),unallocated:unverified||rows.some(o=>o.unallocated===null)?null:sum(rows,'unallocated')};});
- return {basis,completeness:warnings.size?'PARTIAL':'COMPLETE',warnings:[...warnings],orders,details,products,metaProducts:metaProductRows,metaAdDifferences,tracking:{orders:trackedOrders,ads:utmRows,queries:(actualOrders?.trackingQueries||[]).map(q=>({code:publicText(q.code),ok:q.ok===true,complete:q.complete===true,count:q.count??null}))},daily,
+ return {basis,completeness:warnings.size?'PARTIAL':'COMPLETE',warnings:[...warnings],orders,details,products,metaProducts:metaProductRows,metaAdDifferences,tracking:{orders:trackedOrders,ads:utmRows,deliveringAds:ads.map(a=>({adId:a.adId,adsetId:a.adsetId,campaignId:a.campaignId})),queries:(actualOrders?.trackingQueries||[]).map(q=>({code:publicText(q.code),ok:q.ok===true,complete:q.complete===true,count:q.count??null}))},daily,
   summary:{orders:unverified?null:orders.length,quantity:unverified||orders.some(o=>o.quantity===null)?null:sum(orders,'quantity'),revenue:unverified||orders.some(o=>o.revenue===null)?null:sum(orders,'revenue'),cash:unverified||orders.some(o=>o.cash===null)?null:sum(orders,'cash'),shipping:sum(orders,'shipping'),unallocated:orders.some(o=>o.unallocated===null)?null:sum(orders,'unallocated'),knownItemRevenue:sum(details,'salesAmount'),ordersWithoutInflow:trackedOrders.filter(r=>r.grade==='NO_INFLOW').length,matchedPurchaseEvents:0,metaProductPurchases,metaAccountPurchases:metaSummary?.purchases??null,unknownItemAmounts:details.filter(r=>r.salesAmount===null).length,privatePaymentItems:details.filter(r=>r.privatePayment).length}};
 }
 
@@ -131,30 +141,69 @@ export function attachWeeklyOrderMatch(trace,evidence,{attribution}={}){
    :r.grade==='OTHER_INFLOW'?['UNMATCHED',`Meta 외 유입 · ${r.source||'-'}/${r.medium||'-'}`]
    :['UNMATCHED','Analytics 유입 기록 없음 (NO_INFLOW)'];
   o.matchStatus=status;o.matchReason=reason;o.matchAdId=l?.adId??null;o.matchGrade=r.grade??null;
-  Object.assign(r,{matchStatus:status,adId:l?.adId??r.adId,note:reason});
+  const candidate=known&&['G2_AD_NAME','UTM_TAG_MATCH'].includes(r.grade)&&r.candidateAdId;
+  o.attributionStatus=!o.paid||o.excluded?'EXCLUDED':l&&known?'CONFIRMED':candidate?'MATCHED':'UNATTRIBUTED';
+  o.attributionAdId=o.attributionStatus==='CONFIRMED'?l.adId:candidate||null;
+  o.attributionReason=candidate?`${r.grade} · Cafe24 paid UTM + unique ad mapping; exact delivering ID unavailable`:reason;
+  Object.assign(r,{matchStatus:status,attributionStatus:o.attributionStatus,adId:o.attributionAdId,note:o.attributionReason});
  }
- const firstRow=new Set();for(const d of trace.details){const o=trace.orders.find(x=>x.orderId===d.orderId),first=!firstRow.has(d.orderId);firstRow.add(d.orderId);Object.assign(d,{matchStatus:o?.matchStatus,matchGrade:o?.matchGrade,orderCash:first?o?.cash:null,orderRefund:first?o?.refundAmount:null});}
+ const firstRow=new Set();for(const d of trace.details){const o=trace.orders.find(x=>x.orderId===d.orderId),first=!firstRow.has(d.orderId);firstRow.add(d.orderId);Object.assign(d,{matchStatus:o?.matchStatus,attributionStatus:o?.attributionStatus,attributionAdId:o?.attributionAdId,customerType:o?.customerType,matchGrade:o?.matchGrade,orderCash:first?o?.cash:null,orderRefund:first?o?.refundAmount:null});}
  const matched=trace.orders.filter(o=>o.matchStatus==='MATCHED'),counted=trace.orders.filter(o=>!o.excluded);
  const m={paidOrders:evidence?.onlineOrders??null,matched:known?evidence.linkedOrders:null,unmatched:known?evidence.unlinkedOrders:null,unknown:evidence?.unknownLinkOrders??null,
   matchedPayment:known?(matched.some(o=>o.initialAmount===null)?null:sum(matched,'initialAmount')):null,matchedNet:known?evidence.verifiedRevenue:null,
   g2Candidates:counted.filter(o=>o.matchGrade==='G2_AD_NAME').length,g3Unmatched:counted.filter(o=>o.matchGrade==='G3_UNMATCHED').length,metaPurchases:trace.summary.metaAccountPurchases,metaClick:attribution?.completeness==='COMPLETE'?attribution.totals.click.purchases:null,metaView:attribution?.completeness==='COMPLETE'?attribution.totals.view.purchases:null};
  if(m.paidOrders!==null&&counted.length!==m.paidOrders){trace.warnings.push('MATCH_ORDER_COUNT_MISMATCH');trace.completeness='PARTIAL';}
  if(known&&m.matched+m.unmatched!==m.paidOrders){trace.warnings.push('MATCH_SUM_MISMATCH');trace.completeness='PARTIAL';}
- trace.match=m;return trace;
+ trace.match=m;
+ trace.attributionCoverage=known?'COMPLETE':'PARTIAL';
+ trace.attribution=summarizeTraceAttribution(trace.orders,{complete:known});
+ const delivering=new Map(trace.tracking.deliveringAds.map(ad=>[ad.adId,ad]));
+ const groups=new Map();
+ for(const order of trace.orders) {
+  if(!['CONFIRMED','MATCHED'].includes(order.attributionStatus))continue;
+  const ad=delivering.get(order.attributionAdId);
+  for(const [level,id] of [['campaign',ad?.campaignId],['adset',ad?.adsetId],['ad',order.attributionAdId]]) {
+   if(!id)continue;
+   const key=JSON.stringify([level,id,order.attributionStatus]);
+   if(!groups.has(key))groups.set(key,[]);
+   groups.get(key).push(order);
+  }
+ }
+ trace.attributionLevels=[...groups].map(([key,orders])=>{
+  const [level,id,status]=JSON.parse(key);
+  return {level,id,status,orders:orders.length,net:orders.some(order=>order.revenue===null)?null:sum(orders,'revenue')};
+ });
+ return trace;
+}
+
+export function summarizeTraceAttribution(orders,{complete=true}={}) {
+ return Object.fromEntries(['CONFIRMED','MATCHED','UNATTRIBUTED'].map(status=>{
+  const rows=orders.filter(order=>order.attributionStatus===status);
+  const known=complete||rows.length>0;
+  const net=!known||rows.some(order=>order.revenue===null)?null:sum(rows,'revenue');
+  return [status,{orders:known?rows.length:null,net,newCustomers:rows.filter(o=>o.customerType==='NEW').length,repeatCustomers:rows.filter(o=>o.customerType==='REPEAT').length,unknownCustomers:rows.filter(o=>o.customerType==='UNKNOWN').length}];
+ }));
 }
 
 export function addWeeklySalesTraceSheets(wb,trace){
- const detail=sheet(wb,'ORDER_DETAIL',[['orderTime','주문일시 (KST)',28],['orderId','주문번호'],['matchStatus','Meta 광고 매칭',20],['matchGrade','유입 등급 (G1/G2 후보/G3)',20],['orderCash','주문 결제액 (주문 첫 행만)'],['orderRefund','주문 환불·취소액 (주문 첫 행만)'],['itemId','주문품목 코드',28],['brand','브랜드 (상품명 표기)',34],['productName','상품명',80],['option','옵션 / 사이즈 / 컬러',36],['quantity','주문 수량'],['retainedQuantity','유지 수량'],['paidAmount','품목 유지 결제액'],['salesAmount','품목 V2 운영 매출'],['status','주문 상태'],['claim','취소·반품 상태'],['privatePayment','개인결제창'],['refundDate','실제 환불일',28],['claimDate','클레임일',28],['amountBasis','금액 근거',42]]);add(detail,trace.details);
+ const detail=sheet(wb,'ORDER_DETAIL',[['orderTime','주문일시 (KST)',28],['orderId','주문번호'],['attributionStatus','귀속 상태',20],['attributionAdId','근거 광고 ID'],['customerType','고객 유형'],['matchStatus','Meta 광고 매칭',20],['matchGrade','유입 등급 (G1/G2 후보/G3)',20],['orderCash','주문 결제액 (주문 첫 행만)'],['orderRefund','주문 환불·취소액 (주문 첫 행만)'],['itemId','주문품목 코드',28],['brand','브랜드 (상품명 표기)',34],['productName','상품명',80],['option','옵션 / 사이즈 / 컬러',36],['quantity','주문 수량'],['retainedQuantity','유지 수량'],['paidAmount','품목 유지 결제액'],['salesAmount','품목 V2 운영 매출'],['status','주문 상태'],['claim','취소·반품 상태'],['privatePayment','개인결제창'],['refundDate','실제 환불일',28],['claimDate','클레임일',28],['amountBasis','금액 근거',42]]);add(detail,trace.details);
+ if(trace.attribution) {
+  const statuses=sheet(wb,'CAFE24 ATTRIBUTION',[['grade','귀속 상태'],['orders','결제 주문'],['revenue','Cafe24 유지 매출'],['newCustomers','신규 주문'],['repeatCustomers','재구매 주문'],['unknownCustomers','고객 미확인']]);
+  add(statuses,Object.entries(trace.attribution).map(([grade,v])=>({grade,...v,revenue:v.net})));
+  statuses.addRow({grade:`증빙 ${trace.attributionCoverage} · MATCHED 후보는 CONFIRMED 매출과 합산하지 않음`});
+  const levels=sheet(wb,'CAFE24 AD LEVELS',[['level','집계 수준'],['id','Meta ID'],['status','귀속 증빙'],['orders','결제 주문'],['revenue','Cafe24 유지 매출']]);
+  add(levels,trace.attributionLevels.map(row=>({...row,revenue:row.net})));
+ }
  const products=sheet(wb,'PRODUCT SUMMARY',[['brand','브랜드',34],['productName','상품명',80],['productNo','Cafe24 상품번호'],['variant','옵션 코드'],['option','옵션',36],['quantity','유지 판매 수량'],['amount','상품별 V2 매출'],['knownAmount','확인된 품목 소계'],['unknownAmountLines','금액 미확인 품목 수']]);add(products,trace.products);
  const meta=sheet(wb,'META_PRODUCTS',[['adId','광고 ID'],['adName','광고명',42],['productId','Meta product_id',70],['productNo','Cafe24 상품번호'],['variant','옵션 코드'],['metaPurchases','Meta 귀속 구매 (광고 노출 상품 기준 · 실제 판매 상품 아님)',44],['adPurchases','광고 전체 구매'],['productPurchases','광고 product_id 구매 합계'],['actualQuantity','Cafe24 유지 수량'],['actualAmount','Cafe24 V2 상품 매출'],['match','상품 식별 근거'],['note','한계',90]]);add(meta,trace.metaProducts);add(meta,trace.metaAdDifferences||[]);meta.eachRow((r,n)=>{if(n>1)r.height=60;});if(!trace.metaProducts.length)meta.addRow({note:'UNAVAILABLE — product_id Insights 미확인. 0건으로 해석하지 말 것.'});
  const productNote=meta.addRow({note:`product_id 구매 집계 ${trace.summary.metaProductPurchases??U} / 계정 구매 ${trace.summary.metaAccountPurchases??U}. 차이를 주문·상품에 배분하지 않음. 일치 주문품목이 없는 ID는 실판매 0으로 단정하지 않음.`});productNote.alignment={wrapText:true,vertical:'middle'};productNote.height=54;
- const diagnostics=sheet(wb,'TRACKING_DIAGNOSTICS',[['kind','구분'],['orderId','주문번호'],['adId','광고 ID'],['adName','광고명',42],['source','source'],['medium','medium'],['campaign','campaign'],['content','content'],['grade','G1 ID / G2 광고명 후보'],['matchStatus','Meta 광고 매칭 결과',20],['eventMatch','구매 이벤트 연결'],['note','매칭 근거 / 실패 사유',90]]);
+ const diagnostics=sheet(wb,'TRACKING_DIAGNOSTICS',[['kind','구분'],['orderId','주문번호'],['adId','광고 ID'],['adName','광고명',42],['source','source'],['medium','medium'],['campaign','campaign'],['content','content'],['grade','G1 ID / G2 광고명 후보'],['attributionStatus','귀속 상태',20],['matchStatus','Meta 광고 매칭 결과',20],['eventMatch','구매 이벤트 연결'],['note','매칭 근거 / 실패 사유',90]]);
  add(diagnostics,trace.tracking.orders.map(r=>({kind:'ORDER_INFLOW',...r})));add(diagnostics,trace.tracking.ads.map(r=>({kind:'AD_UTM',adId:r.adId,adName:r.adName,source:r.utmSource,medium:r.utmMedium,campaign:r.utmCampaign,content:r.utmContent,eventMatch:'NOT TRACEABLE',note:r.legacyGhost?`설정된 ghost_mall_id=${r.legacyGhost}; 주문 유입 기록으로의 전달은 미검증`:''})));
  add(diagnostics,trace.tracking.queries.map(q=>({kind:'LEGACY_QUERY',note:`${q.code}: ok=${q.ok}; complete=${q.complete}; count=${q.count??U}`})));
  diagnostics.addRow({kind:'NO_INFLOW',note:`유입 정보 없는 주문 ${trace.summary.ordersWithoutInflow}건. G1은 유입 ID 일치, G2는 광고명 후보이며 구매 이벤트 연결이 아님.`});for(const warning of trace.warnings)diagnostics.addRow({kind:'WARNING',note:warning});
  const day=trace.basis==='PAY_DATE'?'결제일 (KST)':'주문일 (KST)';
  const daily=sheet(wb,'DAILY SALES',[['date',day],['orders','주문 수'],['quantity','유지 수량'],['revenue','V2 운영 매출'],['cash','취소·반품완료 제외 결제액'],['unallocated','품목 미배분 매출']]);add(daily,trace.daily);
- const orders=sheet(wb,'ORDER_TOTALS',[['orderId','주문번호'],['date',day],['quantity','유지 수량'],['revenue','V2 운영 매출'],['cash','유지 결제액'],['initialCash','최초 결제액 원본'],['refundAmount','환불·취소액 (최초-유지)'],['matchStatus','Meta 광고 매칭',20],['matchReason','매칭 근거 / 실패 사유',60],['shipping','배송비'],['unallocated','품목 미배분 매출'],['excluded','완료 취소·반품 제외']]);add(orders,trace.orders);
+ const orders=sheet(wb,'ORDER_TOTALS',[['orderId','주문번호'],['date',day],['quantity','유지 수량'],['revenue','V2 운영 매출'],['cash','유지 결제액'],['initialCash','최초 결제액 원본'],['refundAmount','환불·취소액 (최초-유지)'],['attributionStatus','귀속 상태',20],['attributionAdId','근거 광고 ID'],['customerType','고객 유형'],['matchStatus','Meta 광고 매칭',20],['matchReason','매칭 근거 / 실패 사유',60],['shipping','배송비'],['unallocated','품목 미배분 매출'],['excluded','완료 취소·반품 제외']]);add(orders,trace.orders);
  totals(detail,'확인 소계',['quantity','retainedQuantity','paidAmount','salesAmount']);totals(products,'주간 합계 (미확인 제외 불가)',['quantity','amount','knownAmount','unknownAmountLines']);totals(daily,'주간 합계',['orders','quantity','revenue','cash','unallocated']);totals(orders,'주간 합계',['quantity','revenue','cash','initialCash','refundAmount','shipping','unallocated']);
  const summary=wb.getWorksheet('SUMMARY');if(summary){summary.addRow([]);for(const [label,value]of [['전체 Cafe24 주문 수',trace.summary.orders],['전체 유지 판매 수량',trace.summary.quantity],['전체 Cafe24 V2 운영 매출',trace.summary.revenue],['전체 Cafe24 유지 결제액',trace.summary.cash],['품목 금액 미배분',trace.summary.unallocated],['판매 추적 검증',trace.completeness],['환불일 기준 실지급 환불액',U],...(trace.match?[['Cafe24 전체 결제 주문 (결제일 기준)',trace.match.paidOrders],['Meta 광고 연결 매칭 성공 주문',trace.match.matched],['미매칭 주문',trace.match.unmatched],['매칭 검증 불가 주문',trace.match.unknown],['G2 광고명 후보 (매칭 미포함)',trace.match.g2Candidates],['G3 Meta paid 불일치 (매칭 미포함)',trace.match.g3Unmatched],['매칭 주문 실제 결제금액',trace.match.matchedPayment],['매칭 주문 순매출',trace.match.matchedNet],['Meta 보고 구매 (Meta 귀속 · 별도 기준)',trace.match.metaPurchases]]:[])]){const row=summary.addRow({label,current:value??U});if(/매출|결제액|결제금액|미배분|환불액/.test(label))row.getCell('current').numFmt='#,##0"원"';}
  const note=summary.addRow({label:'집계 기준',current:`${trace.basis==='PAY_DATE'?'Cafe24 결제일 기준 (REPORT·ISSUE_EVIDENCE와 동일)':'원거래 주문일 기준'} / 매칭은 G1 광고 ID + Analytics paid + Admin 주문번호 일치만 인정 / Meta 보고 구매는 Meta 귀속 기준으로 실제 주문 수와 별도 / Cafe24 조회 시점 상태 (source snapshot time). 유지 매출에 취소·반품 감소분을 이중 차감하지 않음. 선불금 V2 복원은 현금 결제와 구분.`});summary.mergeCells(`B${note.number}:D${note.number}`);note.getCell(2).alignment={wrapText:true,vertical:'middle'};note.height=48;

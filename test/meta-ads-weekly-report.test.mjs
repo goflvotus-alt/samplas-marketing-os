@@ -99,7 +99,7 @@ test("XLSX generation — preserves decision sheets and adds all-order sales tra
   const model = buildWeeklyMetaReportModel({ current: currentByLevel, previous: previousByLevel, since: "2026-09-22", until: "2026-09-28", previousSince: "2026-09-15", previousUntil: "2026-09-21" });
   const workbook = await buildWeeklyMetaReportWorkbook(model);
   const names = workbook.worksheets.map((sheet) => sheet.name);
-  assert.deepEqual(names, ["SUMMARY", "CAMPAIGN", "AD SET", "CREATIVE_AD", "TREND", "AI_ANALYSIS", "ACTUAL_PRODUCTS_SOLD", "ISSUE_EVIDENCE", "RAW", "ORDER_DETAIL", "PRODUCT SUMMARY", "META_PRODUCTS", "TRACKING_DIAGNOSTICS", "DAILY SALES", "ORDER_TOTALS"]);
+  assert.deepEqual(names, ["SUMMARY", "CAMPAIGN", "AD SET", "CREATIVE_AD", "TREND", "AI_ANALYSIS", "ACTUAL_PRODUCTS_SOLD", "ISSUE_EVIDENCE", "RAW", "META_LEVEL_CHECK", "ORDER_DETAIL", "PRODUCT SUMMARY", "META_PRODUCTS", "TRACKING_DIAGNOSTICS", "DAILY SALES", "ORDER_TOTALS"]);
   const campaignHeaders = workbook.getWorksheet("CAMPAIGN").getRow(1).values.filter(Boolean);
   for (const expected of ["Campaign ID", "Campaign Name", "Spend", "Impressions", "Reach", "Clicks", "CTR", "CPC", "CPM", "Purchases", "Purchase Value", "CPA", "ROAS"]) {
     assert.ok(campaignHeaders.includes(expected), `missing CAMPAIGNS header: ${expected}`);

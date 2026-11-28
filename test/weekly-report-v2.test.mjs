@@ -71,7 +71,7 @@ test('Manual: local preview does not overwrite an official report',async()=>{
 });
 test('Manual route: server binds existing internal authorization and adapters; GET denied, unauthorized POST denied',async()=>{
  const src=await readFile(new URL('../server.mjs',import.meta.url),'utf8');const route=src.slice(src.indexOf('    if (url.pathname === "/api/reports/weekly/run")'),src.indexOf('    if (url.pathname === "/api/meta-ads/score-weights")'));
- const deps={handleWeeklyReportPreview,req:null,res:{},url:new URL('http://internal/api/reports/weekly/run'),isAuthorizedInternalRequest:r=>r.headers['x-samplas-internal-token']==='fixture',readJsonBody:async()=>({platform:'instagram',referenceDate:'2026-10-06',mode:'preview'}),json:(r,body,status=200)=>({body,status}),env:{},readMetaTokenRecord:async()=>({accessToken:'fixture'}),fetchNaverAdsPerformanceForWeeklyReport:()=>{},buildInstagramRangeDataForWeeklyReport:()=>{},buildMetaAdsSummaryForWeeklyReport:()=>{},fetchCafe24ActualOrdersForWeeklyReport:()=>{},fetchCafe24AnalyticsForWeeklyReport:()=>{},fetchMetaAccountTotalsForWeeklyReport:()=>{},fetchMetaAttributionForWeeklyReport:()=>{},fetchCafe24OrdersForRefundTracking:()=>{},runWeeklyReportPreview:async(body,options)=>{assert.equal(options.fetchers.instagram,deps.buildInstagramRangeDataForWeeklyReport);assert.equal(options.fetchers.meta,deps.buildMetaAdsSummaryForWeeklyReport);assert.equal(options.fetchers.naver,deps.fetchNaverAdsPerformanceForWeeklyReport);assert.equal(await options.hasPersistentMetaConnection(),true);return {ok:true};}};
+ const deps={handleWeeklyReportPreview,req:null,res:{},url:new URL('http://internal/api/reports/weekly/run'),isAuthorizedInternalRequest:r=>r.headers['x-samplas-internal-token']==='fixture',readJsonBody:async()=>({platform:'instagram',referenceDate:'2026-10-06',mode:'preview'}),json:(r,body,status=200)=>({body,status}),env:{},readMetaTokenRecord:async()=>({accessToken:'fixture'}),fetchNaverAdsPerformanceForWeeklyReport:()=>{},buildInstagramRangeDataForWeeklyReport:()=>{},buildMetaAdsSummaryForWeeklyReport:()=>{},fetchMetaOrderCustomerTypes:()=>{},fetchMetaAdTrackingForWeeklyReport:()=>{},fetchCafe24ItemPaymentsForWeeklyReport:()=>{},fetchMetaProductsForWeeklyReport:()=>{},fetchCafe24ActualOrdersForWeeklyReport:()=>{},fetchCafe24AnalyticsForWeeklyReport:()=>{},fetchMetaAccountTotalsForWeeklyReport:()=>{},fetchMetaAttributionForWeeklyReport:()=>{},fetchCafe24OrdersForRefundTracking:()=>{},runWeeklyReportPreview:async(body,options)=>{assert.equal(options.fetchers.instagram,deps.buildInstagramRangeDataForWeeklyReport);assert.equal(options.fetchers.meta,deps.buildMetaAdsSummaryForWeeklyReport);assert.equal(options.fetchers.naver,deps.fetchNaverAdsPerformanceForWeeklyReport);assert.equal(await options.hasPersistentMetaConnection(),true);return {ok:true};}};
  // Exercise the route with the actual scheduler state initializers in its lexical scope.
  for(const name of ['naverWeeklyReportScheduler','metaWeeklyReportScheduler','instagramWeeklyReportScheduler']) {
   const start=src.indexOf(`const ${name} = {`),end=src.indexOf('\n};',start)+3;
@@ -89,4 +89,13 @@ test('Manual route: upstream error sanitized and unavailable source is not succe
  const deps={authorized:()=>true,readBody:async()=>({}),json:(r,body,status)=>({body,status}),run:async()=>{throw Object.assign(new Error('fixture-private-token'),{status:401});}};
  const r=await handleWeeklyReportPreview({method:'POST'},{},deps);assert.equal(r.status,502);assert.equal(r.body.error,'weekly_preview_failed');
  deps.run=async()=>({ok:false,error:'unavailable',filePath:null});assert.equal((await handleWeeklyReportPreview({method:'POST'},{},deps)).status,502);
+});
+
+test('monthly Meta preview and October correction leave NAVER month support intact', () => {
+  const meta={platform:'meta',month:'2026-10'};
+  assert.equal(validateWeeklyPreviewRequest({...meta,mode:'preview'}).month,'2026-10');
+  assert.equal(validateWeeklyPreviewRequest({...meta,mode:'correction'}).mode,'correction');
+  assert.throws(()=>validateWeeklyPreviewRequest({...meta,platform:'naver',mode:'correction'}));
+  assert.equal(validateWeeklyPreviewRequest({...meta,platform:'naver',mode:'preview'}).platform,'naver');
+  assert.throws(()=>validateWeeklyPreviewRequest({...meta,month:'2026-09',mode:'correction'}));
 });

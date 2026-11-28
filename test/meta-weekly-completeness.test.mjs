@@ -1,3 +1,4 @@
+import {collectMetaInsightPages} from "../scripts/meta-attribution-integrity.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -54,10 +55,10 @@ test('real collector functions and adapters deliver evidence through review to i
  const metaCollector=extract('async function buildMetaAdsSummary(since','// Performance Score Rule Engine');
  const order={order_id:'20261011-0000055',order_date:'2026-10-11',paid:'T',canceled:'F',actual_order_amount:{payment_amount:'198000.00'},items:[{order_item_code:'item1',product_name:'Test jeans',product_price:'198000.00',quantity:1}]};
  for(const state of ['complete','partial','missing','missing_acquisition']){
-  const c={...coverage,URL,env:{CAFE24_MALL_ID:'fixture',CAFE24_ACCESS_TOKEN:'not-a-real-token'},workDir:'fixture',join:(...s)=>s.join('/'),mkdir:async()=>{},writeFile:async()=>{},ensureCafe24AccessToken:async()=>{},attachCafe24OrderItems:async()=>{},
+  const c={...coverage,collectMetaInsightPages,URL,env:{CAFE24_MALL_ID:'fixture',CAFE24_ACCESS_TOKEN:'not-a-real-token'},workDir:'fixture',join:(...s)=>s.join('/'),mkdir:async()=>{},writeFile:async()=>{},ensureCafe24AccessToken:async()=>{},attachCafe24OrderItems:async()=>{},
    cafe24FetchOrdersPage:async u=>({orders:u.searchParams.get('start_date')===scope.since&&!u.searchParams.has('inflow_path')?[order]:[]}),
    fetch:async u=>({ok:true,status:200,text:async()=>JSON.stringify({orderdetails:u.searchParams.get('start_date')===scope.since?[{order_id:order.order_id,order_date:order.order_date,order_amount:198000,ad:'ig',medium:state==='missing_acquisition'?undefined:'paid',campaign:'camp1',content:'ad1',keyword:''}]:[]})}),
-   cleanAdAccountId:()=> 'act_fixture',metaAdsLevel:x=>x,metaAdsFieldsForLevel:()=>[],graphGet:async()=>state==='missing'?{data:[{...raw,ad_id:'ad1',action_values:undefined}]}:{data:[{...raw,ad_id:'ad1'}],...(state==='partial'?{paging:{next:'not-retained'}}:{})},logMetaAdsDiagnostic:async()=>{},fetchCampaignObjectives:async()=>({}),
+   cleanAdAccountId:()=> 'act_fixture',metaAdsLevel:x=>x,metaAdsFieldsForLevel:()=>[],graphGet:async()=>state==='missing'?{data:[{...raw,campaign_id:'camp1',adset_id:'set1',ad_id:'ad1',action_values:undefined}]}:{data:[{...raw,campaign_id:'camp1',adset_id:'set1',ad_id:'ad1'}],...(state==='partial'?{paging:{next:'not-retained'}}:{})},logMetaAdsDiagnostic:async()=>{},fetchCampaignObjectives:async()=>({}),
    actionValue:(a,k)=>Number((a||[]).find(x=>x.action_type===k)?.value||0),normalizeMetaObjective:()=>'',metaCampaignStatusLabel:()=>'',metaAdsLabelForLevel:()=>'',buildMetaAdsTopRows:()=>[],buildMetaAdsLowRows:()=>[],summarizeMetaAdsRows:()=>({spend:100,impressions:1000,clicks:10,purchases:1,purchaseValue:198000}),metaAdsCacheFileName:()=> 'unused',safeErrorMessage:()=> 'unavailable'};
   runInNewContext(reader+'\n'+analyticsReader+'\n'+weekly+'\n'+metaCollector+'\n'+adapter,c);
   c.buildMetaAdsSummaryWithCache=c.buildMetaAdsSummary;
