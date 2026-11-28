@@ -2,6 +2,8 @@
 // GET only, fixed path allowlist, no caller-supplied URL. Upstream bodies are never forwarded
 // on error: an HTML 502 page from Render becomes a structured UPSTREAM_UNAVAILABLE.
 
+export const CAFE24_ANALYTICS_ORDER_PATH = "/api/diagnostics/cafe24-analytics-orderdetails";
+
 export const ALLOWED_UPSTREAM_PATHS = new Set([
   "/api/sales/total",
   "/api/reports/monthly",
@@ -13,6 +15,7 @@ export const ALLOWED_UPSTREAM_PATHS = new Set([
   "/api/pending-brands",
   "/api/inventory/overview",
   "/api/advertising/overview",
+  CAFE24_ANALYTICS_ORDER_PATH,
   "/api/crm/monthly",
   "/api/crm/cohort",
   "/api/crm/acquisition",
@@ -53,7 +56,7 @@ export function createUpstream({ baseUrl, timeoutMs = 20_000 }) {
     const text = await response.text();
     let body = null;
     try { body = JSON.parse(text); } catch { /* non-JSON (HTML error page) */ }
-    const upstreamMessage = typeof body?.error === "string" ? body.error.slice(0, 200) : null;
+    const upstreamMessage = path !== CAFE24_ANALYTICS_ORDER_PATH && typeof body?.error === "string" ? body.error.slice(0, 200) : null;
     if (response.status === 400) throw new ToolError("VALIDATION_FAILED", upstreamMessage || "Invalid request", { details: { path, status: 400 } });
     if (response.status === 404) throw new ToolError("NOT_FOUND", upstreamMessage || "Not found", { details: { path, status: 404 } });
     if (!response.ok || body === null || typeof body !== "object") {

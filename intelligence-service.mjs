@@ -2303,7 +2303,7 @@ function naverAdsPerformancePeriod(url) {
 async function fetchNaverAdsReadOnly(uri, params, credentials, signal) {
   // No caller-controlled method/path or redirects: credentials only go to the
   // configured Search Ads host, and this helper cannot mutate an ad account.
-  if (!["/ncc/campaigns", "/ncc/adgroups", "/stats"].includes(uri)) throw new Error("Unsupported read-only endpoint");
+  if (!["/ncc/campaigns", "/ncc/adgroups", "/ncc/ads", "/ncc/keywords/nkw-a001-01-000005351909925", "/stats"].includes(uri)) throw new Error("Unsupported read-only endpoint");
   const endpoint = new URL(uri, naverAdsBaseUrl);
   endpoint.search = new URLSearchParams(params).toString();
   const response = await fetch(endpoint, {
@@ -2444,6 +2444,58 @@ export function capturingResponse() {
 // responses through the Phase 2 canonical adapter (fromMetaAds/fromNaverAds).
 // No new ad-metric math here — every number in `channels` is produced by those
 // adapters. Actual commerce reuses the weekly report's exact-order Analytics join.
+async function verifyNaverPowerlinkTags(details) {
+  const targets = new Set(details.filter(row => ["naver", "네이버"].includes(String(row?.ad || "").trim().toLowerCase())
+    && String(row?.medium || "").trim().toLowerCase() === "cpc"
+    && String(row?.campaign || "").trim().toLowerCase() === "powerlink")
+    .map(row => String(row?.content || "").trim()));
+  if (!targets.size) return new Set();
+  const credentials = naverAdsCredentials();
+  if (!credentials.ok) return new Set();
+  const byGroup = new Map();
+  for (const tag of targets) {
+    const group = /^(grp-[a-z]\d{3}-\d{2}-\d{15})~nad-[a-z]\d{3}-\d{2}-\d{15}$/.exec(tag)?.[1];
+    if (!group) continue;
+    if (!byGroup.has(group)) byGroup.set(group, new Set());
+    byGroup.get(group).add(tag);
+  }
+  const verified = new Set();
+  const signal = AbortSignal.timeout(4_000);
+  const inspect = (links, expected) => {
+    for (const value of [links?.pc?.final, links?.mobile?.final]) {
+      let landing;
+      try { landing = new URL(value); } catch { continue; }
+      const query = landing.searchParams;
+      const fields = ["utm_source", "utm_medium", "utm_campaign", "utm_content"];
+      if (!["https:", "http:"].includes(landing.protocol) || !["samplas.co.kr", "www.samplas.co.kr", "m.samplas.co.kr"].includes(landing.hostname)
+        || fields.some(key => query.getAll(key).length !== 1)
+        || query.get("utm_source") !== "naver" || query.get("utm_medium") !== "cpc" || query.get("utm_campaign") !== "powerlink") continue;
+      const tag = query.get("utm_content");
+      if (expected.has(tag)) verified.add(tag);
+    }
+  };
+  const pilot = "604service_test";
+  const reads = [];
+  if (targets.has(pilot)) reads.push(fetchNaverAdsReadOnly("/ncc/keywords/nkw-a001-01-000005351909925", {}, credentials, signal)
+    .then(keyword => {
+      if (keyword?.nccKeywordId === "nkw-a001-01-000005351909925") inspect(keyword.links, new Set([pilot]));
+    }));
+  if (byGroup.size) reads.push((async () => {
+    const groups = [...byGroup];
+    for (let offset = 0; offset < groups.length && !signal.aborted; offset += 4) {
+      await Promise.allSettled(groups.slice(offset, offset + 4).map(async ([group, tags]) => {
+        const ads = await fetchNaverAdsReadOnly("/ncc/ads", { nccAdgroupId: group }, credentials, signal);
+        if (!Array.isArray(ads)) return;
+        for (const ad of ads) {
+          if (ad?.nccAdgroupId === group && !ad.delFlag) inspect(ad.ad, tags);
+        }
+      }));
+    }
+  })());
+  await Promise.allSettled(reads);
+  return verified;
+}
+
 async function handleAdvertisingOverviewRoute(url, res) {
   const period = naverAdsPerformancePeriod(url); // channel-agnostic since/until validator
   if (!period.ok) return json(res, { ok: false, error: period.error }, 400);
@@ -2481,7 +2533,17 @@ async function handleAdvertisingOverviewRoute(url, res) {
       const ids = new Set(orders.data.orders.map(order => String(order.order_id)));
       const paid = details.filter(row => String(row.ad || '').toLowerCase() === 'ig' && String(row.medium || '').toLowerCase() === 'paid');
       if (paid.every(row => row.order_id && ids.has(String(row.order_id)))) {
-        actualCommerce = buildActualProductsSold({ data: orders.data, analytics: analytics.data, since, until });
+        const naverTags = verifyNaverPowerlinkTags(details).catch(() => new Set());
+        let metaAds = [];
+        if (details.some(row => ["ig", "meta"].includes(String(row?.ad || "").trim().toLowerCase())
+          && /^\d{10,25}$/.test(String(row?.content || "").trim()))) {
+          const adQuery = `since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}&level=ad`;
+          const catalog = await fetchMarketingOsJson(`/api/meta-ads/summary?${adQuery}`).catch(() => null);
+          if (catalog?.ok && catalog.data?.source === "meta_marketing_api" && Array.isArray(catalog.data.ads)) {
+            metaAds = catalog.data.ads;
+          }
+        }
+        actualCommerce = buildActualProductsSold({ data: orders.data, analytics: analytics.data, metaAds, naverVerifiedTags: await naverTags, since, until, includeOrderEvidence: true });
         if (actualCommerce.missingItems || actualCommerce.missingDates || actualCommerce.possibleLimitReached) actualCommerce = { available: false, rows: [], reason: "Cafe24 actual item/date coverage incomplete; no Meta revenue substitution." };
       }
     }

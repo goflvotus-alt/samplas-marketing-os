@@ -313,14 +313,51 @@ function inflowQueryAttribution(order, codes, analyticsRow, metaIndexes, adGrade
   };
 }
 
+function orderAcquisitionEvidence(order, acquisition, metaIndexes, naverVerifiedTags, paidAmount, amountStatus) {
+  const label = (value) => typeof value === "string" && /^[\p{L}\p{N} _~|().-]{1,120}$/u.test(value.trim()) ? value.trim() : null;
+  const distinct = new Map(acquisition.map((row) => {
+    const values = [row.ad, row.medium, row.campaign, row.content].map(value => String(value ?? "").trim());
+    return [JSON.stringify(values), values];
+  }));
+  const [source, medium, campaign, content] = distinct.size === 1 ? distinct.values().next().value : [];
+  const paidMedium = ["paid", "cpc", "paidsearch", "paid_search"].includes(medium?.toLowerCase());
+  const channel = paidMedium && PAID_META_SOURCES.has(source?.toLowerCase()) ? "meta"
+    : paidMedium && ["naver", "네이버"].includes(source?.toLowerCase()) ? "naver" : null;
+  const matchedAd = channel === "meta" && /^\d{10,25}$/.test(content) ? metaIndexes.byAdId.get(content) : null;
+  const matchedCampaignId = text(matchedAd?.campaignId || matchedAd?.campaign_id);
+  const adId = matchedAd && (!/^\d{10,25}$/.test(campaign) || campaign === matchedCampaignId) ? content : null;
+  // Estimate only: a Meta paid visit whose content is the name of exactly one delivering ad (G2). Never counted as revenue.
+  const nameMatches = channel === "meta" && !adId ? metaIndexes.byName.get(adNameKey(content)) : null;
+  const estimatedAdId = nameMatches?.size === 1 ? [...nameMatches][0] : null;
+  const naverTrackingTag = channel === "naver" && medium.toLowerCase() === "cpc"
+    && campaign.toLowerCase() === "powerlink" && naverVerifiedTags.has(content) ? content : null;
+  const paymentDate = /^\d{4}-\d{2}-\d{2}T[\d:.+-]+Z?$/.test(order.payment_date) ? order.payment_date : null;
+  const methods = Array.isArray(order.payment_method) ? order.payment_method : [order.payment_method];
+  const partialClaim = [order.canceled, order.cancelled].includes("M");
+  const payment = order.actual_order_amount?.payment_amount
+    ?? (partialClaim ? null : order.actual_payment_amount ?? order.payment_amount);
+  const hasPayment = Number(payment) > 0 && Number(payment) === paidAmount;
+  return {
+    orderId: text(order.order_id || order.orderId), channel, adId, estimatedAdId, naverTrackingTag,
+    campaign: label(adId ? matchedAd.campaignName || matchedAd.campaign_name || campaign : campaign),
+    content: label(adId ? matchedAd.adName || matchedAd.ad_name || matchedAd.name || content : content),
+    source: label(source), medium: label(medium),
+    paymentDate, paymentMethods: methods.map(label).filter(Boolean), orderPlace: label(order.order_place_id),
+    paidAmount: order.paid === "T" && amountStatus === "NORMAL" && hasPayment && paidAmount > 0 ? paidAmount : null,
+    evidence: distinct.size > 1 ? "CONFLICTING_ANALYTICS" : adId ? "MATCHED_AD_ID" : naverTrackingTag ? "MATCHED_NAVER_TRACKING_TAG" : estimatedAdId ? "ESTIMATED_AD_NAME" : channel ? "PAID_CHANNEL" : "NO_VERIFIED_PAID_CHANNEL"
+  };
+}
+
 export function buildActualProductsSold({
   data,
   analytics,
   metaAds = [],
+  naverVerifiedTags = new Set(),
   since,
   until,
   // Weekly reports grade paid Meta visits against the period's ads; other callers keep the old rule.
-  adGrades = false
+  adGrades = false,
+  includeOrderEvidence = false
 }) {
   if (
     !data ||
@@ -368,6 +405,17 @@ export function buildActualProductsSold({
       .filter((row) => text(row?.order_id))
       .map((row) => [text(row.order_id), row])
   );
+
+  const acquisitionByOrder = new Map();
+  if (includeOrderEvidence) {
+    for (const row of analyticsRows(analytics)) {
+      const id = text(row?.order_id);
+      if (!id) continue;
+      if (!acquisitionByOrder.has(id)) acquisitionByOrder.set(id, []);
+      acquisitionByOrder.get(id).push(row);
+    }
+  }
+  const orderEvidence = [];
 
   const metaIndexes = buildMetaIndexes(metaAds);
   let candidateOrders = data.orders, candidateMissingAdmin = 0;
@@ -430,6 +478,10 @@ export function buildActualProductsSold({
     const analyticsOrderAmount =
       Number(analyticsRow?.order_amount) || null;
     const amountStatus = orderAmountStatus(order, items, paidAmount);
+
+    if (includeOrderEvidence && orderId) {
+      orderEvidence.push(orderAcquisitionEvidence(order, acquisitionByOrder.get(orderId) || [], metaIndexes, naverVerifiedTags, paidAmount, amountStatus));
+    }
 
     orderSummary.set(orderId || `NO_ID_${rows.length}`, {
       tracking_source: attribution.tracking_source,
@@ -502,6 +554,25 @@ export function buildActualProductsSold({
   const confirmed = uniqueOrders.filter((row) => ["META_PAID", "META_INFLOW"].includes(row.tracking_source));
   const paid = (list) => list.reduce((sum, row) => sum + Number(row.paidAmount || 0), 0);
   const byStatus = (status) => confirmed.filter((row) => row.amount_status === status);
+  const verifiedAds = new Map();
+  const verifiedNaverTags = new Map();
+  for (const order of orderEvidence) {
+    if (order.paidAmount === null) continue;
+    if (order.naverTrackingTag) {
+      const tag = order.naverTrackingTag;
+      const entry = verifiedNaverTags.get(tag) || { tag, orderCount: 0, paidAmount: 0 };
+      entry.orderCount += 1;
+      entry.paidAmount += order.paidAmount;
+      verifiedNaverTags.set(tag, entry);
+    }
+    if (!order.adId) continue;
+    const entry = verifiedAds.get(order.adId) || {
+      adId: order.adId, channel: order.channel, campaign: order.campaign, content: order.content, orderCount: 0, paidAmount: 0
+    };
+    entry.orderCount += 1;
+    entry.paidAmount += order.paidAmount;
+    verifiedAds.set(order.adId, entry);
+  }
 
   return {
     available: true,
@@ -510,6 +581,21 @@ export function buildActualProductsSold({
     missingDates,
     source: queryMode ? "cafe24_inflow_queries_plus_analytics" : "cafe24_actual_plus_analytics",
     possibleLimitReached: queryMode ? false : data.orders.length >= 500,
+
+    ...(includeOrderEvidence ? {
+      orderEvidence: {
+        period: { since, until },
+        analyticsCompleteness: analytics?.coverage?.completeness ?? "UNKNOWN",
+        orders: orderEvidence,
+        verifiedAds: [...verifiedAds.values()],
+        verifiedNaverTags: [...verifiedNaverTags.values()],
+        summary: Object.fromEntries(["meta", "naver", "unverified"].map(channel => {
+          const paid = orderEvidence.filter(order => (order.channel ?? "unverified") === channel && order.paidAmount !== null);
+          return [channel, { orderCount: paid.length, paidAmount: paid.reduce((sum, order) => sum + order.paidAmount, 0) }];
+        })),
+        unverifiedPaymentCount: orderEvidence.filter(order => order.paidAmount === null).length
+      }
+    } : {}),
 
     summary: {
       actualOrderCount: uniqueOrders.length,

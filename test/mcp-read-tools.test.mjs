@@ -46,13 +46,38 @@ const clientsBody = (since, until) => {
   };
 };
 
-test("exactly the 14 planned read tools (10 original + 4 CRM), all with strict object schemas", () => {
+test("exactly 15 read tools, all with strict object schemas", () => {
   assert.deepEqual(READ_TOOLS.map((t) => t.name), [
     "get_sales_summary", "get_monthly_report", "get_clients_summary", "get_foreign_sales", "get_brand",
-    "get_pending_brands", "get_new_brands", "get_inventory", "get_advertising_summary", "get_commercial_policy",
+    "get_pending_brands", "get_new_brands", "get_inventory", "get_advertising_summary", "get_cafe24_analytics_order", "get_commercial_policy",
     "get_crm_monthly", "get_crm_cohort", "get_crm_acquisition", "get_crm_data_quality"
   ]);
   for (const t of READ_TOOLS) assert.ok(t.description.length > 40, t.name);
+});
+
+test("Cafe24 Analytics selects one order and only exposes acquisition fields", async () => {
+  const path = "/api/diagnostics/cafe24-analytics-orderdetails";
+  const orderId = "20261127-0000042";
+  const up = stub({ [path]: { data: { orderdetails: [
+    { order_id: "20261127-0000033", ad: "other" },
+    { order_id: orderId, ad: "meta", medium: "paid", campaign: "Sale", content: "1234",
+      fbclid: "private-click", email: "private@example.test", authorization: "Bearer private",
+      utm_content: "private@example.test", referer: "https://example.test/?token=private" }
+  ] } } });
+  const out = await runReadTool("get_cafe24_analytics_order", { orderId }, up);
+  assert.equal(out.ok, true);
+  assert.deepEqual(up.calls, [{ path, params: { start_date: "2026-11-27", end_date: "2026-11-27", order_id: orderId } }]);
+  assert.equal(out.data.rows.length, 1);
+  assert.equal(out.data.rows[0].ad, "meta");
+  assert.equal(out.data.rows[0].clickIdentifiersPresent.fbclid, true);
+  assert.doesNotMatch(JSON.stringify(out), /private|Bearer|0000033/);
+  assert.equal((await runReadTool("get_cafe24_analytics_order", { orderId: "20260230-0000042" }, up)).error.code, "VALIDATION_FAILED");
+  assert.equal(up.calls.length, 1);
+  for (const body of [{ data: { orderdetails: [] } }, { data: {} }]) {
+    const missing = await runReadTool("get_cafe24_analytics_order", { orderId }, stub({ [path]: body }));
+    assert.deepEqual(missing.data.rows, []);
+    assert.notEqual(missing.meta.completeness, "COMPLETE");
+  }
 });
 
 test("validation happens before any upstream call", async () => {

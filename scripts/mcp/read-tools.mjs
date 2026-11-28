@@ -1,7 +1,7 @@
 // Phase 1 read tools for the ChatGPT MCP plugin. Every number comes from an existing Marketing OS
 // GET route; tools only validate input, trim, select by equality on returned fields and wrap the
 // result (spec §6, plan §4). No sales, coverage, status, sellable, NAVER or discount logic lives here.
-import { ToolError, capPayload, envelope } from "./upstream.mjs";
+import { CAFE24_ANALYTICS_ORDER_PATH, ToolError, capPayload, envelope } from "./upstream.mjs";
 
 // Input schemas are plain JSON Schema (served as-is in tools/list) and validated by
 // validateArgs() below, which supports exactly the keywords used here. No runtime schema library.
@@ -397,6 +397,50 @@ export const READ_TOOLS = [
       return envelope("get_advertising_summary", { channels, actualCommerce: body.actualCommerce ?? null }, {
         source: "/api/advertising/overview", coverage: Object.fromEntries(channels.map((c) => [c.channel, c.status])), completeness,
         requestedPeriod: { since, until }, availablePeriod: { since: body.since, until: body.until }, notes: [...notes, NO_TIMESTAMP]
+      });
+    }
+  },
+  {
+    name: "get_cafe24_analytics_order",
+    title: "Cafe24 Analytics order acquisition",
+    requiresOAuth: true,
+    description: "Read acquisition fields for one Cafe24 order. Click identifiers are reported by presence only.",
+    input: object({ orderId: text(16, { pattern: "^[0-9]{8}-[0-9]{7}$", description: "Cafe24 order number YYYYMMDD-NNNNNNN" }) }, ["orderId"]),
+    async run({ orderId }, up) {
+      const orderDate = `${orderId.slice(0, 4)}-${orderId.slice(4, 6)}-${orderId.slice(6, 8)}`;
+      if (checkValue(date("Order date"), orderDate)) {
+        throw new ToolError("VALIDATION_FAILED", "orderId must contain a valid order date");
+      }
+      const body = await up.getJson(CAFE24_ANALYTICS_ORDER_PATH, {
+        start_date: orderDate, end_date: orderDate, order_id: orderId
+      });
+      const raw = body.data?.orderdetails ?? body.data?.data?.orderdetails;
+      const fields = ["inflow_path", "inflow", "channel", "ad", "medium", "campaign", "content",
+        "utm_source", "utm_medium", "utm_campaign", "utm_content"];
+      const clickFields = ["fbclid", "gclid", "gbraid", "wbraid", "msclkid", "nclid", "ttclid", "click_id", "clickId"];
+      const rows = Array.isArray(raw) ? raw
+        .filter((row) => (row?.order_id ?? row?.orderId) === orderId)
+        .map((row) => ({
+          ...Object.fromEntries(fields.map((key) => {
+            const value = typeof row[key] === "string" ? row[key].trim() : "";
+            // Keep campaign labels and IDs. Drop URLs, query strings, emails and credential-like values.
+            const safe = /^[\p{L}\p{N} _|().-]{1,120}$/u.test(value)
+              && !/\b(?:bearer|token|secret|password)\b|\b0\d{1,2}[- ]?\d{3,4}[- ]?\d{4}\b|[A-Za-z0-9_-]{32,}/i.test(value);
+            return [key, safe ? value : null];
+          })),
+          clickIdentifiersPresent: Object.fromEntries(clickFields
+            .filter((key) => Object.hasOwn(row, key))
+            .map((key) => [key, typeof row[key] === "string" && row[key].trim() !== ""]))
+        })) : [];
+      const upstreamCompleteness = body.coverage?.completeness;
+      const completeness = !Array.isArray(raw) ? "UNAVAILABLE"
+        : upstreamCompleteness === "PARTIAL" ? "PARTIAL"
+        : rows.length && upstreamCompleteness === "COMPLETE" ? "COMPLETE" : "UNKNOWN";
+      return envelope("get_cafe24_analytics_order", { orderId, orderDate, rows }, {
+        source: CAFE24_ANALYTICS_ORDER_PATH, completeness,
+        notes: !Array.isArray(raw) ? ["Unrecognized Analytics response schema"]
+          : !rows.length ? ["No matching order row was returned for the order date"]
+          : ["Null attribution fields are missing or redacted; omitted click fields were not returned by Analytics"]
       });
     }
   },

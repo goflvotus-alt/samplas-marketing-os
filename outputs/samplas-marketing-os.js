@@ -6063,12 +6063,6 @@ function mountMetaCafe24Attribution(target, since, until) {
   target.append(panel);
 }
 
-// Phase 3: Meta vs Naver comparison via the canonical GET /api/advertising/overview
-// endpoint only — no direct Meta/Naver calls here and no re-implemented ad math.
-// Every number in each card comes straight from that endpoint's channels[] (which
-// is itself fromMetaAds()/fromNaverAds() canonical output). actualCommerce is
-// intentionally never rendered here — Cafe24 real revenue is not connected in
-// this Phase, and this section must never look like it is.
 async function renderAdvertisingChannelComparison(since, until, renderSeq) {
   const target = $("#adChannelCompare");
   if (!target) return;
@@ -6080,7 +6074,66 @@ async function renderAdvertisingChannelComparison(since, until, renderSeq) {
   }
   const meta = data.channels.find((channel) => channel?.channel === "meta") || null;
   const naver = data.channels.find((channel) => channel?.channel === "naver") || null;
-  target.innerHTML = [adChannelCompareCard("Meta", meta), adChannelCompareCard("Naver", naver)].join("");
+  target.innerHTML = [
+    adChannelCompareCard("Meta", meta),
+    adChannelCompareCard("Naver", naver),
+    advertisingOrderEvidenceCard(data.actualCommerce)
+  ].join("");
+  const search = target.querySelector("[data-ad-order-search]");
+  const result = target.querySelector("[data-ad-order-result]");
+  if (!search || !result) return;
+  const commerce = data.actualCommerce;
+  search.addEventListener("input", () => {
+    const id = search.value.trim();
+    const order = commerce.orderEvidence.orders.find((entry) => entry.orderId === id);
+    if (!order) {
+      result.textContent = id ? "선택한 기간에 일치하는 주문이 없습니다." : "";
+      return;
+    }
+    const products = commerce.rows.filter((row) => row.order_id === id).map((row) => row.product_name).filter(Boolean);
+    const evidence = {
+      MATCHED_AD_ID: "광고 ID 확정",
+      MATCHED_NAVER_TRACKING_TAG: "태그 확정 · 네이버 파워링크 · 실제 송출 소재 ID 미확인",
+      PAID_CHANNEL: "채널 확인 · 광고 ID 미확인",
+      ESTIMATED_AD_NAME: "추정 · 광고명만 일치 · 매출 미반영",
+      CONFLICTING_ANALYTICS: "미확인 · 유입 기록 충돌",
+      NO_VERIFIED_PAID_CHANNEL: "미확인 · 유료 유입 근거 없음"
+    };
+    result.textContent = [
+      order.orderId, products.join(", "), adChannelCompareWon(order.paidAmount),
+      order.paymentDate, order.paymentMethods.join(", "), order.orderPlace,
+      [order.source, order.medium].filter(Boolean).join(" / "),
+      order.campaign, order.content, order.adId, evidence[order.evidence]
+    ].filter(Boolean).join(" · ");
+  });
+}
+
+function advertisingOrderEvidenceCard(commerce) {
+  const evidence = commerce?.orderEvidence;
+  if (!commerce?.available || !evidence) {
+    return `<article class="action-item ad-performance-card"><strong>Cafe24 주문 원장</strong><p>선택한 기간의 주문 귀속을 확인할 수 없습니다.</p></article>`;
+  }
+  const { since, until } = evidence.period;
+  const summary = [["Meta 유료", "meta"], ["네이버 유료", "naver"], ["유료 유입 미확인", "unverified"]]
+    .map(([label, key]) => {
+      const { orderCount, paidAmount } = evidence.summary[key];
+      return `<p>${label} ${adChannelCompareWon(paidAmount)} · ${adChannelCompareNum(orderCount)}건</p>`;
+    }).join("");
+  const ads = evidence.verifiedAds.map(ad =>
+    `<li>${esc(ad.content || ad.adId)} · ${adChannelCompareWon(ad.paidAmount)} · ${adChannelCompareNum(ad.orderCount)}건</li>`).join("");
+  const naverTags = (evidence.verifiedNaverTags || []).map(({ tag, paidAmount, orderCount }) =>
+    `<li>${esc(tag)} · ${adChannelCompareWon(paidAmount)} · ${adChannelCompareNum(orderCount)}건</li>`).join("");
+  const coverage = { COMPLETE: "Analytics 조회 완료", PARTIAL: "Analytics 일부 조회", UNAVAILABLE: "Analytics 조회 불가" };
+  return `<article class="action-item ad-performance-card">
+    <strong>Cafe24 주문 원장 기준 채널별 실결제</strong>
+    <p>주문일 ${esc(since)} ~ ${esc(until)} · ${coverage[evidence.analyticsCompleteness] || "Analytics 조회 범위 미확인"}</p>
+    ${summary}
+    <details><summary>광고 ID가 확인된 실결제</summary>${ads ? `<ul>${ads}</ul>` : "<p>확인된 광고 ID가 없습니다.</p>"}</details>
+    ${naverTags ? `<details><summary>네이버 파워링크 추적 코드 기준 실결제</summary><ul>${naverTags}</ul></details>` : ""}
+    <p>결제금액 확인 보류 ${adChannelCompareNum(evidence.unverifiedPaymentCount)}건</p>
+    <label>주문번호 <input type="search" data-ad-order-search autocomplete="off"></label>
+    <p data-ad-order-result aria-live="polite"></p>
+  </article>`;
 }
 
 // Dedicated formatters (null → "—") so this comparison never silently borrows the

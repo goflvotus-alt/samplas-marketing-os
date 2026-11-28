@@ -29,6 +29,11 @@ function fakeUpstream(state) {
         typeBreakdown: [{ type: "foreign", label: "외국인", clientCount: 1, purchaseCount: is2025 ? 0 : 546, salesAmount: is2025 ? 0 : 133480850, ratioPct: 1 }],
         coverage: { online: { available: true }, offline: is2025 ? { includedMonths: [], partialMonths: [], missingMonths: ["2025-01"] } : { includedMonths: ["2026-01"], partialMonths: ["2026-01"], missingMonths: [] }, complete: false } });
     }
+    if (u.pathname === "/api/diagnostics/cafe24-analytics-orderdetails") {
+      return done({ data: { orderdetails: [
+        { order_id: u.searchParams.get("order_id"), ad: "meta", medium: "paid", fbclid: "raw-click", buyer_name: "private" }
+      ] } });
+    }
     if (u.pathname === "/api/inventory/overview") {
       if (state.hang) { state.active -= 1; return; }
       return setTimeout(() => done({ ok: true, generatedAt: "t", coverage: { totalItems: 14746 }, summary: {}, operations: {}, itemsTotal: 14746, items: [] }), state.delayMs || 0);
@@ -117,12 +122,12 @@ test("protected resource metadata advertises only samplas.read", async () => {
   } finally { await t.close(); }
 });
 
-test("MCP initialize, exactly 14 read-only tools with samplas.read security, tool execution", async () => {
+test("MCP initialize, exactly 15 read-only tools with samplas.read security, tool execution", async () => {
   const t = await setup();
   try {
     const client = await connect(t.resourceUrl, await t.sign());
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 14);
+    assert.equal(tools.length, 15);
     for (const tool of tools) {
       assert.equal(tool.annotations.readOnlyHint, true, tool.name);
       assert.equal(tool.inputSchema.type, "object", tool.name);
@@ -137,6 +142,11 @@ test("MCP initialize, exactly 14 read-only tools with samplas.read security, too
     assert.equal(result.structuredContent.data.comparison.foreign.salesAmount, null);
     assert.equal(result.structuredContent.data.growth.growthRate, null);
     assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
+
+    const order = await client.callTool({ name: "get_cafe24_analytics_order", arguments: { orderId: "20261127-0000042" } });
+    assert.equal(order.isError, false);
+    assert.equal(order.structuredContent.data.rows[0].clickIdentifiersPresent.fbclid, true);
+    assert.doesNotMatch(JSON.stringify(order), /raw-click|private/);
 
     const invalid = await client.callTool({ name: "get_inventory", arguments: { limit: 14746 } });
     assert.equal(invalid.isError, true);
@@ -228,7 +238,7 @@ test("wire format: initialize, id preservation, notifications, unknown method, m
 
     const list = await (await rpc(t, token, { jsonrpc: "2.0", id: 42, method: "tools/list", params: {} })).json();
     assert.equal(list.id, 42);
-    assert.equal(list.result.tools.length, 14);
+    assert.equal(list.result.tools.length, 15);
     for (const tool of list.result.tools) {
       assert.equal(tool.inputSchema.type, "object", tool.name);
       assert.equal(tool.inputSchema.additionalProperties, false, tool.name);
@@ -269,6 +279,12 @@ test("MCP_AUTH_MODE=none: no token needed; no OAuth config or metadata; tools st
     const client = await connect(t.resourceUrl, null);
     const { tools } = await client.listTools();
     assert.equal(tools.length, 14);
+    const hidden = await (await post(t.resourceUrl, { body: JSON.stringify({
+      jsonrpc: "2.0", id: 3, method: "tools/call",
+      params: { name: "get_cafe24_analytics_order", arguments: { orderId: "20261127-0000042" } }
+    }) })).json();
+    assert.equal(hidden.error.code, -32602);
+    assert.equal(t.state.seen.length, 0);
     const result = await client.callTool({ name: "get_foreign_sales", arguments: { since: "2026-01-01", until: "2026-09-30", compareSince: "2025-01-01", compareUntil: "2025-09-30" } });
     assert.equal(result.structuredContent.data.current.foreign.salesAmount, 133480850);
     assert.equal(result.structuredContent.data.comparison.foreign.salesAmount, null);
