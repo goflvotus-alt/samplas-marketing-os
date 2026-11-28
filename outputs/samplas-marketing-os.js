@@ -6022,7 +6022,45 @@ async function renderAdvertising(data, renderSeq) {
   renderMetaAdsReconciliation(fullReport, reconTarget);
   renderMetaAdsFullReportGroups(fullReport, scoreWeights, fullReportTargets);
   renderMarketingSummary({ meta, fullReport, commerce, adSpendShare, briefingTarget, reconTarget, briefingCount, reportingSpend, reportingPurchaseValue, periodLabel: `${startDate} ~ ${endDate}` });
+  mountMetaCafe24Attribution(reconTarget, startDate, endDate);
   contentTarget.innerHTML = "";
+}
+
+function mountMetaCafe24Attribution(target, since, until) {
+  const panel = document.createElement("article");
+  panel.className = "action-item";
+  panel.innerHTML = '<strong>Meta와 Cafe24 광고 귀속 대조</strong><button type="button">선택 기간 대조</button><div aria-live="polite"></div>';
+  const button = panel.querySelector("button");
+  const result = panel.querySelector("div");
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    result.textContent = "광고 집계와 Cafe24 결제 근거를 확인 중입니다.";
+    try {
+      const query = new URLSearchParams({ since, until });
+      const report = await getJson(`/api/meta-ads/cafe24-attribution?${query}`, 75000);
+      if (!report.ok) throw new Error("대조 자료를 불러오지 못했습니다.");
+      const amount = value => Number.isFinite(value) ? apiWon(value) : "미확인";
+      const descriptions = Object.entries(report.classification || {}).map(([status, row]) =>
+        `${status} ${row.orders}건 · ${amount(row.net)} · 신규 주문 ${row.newCustomers} · 재구매 주문 ${row.repeatCustomers}`);
+      const groupRows = (report.attributionLevels || []).map(row =>
+        `${row.level} ${row.id} · ${row.status} · ${row.orders}건 · ${amount(row.net)}`);
+      const checks = (report.levelReconciliation || []).map(row => `${row.metric} ${row.status}`).join(" · ");
+      result.innerHTML = [
+        `Meta 보고 구매값 ${amount(report.metaPurchaseValue)}`,
+        `Cafe24 온라인 매출 ${amount(report.cafe24OnlineRevenue)}`,
+        `Cafe24 광고 연결 검증 매출 ${amount(report.cafe24ConfirmedRevenue)}`,
+        `증빙 ${report.coverage}`,
+        ...descriptions,
+        ...groupRows,
+        checks
+      ].map(value => `<p>${esc(value)}</p>`).join("");
+    } catch {
+      result.textContent = "대조 자료를 불러오지 못했습니다.";
+    } finally {
+      button.disabled = false;
+    }
+  });
+  target.append(panel);
 }
 
 // Phase 3: Meta vs Naver comparison via the canonical GET /api/advertising/overview

@@ -172,9 +172,12 @@ const reportLayouts = {
 async function validateReportBytes(bytes, targetPath) {
   try {
     const fileName = targetPath.split("/").at(-1);
-    const match = /^(NAVER_ADS|META_ADS|INSTAGRAM)_(WEEKLY|MONTHLY)_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})(?:_PREVIEW_[a-f0-9-]+)?\.xlsx$/.exec(fileName);
+    const match = /^(NAVER_ADS|META_ADS|INSTAGRAM)_(WEEKLY|MONTHLY)_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})(_CORRECTED|_PREVIEW_[a-f0-9-]+)?\.xlsx$/.exec(fileName);
     if (!match) throw new Error("unrecognized report filename");
-    const [, platform, cadence, since, until] = match;
+    const [, platform, cadence, since, until, variant] = match;
+    if (variant === "_CORRECTED" && (platform !== "META_ADS" || cadence !== "MONTHLY")) {
+      throw new Error("invalid corrected report scope");
+    }
     const layout = reportLayouts[platform];
     const archive = await JSZip.loadAsync(bytes, { checkCRC32: true });
     for (const entry of ["[Content_Types].xml", "_rels/.rels", "xl/workbook.xml", "xl/_rels/workbook.xml.rels"]) {
@@ -183,6 +186,10 @@ async function validateReportBytes(bytes, targetPath) {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(bytes);
     if (layout.sheets?.some(name => !workbook.getWorksheet(name))) throw new Error("missing required XLSX worksheet");
+    if (variant === "_CORRECTED" &&
+        workbook.getWorksheet("CORRECTION")?.getCell("B1").text !== fileName.replace("_CORRECTED", "")) {
+      throw new Error("missing correction provenance");
+    }
     const report = workbook.getWorksheet("REPORT");
     if (!report || report.state !== "visible" || report.getCell("A1").text !== `${layout.title} ${cadence} REPORT`) {
       throw new Error("missing REPORT sheet or incorrect platform");

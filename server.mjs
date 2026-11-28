@@ -1,4 +1,6 @@
-import {metaInsightsCoverage,metaWeeklyCoverage,metaAccountTotalsCoverage,cafe24OrdersCoverage,cafe24AnalyticsCoverage,combineWeeklyCoverage} from './scripts/weekly-data-completeness.mjs';
+import { isReportDate } from "./scripts/report-period.mjs";
+import { collectMetaInsightPages, isExactMetaInsightScope, reconcileMetaLevels } from "./scripts/meta-attribution-integrity.mjs";
+import {metaInsightsCoverage,metaWeeklyCoverage,metaAccountTotalsCoverage,cafe24OrdersCoverage,cafe24AnalyticsCoverage,combineWeeklyCoverage,fetchReportAnalyticsRange} from './scripts/weekly-data-completeness.mjs';
 import {createVeilControl,serveVeilRpc} from './scripts/veil-found-control.mjs';
 import { SEEDING_MCP_PATH, serveSeedingMcp, createSeedingRestClient } from './scripts/seeding-mcp.mjs';
 import { SESSION_API_PREFIX, handleSessionDirectorRequest } from "./scripts/session-director-api.mjs";
@@ -46,13 +48,13 @@ import {
   saveWeeklyFailureNoticeToDropbox,
   weeklyFailureNoticeText
 } from "./scripts/dropbox-report-uploader.mjs";
-import { generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
+import { fetchAllMetaLevels, generateWeeklyMetaAdsReport } from "./scripts/meta-ads-weekly-report.mjs";
 import { fetchLandingDiagnostics } from "./scripts/meta-landing-diagnostics.mjs";
 import { runWeeklyReportPreview, handleWeeklyReportPreview } from "./scripts/weekly-report-manual.mjs";
 import { dueMonthlyReport, dueWeeklyPeriod, officialReportPeriod, publishOfficialReport, reportPlatforms } from "./scripts/official-report-publication.mjs";
-import { paymentDay } from "./scripts/meta-weekly-revenue.mjs";
+import { buildRevenueEvidence, paymentDay } from "./scripts/meta-weekly-revenue.mjs";
 import { createMetaWeeklyCafe24SourceHandler } from "./scripts/meta-weekly-cafe24-source.mjs";
-import {fetchWeeklyItemPayments} from './scripts/meta-weekly-sales-trace.mjs';
+import {attachWeeklyOrderMatch,buildWeeklySalesTrace,fetchWeeklyItemPayments} from './scripts/meta-weekly-sales-trace.mjs';
 import { generateWeeklyInstagramReport } from "./scripts/instagram-weekly-report.mjs";
 import { createGraphClient, toTagCafe24View } from "./scripts/instagram-product-tags.mjs";
 import { createFeedDropbox, createPostStore, createProductTagService } from "./scripts/instagram-product-tag-runner.mjs";
@@ -475,6 +477,19 @@ const server = isMainModule ? createServer(async (req, res) => {
       );
       return json(res, data);
     }
+    if (url.pathname === "/api/meta-ads/cafe24-attribution") {
+      if (req.method !== "GET") return json(res, { ok: false, error: "method_not_allowed" }, 405);
+      const since = url.searchParams.get("since"), until = url.searchParams.get("until");
+      if (!isReportDate(since) || !isReportDate(until) || until < since || until > todayKey() || Date.parse(until) - Date.parse(since) > 30 * 86400000) {
+        return json(res, { ok: false, error: "invalid_report_period" }, 400);
+      }
+      try {
+        return json(res, await loadMetaCafe24Attribution(since, until));
+      } catch (error) {
+        await logApiError("meta_cafe24_attribution", error, { since, until });
+        return json(res, { ok: false, error: "meta_cafe24_attribution_unavailable" }, 502);
+      }
+    }
     if (url.pathname === "/api/meta-ads/products") {
       const data = await buildMetaAdsProductsWithCache(
         url.searchParams.get("since") || `${currentMonth()}-01`,
@@ -533,6 +548,10 @@ const server = isMainModule ? createServer(async (req, res) => {
             metaAccount: fetchMetaAccountTotalsForWeeklyReport,
             metaAttribution: fetchMetaAttributionForWeeklyReport,
             refundOrders: fetchCafe24OrdersForRefundTracking,
+            customerTypes: fetchMetaOrderCustomerTypes,
+            metaTracking: fetchMetaAdTrackingForWeeklyReport,
+            itemPayments: fetchCafe24ItemPaymentsForWeeklyReport,
+            metaProducts: fetchMetaProductsForWeeklyReport,
             actualOrders: fetchCafe24ActualOrdersForWeeklyReport,
             actualAnalytics: fetchCafe24AnalyticsForWeeklyReport
           }
@@ -1960,12 +1979,13 @@ async function buildMetaAdsSummary(since, until, options = {}) {
   const adAccountId = cleanAdAccountId();
   if (!adAccountId) throw new Error(".env에 META_AD_ACCOUNT_ID가 없습니다.");
   const level = metaAdsLevel(options.level);
-  const body = await graphGet(`${adAccountId}/insights`, {
+  const body = await collectMetaInsightPages(level, after => graphGet(`${adAccountId}/insights`, {
     fields: metaAdsFieldsForLevel(level).join(","),
     level,
     time_range: JSON.stringify({ since, until }),
-    limit: 100
-  });
+    limit: 100,
+    ...(after ? { after } : {})
+  }));
   await logMetaAdsDiagnostic(body.data || [], { since, until, level });
   const campaignIds = [...new Set((body.data || []).map((row) => row.campaign_id).filter(Boolean))];
   const campaignMeta = await fetchCampaignObjectives(campaignIds);
@@ -2332,10 +2352,8 @@ function isCurrentMonthMetaAdsSummaryRequest(since) {
   return isCurrentMonth(monthFromDate(since));
 }
 
-function isUsableMetaAdsSummaryCache(cached, since, until) {
-  if (!cached) return false;
-  if (isCurrentMonthMetaAdsSummaryRequest(since) && cached.until !== until) return false;
-  return true;
+function isUsableMetaAdsSummaryCache(cached, since, until, level) {
+  return isExactMetaInsightScope(cached, { since, until, level });
 }
 
 function decorateMetaAdsSummaryCache(cached, since, until) {
@@ -2402,13 +2420,13 @@ async function readCachedMetaAdsSummary(since, until, options = {}) {
   const exactFile = join(workDir, metaAdsCacheFileName(level, since, until));
   if (existsSync(exactFile)) {
     const cached = normalizeMetaAdsCachedResult(JSON.parse(await readFile(exactFile, "utf8")), level);
-    return isUsableMetaAdsSummaryCache(cached, since, until) ? cached : null;
+    return isUsableMetaAdsSummaryCache(cached, since, until, level) ? cached : null;
   }
   if (level === "campaign") {
     const legacyFile = join(workDir, `meta-ads-${since}_${until}.json`);
     if (existsSync(legacyFile)) {
       const cached = normalizeMetaAdsCachedResult(JSON.parse(await readFile(legacyFile, "utf8")), level);
-      return isUsableMetaAdsSummaryCache(cached, since, until) ? cached : null;
+      return isUsableMetaAdsSummaryCache(cached, since, until, level) ? cached : null;
     }
   }
 
@@ -2426,7 +2444,7 @@ async function readCachedMetaAdsSummary(since, until, options = {}) {
     if (!legacyLatest) return null;
     const legacyCached = JSON.parse(await readFile(join(workDir, legacyLatest), "utf8"));
     const normalized = normalizeMetaAdsCachedResult(legacyCached, level);
-    if (!isUsableMetaAdsSummaryCache(normalized, since, until)) return null;
+    if (!isUsableMetaAdsSummaryCache(normalized, since, until, level)) return null;
     return {
       ...normalized,
       requestedSince: since,
@@ -2437,7 +2455,7 @@ async function readCachedMetaAdsSummary(since, until, options = {}) {
   if (!latest) return null;
   const cached = JSON.parse(await readFile(join(workDir, latest), "utf8"));
   const normalized = normalizeMetaAdsCachedResult(cached, level);
-  if (!isUsableMetaAdsSummaryCache(normalized, since, until)) return null;
+  if (!isUsableMetaAdsSummaryCache(normalized, since, until, level)) return null;
   return {
     ...normalized,
     requestedSince: since,
@@ -9899,7 +9917,8 @@ async function runOfficialReport(request, now = new Date(), scheduled = false) {
         fetchRefundOrders: fetchCafe24OrdersForRefundTracking,
         fetchItemPayments: fetchCafe24ItemPaymentsForWeeklyReport,
         fetchMetaProducts: fetchMetaProductsForWeeklyReport,
-        fetchAdTracking: fetchMetaAdTrackingForWeeklyReport
+        fetchAdTracking: fetchMetaAdTrackingForWeeklyReport,
+        fetchCustomerTypes: fetchMetaOrderCustomerTypes
       }
     }
   });
@@ -10220,6 +10239,43 @@ export async function fetchCafe24ActualOrdersForWeeklyReport(since, until, { inc
 // supplies actual products or paid amounts, nor repairs failed inflow queries.
 export async function fetchCafe24AnalyticsForWeeklyReport(since, until) {
   return fetchCafe24AnalyticsOrderDetails({ startDate: since, endDate: until });
+}
+
+async function fetchMetaOrderCustomerTypes(since, until, { actualOrders } = {}) {
+  const orders = actualOrders?.paymentOrders?.orders || actualOrders?.analyticsOrders || [];
+  if (!orders.length) return {};
+  const crm = await import("./scripts/crm-analytics.mjs");
+  const dataset = await crm.cachedCrmDataset({ workDir, snapshotDirs: [join(workDir, "tracking-test")] });
+  return crm.crmAttributionCustomerTypes(dataset, orders.map(order => String(order.order_id)));
+}
+
+const metaCafe24AttributionInFlight = new Map();
+async function loadMetaCafe24Attribution(since, until) {
+  const key = `${since}_${until}`;
+  if (metaCafe24AttributionInFlight.has(key)) return metaCafe24AttributionInFlight.get(key);
+  const pending = (async () => {
+    const [levels, actualOrders, analytics] = await Promise.all([
+      fetchAllMetaLevels(since, until, buildMetaAdsSummaryForWeeklyReport),
+      fetchCafe24ActualOrdersForWeeklyReport(since, until, { includeAnalyticsOrders: true, officialReport: true }),
+      fetchReportAnalyticsRange(since, until, fetchCafe24AnalyticsForWeeklyReport)
+    ]);
+    if (!levels.ad?.rows || !levels.campaign?.totals) throw new Error("Meta reporting levels unavailable");
+    const ads = levels.ad.rows;
+    const [tracking, customerTypes] = await Promise.all([
+      fetchMetaAdTrackingForWeeklyReport(since, until, { ads }).catch(() => null),
+      fetchMetaOrderCustomerTypes(since, until, { actualOrders }).catch(() => ({}))
+    ]);
+    const evidence = buildRevenueEvidence({ since, until, paymentOrders: actualOrders.paymentOrders, analytics, metaAds: ads });
+    const trace = buildWeeklySalesTrace({ since, until, actualOrders, analytics, ads, tracking, customerTypes, metaSummary: levels.campaign.totals });
+    attachWeeklyOrderMatch(trace, evidence);
+    return { ok: true, since, until, metaPurchaseValue: levels.campaign.totals.purchaseValue ?? null,
+      cafe24OnlineRevenue: evidence.onlineRevenue, cafe24ConfirmedRevenue: evidence.verifiedRevenue,
+      classification: evidence.unknownLinkOrders === 0 ? trace.attribution : null,
+      attributionLevels: evidence.unknownLinkOrders === 0 ? trace.attributionLevels : null,
+      coverage: evidence.status, reasons: evidence.reasons, levelReconciliation: reconcileMetaLevels(levels) };
+  })().finally(() => metaCafe24AttributionInFlight.delete(key));
+  metaCafe24AttributionInFlight.set(key, pending);
+  return pending;
 }
 
 async function runMetaWeeklyReportCheck() {

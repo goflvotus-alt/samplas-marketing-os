@@ -14,10 +14,11 @@ export function combineWeeklyCoverage(parts,scope){
  return result('weekly_actual_orders',scope,completeness,[...new Set(parts.flatMap(p=>p?.reasons||['COVERAGE_NOT_PROVIDED']))]);
 }
 export function metaInsightsCoverage(body,scope){
- const rows=body?.data,observed={limit:100,rowCount:Array.isArray(rows)?rows.length:null,hasNextPage:Boolean(body?.paging?.next)};
+ const rows=body?.data,observed={limit:100,rowCount:Array.isArray(rows)?rows.length:null,hasNextPage:Boolean(body?.paging?.next),paginationExhausted:body?.paginationExhausted===true};
+ if(body?.partial===true&&body?.paginationExhausted===false)return result('meta_insights',scope,'PARTIAL',['INSIGHTS_PAGE_NOT_EXHAUSTED'],observed);
  if(upstream(body))return result('meta_insights',scope,upstream(body),['UPSTREAM_'+upstream(body)],observed);
  if(!Array.isArray(rows))return result('meta_insights',scope,'UNAVAILABLE',['INSIGHTS_DATA_NOT_RETURNED'],observed);
- if(observed.hasNextPage||rows.length>=100)return result('meta_insights',scope,'PARTIAL',['INSIGHTS_PAGE_NOT_EXHAUSTED'],observed);
+ if(observed.hasNextPage||rows.length>=100&&!observed.paginationExhausted)return result('meta_insights',scope,'PARTIAL',['INSIGHTS_PAGE_NOT_EXHAUSTED'],observed);
  const missing=rows.some(r=>!r||!['spend','impressions','clicks'].every(k=>numeric(r[k]))||!['actions','action_values'].every(k=>Array.isArray(r[k])&&r[k].every(a=>a&&typeof a.action_type==='string'&&numeric(a.value))));
  return result('meta_insights',scope,missing?'UNKNOWN':'COMPLETE',missing?['RAW_METRICS_NOT_RETURNED']:[],observed);
 }

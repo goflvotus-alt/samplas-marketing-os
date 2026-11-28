@@ -340,3 +340,29 @@ test('legacy Naver releases verify repeated source totals without an evidence JS
   report.getCell('C15').value = 124;
   await assert.rejects(verify(), /invalid legacy Naver report/);
 });
+
+test('October Meta correction keeps the original bytes and validates its add-only corrected variant', async () => {
+  const { runWeeklyReportPreview } = await import('../scripts/weekly-report-manual.mjs');
+  const store = storage();
+  const original = '/reports/META_ADS_MONTHLY_2026-10-01_2026-10-31.xlsx';
+  const corrected = original.replace(/\.xlsx$/, '_CORRECTED.xlsx');
+  const originalBytes = Buffer.from('canonical existing issue, never read or overwritten');
+  store.files.set(original, originalBytes);
+  const request = {platform:'meta',month:'2026-10',mode:'correction'};
+  const options = {
+    env:{...env,DROPBOX_META_WEEKLY_REPORT_DIR:'/reports'},
+    hasPersistentMetaConnection:async()=>true,
+    fetchers:{meta:meta.fetchByLevel,actualOrders:meta.fetchActualOrders,actualAnalytics:meta.fetchActualAnalytics},
+    upload:(book, settings)=>saveWeeklyReportToDropboxAtPath(book,{...settings,fetchImpl:store.fetchImpl})
+  };
+  const first=await runWeeklyReportPreview(request,options);
+  assert.equal(first.filePath,corrected);
+  assert.equal(first.alreadyExists,false);
+  assert.equal((await runWeeklyReportPreview(request,options)).alreadyExists,true);
+  assert.equal(store.uploads,1);
+  assert.deepEqual(store.files.get(original),originalBytes);
+  const book=new ExcelJS.Workbook();
+  await book.xlsx.load(store.files.get(corrected));
+  assert.equal(book.getWorksheet('CORRECTION').getCell('B1').text,original.split('/').at(-1));
+  assert.equal(book.getWorksheet('META_LEVEL_CHECK').getCell('E2').text,'MATCH');
+});

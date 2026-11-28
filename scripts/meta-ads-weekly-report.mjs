@@ -1,3 +1,4 @@
+import { reconcileMetaLevels } from "./meta-attribution-integrity.mjs";
 // Meta Ads Weekly Report generator — mirrors scripts/naver-ads-weekly-report.mjs's
 // architecture exactly (same date math, same pluggable saveReport, same local-vs-Dropbox
 // split) but built independently: the Naver file is never imported for its report-model
@@ -58,7 +59,7 @@ function levelOk(data) {
   return Boolean(data) && data.ok !== false && Array.isArray(data.rows);
 }
 
-export function buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil, actualOrders, actualAnalytics, adGrades = false, payments, metaProducts, tracking }) {
+export function buildWeeklyMetaReportModel({ current, previous, since, until, previousSince, previousUntil, actualOrders, actualAnalytics, adGrades = false, payments, metaProducts, tracking, customerTypes }) {
   const campaignCurrent = current?.campaign;
   const currentOk = levelOk(campaignCurrent);
 
@@ -98,7 +99,8 @@ export function buildWeeklyMetaReportModel({ current, previous, since, until, pr
     adsets: rowsForLevel("adset", "adsetId"),
     ads: rowsForLevel("ad", "adId"),
     analysis: analyzeMetaLevels(current, previous),
-    salesTrace: buildWeeklySalesTrace({since,until,actualOrders,analytics:actualAnalytics,payments,metaProducts,tracking,ads:current?.ad?.rows||[],metaSummary:campaignCurrent?.totals}),
+    levelReconciliation: reconcileMetaLevels(current),
+    salesTrace: buildWeeklySalesTrace({since,until,actualOrders,analytics:actualAnalytics,payments,metaProducts,tracking,customerTypes,ads:current?.ad?.rows||[],metaSummary:campaignCurrent?.totals}),
     actualProducts: buildActualProductsSold({
       data: actualOrders,
       analytics: actualAnalytics,
@@ -291,6 +293,12 @@ export async function buildWeeklyMetaReportWorkbook(model, { onePage = false } =
   if (model.refundTracking) buildRefundTrackingSheet(workbook, model.refundTracking);
   writeRevenueEvidence(workbook, model);
   buildRawSheet(workbook, model);
+  if (model.levelReconciliation) {
+    const audit = workbook.addWorksheet("META_LEVEL_CHECK");
+    audit.columns = ["metric", "campaign", "adset", "ad", "status"].map(key => ({key,header:key,width:23}));
+    audit.addRows(model.levelReconciliation);
+    audit.addRow({metric:"Reach and frequency are excluded because they are non-additive."});
+  }
   if(model.salesTrace)addWeeklySalesTraceSheets(workbook,model.salesTrace);
   return workbook;
 }
@@ -388,7 +396,7 @@ export function checkAttributionSplit(split, summary) {
 // Orchestrator
 // ---------------------------------------------------------------------------
 
-export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, month, onePage = false, requireCompleteData = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, fetchAccountTotals, fetchAttribution, fetchRefundOrders, fetchItemPayments, fetchMetaProducts, fetchAdTracking, adGrades = requireCompleteData, outputDir, env = process.env, saveReport, publicationMode = referenceDateKey && onePage && requireCompleteData ? 'auto' : 'draft', now = () => new Date() } = {}) {
+export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, month, onePage = false, requireCompleteData = false, fetchByLevel, fetchActualOrders, fetchActualAnalytics, fetchAccountTotals, fetchAttribution, fetchRefundOrders, fetchItemPayments, fetchMetaProducts, fetchAdTracking, fetchCustomerTypes, adGrades = requireCompleteData, outputDir, env = process.env, saveReport, publicationMode = referenceDateKey && onePage && requireCompleteData ? 'auto' : 'draft', now = () => new Date() } = {}) {
   // The existing scheduler supplies referenceDateKey + strict onePage; library calls remain drafts.
   const generatedAt = now().toISOString();
   if (typeof fetchByLevel !== "function") throw new Error("generateWeeklyMetaAdsReport requires fetchByLevel(since, until, level)");
@@ -438,7 +446,7 @@ export async function generateWeeklyMetaAdsReport({ referenceDateKey, period, mo
   }
 
   const extra={};
-  if(levelOk(current.campaign))for(const [key,fetcher]of [['payments',fetchItemPayments],['metaProducts',fetchMetaProducts],['tracking',fetchAdTracking]]){
+  if(levelOk(current.campaign))for(const [key,fetcher]of [['payments',fetchItemPayments],['metaProducts',fetchMetaProducts],['tracking',fetchAdTracking],['customerTypes',fetchCustomerTypes]]){
     if(typeof fetcher==='function')try{extra[key]=await fetcher(since,until,{actualOrders,ads:current.ad?.rows||[]});}catch{extra[key]={completeness:'UNAVAILABLE',rows:[]};}
   }
   const model = buildWeeklyMetaReportModel({
