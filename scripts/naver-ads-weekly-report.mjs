@@ -21,6 +21,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import ExcelJS from "exceljs";
+import { appendNaverPublicationAttribution } from "./naver-attribution-workbook.mjs";
 
 import { naverDashboard, naverActions, naverCampaignSignal, addActionTable, styleTable } from "./weekly-report-presentation.mjs";
 
@@ -404,7 +405,7 @@ export async function writeWeeklyReportFile(workbook, { since, until, outputDir 
 // share this exact same fetch/model/workbook pipeline instead of each having their own
 // copy of the report-building logic. Omitting it preserves the original local-filesystem
 // behavior unchanged (this is what the CLI and all existing tests still do).
-export async function generateWeeklyNaverAdsReport({ referenceDateKey, month, requireCompleteData = false, fetchPerformance, outputDir, env = process.env, saveReport } = {}) {
+export async function generateWeeklyNaverAdsReport({ referenceDateKey, month, requireCompleteData = false, fetchPerformance, fetchAttribution, outputDir, env = process.env, saveReport } = {}) {
   if (typeof fetchPerformance !== "function") throw new Error("generateWeeklyNaverAdsReport requires fetchPerformance(since, until)");
   const { since, until } = month ? calendarMonthPeriod(month) : previousTuesdayToMondayRange(referenceDateKey);
   const { since: previousSince, until: previousUntil } = month ? calendarMonthPeriod(month, -1) : previousWeekRange({ since, until });
@@ -427,6 +428,9 @@ export async function generateWeeklyNaverAdsReport({ referenceDateKey, month, re
 
   if (month) model.cadence = "monthly";
   const workbook = await buildWeeklyReportWorkbook(model);
+  if (fetchAttribution && !await appendNaverPublicationAttribution(workbook, fetchAttribution, { since, until, grain: 'week' })) {
+    return { ok: false, since, until, error: 'NAVER_ATTRIBUTION_SOURCES_INCOMPLETE', filePath: null };
+  }
 
   if (saveReport) {
     // Any throw here (upload failure, auth failure, network failure) intentionally
@@ -484,7 +488,8 @@ async function loadEnvFile() {
 async function main() {
   const referenceDateKey = process.argv[2] || undefined;
   const [fetchPerformance, env] = await Promise.all([createIntelligenceServiceFetcher(), loadEnvFile()]);
-  const result = await generateWeeklyNaverAdsReport({ referenceDateKey, fetchPerformance, env });
+  const { readNaverAttributionReport: fetchAttribution } = await import('../server.mjs');
+  const result = await generateWeeklyNaverAdsReport({ referenceDateKey, fetchPerformance, fetchAttribution, env });
   console.log(JSON.stringify(result, null, 2));
   if (!result.ok) process.exitCode = 1;
 }

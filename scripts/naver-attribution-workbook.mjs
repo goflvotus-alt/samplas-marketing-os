@@ -9,6 +9,20 @@ const columns = [
 
 export async function buildNaverAttributionWorkbook(report) {
   const book = new ExcelJS.Workbook();
+  addNaverAttributionSheets(book, report);
+  return book.xlsx.writeBuffer();
+}
+
+export async function appendNaverPublicationAttribution(book, fetchAttribution, { since, until, grain }) {
+  const report = await fetchAttribution({ since, until, grain });
+  if (!report?.ok || report.period?.since !== since || report.period?.until !== until || !report.sources?.publicationReady) {
+    return false;
+  }
+  addNaverAttributionSheets(book, report, { scheduled: true });
+  return true;
+}
+
+export function addNaverAttributionSheets(book, report, { scheduled = false } = {}) {
   function sheet(name, headings, rows) {
     const ws = book.addWorksheet(name, { views: [{ state: 'frozen', ySplit: 1 }] });
     ws.addRow(headings);
@@ -24,6 +38,25 @@ export async function buildNaverAttributionWorkbook(report) {
   ]);
   summary.addRow(['귀속 기준', report.attributionBasis]);
   summary.addRow(['갱신 시각', report.generatedAt]);
+  if (scheduled) {
+    const change = columns.map(([key]) => {
+      const current = report.totals[key];
+      const previous = report.previous[key];
+      return Number.isFinite(current) && Number.isFinite(previous) && previous !== 0
+        ? (current - previous) / Math.abs(previous) : null;
+    });
+    const row = summary.insertRow(4, ['직전 동일 기간 대비 증감률', null, null, ...change]);
+    row.numFmt = '0.00%';
+    summary.addRow(['네이버 통계 상태', report.sources.statsStatus]);
+    summary.addRow(['네이버 통계 갱신', report.sources.statsAt]);
+    summary.addRow(['Cafe24 Analytics 관측', report.sources.analyticsAt]);
+    summary.addRow(['Cafe24 Admin 관측', report.sources.ordersAt]);
+    summary.addRow(['소재 매핑 건수', report.mappingCount]);
+    if (report.totals.trackingStatus !== 'VERIFIED' && report.totals.known?.net > 0) {
+      summary.addRow(['확인된 주문 순매출 합계', report.totals.known.net, '추적 범위 내에서 확인한 부분 합계']);
+    }
+    summary.addRow(['미확인 지표', '공란은 미확인 또는 산출 불가입니다. 상태 열을 확인하세요.']);
+  }
   for (const [name, rows] of [['기간별', report.rows], ['직전 기간별', report.comparisonRows], ['브랜드별', report.brandRows]]) {
     sheet(name, ['기간 또는 브랜드', '시작', '종료', ...columns.map(([, title]) => title)],
       (rows || []).map(row => [row.label, row.since, row.until, ...measures(row)]));
@@ -33,5 +66,4 @@ export async function buildNaverAttributionWorkbook(report) {
       order.paid, order.refund, order.net, order.customerType, order.status]));
   sheet('구매 상품', ['주문번호', '상품', '수량', '구매 브랜드'],
     report.orders.flatMap(order => order.items.map(item => [order.orderId, item.name, item.quantity, item.brand])));
-  return book.xlsx.writeBuffer();
 }
