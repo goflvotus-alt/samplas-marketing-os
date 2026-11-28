@@ -88,7 +88,7 @@ export async function publishOfficialReport({ platform, cadence, since, until },
     } else if (platform === 'naver') {
       result = await generateWeeklyNaverAdsReport({
         ...common, fetchPerformance: fetchers.naver,
-        fetchAttribution: period.month ? undefined : fetchers.naverWeeklyAttribution
+        fetchAttribution: period.month ? fetchers.naverMonthlyAttribution : fetchers.naverWeeklyAttribution
       });
     } else {
       result = await generateWeeklyInstagramReport({ ...common, fetchRange: fetchers.instagram });

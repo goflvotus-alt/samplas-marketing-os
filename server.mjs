@@ -9888,6 +9888,7 @@ async function runOfficialReport(request, now = new Date(), scheduled = false) {
     fetchers: {
       naver: fetchNaverAdsPerformanceForWeeklyReport,
       naverWeeklyAttribution: query => readNaverAttributionReport({ ...query, refresh: true }),
+      naverMonthlyAttribution: query => readNaverAttributionReport({ ...query, refresh: true }),
       instagram: buildInstagramRangeDataForWeeklyReport,
       meta: {
         fetchByLevel: buildMetaAdsSummaryForWeeklyReport,
