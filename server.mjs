@@ -1487,7 +1487,7 @@ const server = isMainModule ? createServer(async (req, res) => {
         const endDate = url.searchParams.get("end_date") || startDate;
         const orderId = url.searchParams.get("order_id") || undefined;
 
-        const data = await fetchCafe24AnalyticsOrderDetails({
+        const data = await fetchCafe24AnalyticsOrderDetailsForDiagnostics({
           startDate,
           endDate,
           orderId
@@ -7455,6 +7455,32 @@ async function fetchNaverReportAnalytics({ startDate, endDate }) {
   });
   if (!response.ok) throw new Error(`Cafe24 Analytics proxy HTTP ${response.status}`);
   return response.json();
+}
+
+async function fetchCafe24AnalyticsOrderDetailsForDiagnostics({ startDate, endDate, orderId }) {
+  if (!env.CAFE24_PROXY_BASE_URL) {
+    return fetchCafe24AnalyticsOrderDetails({ startDate, endDate, orderId });
+  }
+  const url = new URL("/api/diagnostics/cafe24-analytics-orderdetails", env.CAFE24_PROXY_BASE_URL);
+  url.search = new URLSearchParams({ start_date: startDate, end_date: endDate });
+  if (orderId) url.searchParams.set("order_id", orderId);
+  const response = await fetch(url, {
+    headers: cafe24ProxyHeaders(),
+    redirect: "error",
+    signal: AbortSignal.timeout(15_000)
+  });
+  if (!response.ok) {
+    const error = new Error(`Cafe24 Analytics proxy returned HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  const body = await response.json().catch(() => null);
+  if (body?.ok !== true) {
+    const error = new Error("Cafe24 Analytics proxy returned an invalid response");
+    error.status = 502;
+    throw error;
+  }
+  return body;
 }
 
 async function fetchCafe24AnalyticsOrderDetails({

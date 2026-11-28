@@ -14,8 +14,8 @@ const MAX_QUEUED = 10;
 const SERVER_INFO = { name: "samplas-marketing-os", title: "SAMPLAS Marketing OS", version: "1.0.0" };
 const INSTRUCTIONS = "Read-only SAMPLAS Marketing OS data. Always report meta.completeness and meta.notes; never present partial or unavailable data as complete, and never treat a null amount as 0.";
 
-export function toolDescriptors(securitySchemes = [{ type: "oauth2", scopes: [READ_SCOPE] }]) {
-  return READ_TOOLS.map((tool) => ({
+export function toolDescriptors(securitySchemes = [{ type: "oauth2", scopes: [READ_SCOPE] }], oauthEnabled = true) {
+  return READ_TOOLS.filter((tool) => !tool.requiresOAuth || oauthEnabled).map((tool) => ({
     name: tool.name,
     title: tool.title,
     description: tool.description,
@@ -94,7 +94,7 @@ export async function handleRpcMessage(message, upstream, tools = toolDescriptor
       return { status: 200, body: rpcResult(id, { tools }) };
     case "tools/call": {
       if (typeof params.name !== "string") return { status: 200, body: rpcError(id, INVALID_PARAMS, "params.name must be a string") };
-      if (!READ_TOOLS.some((t) => t.name === params.name)) return { status: 200, body: rpcError(id, INVALID_PARAMS, `Unknown tool: ${params.name.slice(0, 60)}`) };
+      if (!tools.some((t) => t.name === params.name)) return { status: 200, body: rpcError(id, INVALID_PARAMS, `Unknown tool: ${params.name.slice(0, 60)}`) };
       const result = await runReadTool(params.name, params.arguments, upstream);
       return { status: 200, body: rpcResult(id, { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result, isError: !result.ok }) };
     }
@@ -123,7 +123,7 @@ export function createMcpRoute({ upstreamBaseUrl, auth: authConfig, timeoutMs = 
   const upstream = createUpstream({ baseUrl: upstreamBaseUrl, timeoutMs });
   const auth = createMcpAuth(authConfig);
   const gate = createGate(MAX_CONCURRENT);
-  const tools = toolDescriptors(auth.securitySchemes);
+  const tools = toolDescriptors(auth.securitySchemes, !auth.noAuth && !auth.devNoAuth);
 
   return async function handleMcp(req, res, url) {
     if (url.pathname === "/.well-known/oauth-protected-resource" || url.pathname === "/.well-known/oauth-protected-resource/mcp") {

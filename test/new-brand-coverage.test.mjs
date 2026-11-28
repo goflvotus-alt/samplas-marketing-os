@@ -68,7 +68,7 @@ test("server wiring: /api/brands/new keeps the plain response with coverage=0; C
   assert.match(server, /if \(!coverage\) return result;/);
   assert.match(server, /if \(products\.some\(\(p\) => p\.brand_code !== brandCode\)\) throw new Error\("Cafe24 brand_code filter was not applied"\);/);
   const intel = await readFile(new URL("../intelligence-service.mjs", import.meta.url), "utf8");
-  assert.match(intel, /\["\/ncc\/campaigns", "\/ncc\/adgroups", "\/stats"\]\.includes\(uri\)/);
+  assert.match(intel, /\["\/ncc\/campaigns", "\/ncc\/adgroups", "\/ncc\/ads", "\/ncc\/keywords\/nkw-a001-01-000005351909925", "\/stats"\]\.includes\(uri\)/);
   assert.doesNotMatch(intel.slice(intel.indexOf("async function fetchNaverAdsReadOnly"), intel.indexOf("function normalizeNaverAdsCampaigns")), /method: "(POST|PUT|DELETE)"/);
 });
 
